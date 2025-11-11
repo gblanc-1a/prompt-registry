@@ -935,3 +935,243 @@ graph TD
 
 **Document Maintained By**: Development Team  
 **For Questions**: See [CONTRIBUTING.md](./CONTRIBUTING.md)
+
+---
+
+## Scaffolding Architecture
+
+### Overview
+
+The scaffolding system provides project templates for creating GitHub Copilot prompt projects. It uses a flexible template engine with variable substitution and supports multiple scaffold types.
+
+### Components
+
+#### ScaffoldCommand
+
+**File**: `src/commands/ScaffoldCommand.ts`
+
+Orchestrates the scaffolding process:
+- Prompts user for project details
+- Loads the appropriate template
+- Substitutes variables
+- Copies files to target location
+
+```typescript
+export enum ScaffoldType {
+    AwesomeCopilot = 'awesome-copilot',
+    Basic = 'basic',
+    Enterprise = 'enterprise'
+}
+
+class ScaffoldCommand {
+    constructor(
+        templateRoot?: string,
+        scaffoldType: ScaffoldType = ScaffoldType.AwesomeCopilot
+    );
+    
+    async execute(): Promise<void>;
+}
+```
+
+#### TemplateEngine
+
+**File**: `src/services/TemplateEngine.ts`
+
+Handles template loading, rendering, and copying:
+- Loads template manifests
+- Renders templates with variable substitution
+- Copies templates to target directories
+- Creates directory structures
+
+```typescript
+interface TemplateManifest {
+    id: string;
+    name: string;
+    version: string;
+    description: string;
+    author: string;
+    templates: TemplateMetadata[];
+}
+
+class TemplateEngine {
+    async loadManifest(): Promise<TemplateManifest>;
+    async renderTemplate(templateId: string, variables: Record<string, string>): Promise<string>;
+    async copyTemplate(templateId: string, targetPath: string, variables: Record<string, string>): Promise<void>;
+    async scaffoldProject(projectPath: string, variables: Record<string, string>): Promise<void>;
+}
+```
+
+### Template Structure
+
+Templates are organized by type:
+
+```
+templates/scaffolds/{type}/
+├── manifest.json              # Template metadata
+├── package.json              # Project package template
+├── README.md                 # Documentation template
+├── prompts/                  # Sample prompts
+├── instructions/             # Sample instructions
+├── chatmodes/               # Sample chat modes
+├── collections/             # Sample collections
+└── workflows/               # Validation scripts
+```
+
+### Variable Substitution
+
+Templates support variables in the format `{{VARIABLE_NAME}}`:
+
+- `{{PROJECT_NAME}}` - Project name
+- `{{PROJECT_DESCRIPTION}}` - Project description
+- `{{AUTHOR}}` - Author name
+- `{{VERSION}}` - Version (default: 1.0.0)
+- `{{DATE}}` - Current date
+
+The TemplateEngine replaces these variables during rendering.
+
+---
+
+## Validation Architecture
+
+### Overview
+
+The validation system uses JSON Schema for declarative validation with detailed error messages and best practice warnings.
+
+### Components
+
+#### SchemaValidator Service
+
+**File**: `src/services/SchemaValidator.ts`
+
+Provides JSON schema validation using AJV (Another JSON Validator):
+
+```typescript
+interface ValidationResult {
+    valid: boolean;
+    errors: string[];
+    warnings: string[];
+}
+
+interface ValidationOptions {
+    checkFileReferences?: boolean;
+    workspaceRoot?: string;
+}
+
+class SchemaValidator {
+    async validate(data: any, schemaPath: string, options?: ValidationOptions): Promise<ValidationResult>;
+    async validateCollection(data: any, options?: ValidationOptions): Promise<ValidationResult>;
+    clearCache(): void;
+}
+```
+
+**Key Features:**
+- **Schema Caching**: Compiled schemas are cached for performance
+- **Custom Error Formatting**: AJV errors are converted to user-friendly messages
+- **File Reference Checking**: Optional verification of referenced files
+- **Best Practice Warnings**: Suggests improvements (e.g., missing version, long descriptions)
+
+#### Collection Schema
+
+**File**: `schemas/collection.schema.json`
+
+JSON Schema (Draft-07) defining the collection structure:
+
+```json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["id", "name", "description", "items"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "items": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "required": ["path", "kind"],
+        "properties": {
+          "kind": {
+            "enum": ["prompt", "instruction", "chat-mode", "agent"]
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+#### ValidateCollectionsCommand
+
+**File**: `src/commands/ValidateCollectionsCommand.ts`
+
+Command for validating collection files:
+- Iterates through collection files
+- Uses SchemaValidator for validation
+- Displays results in output channel
+- Creates diagnostics for VS Code Problems panel
+
+**Refactoring Benefit**: Previously had ~60 lines of manual validation logic. Now delegates to SchemaValidator, making the code cleaner and more maintainable.
+
+### Validation Flow
+
+```mermaid
+flowchart TD
+    START([User: Validate Collections])
+    CMD[ValidateCollectionsCommand]
+    FIND[Find *.collection.yml files]
+    PARSE[Parse YAML]
+    VALIDATE[SchemaValidator.validateCollection]
+    
+    START --> CMD
+    CMD --> FIND
+    FIND --> PARSE
+    PARSE --> VALIDATE
+    
+    VALIDATE --> SCHEMA[1. Schema Validation]
+    SCHEMA --> FORMAT[2. Format Errors]
+    VALIDATE --> FILES[3. Check File References]
+    VALIDATE --> WARNINGS[4. Generate Warnings]
+    
+    FORMAT --> RESULT[ValidationResult]
+    FILES --> RESULT
+    WARNINGS --> RESULT
+    
+    RESULT --> DISPLAY[Display in Output Channel]
+    RESULT --> DIAGNOSTICS[Create VS Code Diagnostics]
+    
+    style START fill:#4CAF50
+    style RESULT fill:#2196F3
+```
+
+### Error Formatting
+
+The SchemaValidator provides user-friendly error messages:
+
+| Error Type | Example |
+|------------|---------|
+| Required field | `Missing required field: description` |
+| Pattern mismatch | `/id: must match pattern ^[a-z0-9-]+$ (expected pattern: ^[a-z0-9-]+$)` |
+| Type error | `/items/0/kind: must be string` |
+| Enum violation | `kind: must be one of: prompt, instruction, chat-mode, agent` |
+| Length violation | `description: must be at most 500 characters` |
+
+### Performance Optimizations
+
+1. **Schema Caching**: Compiled schemas are cached in a Map to avoid recompilation
+2. **Lazy Loading**: Schemas are only loaded when first used
+3. **Efficient File Checking**: File existence is checked only when `checkFileReferences` is enabled
+

@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=../../schemas/collection.schema.json
+id: {{collectionId}}
+name: {{projectName}}
+description: Example collection for {{projectName}}
+items:
+  - path: prompts/example.prompt.md
+    kind: prompt
+  - path: instructions/example.instructions.md
+    kind: instruction
+  - path: chatmodes/example.chatmode.md
+    kind: chat-mode
+display:
+  ordering: manual
+  show_badge: true

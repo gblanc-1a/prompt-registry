@@ -158,7 +158,7 @@ export class CreateCollectionCommand {
             );
 
             if (action === 'Open File') {
-                const doc = await vscode.workspace.openTextDocument(collectionFile);
+                const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(collectionFile));
                 await vscode.window.showTextDocument(doc);
             } else if (action === 'Validate') {
                 await vscode.commands.executeCommand('promptRegistry.validateCollections');

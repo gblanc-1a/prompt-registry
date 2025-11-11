@@ -136,19 +136,11 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         }
 
         // Fallback: estimate from tags (better than nothing)
-        if (bundle.tags && bundle.tags.length > 0) {
-            const tags = bundle.tags;
-            // Count tag occurrences as rough estimate
-            const promptTags = tags.filter(t => t.includes('prompt') || t.includes('review') || t.includes('template'));
-            const instructionTags = tags.filter(t => t.includes('instruction') || t.includes('guide') || t.includes('standard'));
-            const modeTags = tags.filter(t => t.includes('mode') || t.includes('chat'));
-            const agentTags = tags.filter(t => t.includes('agent') || t.includes('bot'));
-            
-            breakdown.prompts = Math.min(promptTags.length || 1, 5); // Default to 1, max 5
-            breakdown.instructions = instructionTags.length;
-            breakdown.chatmodes = modeTags.length;
-            breakdown.agents = agentTags.length;
-        }
+        // Fallback: Don't show estimates for uninstalled bundles
+        // If we don't have manifest data, return zeros instead of misleading estimates
+        // Users can install the bundle to see accurate counts
+        
+        return breakdown;
 
         return breakdown;
     }
@@ -188,8 +180,9 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             
             this.logger.debug(`Opening prompt file: ${fullPath}`);
             
-            // Open the file in the editor
-            const document = await vscode.workspace.openTextDocument(fullPath);
+            // Open the file in the editor using Uri for cross-platform compatibility
+            const fileUri = vscode.Uri.file(fullPath);
+            const document = await vscode.workspace.openTextDocument(fileUri);
             await vscode.window.showTextDocument(document, {
                 preview: false,
                 viewColumn: vscode.ViewColumn.One
@@ -254,7 +247,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     /**
      * Open bundle details in a new webview panel
      */
-    private async openBundleDetails(bundleId: string): Promise<void> {
+    async openBundleDetails(bundleId: string): Promise<void> {
         try {
             this.logger.debug(`Opening details for bundle: ${bundleId}`);
 
@@ -308,6 +301,8 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     private getBundleDetailsHtml(bundle: Bundle, installed: InstalledBundle | undefined, breakdown: any): string {
         const isInstalled = !!installed;
         const installPath = installed?.installPath || 'Not installed';
+        // Escape backslashes and quotes for safe embedding in HTML onclick attributes
+        const escapedInstallPath = installPath.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
         
         return `<!DOCTYPE html>
 <html lang="en">
@@ -453,6 +448,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
 
     <div class="section">
         <h2>📊 Content Breakdown</h2>
+        ${isInstalled ? `
         <div class="breakdown">
             <div class="breakdown-item">
                 <div class="breakdown-icon">💬</div>
@@ -475,8 +471,14 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                 <div class="breakdown-label">Agents</div>
             </div>
         </div>
+        ` : `
+        <div class="info-message">
+            <p style="text-align: center; padding: 20px; color: var(--vscode-descriptionForeground);">
+                📦 Install this bundle to see the detailed content breakdown.
+            </p>
+        </div>
+        `}
     </div>
-
     <div class="section">
         <h2>ℹ️ Information</h2>
         <div class="info-grid">
@@ -523,7 +525,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         <h2>📝 Included Prompts</h2>
         <div class="info-grid">
             ${installed.manifest.prompts.map(p => `
-                <div class="info-row prompt-item" onclick="openPromptFile('${installed.installPath}', '${p.file}')" style="cursor: pointer;">
+                <div class="info-row prompt-item" onclick="openPromptFile('${escapedInstallPath}', '${p.file}')" style="cursor: pointer;">
                     <div class="info-label">${p.id}:</div>
                     <div class="info-value">
                         ${p.name} 

@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
+import { SchemaValidator } from '../services/SchemaValidator';
 
 interface CollectionItem {
     path: string;
@@ -14,10 +15,18 @@ interface Collection {
     description?: string;
     tags?: string[];
     items?: CollectionItem[];
+    version?: string;
+    author?: string;
     display?: {
         ordering?: string;
         show_badge?: boolean;
     };
+}
+
+interface ValidationResult {
+    errors: string[];
+    warnings: string[];
+    collection: Collection | null;
 }
 
 /**
@@ -28,9 +37,11 @@ interface Collection {
  */
 export class ValidateCollectionsCommand {
     private outputChannel: vscode.OutputChannel;
+    private schemaValidator: SchemaValidator;
 
     constructor() {
         this.outputChannel = vscode.window.createOutputChannel('Collection Validator');
+        this.schemaValidator = new SchemaValidator();
     }
 
     async execute(options?: { checkRefs?: boolean; listOnly?: boolean }): Promise<void> {
@@ -76,8 +87,8 @@ export class ValidateCollectionsCommand {
 
         for (const file of files) {
             const filePath = path.join(collectionsDir, file);
-            const result = this.validateCollection(filePath, workspaceRoot, options?.checkRefs || false);
-
+            const result = await this.validateCollection(filePath, workspaceRoot, options?.checkRefs || false);
+            
             if (options?.listOnly && result.collection) {
                 this.log(`📦 ${result.collection.name} (id: ${result.collection.id})`);
                 this.log(`   Description: ${result.collection.description}`);
@@ -102,104 +113,89 @@ export class ValidateCollectionsCommand {
                                 err,
                                 vscode.DiagnosticSeverity.Error
                             );
+                            diagnostic.source = 'Collection Validator';
                             diagnostics.push(diagnostic);
                         });
                         totalErrors += result.errors.length;
                     }
+
                     if (result.warnings.length > 0) {
                         result.warnings.forEach(warn => {
                             this.log(`  ⚠️  Warning: ${warn}`, 'warning');
+                            // Create diagnostic for warnings
+                            const diagnostic = new vscode.Diagnostic(
+                                new vscode.Range(0, 0, 0, 0),
+                                warn,
+                                vscode.DiagnosticSeverity.Warning
+                            );
+                            diagnostic.source = 'Collection Validator';
+                            diagnostics.push(diagnostic);
                         });
                         totalWarnings += result.warnings.length;
                     }
+
+                    if (result.errors.length === 0) {
+                        validCollections++;
+                    }
                 }
+
                 this.log('');
             }
         }
 
         if (!options?.listOnly) {
-            this.log('='.repeat(50));
-            this.log(`Summary: ${validCollections}/${files.length} collections valid`);
-            this.log(`Total Errors: ${totalErrors}`, totalErrors > 0 ? 'error' : 'success');
-            this.log(`Total Warnings: ${totalWarnings}`, totalWarnings > 0 ? 'warning' : 'success');
-            this.log('='.repeat(50));
+            this.log('─'.repeat(50));
+            this.log(`\n📊 Summary:`);
+            this.log(`   Total collections: ${files.length}`);
+            this.log(`   Valid: ${validCollections}`);
+            this.log(`   Errors: ${totalErrors}`);
+            this.log(`   Warnings: ${totalWarnings}\n`);
 
-            if (totalErrors > 0) {
-                vscode.window.showErrorMessage(`Collection validation failed: ${totalErrors} error(s), ${totalWarnings} warning(s)`);
-            } else if (totalWarnings > 0) {
-                vscode.window.showWarningMessage(`Collection validation passed with ${totalWarnings} warning(s)`);
+            if (totalErrors === 0 && totalWarnings === 0) {
+                this.log('🎉 All collections are valid!', 'success');
+                vscode.window.showInformationMessage(`All ${files.length} collection(s) validated successfully!`);
+            } else if (totalErrors === 0) {
+                vscode.window.showWarningMessage(`Validation complete with ${totalWarnings} warning(s)`);
             } else {
-                vscode.window.showInformationMessage(`✅ All ${validCollections} collection(s) valid!`);
+                vscode.window.showErrorMessage(`Validation failed with ${totalErrors} error(s)`);
             }
         }
     }
 
-    private validateCollection(filePath: string, workspaceRoot: string, checkRefs: boolean): {
-        errors: string[];
-        warnings: string[];
-        collection: Collection | null;
-    } {
+    private async validateCollection(
+        filePath: string,
+        workspaceRoot: string,
+        checkRefs: boolean
+    ): Promise<ValidationResult> {
         const errors: string[] = [];
         const warnings: string[] = [];
+        let collection: Collection | null = null;
 
         try {
             const content = fs.readFileSync(filePath, 'utf8');
-            const collection = yaml.load(content) as Collection;
+            collection = yaml.load(content) as Collection;
 
-            if (!collection) {
+            if (!collection || typeof collection !== 'object') {
                 errors.push('Empty or invalid YAML file');
                 return { errors, warnings, collection: null };
             }
 
-            // Validate required fields
-            if (!collection.id) { errors.push('Missing required field: id'); }
-            if (!collection.name) { errors.push('Missing required field: name'); }
-            if (!collection.description) { errors.push('Missing required field: description'); }
-            if (!collection.items || !Array.isArray(collection.items)) {
-                errors.push('Missing or invalid field: items (must be an array)');
-            }
-
-            // Validate id format
-            if (collection.id && !/^[a-z0-9-]+$/.test(collection.id)) {
-                errors.push('Invalid id format (must be lowercase letters, numbers, and hyphens only)');
-            }
-
-            // Validate description length
-            if (collection.description && collection.description.length > 500) {
-                warnings.push('Description is longer than recommended (500 characters)');
-            }
-
-            // Validate items
-            if (collection.items && Array.isArray(collection.items)) {
-                if (collection.items.length === 0) {
-                    warnings.push('Collection has no items');
+            // Use SchemaValidator for validation
+            const validationResult = await this.schemaValidator.validateCollection(
+                collection,
+                {
+                    checkFileReferences: checkRefs,
+                    workspaceRoot: workspaceRoot
                 }
+            );
 
-                if (collection.items.length > 50) {
-                    warnings.push('Collection has more than 50 items (recommended max)');
-                }
+            // Add schema validation errors
+            errors.push(...validationResult.errors);
+            
+            // Add schema validation warnings
+            warnings.push(...validationResult.warnings);
 
-                collection.items.forEach((item: any, index: number) => {
-                    if (!item.path) {
-                        errors.push(`Item ${index + 1}: Missing 'path' field`);
-                    }
-                    if (!item.kind) {
-                        errors.push(`Item ${index + 1}: Missing 'kind' field`);
-                    } else if (!['prompt', 'instruction', 'chat-mode', 'agent'].includes(item.kind)) {
-                        errors.push(`Item ${index + 1}: Invalid 'kind' value (must be prompt, instruction, chat-mode, or agent)`);
-                    }
-
-                    // Check if file exists
-                    if (item.path && checkRefs) {
-                        const itemPath = path.join(workspaceRoot, item.path);
-                        if (!fs.existsSync(itemPath)) {
-                            errors.push(`Item ${index + 1}: Referenced file does not exist: ${item.path}`);
-                        }
-                    }
-                });
-            }
-
-            // Validate tags
+            // Additional tag-specific validation (not in schema)
             if (collection.tags) {
                 if (!Array.isArray(collection.tags)) {
                     errors.push('Tags must be an array');
@@ -220,7 +216,11 @@ export class ValidateCollectionsCommand {
             return { errors, warnings, collection };
 
         } catch (error) {
-            errors.push(`Failed to parse YAML: ${(error as Error).message}`);
+            if (error instanceof yaml.YAMLException) {
+                errors.push(`Failed to parse YAML: ${error.message}`);
+            } else {
+                errors.push(`Failed to validate: ${(error as Error).message}`);
+            }
             return { errors, warnings, collection: null };
         }
     }

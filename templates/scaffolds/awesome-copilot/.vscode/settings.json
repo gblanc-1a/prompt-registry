@@ -1,0 +1,5 @@
+{
+  "yaml.schemas": {
+    "schemas/collection.schema.json": "collections/*.yml"
+  }
+}

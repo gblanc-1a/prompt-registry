@@ -6,6 +6,7 @@ import { ProfileCommands } from './commands/ProfileCommands';
 import { SourceCommands } from './commands/SourceCommands';
 import { BundleCommands } from './commands/BundleCommands';
 import { ScaffoldCommand } from './commands/ScaffoldCommand';
+import { AddResourceCommand } from './commands/AddResourceCommand';
 import { ValidateCollectionsCommand } from './commands/ValidateCollectionsCommand';
 import { CreateCollectionCommand } from './commands/CreateCollectionCommand';
 import { StatusBar } from './ui/statusBar';
@@ -23,6 +24,7 @@ import { RefactoredUninstallCommand } from './commands/refactoredUninstallComman
 import { EnhancedInstallCommand } from './commands/enhancedInstallCommand';
 import { UpdateManager } from './services/updateManager';
 import { InstallationManager } from './services/installationManager';
+import { RegistrySource } from './types/registry';
 
 /**
  * Main extension class that handles activation, deactivation, and command registration
@@ -60,6 +62,22 @@ export class PromptRegistryExtension {
     /**
      * Activate the extension
      */
+    /**
+     * Extract bundleId from various argument types (string, TreeItem, InstalledBundle)
+     */
+    private extractBundleId(arg?: any): string | undefined {
+        if (typeof arg === 'string') {
+            return arg;
+        } else if (arg?.data?.bundleId) {
+            // TreeView RegistryTreeItem with InstalledBundle data
+            return arg.data.bundleId;
+        } else if (arg?.bundleId) {
+            // Direct InstalledBundle or Bundle object
+            return arg.bundleId;
+        }
+        return undefined;
+    }
+
     public async activate(): Promise<void> {
         try {
             this.logger.info('Activating Prompt Registry extension...');
@@ -141,6 +159,7 @@ export class PromptRegistryExtension {
         this.sourceCommands = new SourceCommands(this.registryManager);
         this.bundleCommands = new BundleCommands(this.registryManager);
         const scaffoldCommand = new ScaffoldCommand();
+        const addResourceCommand = new AddResourceCommand();
         this.validateCollectionsCommand = new ValidateCollectionsCommand();
         this.createCollectionCommand = new CreateCollectionCommand();
 
@@ -174,10 +193,29 @@ export class PromptRegistryExtension {
             // Bundle Management Commands
             vscode.commands.registerCommand('promptRegistry.searchBundles', () => this.bundleCommands!.searchAndInstall()),
             vscode.commands.registerCommand('promptRegistry.installBundle', (bundleId?) => this.bundleCommands!.installBundle(bundleId)),
-            vscode.commands.registerCommand('promptRegistry.uninstallBundle', (bundleId?) => this.bundleCommands!.uninstallBundle(bundleId)),
-            vscode.commands.registerCommand('promptRegistry.updateBundle', (bundleId?) => this.bundleCommands!.updateBundle(bundleId)),
-            vscode.commands.registerCommand('promptRegistry.checkBundleUpdates', () => this.bundleCommands!.checkAllUpdates()),
-            vscode.commands.registerCommand('promptRegistry.viewBundle', (bundleId?) => this.bundleCommands!.viewBundle(bundleId)),
+            vscode.commands.registerCommand('promptRegistry.uninstallBundle', (arg?) => this.bundleCommands!.uninstallBundle(this.extractBundleId(arg))),
+            vscode.commands.registerCommand('promptRegistry.updateBundle', (arg?) => this.bundleCommands!.updateBundle(this.extractBundleId(arg))),
+            vscode.commands.registerCommand('promptRegistry.checkBundleUpdates', (arg?) => {
+                const bundleId = this.extractBundleId(arg);
+                if (bundleId) {
+                    // Check single bundle update
+                    this.bundleCommands!.updateBundle(bundleId);
+                } else {
+                    // Check all bundles
+                    this.bundleCommands!.checkAllUpdates();
+                }
+            }),
+            vscode.commands.registerCommand('promptRegistry.viewBundle', async (arg?) => {
+                const bundleId = this.extractBundleId(arg);
+                
+                if (bundleId && this.marketplaceProvider) {
+                    // Open in webview details panel (same as marketplace)
+                    await this.marketplaceProvider.openBundleDetails(bundleId);
+                } else {
+                    // Fallback to QuickPick view
+                    await this.bundleCommands!.viewBundle(bundleId);
+                }
+            }),
             vscode.commands.registerCommand('promptRegistry.browseByCategory', () => this.bundleCommands!.browseByCategory()),
             vscode.commands.registerCommand('promptRegistry.showPopular', () => this.bundleCommands!.showPopular()),
             vscode.commands.registerCommand('promptRegistry.listInstalled', () => this.bundleCommands!.listInstalled()),
@@ -197,6 +235,47 @@ export class PromptRegistryExtension {
                         placeHolder: 'example',
                         value: 'example'
                     });
+
+                    const runnerChoice = await vscode.window.showQuickPick(
+                        [
+                            {
+                                label: 'GitHub-hosted (ubuntu-latest)',
+                                description: 'Free GitHub-hosted runner',
+                                value: 'ubuntu-latest'
+                            },
+                            {
+                                label: 'Self-hosted',
+                                description: 'Use self-hosted runner',
+                                value: 'self-hosted'
+                            },
+                            {
+                                label: 'Custom',
+                                description: 'Specify custom runner label',
+                                value: 'custom'
+                            }
+                        ],
+                        {
+                            placeHolder: 'Select GitHub Actions runner type',
+                            title: 'GitHub Actions Runner'
+                        }
+                    );
+
+                    let githubRunner = 'ubuntu-latest';
+                    if (runnerChoice?.value === 'self-hosted') {
+                        githubRunner = 'self-hosted';
+                    } else if (runnerChoice?.value === 'custom') {
+                        const customRunner = await vscode.window.showInputBox({
+                            prompt: 'Enter custom runner label',
+                            placeHolder: 'my-runner or [self-hosted, linux, x64]',
+                            validateInput: (value) => {
+                                if (!value || value.trim().length === 0) {
+                                    return 'Runner label cannot be empty';
+                                }
+                                return undefined;
+                            }
+                        });
+                        githubRunner = customRunner || 'ubuntu-latest';
+                    }
 
                     try {
                         await vscode.window.withProgress(
@@ -228,6 +307,12 @@ export class PromptRegistryExtension {
                 }
             }),
             
+            
+            // Add Resource Command - Add individual resources
+            vscode.commands.registerCommand('promptRegistry.addResource', async () => {
+                await addResourceCommand.execute();
+            }),
+
             // Collection Management Commands
             vscode.commands.registerCommand('promptRegistry.validateCollections', async (options?) => {
                 await this.validateCollectionsCommand!.execute(options);
@@ -262,6 +347,10 @@ export class PromptRegistryExtension {
             vscode.commands.registerCommand('promptregistry.showVersion', () => statusCommand.showVersion()),
             vscode.commands.registerCommand('promptregistry.uninstall', () => statusCommand.uninstall()),
             vscode.commands.registerCommand('promptregistry.showHelp', () => statusCommand.showHelp()),
+            vscode.commands.registerCommand('promptRegistry.resetFirstRun', async () => {
+                await this.context.globalState.update('promptregistry.firstRun', true);
+                vscode.window.showInformationMessage('First run state has been reset. Reload the window to trigger first-run initialization.');
+            }),
             vscode.commands.registerCommand('promptregistry.validateAccess', () => validateAccessCommand.execute()),
             vscode.commands.registerCommand('promptregistry.uninstallAll', () => uninstallCommand.executeUninstallAll()),
             vscode.commands.registerCommand('promptregistry.enhancedInstall', () => enhancedInstallCommand.execute()),
@@ -571,7 +660,48 @@ export class PromptRegistryExtension {
         } catch (error) {
             this.logger.warn('Failed to perform automatic update check', error as Error);
         }
+    }    /**
+     * Initialize default sources on first run
+     */
+    private async initializeDefaultSources(): Promise<void> {
+        try {
+            // Check if any sources already exist
+            const existingSources = await this.registryManager!.listSources();
+            if (existingSources.length > 0) {
+                this.logger.info('Sources already exist, skipping default source initialization');
+                return;
+            }
+
+            // Add default Awesome Copilot source
+            const defaultSource: RegistrySource = {
+                id: 'awesome-copilot-official',
+                name: 'Awesome Copilot (Official)',
+                type: 'awesome-copilot',
+                url: 'https://github.com/github/awesome-copilot',
+                enabled: true,
+                priority: 1,
+                private: false,
+                metadata: {
+                    description: 'Official Awesome Copilot collections from GitHub',
+                    homepage: 'https://github.com/github/awesome-copilot',
+                }
+            };
+
+            // Add config for awesome-copilot source type
+            (defaultSource as any).config = {
+                branch: 'main',
+                collectionsPath: 'collections'
+            };
+
+            await this.registryManager!.addSource(defaultSource);
+            this.logger.info('Default Awesome Copilot source added successfully');
+
+        } catch (error) {
+            this.logger.warn('Failed to initialize default sources', error as Error);
+        }
     }
+
+    /**
 
     /**
      * Check if this is the first run and show welcome message
@@ -580,9 +710,12 @@ export class PromptRegistryExtension {
         try {
             const isFirstRun = this.context.globalState.get<boolean>('promptregistry.firstRun', true);
 
-            if (isFirstRun) {
-                // Mark as not first run
+            if (isFirstRun) {                // Mark as not first run
                 await this.context.globalState.update('promptregistry.firstRun', false);
+
+                // Initialize default sources (Awesome Copilot)
+                await this.initializeDefaultSources();
+
 
                 // Check if Prompt Registry is already installed
                 const installedScopes = await this.installationManager.getInstalledScopes();

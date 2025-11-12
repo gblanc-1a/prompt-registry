@@ -1,0 +1,327 @@
+import * as vscode from 'vscode';
+import * as path from 'path';
+import * as fs from 'fs';
+import * as yaml from 'js-yaml';
+import { TemplateEngine } from '../services/TemplateEngine';
+
+export enum ResourceType {
+    Prompt = 'prompt',
+    Instruction = 'instruction',
+    ChatMode = 'chatmode',
+    Agent = 'agent'
+}
+
+interface ResourceTypeInfo {
+    label: string;
+    description: string;
+    icon: string;
+    folder: string;
+    extension: string;
+    template: string;
+}
+
+export class AddResourceCommand {
+    private templateEngine: TemplateEngine;
+    private readonly resourceTypes: Map<ResourceType, ResourceTypeInfo>;
+
+    constructor(templateRoot?: string) {
+        const templatesPath = templateRoot || path.join(__dirname, '../templates/resources');
+        this.templateEngine = new TemplateEngine(templatesPath);
+        
+        this.resourceTypes = new Map([
+            [ResourceType.Prompt, {
+                label: '$(file-text) Prompt',
+                description: 'Interactive prompt for Copilot',
+                icon: '$(file-text)',
+                folder: 'prompts',
+                extension: '.prompt.md',
+                template: 'prompt.template.md'
+            }],
+            [ResourceType.Instruction, {
+                label: '$(book) Instruction',
+                description: 'Step-by-step guidance document',
+                icon: '$(book)',
+                folder: 'instructions',
+                extension: '.instructions.md',
+                template: 'instruction.template.md'
+            }],
+            [ResourceType.ChatMode, {
+                label: '$(comment-discussion) Chat Mode',
+                description: 'Conversation behavior configuration',
+                icon: '$(comment-discussion)',
+                folder: 'chatmodes',
+                extension: '.chatmode.md',
+                template: 'chatmode.template.md'
+            }],
+            [ResourceType.Agent, {
+                label: '$(robot) Agent',
+                description: 'Autonomous AI agent configuration',
+                icon: '$(robot)',
+                folder: 'agents',
+                extension: '.agent.md',
+                template: 'agent.template.md'
+            }]
+        ]);
+    }
+
+    async execute(): Promise<void> {
+        try {
+            // Get workspace folder
+            const workspaceFolder = await this.getWorkspaceFolder();
+            if (!workspaceFolder) {
+                return;
+            }
+
+            // Select resource type
+            const resourceType = await this.selectResourceType();
+            if (!resourceType) {
+                return;
+            }
+
+            // Get resource details
+            const resourceName = await this.promptForResourceName();
+            if (!resourceName) {
+                return;
+            }
+
+            const resourceDescription = await this.promptForDescription();
+            if (!resourceDescription) {
+                return;
+            }
+
+            const author = await this.promptForAuthor();
+            if (!author) {
+                return;
+            }
+
+            // Create resource file
+            const resourceInfo = this.resourceTypes.get(resourceType)!;
+            const fileName = this.sanitizeFileName(resourceName) + resourceInfo.extension;
+            const resourcePath = path.join(workspaceFolder, resourceInfo.folder, fileName);
+
+            // Check if file already exists
+            if (fs.existsSync(resourcePath)) {
+                const overwrite = await vscode.window.showWarningMessage(
+                    `File ${fileName} already exists. Overwrite?`,
+                    'Yes', 'No'
+                );
+                if (overwrite !== 'Yes') {
+                    return;
+                }
+            }
+
+            // Ensure directory exists
+            const dirPath = path.dirname(resourcePath);
+            if (!fs.existsSync(dirPath)) {
+                fs.mkdirSync(dirPath, { recursive: true });
+            }
+
+            // Prepare template context
+            const context: any = {
+                projectName: resourceName,
+                collectionId: this.sanitizeFileName(resourceName),
+                RESOURCE_NAME: resourceName,
+                RESOURCE_DESCRIPTION: resourceDescription,
+                AUTHOR: author,
+                DATE: new Date().toISOString().split('T')[0],
+                VERSION: '1.0.0'
+            };
+
+            // Render template using TemplateEngine
+            const content = await this.templateEngine.renderTemplate(resourceInfo.template, context);
+
+            // Write file
+            fs.writeFileSync(resourcePath, content, 'utf-8');
+
+            // Show success message
+            const openFile = await vscode.window.showInformationMessage(
+                `✓ Created ${resourceInfo.label.replace(/\$\([^)]+\)\s*/, '')} at ${path.relative(workspaceFolder, resourcePath)}`,
+                'Open File', 'Add to Collection'
+            );
+
+            if (openFile === 'Open File') {
+                const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(resourcePath));
+                await vscode.window.showTextDocument(doc);
+            } else if (openFile === 'Add to Collection') {
+                await this.addToCollection(workspaceFolder, resourcePath, resourceType);
+            }
+
+        } catch (error) {
+            vscode.window.showErrorMessage(
+                `Failed to add resource: ${error instanceof Error ? error.message : String(error)}`
+            );
+        }
+    }
+
+    private async getWorkspaceFolder(): Promise<string | undefined> {
+        const folders = vscode.workspace.workspaceFolders;
+        if (!folders || folders.length === 0) {
+            vscode.window.showErrorMessage('No workspace folder open');
+            return undefined;
+        }
+
+        if (folders.length === 1) {
+            return folders[0].uri.fsPath;
+        }
+
+        const selected = await vscode.window.showQuickPick(
+            folders.map(f => ({
+                label: f.name,
+                description: f.uri.fsPath,
+                folder: f
+            })),
+            { placeHolder: 'Select workspace folder' }
+        );
+
+        return selected?.folder.uri.fsPath;
+    }
+
+    private async selectResourceType(): Promise<ResourceType | undefined> {
+        const items: vscode.QuickPickItem[] = Array.from(this.resourceTypes.entries()).map(
+            ([type, info]) => ({
+                label: info.label,
+                description: info.description,
+                detail: `Creates a new ${type} in ${info.folder}/`,
+                type: type as any
+            })
+        );
+
+        const selected = await vscode.window.showQuickPick(items, {
+            placeHolder: 'Select resource type to add',
+            matchOnDescription: true,
+            matchOnDetail: true
+        });
+
+        return selected ? (selected as any).type : undefined;
+    }
+
+    private async promptForResourceName(): Promise<string | undefined> {
+        return await vscode.window.showInputBox({
+            prompt: 'Enter resource name',
+            placeHolder: 'e.g., Code Review Helper',
+            validateInput: (value) => {
+                if (!value || value.trim().length === 0) {
+                    return 'Resource name is required';
+                }
+                if (value.length > 100) {
+                    return 'Resource name must be 100 characters or less';
+                }
+                return null;
+            }
+        });
+    }
+
+    private async promptForDescription(): Promise<string | undefined> {
+        return await vscode.window.showInputBox({
+            prompt: 'Enter resource description',
+            placeHolder: 'e.g., Helps review code for best practices and potential issues',
+            validateInput: (value) => {
+                if (!value || value.trim().length === 0) {
+                    return 'Description is required';
+                }
+                if (value.length > 500) {
+                    return 'Description must be 500 characters or less';
+                }
+                return null;
+            }
+        });
+    }
+
+    private async promptForAuthor(): Promise<string | undefined> {
+        const gitConfig = await this.getGitUserName();
+        return await vscode.window.showInputBox({
+            prompt: 'Enter author name',
+            placeHolder: 'Your name',
+            value: gitConfig,
+            validateInput: (value) => {
+                if (!value || value.trim().length === 0) {
+                    return 'Author name is required';
+                }
+                return null;
+            }
+        });
+    }
+
+    private async getGitUserName(): Promise<string> {
+        try {
+            const { execSync } = require('child_process');
+            return execSync('git config user.name', { encoding: 'utf-8' }).trim();
+        } catch {
+            return '';
+        }
+    }
+
+    private sanitizeFileName(name: string): string {
+        return name
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '');
+    }
+
+    private async addToCollection(workspaceRoot: string, resourcePath: string, resourceType: ResourceType): Promise<void> {
+        try {
+            const collectionsDir = path.join(workspaceRoot, 'collections');
+            if (!fs.existsSync(collectionsDir)) {
+                vscode.window.showWarningMessage('No collections directory found');
+                return;
+            }
+
+            // Find collection files
+            const collectionFiles = fs.readdirSync(collectionsDir)
+                .filter(f => f.endsWith('.collection.yml'));
+
+            if (collectionFiles.length === 0) {
+                vscode.window.showWarningMessage('No collection files found');
+                return;
+            }
+
+            // Let user select collection
+            const selected = await vscode.window.showQuickPick(
+                collectionFiles.map(f => ({
+                    label: f,
+                    description: path.join('collections', f)
+                })),
+                { placeHolder: 'Select collection to add resource to' }
+            );
+
+            if (!selected) {
+                return;
+            }
+
+            const collectionPath = path.join(collectionsDir, selected.label);
+            const collectionContent = fs.readFileSync(collectionPath, 'utf-8');
+            const collection: any = yaml.load(collectionContent);
+
+            // Add resource to collection
+            const relativePath = path.relative(workspaceRoot, resourcePath);
+            const newItem = {
+                path: relativePath,
+                kind: resourceType
+            };
+
+            if (!collection.items) {
+                collection.items = [];
+            }
+
+            // Check if already exists
+            const exists = collection.items.some((item: any) => item.path === relativePath);
+            if (exists) {
+                vscode.window.showInformationMessage('Resource already exists in collection');
+                return;
+            }
+
+            collection.items.push(newItem);
+
+            // Write back
+            const updatedContent = yaml.dump(collection);
+            fs.writeFileSync(collectionPath, updatedContent, 'utf-8');
+
+            vscode.window.showInformationMessage(`✓ Added resource to ${selected.label}`);
+
+        } catch (error) {
+            vscode.window.showErrorMessage(
+                `Failed to add to collection: ${error instanceof Error ? error.message : String(error)}`
+            );
+        }
+    }
+}

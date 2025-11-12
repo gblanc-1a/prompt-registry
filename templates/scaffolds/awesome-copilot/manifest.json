@@ -1,0 +1,72 @@
+{
+  "version": "1.0.0",
+  "description": "Templates for scaffolding awesome-copilot projects",
+  "templates": {
+    "example-prompt": {
+      "path": "prompts/example.prompt.md",
+      "description": "Example prompt template",
+      "required": true,
+      "variables": []
+    },
+    "example-instruction": {
+      "path": "instructions/example.instructions.md",
+      "description": "Example instruction template",
+      "required": true,
+      "variables": []
+    },
+    "example-chatmode": {
+      "path": "chatmodes/example.chatmode.md",
+      "description": "Example chatmode template",
+      "required": true,
+      "variables": []
+    },
+    "example-collection": {
+      "path": "collections/example.collection.yml",
+      "description": "Example collection template",
+      "required": true,
+      "variables": ["collectionId", "projectName"]
+    },
+    "readme": {
+      "path": "README.template.md",
+      "description": "Project README file",
+      "required": true,
+      "variables": ["projectName"]
+    },
+    "package-json": {
+      "path": "package.template.json",
+      "description": "Package configuration",
+      "required": true,
+      "variables": ["projectName"]
+    },
+    "github-workflow": {
+      "path": "workflows/validate-collections.yml",
+      "description": "GitHub Actions workflow",
+      "required": true,
+      "variables": []
+    },
+    "validation-script": {
+      "path": "validate-collections.js",
+      "description": "Collection validation script",
+      "required": true,
+      "variables": []
+    },
+    "vscode-extensions": {
+      "path": ".vscode/extensions.json",
+      "description": "VS Code extension recommendations",
+      "required": true,
+      "variables": []
+    },
+    "vscode-settings": {
+      "path": ".vscode/settings.json",
+      "description": "VS Code workspace settings",
+      "required": true,
+      "variables": []
+    },
+    "collection-schema": {
+      "path": "schemas/collection.schema.json",
+      "description": "JSON schema for collection validation",
+      "required": true,
+      "variables": []
+    }
+  }
+}

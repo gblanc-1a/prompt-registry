@@ -1,0 +1,20 @@
+{
+  "name": "{{packageName}}",
+  "version": "1.0.0",
+  "description": "Awesome Copilot prompt collection",
+  "scripts": {
+    "validate": "node scripts/validate-collections.js",
+    "validate:verbose": "node scripts/validate-collections.js --verbose"
+  },
+  "devDependencies": {
+    "js-yaml": "^4.1.0"
+  },
+  "keywords": [
+    "copilot",
+    "prompts",
+    "ai",
+    "github-copilot"
+  ],
+  "author": "",
+  "license": "MIT"
+}

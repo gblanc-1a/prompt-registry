@@ -245,6 +245,10 @@ export class CopilotSyncService {
                 }
             }
             
+            // Ensure parent directory exists before creating symlink/file
+            const targetDir = path.dirname(file.targetPath);
+            await this.ensureDirectory(targetDir);
+            
             // Try to create symlink first (preferred)
             try {
                 await symlink(file.sourcePath, file.targetPath, 'file');

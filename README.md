@@ -248,6 +248,51 @@ Ctrl+Shift+P → "Prompt Registry: Add Source"
 Right-click source in tree view → "Edit Source"
 ```
 
+
+---
+
+## 🎨 Creating Prompt Projects
+
+### Scaffold Command
+
+Quickly create a new GitHub Copilot prompt project with proper structure:
+
+```
+Ctrl+Shift+P → "Prompt Registry: Scaffold Awesome Copilot Project"
+```
+
+The scaffold will create:
+- **Prompts** - Sample prompt files
+- **Instructions** - Getting started guides
+- **Chat Modes** - Conversation configurations
+- **Collections** - Organized prompt collections
+- **Workflows** - Validation scripts
+- **Documentation** - README and best practices
+
+### Project Types
+
+| Type | Description | Status |
+|------|-------------|--------|
+| **Awesome Copilot** | Full-featured template with all resource types | ✅ Available |
+| **Basic** | Minimal template for quick starts | 🔜 Coming Soon |
+| **Enterprise** | Advanced template with governance | 🔜 Coming Soon |
+
+### Collection Validation
+
+Validate your collections against the schema:
+
+```
+Ctrl+Shift+P → "Prompt Registry: Validate Collections"
+```
+
+Features:
+- ✅ **JSON Schema Validation** - Ensures proper structure
+- 🔍 **File Reference Checking** - Verifies all files exist
+- ⚠️ **Best Practice Warnings** - Helpful suggestions
+- 📊 **Detailed Reports** - Clear error messages
+
+Learn more in the [Scaffolding and Validation Guide](./docs/SCAFFOLDING_AND_VALIDATION.md).
+
 #### Remove Source
 
 ```bash

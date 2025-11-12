@@ -812,3 +812,363 @@ Found an issue or have a suggestion?
 ---
 
 **Happy Coding!** 🚀
+
+---
+
+## Extending the Scaffold System
+
+### Creating a New Scaffold Type
+
+To add a new scaffold type (e.g., "microservice"):
+
+1. **Create template directory**:
+```bash
+mkdir -p templates/scaffolds/microservice/{prompts,instructions,chatmodes,collections,workflows}
+```
+
+2. **Create manifest.json**:
+```json
+{
+  "id": "microservice",
+  "name": "Microservice Template",
+  "version": "1.0.0",
+  "description": "Template for microservice prompt projects",
+  "author": "Your Name",
+  "templates": [
+    {
+      "id": "package.json",
+      "path": "package.json",
+      "description": "Package configuration"
+    },
+    {
+      "id": "README.md",
+      "path": "README.md",
+      "description": "Project documentation"
+    }
+  ]
+}
+```
+
+3. **Create template files** using `{{VARIABLE}}` placeholders:
+```json
+// templates/scaffolds/microservice/package.json
+{
+  "name": "{{PROJECT_NAME}}",
+  "description": "{{PROJECT_DESCRIPTION}}",
+  "version": "{{VERSION}}",
+  "author": "{{AUTHOR}}"
+}
+```
+
+4. **Update ScaffoldType enum**:
+```typescript
+// src/commands/ScaffoldCommand.ts
+export enum ScaffoldType {
+    AwesomeCopilot = 'awesome-copilot',
+    Basic = 'basic',
+    Enterprise = 'enterprise',
+    Microservice = 'microservice'  // Add new type
+}
+```
+
+5. **Add to picker options**:
+```typescript
+const scaffoldTypes: vscode.QuickPickItem[] = [
+    // ...existing types...
+    {
+        label: '$(cloud) Microservice',
+        description: 'Template for microservice prompt projects',
+        detail: 'Service-oriented architecture patterns'
+    }
+];
+```
+
+### Adding Template Variables
+
+To support new variables in templates:
+
+1. **Define variable** in ScaffoldCommand:
+```typescript
+const variables = {
+    PROJECT_NAME: projectName,
+    PROJECT_DESCRIPTION: projectDescription,
+    AUTHOR: author,
+    VERSION: version,
+    DATE: new Date().toISOString().split('T')[0],
+    // Add new variable
+    ORGANIZATION: organization || 'my-org'
+};
+```
+
+2. **Prompt for value**:
+```typescript
+const organization = await vscode.window.showInputBox({
+    prompt: 'Organization name',
+    placeHolder: 'my-org',
+    value: 'my-org'
+});
+```
+
+3. **Use in templates**:
+```markdown
+# {{PROJECT_NAME}}
+
+**Organization**: {{ORGANIZATION}}
+
+Created by {{AUTHOR}} on {{DATE}}.
+```
+
+---
+
+## Extending the Validation System
+
+### Adding a New Schema
+
+To validate a new resource type (e.g., "workflows"):
+
+1. **Create JSON Schema** file:
+```json
+// schemas/workflow.schema.json
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/your-org/prompt-registry/schemas/workflow.schema.json",
+  "title": "Workflow Schema",
+  "description": "Schema for workflow definitions",
+  "type": "object",
+  "required": ["id", "name", "steps"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$",
+      "description": "Unique workflow identifier"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name", "action"],
+        "properties": {
+          "name": {"type": "string"},
+          "action": {"enum": ["validate", "build", "test", "deploy"]}
+        }
+      }
+    }
+  }
+}
+```
+
+2. **Use SchemaValidator**:
+```typescript
+import { SchemaValidator } from '../services/SchemaValidator';
+
+const validator = new SchemaValidator();
+const result = await validator.validate(
+    workflowData,
+    path.join(__dirname, '../../schemas/workflow.schema.json'),
+    { checkFileReferences: true, workspaceRoot: workspaceRoot }
+);
+
+if (!result.valid) {
+    console.error('Validation errors:', result.errors);
+}
+if (result.warnings.length > 0) {
+    console.warn('Warnings:', result.warnings);
+}
+```
+
+3. **Create validation command**:
+```typescript
+import * as vscode from 'vscode';
+import { SchemaValidator } from '../services/SchemaValidator';
+
+export class ValidateWorkflowsCommand {
+    private validator: SchemaValidator;
+    
+    constructor() {
+        this.validator = new SchemaValidator();
+    }
+    
+    async execute(): Promise<void> {
+        const workspaceRoot = vscode.workspace.workspaceFolders?.[0].uri.fsPath;
+        if (!workspaceRoot) {
+            vscode.window.showErrorMessage('No workspace folder open');
+            return;
+        }
+        
+        // Find workflow files
+        const workflowFiles = await vscode.workspace.findFiles('**/*.workflow.yml');
+        
+        for (const file of workflowFiles) {
+            const content = await vscode.workspace.fs.readFile(file);
+            const data = yaml.parse(content.toString());
+            
+            const result = await this.validator.validate(
+                data,
+                path.join(__dirname, '../../schemas/workflow.schema.json'),
+                { workspaceRoot }
+            );
+            
+            // Display results...
+        }
+    }
+}
+```
+
+### Customizing Error Messages
+
+To customize error formatting in SchemaValidator:
+
+```typescript
+private formatError(error: Ajv.ErrorObject): string {
+    const path = error.instancePath || '/';
+    
+    // Add custom error messages
+    switch (error.keyword) {
+        case 'myCustomKeyword':
+            return `${path}: Custom error message for ${error.params.value}`;
+        
+        case 'required':
+            return `Missing required field: ${error.params.missingProperty}`;
+        
+        // ...existing cases...
+        
+        default:
+            return `${path}: ${error.message}`;
+    }
+}
+```
+
+### Adding Custom Warnings
+
+To add application-specific warnings:
+
+```typescript
+private generateWarnings(data: any): string[] {
+    const warnings: string[] = [];
+    
+    // Example: Check for deprecated fields
+    if (data.deprecatedField) {
+        warnings.push('Field "deprecatedField" is deprecated, use "newField" instead');
+    }
+    
+    // Example: Suggest optimizations
+    if (data.items && data.items.length > 100) {
+        warnings.push('Consider splitting large collections into smaller ones');
+    }
+    
+    // ...more custom logic...
+    
+    return warnings;
+}
+```
+
+---
+
+## Testing New Features
+
+### Testing Scaffold Templates
+
+1. **Unit test the template structure**:
+```typescript
+describe('Microservice Scaffold', () => {
+    it('should have valid manifest', async () => {
+        const manifestPath = path.join(__dirname, '../templates/scaffolds/microservice/manifest.json');
+        const manifest = JSON.parse(await fs.promises.readFile(manifestPath, 'utf-8'));
+        
+        assert.strictEqual(manifest.id, 'microservice');
+        assert.ok(manifest.templates.length > 0);
+    });
+    
+    it('should render variables correctly', async () => {
+        const engine = new TemplateEngine(path.join(__dirname, '../templates/scaffolds/microservice'));
+        const result = await engine.renderTemplate('README.md', {
+            PROJECT_NAME: 'test-project',
+            AUTHOR: 'Test Author'
+        });
+        
+        assert.ok(result.includes('test-project'));
+        assert.ok(result.includes('Test Author'));
+    });
+});
+```
+
+2. **Integration test the full scaffold process**:
+```typescript
+it('should scaffold microservice project', async () => {
+    const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'scaffold-test-'));
+    
+    try {
+        const command = new ScaffoldCommand(
+            path.join(__dirname, '../templates/scaffolds'),
+            ScaffoldType.Microservice
+        );
+        
+        // Mock user input...
+        await command.execute();
+        
+        // Verify created files
+        const files = await fs.promises.readdir(tmpDir);
+        assert.ok(files.includes('package.json'));
+        assert.ok(files.includes('README.md'));
+    } finally {
+        await fs.promises.rm(tmpDir, { recursive: true });
+    }
+});
+```
+
+### Testing Schema Validation
+
+1. **Test schema structure**:
+```typescript
+describe('Workflow Schema', () => {
+    const validator = new SchemaValidator();
+    const schemaPath = path.join(__dirname, '../schemas/workflow.schema.json');
+    
+    it('should accept valid workflow', async () => {
+        const validWorkflow = {
+            id: 'my-workflow',
+            name: 'My Workflow',
+            steps: [
+                { name: 'Build', action: 'build' }
+            ]
+        };
+        
+        const result = await validator.validate(validWorkflow, schemaPath);
+        assert.strictEqual(result.valid, true);
+    });
+    
+    it('should reject invalid id format', async () => {
+        const invalidWorkflow = {
+            id: 'Invalid_ID',  // Uppercase and underscore not allowed
+            name: 'Test',
+            steps: [{ name: 'Test', action: 'build' }]
+        };
+        
+        const result = await validator.validate(invalidWorkflow, schemaPath);
+        assert.strictEqual(result.valid, false);
+        assert.ok(result.errors.some(e => e.includes('pattern')));
+    });
+});
+```
+
+2. **Test custom warnings**:
+```typescript
+it('should warn about deprecated fields', async () => {
+    const workflowWithDeprecation = {
+        id: 'test',
+        name: 'Test',
+        steps: [],
+        deprecatedField: 'value'
+    };
+    
+    const result = await validator.validate(workflowWithDeprecation, schemaPath);
+    assert.ok(result.warnings.some(w => w.includes('deprecated')));
+});
+```
+

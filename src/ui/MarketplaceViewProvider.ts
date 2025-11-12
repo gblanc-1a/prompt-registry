@@ -141,8 +141,6 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         // Users can install the bundle to see accurate counts
         
         return breakdown;
-
-        return breakdown;
     }
 
     /**

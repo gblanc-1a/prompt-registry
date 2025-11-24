@@ -23,6 +23,7 @@ interface GitHubRelease {
     assets: Array<{
         name: string;
         browser_download_url: string;
+        url: string; // API endpoint for downloading the asset
         size: number;
     }>;
     published_at: string;
@@ -218,17 +219,49 @@ export class GitHubAdapter extends RepositoryAdapter {
 
     /**
      * Download file from URL with authentication
+     * Handles redirects recursively with depth tracking and selective auth preservation
      */
-    private async downloadFile(url: string): Promise<Buffer> {
-        // Include authentication for private repos
+    private async downloadFile(url: string, redirectDepth: number = 0): Promise<Buffer> {
+        // Prevent infinite redirect loops
+        const MAX_REDIRECTS = 10;
+        if (redirectDepth >= MAX_REDIRECTS) {
+            this.logger.error(`[GitHubAdapter] Maximum redirect depth (${MAX_REDIRECTS}) exceeded`);
+            throw new Error(`Maximum redirect depth (${MAX_REDIRECTS}) exceeded`);
+        }
+
+        // Check if URL is a GitHub domain (github.com or githubusercontent.com)
+        const isGitHubDomain = (urlString: string): boolean => {
+            try {
+                const urlObj = new URL(urlString);
+                return urlObj.hostname.includes('github.com') || 
+                       urlObj.hostname.includes('githubusercontent.com');
+            } catch {
+                return false;
+            }
+        };
+
+        // Check if URL is a GitHub API endpoint
+        const isGitHubApiUrl = (urlString: string): boolean => {
+            return urlString.startsWith(this.apiBase);
+        };
+
+        // Include authentication for private repos, but only for GitHub domains
         const token = await this.getAuthenticationToken();
         const headers: any = {
             'User-Agent': 'Prompt-Registry-VSCode-Extension',
         };
         
-        if (token) {
+        // For GitHub API asset downloads, use Accept header to get binary content
+        if (isGitHubApiUrl(url)) {
+            headers['Accept'] = 'application/octet-stream';
+        }
+        
+        // Only add auth headers for GitHub domains
+        if (token && isGitHubDomain(url)) {
             headers['Authorization'] = `Bearer ${token}`;
             this.logger.debug(`[GitHubAdapter] Downloading ${url} with auth (method: ${this.authMethod})`);
+        } else if (token && !isGitHubDomain(url)) {
+            this.logger.debug(`[GitHubAdapter] Downloading ${url} WITHOUT auth (non-GitHub domain)`);
         } else {
             this.logger.debug(`[GitHubAdapter] Downloading ${url} WITHOUT auth`);
         }
@@ -239,9 +272,9 @@ export class GitHubAdapter extends RepositoryAdapter {
                 if (res.statusCode === 302 || res.statusCode === 301) {
                     const redirectUrl = res.headers.location;
                     if (redirectUrl) {
-                        this.logger.debug(`[GitHubAdapter] Following redirect to: ${redirectUrl}`);
-                        // Recursive call to follow redirect
-                        this.downloadFile(redirectUrl).then(resolve).catch(reject);
+                        this.logger.debug(`[GitHubAdapter] Following redirect (depth ${redirectDepth + 1}) to: ${redirectUrl}`);
+                        // Recursive call to follow redirect with incremented depth
+                        this.downloadFile(redirectUrl, redirectDepth + 1).then(resolve).catch(reject);
                         return;
                     }
                 }
@@ -260,7 +293,8 @@ export class GitHubAdapter extends RepositoryAdapter {
                         reject(new Error(`Download failed: ${res.statusCode} ${res.statusMessage}`));
                         return;
                     }
-                    this.logger.debug(`[GitHubAdapter] Download complete: ${chunks.length} chunks, ${Buffer.concat(chunks).length} bytes`);
+                    const totalBytes = Buffer.concat(chunks).length;
+                    this.logger.debug(`[GitHubAdapter] Download complete: ${chunks.length} chunks, ${totalBytes} bytes`);
                     resolve(Buffer.concat(chunks));
                 });
             }).on('error', (error) => {
@@ -309,6 +343,7 @@ export class GitHubAdapter extends RepositoryAdapter {
                 }
 
                 // Create bundle metadata
+                // Use API URL instead of browser_download_url for proper authentication
                 const bundle: Bundle = {
                     id: `${owner}-${repo}-${release.tag_name}`,
                     name: release.name || `${repo} ${release.tag_name}`,
@@ -322,8 +357,8 @@ export class GitHubAdapter extends RepositoryAdapter {
                     size: this.formatSize(bundleAsset.size),
                     dependencies: [],
                     license: 'Unknown', // Would need to fetch from repo
-                    manifestUrl: manifestAsset.browser_download_url,
-                    downloadUrl: bundleAsset.browser_download_url,
+                    manifestUrl: manifestAsset.url,
+                    downloadUrl: bundleAsset.url,
                     repository: this.source.url,
                 };
 

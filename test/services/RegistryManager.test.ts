@@ -101,3 +101,115 @@ configuration:
         });
     });
 });
+
+suite('RegistryManager Unified Download Path', () => {
+    const fs = require('fs');
+    const path = require('path');
+    
+    test('installBundle() should use unified download path for all source types', () => {
+        // Read the RegistryManager source code
+        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
+        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
+        
+        // Find the installBundle method
+        const installBundleMatch = sourceCode.match(/async installBundle\([^)]+\)[^{]*{([\s\S]*?)^\s{4}}/m);
+        assert.ok(installBundleMatch, 'installBundle method should exist');
+        
+        const installBundleCode = installBundleMatch[1];
+        
+        // Verify it calls adapter.downloadBundle()
+        assert.ok(
+            installBundleCode.includes('adapter.downloadBundle(bundle)'),
+            'installBundle should call adapter.downloadBundle(bundle)'
+        );
+        
+        // Verify it calls installer.installFromBuffer()
+        assert.ok(
+            installBundleCode.includes('installer.installFromBuffer(bundle, bundleBuffer'),
+            'installBundle should call installer.installFromBuffer(bundle, bundleBuffer, options)'
+        );
+    });
+    
+    test('installBundle() should NOT have branching logic for source types', () => {
+        const fs = require('fs');
+        const path = require('path');
+        
+        // Read the RegistryManager source code
+        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
+        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
+        
+        // Find the installBundle method
+        const installBundleMatch = sourceCode.match(/async installBundle\([^)]+\)[^{]*{([\s\S]*?)^\s{4}}/m);
+        assert.ok(installBundleMatch, 'installBundle method should exist');
+        
+        const installBundleCode = installBundleMatch[1];
+        
+        // Verify it does NOT have if/else branching for awesome-copilot
+        assert.ok(
+            !installBundleCode.includes("source.type === 'awesome-copilot'"),
+            'installBundle should NOT have branching logic for awesome-copilot'
+        );
+        
+        assert.ok(
+            !installBundleCode.includes("source.type === 'local-awesome-copilot'"),
+            'installBundle should NOT have branching logic for local-awesome-copilot'
+        );
+    });
+    
+    test('installBundle() should NOT call adapter.getDownloadUrl()', () => {
+        const fs = require('fs');
+        const path = require('path');
+        
+        // Read the RegistryManager source code
+        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
+        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
+        
+        // Find the installBundle method
+        const installBundleMatch = sourceCode.match(/async installBundle\([^)]+\)[^{]*{([\s\S]*?)^\s{4}}/m);
+        assert.ok(installBundleMatch, 'installBundle method should exist');
+        
+        const installBundleCode = installBundleMatch[1];
+        
+        // Verify it does NOT call getDownloadUrl
+        assert.ok(
+            !installBundleCode.includes('adapter.getDownloadUrl('),
+            'installBundle should NOT call adapter.getDownloadUrl()'
+        );
+    });
+    
+    test('installBundle() should NOT call installer.install()', () => {
+        const fs = require('fs');
+        const path = require('path');
+        
+        // Read the RegistryManager source code
+        const registryManagerPath = path.join(__dirname, '../../../src/services/RegistryManager.ts');
+        const sourceCode = fs.readFileSync(registryManagerPath, 'utf8');
+        
+        // Find the installBundle method
+        const installBundleMatch = sourceCode.match(/async installBundle\([^)]+\)[^{]*{([\s\S]*?)^\s{4}}/m);
+        assert.ok(installBundleMatch, 'installBundle method should exist');
+        
+        const installBundleCode = installBundleMatch[1];
+        
+        // Verify it does NOT call installer.install (the old method)
+        assert.ok(
+            !installBundleCode.includes('installer.install(bundle, downloadUrl'),
+            'installBundle should NOT call installer.install() with downloadUrl'
+        );
+    });
+    
+    test('All adapter interfaces should have downloadBundle method', () => {
+        const fs = require('fs');
+        const path = require('path');
+        
+        // Read the RepositoryAdapter interface
+        const adapterPath = path.join(__dirname, '../../../src/adapters/RepositoryAdapter.ts');
+        const sourceCode = fs.readFileSync(adapterPath, 'utf8');
+        
+        // Verify downloadBundle is in the interface
+        assert.ok(
+            sourceCode.includes('downloadBundle(bundle: Bundle): Promise<Buffer>'),
+            'IRepositoryAdapter interface should define downloadBundle method'
+        );
+    });
+});

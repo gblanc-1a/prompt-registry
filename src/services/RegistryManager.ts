@@ -339,21 +339,13 @@ export class RegistryManager {
 
         const adapter = this.getAdapter(source);
         
-        // For awesome-copilot and local-awesome-copilot, download the bundle directly from the adapter
-        // For other adapters, use the downloadUrl
-        let installation: InstalledBundle;
-        if (source.type === 'awesome-copilot' || source.type === 'local-awesome-copilot') {
-            this.logger.debug('Downloading bundle from awesome-copilot adapter');
-            const bundleBuffer = await adapter.downloadBundle(bundle);
-            this.logger.debug(`Bundle downloaded: ${bundleBuffer.length} bytes`);
-            
-            // Install from buffer
-            installation = await this.installer.installFromBuffer(bundle, bundleBuffer, options);
-        } else {
-            const downloadUrl = adapter.getDownloadUrl(bundle.id, bundle.version);
-            // Install bundle using BundleInstaller
-            installation = await this.installer.install(bundle, downloadUrl, options);
-        }
+        // Unified download path: all adapters use downloadBundle()
+        this.logger.debug(`Downloading bundle from ${source.type} adapter`);
+        const bundleBuffer = await adapter.downloadBundle(bundle);
+        this.logger.debug(`Bundle downloaded: ${bundleBuffer.length} bytes`);
+        
+        // Install from buffer
+        const installation: InstalledBundle = await this.installer.installFromBuffer(bundle, bundleBuffer, options);
         
         // Add profileId if provided
         if (options.profileId) {
@@ -413,7 +405,7 @@ export class RegistryManager {
             return;
         }
 
-        // Get download URL
+        // Get source and adapter
         const sources = await this.storage.getSources();
         const source = sources.find(s => s.id === bundle.sourceId);
         
@@ -422,10 +414,14 @@ export class RegistryManager {
         }
 
         const adapter = this.getAdapter(source);
-        const downloadUrl = adapter.getDownloadUrl(bundle.id, bundle.version);
+        
+        // Unified download path: use downloadBundle() for all sources
+        this.logger.debug(`Downloading bundle update from ${source.type} adapter`);
+        const bundleBuffer = await adapter.downloadBundle(bundle);
+        this.logger.debug(`Bundle downloaded: ${bundleBuffer.length} bytes`);
         
         // Update using BundleInstaller
-        const updated = await this.installer.update(current, bundle, downloadUrl);
+        const updated = await this.installer.update(current, bundle, bundleBuffer);
         
         // Update installation record
         await this.storage.removeInstallation(bundleId, current.scope);

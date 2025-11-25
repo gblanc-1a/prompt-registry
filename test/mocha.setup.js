@@ -47,6 +47,10 @@ const vscode = {
     showInformationMessage: () => Promise.resolve(),
     showWarningMessage: () => Promise.resolve(),
     showErrorMessage: () => Promise.resolve(),
+    showInputBox: (options) => Promise.resolve(undefined),
+    showQuickPick: (items, options) => Promise.resolve(undefined),
+    showSaveDialog: (options) => Promise.resolve(undefined),
+    showOpenDialog: (options) => Promise.resolve(undefined),
     createOutputChannel: (name) => {
       const channel = {
         appendLine: function() { return undefined; },

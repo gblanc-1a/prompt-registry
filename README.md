@@ -11,6 +11,7 @@
 ## 📋 Table of Contents
 
 - [Overview](#overview)
+- [Terminology & Architecture](#terminology--architecture)
 - [Features](#features)
 - [Installation](#installation)
 - [Quick Start](#quick-start)
@@ -41,6 +42,139 @@
 - 🔄 **Manage** - Update, organize, and uninstall bundles easily
 - 👥 **Share** - Create and distribute your own prompt libraries
 - 🌍 **Multi-Platform** - Works on macOS, Linux, and Windows
+
+---
+
+## 📚 Terminology & Architecture
+
+Understanding how Prompt Registry organizes your Copilot enhancements:
+
+### Core Concepts
+
+**Primitives** (Bottom Layer)
+- **Prompts** - Reusable prompt templates for specific tasks
+- **Instructions** - System instructions and guidelines
+- **Chat Modes** - Conversation configurations
+- **Agents** - Autonomous task execution patterns
+- **MCP Servers** - Model Context Protocol integrations
+
+**Collection** (Organization Layer)
+A logical grouping of primitives around a specific role, persona, or job function. Think of it as a skill set or expertise area—e.g., "API Documentation Expert" or "Code Review Specialist". Collections live in repositories (sources) exposed via YAML manifests.
+
+**Bundle** (Deployment Unit)
+A deployable package representing a collection. Currently used interchangeably with "collection," but enables future support for non-collection source types.
+
+**Source** (Repository Layer)
+A repository hosting one or more bundles/collections. Examples: GitHub repo, local directory, or Awesome Copilot registry.
+
+**Profile** (Composition Layer)
+A logical grouping of bundles from multiple sources. Allows you to compose skills from different teams/organizations into a unified workspace setup—activate with a single click.
+
+**Hub** (Enterprise Layer)
+A centralized repository of versioned, certified profiles and sources. Like an OS release: pre-tested combinations of tools guaranteed to work well together. Share across your organization to simplify setup and ensure consistency.
+
+### Architecture Diagram
+
+```mermaid
+graph TD
+    subgraph Primitives["🔧 Primitives (Copilot Enhancements)"]
+        Prompt["📝 Prompts"]
+        Instruction["📖 Instructions"]
+        ChatMode["�� Chat Modes"]
+        Agent["🤖 Agents"]
+        MCP["🔌 MCP Servers"]
+    end
+    
+    subgraph Collection["📦 Collection/Bundle"]
+        CollectionGroup["Role/Skill Set
+(e.g., API Expert)"]
+        Manifest["YAML Manifest"]
+    end
+    
+    subgraph Source["📁 Source"]
+        SourceDesc["Repository
+(GitHub, Local, etc.)"]
+        MultiCollections["Multiple Collections"]
+    end
+    
+    subgraph Profile["👥 Profile"]
+        ProfileDesc["Workspace Composition"]
+        BundleSet["Grouped Bundles
+from Multiple Sources"]
+    end
+    
+    subgraph Hub["🏢 Hub"]
+        HubDesc["Organizational Registry"]
+        Profiles["Certified Profiles"]
+        Sources["Managed Sources"]
+    end
+    
+    GitHub["🌐 Copilot"]
+    User["👤 User"]
+    
+    Prompt --> CollectionGroup
+    Instruction --> CollectionGroup
+    ChatMode --> CollectionGroup
+    Agent --> CollectionGroup
+    MCP --> CollectionGroup
+    
+    CollectionGroup --> Manifest
+    Manifest --> SourceDesc
+    MultiCollections --> SourceDesc
+    
+    SourceDesc --> BundleSet
+    BundleSet --> ProfileDesc
+    
+    ProfileDesc --> Profiles
+    SourceDesc --> Sources
+    Profiles --> HubDesc
+    Sources --> HubDesc
+    
+    HubDesc --> User
+    ProfileDesc --> GitHub
+    User -->|"1. Add Source"| Source
+    User -->|"2. Create Profile"| Profile
+    User -->|"3. Activate"| Hub
+    GitHub -->|"Enriched"| User
+```
+
+### Real-Life Example: Enterprise AI Engineering Hub
+
+**Scenario:** Your organization wants to standardize AI engineering across teams.
+
+```
+🏢 Corporate AI Hub (Central Management)
+├── 📁 Source: DataTeam/ml-prompts (GitHub)
+│   └── 📦 Bundle: "ML Model Training"
+│       ├── 📝 Prompts: Training scripts, debugging tips
+│       ├── 📖 Instructions: Best practices
+│       └── 🔌 MCP: Model evaluation servers
+│
+├── 📁 Source: SecurityTeam/secure-coding (GitHub)
+│   └── 📦 Bundle: "Security Code Review"
+│       ├── 📝 Prompts: Vulnerability patterns
+│       ├── 📖 Instructions: OWASP guidelines
+│       └── �� Chat Mode: Interactive security audit
+│
+└── 👥 Profile: "Junior Engineer Onboarding"
+    ├── ✅ Bundle: ML Model Training (v2.1.0)
+    ├── ✅ Bundle: Security Code Review (v1.5.0)
+    ├── ✅ Bundle: API Documentation (v3.0.0)
+    └── ✅ Bundle: Testing Best Practices (v1.8.0)
+
+👤 New Engineer Workflow:
+1. Opens VS Code
+2. Opens Prompt Registry → "Import Hub"(optional)
+3. Clicks "Activate Profile: Junior Engineer Onboarding"
+4. ✅ All skills installed in one click
+5. Ready to code with Copilot enhancements from day 1!
+```
+
+**Benefits:**
+- ⏱️ **Onboarding:** Minutes instead of days
+- 🎯 **Consistency:** All engineers use certified versions
+- 🔄 **Updates:** Hub maintainers update once, everyone gets new versions
+- 👥 **Collaboration:** Cross-team skills easily shared
 
 ---
 
@@ -302,8 +436,6 @@ Features:
 - 🔍 **File Reference Checking** - Verifies all files exist
 - ⚠️ **Best Practice Warnings** - Helpful suggestions
 - 📊 **Detailed Reports** - Clear error messages
-
-Learn more in the [Scaffolding and Validation Guide](./docs/SCAFFOLDING_AND_VALIDATION.md).
 
 #### Remove Source
 
@@ -799,17 +931,16 @@ prompt-registry/
 
 ## 📚 Documentation
 
-- **[Architecture Guide](./docs/ARCHITECTURE.md)** - Detailed system architecture
-- **[API Reference](./docs/API.md)** - Extension API documentation
-- **[Bundle Format](./docs/BUNDLE_FORMAT.md)** - Creating custom bundles
-- **[Adapter Development](./docs/ADAPTERS.md)** - Building new adapters
-- **[Awesome Copilot Implementation](./docs/AWESOME_COPILOT_IMPLEMENTATION.md)** - Awesome Copilot adapter details
+- **[Architecture](./docs/ARCHITECTURE.md)**
+- **[Quick Start](./docs/QUICK_START.md)**
+- **[Developer Guide](./docs/DEVELOPER_GUIDE.md)**
+- **[Testing Strategy](./docs/TESTING_STRATEGY.md)**
 
 ---
 
 ## 🗺️ Roadmap
 
-### Current Version (2.0.0)
+### Current Version
 
 - ✅ Visual marketplace interface
 - ✅ Multi-source support (6 adapter types)
@@ -819,20 +950,21 @@ prompt-registry/
 - ✅ Search and filtering
 - ✅ Clickable marketplace tiles
 
-### Upcoming (2.1.0)
+### Upcoming
 
-- 🔄 Automatic bundle updates
-- 🔄 Bundle versioning and rollback
-- 🔄 Dependency management
-- 🔄 Bundle analytics
+- 🔄 Community ratings and reviews
+- 🔄 Repository level installation support
+- 🔄 MCP Support (experimental at the moment)
 
-### Future (3.0.0)
 
+### Future
+
+- 📋 More package types (APM, Packmind..)
 - 📋 Bundle authoring tools
-- 📋 Community ratings and reviews
 - 📋 AI-powered recommendations
 - 📋 Collaborative prompt sharing
-- 📋 Marketplace API for third-party tools
+- 📋 Bundle analytics
+- 📋 Proper adapters for GitLab, HTTP ..
 
 ---
 
@@ -852,11 +984,11 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](./LICE
 
 ## 📊 Stats
 
-- **Supported Source Types**: 6 (GitHub, GitLab, HTTP, Local, Awesome Copilot, Local Awesome Copilot)
+- **Supported Source Types**: 4 (GitHub, Local, Awesome Copilot, Local Awesome Copilot)
 - **Platforms**: macOS, Linux, Windows
 - **VS Code Flavors**: Stable, Insiders, Windsurf
 - **Architecture**: Adapter pattern with extensible design
-- **Bundle Format**: YAML-based deployment manifest
+- **Bundle Format**: YAML-based deployment manifests
 
 ---
 

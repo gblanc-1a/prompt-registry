@@ -26,34 +26,34 @@ export class SourceCommands {
             // Step 1: Select source type
             const sourceType = await vscode.window.showQuickPick(
                 [
+                    // {
+                    //     label: '$(github) GitHub Repository',
+                    //     description: 'Public or private GitHub repository',
+                    //     value: 'github' as SourceType
+                    // },
+                    // {
+                    //     label: '$(repo) GitLab Repository',
+                    //     description: 'Public or private GitLab repository',
+                    //     value: 'gitlab' as SourceType
+                    // },
+                    // {
+                    //     label: '$(globe) HTTP Registry',
+                    //     description: 'HTTP/HTTPS registry server',
+                    //     value: 'http' as SourceType
+                    // },
+                    // {
+                    //     label: '$(folder) Local Directory',
+                    //     description: 'Local filesystem directory',
+                    //     value: 'local' as SourceType
+                    // },
                     {
-                        label: '$(github) GitHub Repository',
-                        description: 'Public or private GitHub repository',
-                        value: 'github' as SourceType
-                    },
-                    {
-                        label: '$(repo) GitLab Repository',
-                        description: 'Public or private GitLab repository',
-                        value: 'gitlab' as SourceType
-                    },
-                    {
-                        label: '$(globe) HTTP Registry',
-                        description: 'HTTP/HTTPS registry server',
-                        value: 'http' as SourceType
-                    },
-                    {
-                        label: '$(folder) Local Directory',
-                        description: 'Local filesystem directory',
-                        value: 'local' as SourceType
-                    },
-                    {
-                        label: '$(package) Awesome Copilot Collection',
-                        description: 'GitHub repository with .collection.yml files',
+                        label: '$(package) Collection from GitHub repository',
+                        description: 'GitHub repository with .collection.yml files based on Awesome Copilot specification',
                         value: 'awesome-copilot' as SourceType
                     },
                     {
-                        label: '$(folder-library) Local Awesome Copilot Collection',
-                        description: 'Local filesystem directory with .collection.yml files',
+                        label: '$(folder-library) Local Collection',
+                        description: 'Local filesystem directory with .collection.yml files  based on Awesome Copilot specification',
                         value: 'local-awesome-copilot' as SourceType
                     },
                 ],
@@ -230,10 +230,14 @@ export class SourceCommands {
     /**
      * Edit an existing source
      */
-    async editSource(sourceId?: string): Promise<void> {
+    async editSource(sourceId?: string | any): Promise<void> {
         try {
+            // Extract source ID from tree item or string parameter
+            const extractedId = this.extractSourceId(sourceId);
+            
+            let finalId: string;
             // If no sourceId, let user select
-            if (!sourceId) {
+            if (!extractedId) {
                 const sources = await this.registryManager.listSources();
                 
                 if (sources.length === 0) {
@@ -258,11 +262,13 @@ export class SourceCommands {
                     return;
                 }
 
-                sourceId = selected.source.id;
+                finalId = selected.source.id;
+            } else {
+                finalId = extractedId!;
             }
 
             const sources = await this.registryManager.listSources();
-            const source = sources.find(s => s.id === sourceId);
+            const source = sources.find(s => s.id === finalId);
 
             if (!source) {
                 vscode.window.showErrorMessage('Source not found');
@@ -290,19 +296,19 @@ export class SourceCommands {
 
             switch (action.value) {
                 case 'rename':
-                    await this.renameSource(sourceId);
+                    await this.renameSource(finalId);
                     break;
                 case 'url':
-                    await this.changeSourceUrl(sourceId);
+                    await this.changeSourceUrl(finalId);
                     break;
                 case 'token':
-                    await this.configureToken(sourceId);
+                    await this.configureToken(finalId);
                     break;
                 case 'priority':
-                    await this.changePriority(sourceId);
+                    await this.changePriority(finalId);
                     break;
                 case 'toggle':
-                    await this.toggleSource(sourceId);
+                    await this.toggleSource(finalId);
                     break;
             }
 
@@ -315,10 +321,14 @@ export class SourceCommands {
     /**
      * Remove a source
      */
-    async removeSource(sourceId?: string): Promise<void> {
+    async removeSource(sourceId?: string | any): Promise<void> {
         try {
+            // Extract source ID from tree item or string parameter
+            const extractedId = this.extractSourceId(sourceId);
+            
+            let finalId: string;
             // If no sourceId, let user select
-            if (!sourceId) {
+            if (!extractedId) {
                 const sources = await this.registryManager.listSources();
                 
                 if (sources.length === 0) {
@@ -342,11 +352,13 @@ export class SourceCommands {
                     return;
                 }
 
-                sourceId = selected.source.id;
+                finalId = selected.source.id;
+            } else {
+                finalId = extractedId!;
             }
 
             const sources = await this.registryManager.listSources();
-            const source = sources.find(s => s.id === sourceId);
+            const source = sources.find(s => s.id === finalId);
 
             if (!source) {
                 vscode.window.showErrorMessage('Source not found');
@@ -364,7 +376,7 @@ export class SourceCommands {
                 return;
             }
 
-            await this.registryManager.removeSource(sourceId);
+            await this.registryManager.removeSource(finalId);
 
             vscode.window.showInformationMessage(
                 `Source "${source.name}" removed successfully`
@@ -379,10 +391,14 @@ export class SourceCommands {
     /**
      * Sync a source (refresh bundle list)
      */
-    async syncSource(sourceId?: string): Promise<void> {
+    async syncSource(sourceId?: string | any): Promise<void> {
         try {
+            // Extract source ID from tree item or string parameter
+            const extractedId = this.extractSourceId(sourceId);
+            
+            let finalId: string;
             // If no sourceId, let user select
-            if (!sourceId) {
+            if (!extractedId) {
                 const sources = await this.registryManager.listSources();
                 
                 if (sources.length === 0) {
@@ -406,11 +422,13 @@ export class SourceCommands {
                     return;
                 }
 
-                sourceId = selected.source.id;
+                finalId = selected.source.id;
+            } else {
+                finalId = extractedId!;
             }
 
             const sources = await this.registryManager.listSources();
-            const source = sources.find(s => s.id === sourceId);
+            const source = sources.find(s => s.id === finalId);
 
             if (!source) {
                 vscode.window.showErrorMessage('Source not found');
@@ -424,7 +442,7 @@ export class SourceCommands {
                     cancellable: false
                 },
                 async () => {
-                    await this.registryManager.syncSource(sourceId!);
+                    await this.registryManager.syncSource(finalId!);
                 }
             );
 
@@ -740,10 +758,14 @@ export class SourceCommands {
     /**
      * Toggle source enabled/disabled
      */
-    async toggleSource(sourceId?: string): Promise<void> {
+    async toggleSource(sourceId?: string | any): Promise<void> {
         try {
+            // Extract source ID from tree item or string parameter
+            const extractedId = this.extractSourceId(sourceId);
+            
+            let finalId: string;
             // If no sourceId, let user select
-            if (!sourceId) {
+            if (!extractedId) {
                 const sources = await this.registryManager.listSources();
                 
                 if (sources.length === 0) {
@@ -768,18 +790,20 @@ export class SourceCommands {
                     return;
                 }
 
-                sourceId = selected.source.id;
+                finalId = selected.source.id;
+            } else {
+                finalId = extractedId!;
             }
 
             const sources = await this.registryManager.listSources();
-            const source = sources.find(s => s.id === sourceId);
+            const source = sources.find(s => s.id === finalId);
 
             if (!source) {
                 vscode.window.showErrorMessage('Source not found');
                 return;
             }
 
-            await this.registryManager.updateSource(sourceId, { enabled: !source.enabled });
+            await this.registryManager.updateSource(finalId, { enabled: !source.enabled });
             vscode.window.showInformationMessage(
                 `Source "${source.name}" ${source.enabled ? 'disabled' : 'enabled'}`
             );
@@ -787,5 +811,27 @@ export class SourceCommands {
             this.logger.error('Failed to toggle source', error as Error);
             vscode.window.showErrorMessage(`Failed to toggle source: ${(error as Error).message}`);
         }
+    }
+
+    /**
+     * Extract source ID from tree item or string parameter
+     * Context menu passes tree item object, command palette passes string
+     */
+    private extractSourceId(sourceIdOrItem?: string | any): string | undefined {
+        if (!sourceIdOrItem) {
+            return undefined;
+        }
+        
+        // Handle tree item object from context menu
+        if (typeof sourceIdOrItem === 'object' && 'data' in sourceIdOrItem) {
+            return sourceIdOrItem.data?.id;
+        }
+        
+        // Handle direct string ID
+        if (typeof sourceIdOrItem === 'string') {
+            return sourceIdOrItem;
+        }
+        
+        return undefined;
     }
 }

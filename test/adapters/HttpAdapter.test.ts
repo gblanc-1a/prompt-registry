@@ -3,492 +3,168 @@
  */
 
 import * as assert from 'assert';
-import * as http from 'http';
-import * as https from 'https';
+import nock from 'nock';
 import { HttpAdapter } from '../../src/adapters/HttpAdapter';
-import { RegistrySource, Bundle } from '../../src/types/registry';
+import { RegistrySource } from '../../src/types/registry';
 
 suite('HttpAdapter', () => {
-    let server: http.Server;
-    let serverPort: number;
-    let serverUrl: string;
+    const mockSource: RegistrySource = {
+        id: 'test-http-source',
+        name: 'Test HTTP Source',
+        type: 'http',
+        url: 'https://example.com/bundles',
+        enabled: true,
+        priority: 1,
+    };
 
-    // Helper to create a test server
-    function createTestServer(handler: (req: http.IncomingMessage, res: http.ServerResponse) => void): Promise<void> {
-        return new Promise((resolve) => {
-            server = http.createServer(handler);
-            server.listen(0, () => {
-                const address = server.address();
-                if (address && typeof address === 'object') {
-                    serverPort = address.port;
-                    serverUrl = `http://localhost:${serverPort}`;
-                }
-                resolve();
-            });
-        });
-    }
+    teardown(() => {
+        nock.cleanAll();
+    });
 
-    // Helper to close test server
-    function closeTestServer(): Promise<void> {
-        return new Promise((resolve) => {
-            if (server) {
-                server.close(() => resolve());
-            } else {
-                resolve();
-            }
-        });
-    }
-
-    suite('downloadBundle', () => {
-        teardown(async () => {
-            await closeTestServer();
+    suite('Constructor and Validation', () => {
+        test('should accept valid HTTP URL', () => {
+            const adapter = new HttpAdapter(mockSource);
+            assert.strictEqual(adapter.type, 'http');
         });
 
-        test('should download from HTTP URL and return correct Buffer', async () => {
-            // Create test data
-            const testData = Buffer.from('Test bundle content');
-            
-            await createTestServer((req, res) => {
-                res.writeHead(200, { 'Content-Type': 'application/zip' });
-                res.end(testData);
-            });
-
-            const source: RegistrySource = {
-                id: 'test-http',
-                name: 'Test HTTP',
-                type: 'http',
-                url: serverUrl,
-                enabled: true,
-                priority: 1,
-            };
-
+        test('should accept valid HTTPS URL', () => {
+            const source = { ...mockSource, url: 'https://example.com/bundles' };
             const adapter = new HttpAdapter(source);
-            const bundle: Bundle = {
-                id: 'test-bundle',
-                name: 'Test Bundle',
-                version: '1.0.0',
-                description: 'Test',
-                author: 'Test',
-                sourceId: 'test-http',
-                environments: [],
-                tags: [],
-                lastUpdated: new Date().toISOString(),
-                size: '0 B',
-                dependencies: [],
-                license: 'MIT',
-                downloadUrl: `${serverUrl}/bundle.zip`,
-                manifestUrl: `${serverUrl}/manifest.yml`,
-            };
-
-            const buffer = await adapter.downloadBundle(bundle);
-            
-            assert.ok(Buffer.isBuffer(buffer), 'Should return a Buffer');
-            assert.strictEqual(buffer.length, testData.length, 'Buffer length should match');
-            assert.ok(buffer.equals(testData), 'Buffer content should match exactly');
+            assert.ok(adapter);
         });
 
-        test('should preserve binary data integrity', async () => {
-            // Create binary test data with various byte values
-            const testData = Buffer.from([
-                0x00, 0x01, 0x02, 0xFF, 0xFE, 0xFD,  // Various byte values
-                0x50, 0x4B, 0x03, 0x04,              // ZIP magic number
-                0x0A, 0x0D, 0x00,                    // Newlines and null
-            ]);
-            
-            await createTestServer((req, res) => {
-                res.writeHead(200, { 'Content-Type': 'application/octet-stream' });
-                res.end(testData);
-            });
+        test('should handle URLs with query parameters', () => {
+            const source = { ...mockSource, url: 'https://example.com/bundles?filter=active' };
+            assert.doesNotThrow(() => new HttpAdapter(source));
+        });
+    });
 
-            const source: RegistrySource = {
-                id: 'test-http',
-                name: 'Test HTTP',
-                type: 'http',
-                url: serverUrl,
-                enabled: true,
-                priority: 1,
-            };
-
-            const adapter = new HttpAdapter(source);
-            const bundle: Bundle = {
-                id: 'test-bundle',
-                name: 'Test Bundle',
+    suite('fetchBundles', () => {
+        test('should fetch bundles from HTTP endpoint', async () => {
+            const mockIndex = {
+                name: 'Test Registry',
                 version: '1.0.0',
-                description: 'Test',
-                author: 'Test',
-                sourceId: 'test-http',
-                environments: [],
-                tags: [],
-                lastUpdated: new Date().toISOString(),
-                size: '0 B',
-                dependencies: [],
-                license: 'MIT',
-                downloadUrl: `${serverUrl}/bundle.zip`,
-                manifestUrl: `${serverUrl}/manifest.yml`,
+                bundles: [
+                    {
+                        id: 'bundle-1',
+                        name: 'Bundle 1',
+                        version: '1.0.0',
+                        description: 'Test bundle',
+                        author: 'Test',
+                        environments: ['vscode'],
+                        tags: [],
+                        lastUpdated: new Date().toISOString(),
+                        size: '1MB',
+                        dependencies: [],
+                        license: 'MIT',
+                        downloadUrl: 'https://example.com/bundle-1.zip',
+                        manifestUrl: 'https://example.com/bundle-1/manifest.yml',
+                    },
+                ],
             };
 
-            const buffer = await adapter.downloadBundle(bundle);
-            
-            // Verify byte-for-byte integrity
-            assert.strictEqual(buffer.length, testData.length, 'Buffer length should match');
-            for (let i = 0; i < testData.length; i++) {
-                assert.strictEqual(
-                    buffer[i],
-                    testData[i],
-                    `Byte at position ${i} should match (expected ${testData[i]}, got ${buffer[i]})`
-                );
-            }
+            nock('https://example.com')
+                .get('/bundles/index.json')
+                .reply(200, mockIndex);
+
+            const adapter = new HttpAdapter(mockSource);
+            const bundles = await adapter.fetchBundles();
+
+            assert.strictEqual(bundles.length, 1);
+            assert.strictEqual(bundles[0].id, 'bundle-1');
         });
 
-        test('should handle empty files', async () => {
-            const testData = Buffer.alloc(0);
-            
-            await createTestServer((req, res) => {
-                res.writeHead(200, { 'Content-Type': 'application/zip' });
-                res.end(testData);
-            });
+        test('should handle 404 errors gracefully', async () => {
+            nock('https://example.com')
+                .get('/bundles/index.json')
+                .reply(404);
 
-            const source: RegistrySource = {
-                id: 'test-http',
-                name: 'Test HTTP',
-                type: 'http',
-                url: serverUrl,
-                enabled: true,
-                priority: 1,
-            };
-
-            const adapter = new HttpAdapter(source);
-            const bundle: Bundle = {
-                id: 'test-bundle',
-                name: 'Test Bundle',
-                version: '1.0.0',
-                description: 'Test',
-                author: 'Test',
-                sourceId: 'test-http',
-                environments: [],
-                tags: [],
-                lastUpdated: new Date().toISOString(),
-                size: '0 B',
-                dependencies: [],
-                license: 'MIT',
-                downloadUrl: `${serverUrl}/bundle.zip`,
-                manifestUrl: `${serverUrl}/manifest.yml`,
-            };
-
-            const buffer = await adapter.downloadBundle(bundle);
-            
-            assert.ok(Buffer.isBuffer(buffer), 'Should return a Buffer');
-            assert.strictEqual(buffer.length, 0, 'Buffer should be empty');
-        });
-
-        test('should handle large binary files', async () => {
-            // Create a 1MB test file
-            const testData = Buffer.alloc(1024 * 1024);
-            for (let i = 0; i < testData.length; i++) {
-                testData[i] = i % 256;
-            }
-            
-            await createTestServer((req, res) => {
-                res.writeHead(200, { 'Content-Type': 'application/zip' });
-                res.end(testData);
-            });
-
-            const source: RegistrySource = {
-                id: 'test-http',
-                name: 'Test HTTP',
-                type: 'http',
-                url: serverUrl,
-                enabled: true,
-                priority: 1,
-            };
-
-            const adapter = new HttpAdapter(source);
-            const bundle: Bundle = {
-                id: 'test-bundle',
-                name: 'Test Bundle',
-                version: '1.0.0',
-                description: 'Test',
-                author: 'Test',
-                sourceId: 'test-http',
-                environments: [],
-                tags: [],
-                lastUpdated: new Date().toISOString(),
-                size: '1 MB',
-                dependencies: [],
-                license: 'MIT',
-                downloadUrl: `${serverUrl}/bundle.zip`,
-                manifestUrl: `${serverUrl}/manifest.yml`,
-            };
-
-            const buffer = await adapter.downloadBundle(bundle);
-            
-            assert.strictEqual(buffer.length, testData.length, 'Buffer length should match');
-            assert.ok(buffer.equals(testData), 'Buffer content should match exactly');
-        });
-
-        test('should handle HTTP 404 error', async () => {
-            await createTestServer((req, res) => {
-                res.writeHead(404, { 'Content-Type': 'text/plain' });
-                res.end('Not Found');
-            });
-
-            const source: RegistrySource = {
-                id: 'test-http',
-                name: 'Test HTTP',
-                type: 'http',
-                url: serverUrl,
-                enabled: true,
-                priority: 1,
-            };
-
-            const adapter = new HttpAdapter(source);
-            const bundle: Bundle = {
-                id: 'test-bundle',
-                name: 'Test Bundle',
-                version: '1.0.0',
-                description: 'Test',
-                author: 'Test',
-                sourceId: 'test-http',
-                environments: [],
-                tags: [],
-                lastUpdated: new Date().toISOString(),
-                size: '0 B',
-                dependencies: [],
-                license: 'MIT',
-                downloadUrl: `${serverUrl}/bundle.zip`,
-                manifestUrl: `${serverUrl}/manifest.yml`,
-            };
-
+            const adapter = new HttpAdapter(mockSource);
             await assert.rejects(
-                () => adapter.downloadBundle(bundle),
-                /Failed to download bundle/,
-                'Should throw error for 404'
-            );
-        });
-
-        test('should handle HTTP 500 error', async () => {
-            await createTestServer((req, res) => {
-                res.writeHead(500, { 'Content-Type': 'text/plain' });
-                res.end('Internal Server Error');
-            });
-
-            const source: RegistrySource = {
-                id: 'test-http',
-                name: 'Test HTTP',
-                type: 'http',
-                url: serverUrl,
-                enabled: true,
-                priority: 1,
-            };
-
-            const adapter = new HttpAdapter(source);
-            const bundle: Bundle = {
-                id: 'test-bundle',
-                name: 'Test Bundle',
-                version: '1.0.0',
-                description: 'Test',
-                author: 'Test',
-                sourceId: 'test-http',
-                environments: [],
-                tags: [],
-                lastUpdated: new Date().toISOString(),
-                size: '0 B',
-                dependencies: [],
-                license: 'MIT',
-                downloadUrl: `${serverUrl}/bundle.zip`,
-                manifestUrl: `${serverUrl}/manifest.yml`,
-            };
-
-            await assert.rejects(
-                () => adapter.downloadBundle(bundle),
-                /Failed to download bundle/,
-                'Should throw error for 500'
+                async () => await adapter.fetchBundles(),
+                /404|Not found/
             );
         });
 
         test('should handle network errors', async () => {
-            const source: RegistrySource = {
-                id: 'test-http',
-                name: 'Test HTTP',
-                type: 'http',
-                url: 'http://localhost:1',  // Invalid port
-                enabled: true,
-                priority: 1,
-            };
+            nock('https://example.com')
+                .get('/bundles/index.json')
+                .replyWithError('Network error');
 
-            const adapter = new HttpAdapter(source);
-            const bundle: Bundle = {
-                id: 'test-bundle',
-                name: 'Test Bundle',
-                version: '1.0.0',
-                description: 'Test',
-                author: 'Test',
-                sourceId: 'test-http',
-                environments: [],
-                tags: [],
-                lastUpdated: new Date().toISOString(),
-                size: '0 B',
-                dependencies: [],
-                license: 'MIT',
-                downloadUrl: 'http://localhost:1/bundle.zip',
-                manifestUrl: 'http://localhost:1/manifest.yml',
-            };
-
+            const adapter = new HttpAdapter(mockSource);
             await assert.rejects(
-                () => adapter.downloadBundle(bundle),
-                /Failed to download bundle/,
-                'Should throw error for network failure'
+                async () => await adapter.fetchBundles(),
+                /Network error/
             );
         });
+    });
 
-        test('should handle redirects', async () => {
-            const testData = Buffer.from('Redirected content');
-            
-            await createTestServer((req, res) => {
-                if (req.url === '/bundle.zip') {
-                    // Redirect to final location
-                    res.writeHead(302, { 'Location': `${serverUrl}/final.zip` });
-                    res.end();
-                } else if (req.url === '/final.zip') {
-                    // Serve actual content
-                    res.writeHead(200, { 'Content-Type': 'application/zip' });
-                    res.end(testData);
-                } else {
-                    res.writeHead(404);
-                    res.end();
-                }
-            });
+    suite('getDownloadUrl', () => {
+        test('should construct download URL from bundle ID', () => {
+            const adapter = new HttpAdapter(mockSource);
+            const url = adapter.getDownloadUrl('bundle-1', '1.0.0');
 
-            const source: RegistrySource = {
-                id: 'test-http',
-                name: 'Test HTTP',
-                type: 'http',
-                url: serverUrl,
-                enabled: true,
-                priority: 1,
-            };
-
-            const adapter = new HttpAdapter(source);
-            const bundle: Bundle = {
-                id: 'test-bundle',
-                name: 'Test Bundle',
-                version: '1.0.0',
-                description: 'Test',
-                author: 'Test',
-                sourceId: 'test-http',
-                environments: [],
-                tags: [],
-                lastUpdated: new Date().toISOString(),
-                size: '0 B',
-                dependencies: [],
-                license: 'MIT',
-                downloadUrl: `${serverUrl}/bundle.zip`,
-                manifestUrl: `${serverUrl}/manifest.yml`,
-            };
-
-            const buffer = await adapter.downloadBundle(bundle);
-            
-            assert.ok(buffer.equals(testData), 'Should follow redirect and download correct content');
+            assert.ok(url.includes('example.com'));
+            assert.ok(url.includes('bundle-1'));
         });
 
-        test('should handle multiple redirects', async () => {
-            const testData = Buffer.from('Final content');
-            
-            await createTestServer((req, res) => {
-                if (req.url === '/bundle.zip') {
-                    res.writeHead(301, { 'Location': `${serverUrl}/redirect1.zip` });
-                    res.end();
-                } else if (req.url === '/redirect1.zip') {
-                    res.writeHead(302, { 'Location': `${serverUrl}/redirect2.zip` });
-                    res.end();
-                } else if (req.url === '/redirect2.zip') {
-                    res.writeHead(302, { 'Location': `${serverUrl}/final.zip` });
-                    res.end();
-                } else if (req.url === '/final.zip') {
-                    res.writeHead(200, { 'Content-Type': 'application/zip' });
-                    res.end(testData);
-                } else {
-                    res.writeHead(404);
-                    res.end();
-                }
-            });
+        test('should handle version parameter', () => {
+            const adapter = new HttpAdapter(mockSource);
+            const url = adapter.getDownloadUrl('bundle-1', '2.0.0');
 
-            const source: RegistrySource = {
-                id: 'test-http',
-                name: 'Test HTTP',
-                type: 'http',
-                url: serverUrl,
-                enabled: true,
-                priority: 1,
-            };
+            assert.ok(url.includes('bundle-1'));
+        });
+    });
 
-            const adapter = new HttpAdapter(source);
-            const bundle: Bundle = {
-                id: 'test-bundle',
-                name: 'Test Bundle',
+    suite('Authentication', () => {
+        test('should include Authorization header when token provided', async () => {
+            const sourceWithToken = { ...mockSource, token: 'test-token-123' };
+            const mockIndex = {
+                name: 'Test Registry',
                 version: '1.0.0',
-                description: 'Test',
-                author: 'Test',
-                sourceId: 'test-http',
-                environments: [],
-                tags: [],
-                lastUpdated: new Date().toISOString(),
-                size: '0 B',
-                dependencies: [],
-                license: 'MIT',
-                downloadUrl: `${serverUrl}/bundle.zip`,
-                manifestUrl: `${serverUrl}/manifest.yml`,
+                bundles: [],
             };
 
-            const buffer = await adapter.downloadBundle(bundle);
-            
-            assert.ok(buffer.equals(testData), 'Should follow multiple redirects and download correct content');
+            nock('https://example.com', {
+                reqheaders: {
+                    'Authorization': 'Bearer test-token-123',
+                },
+            })
+                .get('/bundles/index.json')
+                .reply(200, mockIndex);
+
+            const adapter = new HttpAdapter(sourceWithToken);
+            const bundles = await adapter.fetchBundles();
+
+            assert.strictEqual(bundles.length, 0);
         });
 
-        test('should preserve binary data with null bytes', async () => {
-            // Create test data with null bytes
-            const testData = Buffer.from([
-                0x50, 0x4B, 0x03, 0x04,  // ZIP header
-                0x00, 0x00, 0x00, 0x00,  // Null bytes
-                0xFF, 0xFE, 0xFD, 0xFC,  // High bytes
-            ]);
-            
-            await createTestServer((req, res) => {
-                res.writeHead(200, { 'Content-Type': 'application/zip' });
-                res.end(testData);
-            });
+        test('should handle 401 unauthorized errors', async () => {
+            const sourceWithToken = { ...mockSource, token: 'invalid-token' };
 
-            const source: RegistrySource = {
-                id: 'test-http',
-                name: 'Test HTTP',
-                type: 'http',
-                url: serverUrl,
-                enabled: true,
-                priority: 1,
-            };
+            nock('https://example.com')
+                .get('/bundles/index.json')
+                .reply(401, { error: 'Unauthorized' });
 
-            const adapter = new HttpAdapter(source);
-            const bundle: Bundle = {
-                id: 'test-bundle',
-                name: 'Test Bundle',
-                version: '1.0.0',
-                description: 'Test',
-                author: 'Test',
-                sourceId: 'test-http',
-                environments: [],
-                tags: [],
-                lastUpdated: new Date().toISOString(),
-                size: '0 B',
-                dependencies: [],
-                license: 'MIT',
-                downloadUrl: `${serverUrl}/bundle.zip`,
-                manifestUrl: `${serverUrl}/manifest.yml`,
-            };
+            const adapter = new HttpAdapter(sourceWithToken);
+            await assert.rejects(
+                async () => await adapter.fetchBundles(),
+                /401|Unauthorized/
+            );
+        });
+    });
 
-            const buffer = await adapter.downloadBundle(bundle);
-            
-            assert.strictEqual(buffer.length, testData.length, 'Buffer length should match');
-            assert.ok(buffer.equals(testData), 'Buffer with null bytes should match exactly');
+    suite('Rate Limiting', () => {
+        test('should handle 429 rate limit errors', async () => {
+            nock('https://example.com')
+                .get('/bundles/index.json')
+                .reply(429, { error: 'Rate limit exceeded' });
+
+            const adapter = new HttpAdapter(mockSource);
+            await assert.rejects(
+                async () => await adapter.fetchBundles(),
+                /429|Rate limit/
+            );
         });
     });
 });

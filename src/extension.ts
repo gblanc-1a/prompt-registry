@@ -507,7 +507,7 @@ export class PromptRegistryExtension {
         const path = require('path');
 
         // Check for key directories that indicate an awesome-copilot structure
-        const requiredDirs = ['collections', 'prompts', 'instructions', 'chatmodes'];
+        const requiredDirs = ['collections', 'prompts', 'instructions', 'agents'];
         const existingDirs = requiredDirs.filter(dir => {
             const dirPath = path.join(workspaceRoot, dir);
             return fs.existsSync(dirPath) && fs.statSync(dirPath).isDirectory();

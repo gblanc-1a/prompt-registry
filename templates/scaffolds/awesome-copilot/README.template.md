@@ -7,7 +7,7 @@ Welcome to your awesome-copilot prompt collection! This repository contains prom
 ```
 ├── prompts/              # Task-specific prompts (.prompt.md)
 ├── instructions/         # Coding standards and best practices (.instructions.md)
-├── chatmodes/           # AI personas and specialized modes (.chatmode.md)
+├── agents/           # AI personas and specialized modes (.agent.md)
 ├── collections/         # Curated collections (.collection.yml)
 ├── mcp-server/          # Optional: MCP server configuration
 ├── schemas/             # JSON schemas for validation
@@ -131,7 +131,7 @@ Coding standards that apply automatically.
 - `**/*.tsx`
 ```
 
-### Chat Modes (`chatmodes/*.chatmode.md`)
+### Custom Agents (`agents/*.agent.md`)
 
 AI personas for specialized assistance.
 
@@ -258,7 +258,7 @@ Available when using Prompt Registry extension:
 - `Prompt Registry: Validate Collections` - Validate all collections
 - `Prompt Registry: Create New Collection` - Interactive collection wizard
 - `Prompt Registry: List All Collections` - View collection metadata
-- `Prompt Registry: Add Resource` - Add prompt/instruction/chatmode
+- `Prompt Registry: Add Resource` - Add prompt/instruction/agent
 
 ## 📄 License
 

@@ -10,7 +10,7 @@ scaffolds/
 │   ├── manifest.json    # Template manifest with metadata
 │   ├── prompts/         # Example prompt templates
 │   ├── instructions/    # Example instruction templates
-│   ├── chatmodes/       # Example chatmode templates
+│   ├── agents/       # Example agent templates
 │   ├── collections/     # Example collection templates
 │   ├── workflows/       # GitHub Actions workflows
 │   └── ...
@@ -21,9 +21,9 @@ scaffolds/
 
 ### awesome-copilot
 
-The `awesome-copilot` scaffold type creates a complete project structure for sharing Copilot prompts, instructions, and chatmodes following the awesome-copilot pattern. This includes:
+The `awesome-copilot` scaffold type creates a complete project structure for sharing Copilot prompts, instructions, and agents following the awesome-copilot pattern. This includes:
 
-- Example files for all resource types (prompts, instructions, chatmodes, collections)
+- Example files for all resource types (prompts, instructions, agents, collections)
 - Validation tooling (scripts and GitHub Actions workflows)
 - Package configuration with validation scripts
 - Comprehensive README with documentation

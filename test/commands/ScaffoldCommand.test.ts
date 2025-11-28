@@ -35,7 +35,7 @@ suite('ScaffoldCommand', () => {
             // Check main folders exist
             assert.ok(fs.existsSync(path.join(testDir, 'prompts')));
             assert.ok(fs.existsSync(path.join(testDir, 'instructions')));
-            assert.ok(fs.existsSync(path.join(testDir, 'chatmodes')));
+            assert.ok(fs.existsSync(path.join(testDir, 'agents')));
             assert.ok(fs.existsSync(path.join(testDir, 'collections')));
             //             assert.ok(fs.existsSync(path.join(testDir, '.vscode')));
         });
@@ -71,7 +71,7 @@ suite('ScaffoldCommand', () => {
 
             const content = fs.readFileSync(promptFile, 'utf8');
             assert.ok(content.length > 0);
-            assert.ok(content.includes('# Example Prompt') || content.includes('Example') || content.includes('prompt'));
+            assert.ok(content.includes('name:') || content.includes('description:') || content.includes('Create README'));
         });
 
         test('should create example instruction file', async () => {
@@ -82,16 +82,16 @@ suite('ScaffoldCommand', () => {
 
             const content = fs.readFileSync(instructionFile, 'utf8');
             assert.ok(content.length > 0);
-            assert.ok(content.includes('instruction') || content.includes('Instruction') || content.includes('guidance'));
+            assert.ok(content.includes('name:') || content.includes('description:') || content.includes('TypeScript'));
         });
 
-        test('should create example chatmode file', async () => {
+        test('should create example agent file', async () => {
             await scaffoldCommand.execute(testDir);
 
-            const chatmodeFile = path.join(testDir, 'chatmodes', 'example.chatmode.md');
-            assert.ok(fs.existsSync(chatmodeFile));
+            const agentFile = path.join(testDir, 'agents', 'example.agent.md');
+            assert.ok(fs.existsSync(agentFile));
 
-            const content = fs.readFileSync(chatmodeFile, 'utf8');
+            const content = fs.readFileSync(agentFile, 'utf8');
             assert.ok(content.length > 0);
             assert.ok(content.includes('Persona') || content.includes('Expertise') || content.includes('Guidelines'));
         });
@@ -114,12 +114,12 @@ suite('ScaffoldCommand', () => {
 
             const promptFile = path.join(testDir, 'prompts', 'example.prompt.md');
             const instructionFile = path.join(testDir, 'instructions', 'example.instructions.md');
-            const chatmodeFile = path.join(testDir, 'chatmodes', 'example.chatmode.md');
+            const agentFile = path.join(testDir, 'agents', 'example.agent.md');
             const collectionFile = path.join(testDir, 'collections', 'example.collection.yml');
 
             assert.ok(promptFile.endsWith('.prompt.md'));
             assert.ok(instructionFile.endsWith('.instructions.md'));
-            assert.ok(chatmodeFile.endsWith('.chatmode.md'));
+            assert.ok(agentFile.endsWith('.agent.md'));
             assert.ok(collectionFile.endsWith('.collection.yml'));
         });
     });
@@ -145,7 +145,7 @@ suite('ScaffoldCommand', () => {
 
             assert.ok(content.includes('prompts/example.prompt.md'));
             assert.ok(content.includes('instructions/example.instructions.md'));
-            assert.ok(content.includes('chatmodes/example.chatmode.md'));
+            assert.ok(content.includes('agents/example.agent.md'));
         });
 
         test('collection should have required fields', async () => {
@@ -173,11 +173,11 @@ suite('ScaffoldCommand', () => {
 
             const promptItem = collection.items.find((item: any) => item.path.includes('prompt'));
             const instructionItem = collection.items.find((item: any) => item.path.includes('instruction'));
-            const chatmodeItem = collection.items.find((item: any) => item.path.includes('chatmode'));
+            const agentItem = collection.items.find((item: any) => item.path.includes('agent'));
 
             assert.strictEqual(promptItem?.kind, 'prompt');
             assert.strictEqual(instructionItem?.kind, 'instruction');
-            assert.strictEqual(chatmodeItem?.kind, 'chat-mode');
+            assert.strictEqual(agentItem?.kind, 'agent');
         });
     });
 
@@ -208,7 +208,7 @@ suite('ScaffoldCommand', () => {
 
             assert.ok(content.includes('prompts/'));
             assert.ok(content.includes('instructions/'));
-            assert.ok(content.includes('chatmodes/'));
+            assert.ok(content.includes('agents/'));
             assert.ok(content.includes('collections/'));
         });
 
@@ -333,8 +333,8 @@ suite('ScaffoldCommand', () => {
         test('example chatmode should define a persona', async () => {
             await scaffoldCommand.execute(testDir);
 
-            const chatmodeFile = path.join(testDir, 'chatmodes', 'example.chatmode.md');
-            const content = fs.readFileSync(chatmodeFile, 'utf8');
+            const agentFile = path.join(testDir, 'agents', 'example.agent.md');
+            const content = fs.readFileSync(agentFile, 'utf8');
 
             assert.ok(content.length > 100);
             assert.ok(content.includes('You are') || content.includes('Act as') || content.includes('persona') || content.includes('role'));

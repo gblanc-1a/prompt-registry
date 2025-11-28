@@ -4,19 +4,19 @@
   "templates": {
     "example-prompt": {
       "path": "prompts/example.prompt.md",
-      "description": "Example prompt template",
+      "description": "Example prompt template with frontmatter",
       "required": true,
       "variables": []
     },
     "example-instruction": {
       "path": "instructions/example.instructions.md",
-      "description": "Example instruction template",
+      "description": "Example instruction template with YAML frontmatter and applyTo pattern",
       "required": true,
       "variables": []
     },
-    "example-chatmode": {
-      "path": "chatmodes/example.chatmode.md",
-      "description": "Example chatmode template",
+    "example-agent": {
+      "path": "agents/example.agent.md",
+      "description": "Example custom agent template (replaces chatmode)",
       "required": true,
       "variables": []
     },
@@ -65,6 +65,12 @@
     "collection-schema": {
       "path": "schemas/collection.schema.json",
       "description": "JSON schema for collection validation",
+      "required": true,
+      "variables": []
+    },
+    "gitignore": {
+      "path": ".gitignore",
+      "description": "Git ignore file with TypeScript and Node.js best practices",
       "required": true,
       "variables": []
     }

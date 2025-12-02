@@ -15,6 +15,7 @@ import { BundleInstaller } from './BundleInstaller';
 import { LocalAwesomeCopilotAdapter } from '../adapters/LocalAwesomeCopilotAdapter';
 import { VersionConsolidator } from './VersionConsolidator';
 import { VersionManager } from '../utils/versionManager';
+import { BundleIdentityMatcher } from '../utils/bundleIdentityMatcher';
 import {
     RegistrySource,
     Bundle,
@@ -25,9 +26,19 @@ import {
     ValidationResult,
     BundleUpdate,
     ProfileBundle,
+    SourceType,
 } from '../types/registry';
 import { ExportedSettings, ExportFormat, ImportStrategy } from '../types/settings';
 import { Logger } from '../utils/logger';
+
+/**
+ * Results from auto-update operations
+ */
+interface UpdateResults {
+    succeeded: string[];
+    failed: Array<{ bundleId: string; error: string }>;
+    skipped: string[];
+}
 
 /**
  * Registry Manager
@@ -40,6 +51,7 @@ export class RegistryManager {
     private logger: Logger;
     private adapters = new Map<string, IRepositoryAdapter>();
     private versionConsolidator: VersionConsolidator;
+    private sourcesCache: RegistrySource[] = [];
 
     // Event emitters
     private _onBundleInstalled = new vscode.EventEmitter<InstalledBundle>();
@@ -70,7 +82,10 @@ export class RegistryManager {
         this.storage = new RegistryStorage(context);
         this.installer = new BundleInstaller(context);
         this.logger = Logger.getInstance();
+        
+        // Initialize version consolidator with source type resolver
         this.versionConsolidator = new VersionConsolidator();
+        this.versionConsolidator.setSourceTypeResolver((sourceId: string) => this.getSourceType(sourceId));
         
         // Register default adapters
         RepositoryAdapterFactory.register('github', GitHubAdapter);
@@ -134,6 +149,7 @@ export class RegistryManager {
      */
     private async loadAdapters(): Promise<void> {
         const sources = await this.storage.getSources();
+        this.sourcesCache = sources; // Cache for synchronous access
         
         for (const source of sources) {
             if (source.enabled) {
@@ -183,6 +199,9 @@ export class RegistryManager {
         await this.storage.addSource(source);
         this.adapters.set(source.id, adapter);
         
+        // Update cache
+        this.sourcesCache = await this.storage.getSources();
+        
         this._onSourceAdded.fire(source);
         this.logger.info(`Source '${source.name}' added successfully`);
     }
@@ -195,6 +214,9 @@ export class RegistryManager {
         
         await this.storage.removeSource(sourceId);
         this.adapters.delete(sourceId);
+        
+        // Update cache
+        this.sourcesCache = await this.storage.getSources();
         
         this._onSourceRemoved.fire(sourceId);
         this.logger.info(`Source '${sourceId}' removed successfully`);
@@ -211,6 +233,8 @@ export class RegistryManager {
         // Reload adapter if source was updated
         this.adapters.delete(sourceId);
         const sources = await this.storage.getSources();
+        this.sourcesCache = sources; // Update cache
+        
         const updatedSource = sources.find(s => s.id === sourceId);
         
         if (updatedSource && updatedSource.enabled) {
@@ -274,47 +298,100 @@ export class RegistryManager {
      * Used for Awesome Copilot sources that should auto-update
      */
     private async autoUpdateInstalledBundles(sourceId: string, latestBundles: Bundle[]): Promise<void> {
+        const bundlesToUpdate = await this.identifyBundlesForUpdate(sourceId, latestBundles);
+        const results = await this.performBundleUpdates(bundlesToUpdate, latestBundles);
+        this.reportUpdateResults(results);
+    }
+
+    /**
+     * Identify bundles that need to be updated from a source
+     */
+    private async identifyBundlesForUpdate(
+        sourceId: string,
+        latestBundles: Bundle[]
+    ): Promise<InstalledBundle[]> {
         const installed = await this.storage.getInstalledBundles();
         const bundlesFromSource = this.filterBundlesBySource(installed, sourceId, latestBundles);
         
         this.logger.info(`Found ${bundlesFromSource.length} installed bundles from source '${sourceId}'`);
-        
-        const results = {
-            succeeded: [] as string[],
-            failed: [] as Array<{ bundleId: string; error: string }>,
-            skipped: [] as string[]
+        return bundlesFromSource;
+    }
+
+    /**
+     * Perform updates for a list of bundles
+     */
+    private async performBundleUpdates(
+        bundlesToUpdate: InstalledBundle[],
+        latestBundles: Bundle[]
+    ): Promise<UpdateResults> {
+        const results: UpdateResults = {
+            succeeded: [],
+            failed: [],
+            skipped: []
         };
         
-        for (const installedBundle of bundlesFromSource) {
-            try {
-                const latestBundle = this.findMatchingLatestBundle(installedBundle, latestBundles);
-                
-                if (!latestBundle) {
-                    this.logger.warn(`Bundle '${installedBundle.bundleId}' no longer available in source '${sourceId}'`);
-                    results.skipped.push(installedBundle.bundleId);
-                    continue;
-                }
-                
-                // Check if update is needed
-                if (latestBundle.version !== installedBundle.version) {
-                    this.logger.info(`Auto-updating bundle '${installedBundle.bundleId}' from v${installedBundle.version} to v${latestBundle.version}`);
-                    
-                    await this.updateBundle(installedBundle.bundleId, latestBundle.version);
-                    results.succeeded.push(installedBundle.bundleId);
-                    this.logger.info(`Successfully auto-updated bundle '${installedBundle.bundleId}'`);
-                } else {
-                    this.logger.debug(`Bundle '${installedBundle.bundleId}' is already at latest version ${latestBundle.version}`);
-                }
-            } catch (error) {
-                const errorMsg = error instanceof Error ? error.message : String(error);
-                results.failed.push({ bundleId: installedBundle.bundleId, error: errorMsg });
-                this.logger.error(`Failed to auto-update bundle '${installedBundle.bundleId}'`, error as Error);
-            }
+        for (const installedBundle of bundlesToUpdate) {
+            await this.updateSingleBundle(installedBundle, latestBundles, results);
         }
         
-        // Report summary
+        return results;
+    }
+
+    /**
+     * Update a single bundle and track results
+     */
+    private async updateSingleBundle(
+        installedBundle: InstalledBundle,
+        latestBundles: Bundle[],
+        results: UpdateResults
+    ): Promise<void> {
+        try {
+            const latestBundle = this.findMatchingLatestBundle(installedBundle, latestBundles);
+            
+            if (!latestBundle) {
+                this.logger.warn(`Bundle '${installedBundle.bundleId}' no longer available`);
+                results.skipped.push(installedBundle.bundleId);
+                return;
+            }
+            
+            if (this.shouldUpdateBundle(installedBundle, latestBundle)) {
+                await this.executeUpdate(installedBundle, latestBundle);
+                results.succeeded.push(installedBundle.bundleId);
+            } else {
+                this.logger.debug(`Bundle '${installedBundle.bundleId}' is already at latest version ${latestBundle.version}`);
+            }
+        } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            results.failed.push({ bundleId: installedBundle.bundleId, error: errorMsg });
+            this.logger.error(`Failed to auto-update bundle '${installedBundle.bundleId}'`, error as Error);
+        }
+    }
+
+    /**
+     * Check if bundle should be updated
+     */
+    private shouldUpdateBundle(installed: InstalledBundle, latest: Bundle): boolean {
+        return latest.version !== installed.version;
+    }
+
+    /**
+     * Execute the update operation
+     */
+    private async executeUpdate(installed: InstalledBundle, latest: Bundle): Promise<void> {
+        this.logger.info(`Auto-updating bundle '${installed.bundleId}' from v${installed.version} to v${latest.version}`);
+        await this.updateBundle(installed.bundleId, latest.version);
+        this.logger.info(`Successfully auto-updated bundle '${installed.bundleId}'`);
+    }
+
+    /**
+     * Report update results summary
+     */
+    private reportUpdateResults(results: UpdateResults): void {
         if (results.failed.length > 0) {
-            this.logger.warn(`Auto-update completed: ${results.succeeded.length} succeeded, ${results.failed.length} failed, ${results.skipped.length} skipped`);
+            this.logger.warn(
+                `Auto-update completed: ${results.succeeded.length} succeeded, ` +
+                `${results.failed.length} failed, ${results.skipped.length} skipped`
+            );
         } else if (results.succeeded.length > 0) {
             this.logger.info(`Auto-update completed successfully: ${results.succeeded.length} bundles updated`);
         }
@@ -361,13 +438,12 @@ export class RegistryManager {
             return false;
         }
         
-        if (installed.sourceType === 'github') {
-            const installedIdentity = VersionManager.extractBundleIdentity(installed.bundleId, 'github');
-            const latestIdentity = VersionManager.extractBundleIdentity(latest.id, 'github');
-            return installedIdentity === latestIdentity;
-        }
-        
-        return latest.id === installed.bundleId;
+        const sourceType: SourceType = (installed.sourceType as SourceType) ?? 'local';
+        return BundleIdentityMatcher.matches(
+            installed.bundleId,
+            latest.id,
+            sourceType
+        );
     }
 
     /**
@@ -376,13 +452,15 @@ export class RegistryManager {
     private findMatchingLatestBundle(installedBundle: InstalledBundle, latestBundles: Bundle[]): Bundle | undefined {
         return latestBundles.find(lb => {
             if (installedBundle.sourceType === 'github') {
-                const installedIdentity = VersionManager.extractBundleIdentity(installedBundle.bundleId, 'github');
-                const latestIdentity = VersionManager.extractBundleIdentity(lb.id, 'github');
-                return installedIdentity === latestIdentity;
+                return BundleIdentityMatcher.matches(
+                    installedBundle.bundleId,
+                    lb.id,
+                    'github'
+                );
             } else {
                 // For non-GitHub bundles, match by base ID (without version)
-                const installedBaseId = installedBundle.bundleId.replace(/-v?\d{1,3}\.\d{1,3}\.\d{1,3}(?:-[\w.]+)?$/, '');
-                const latestBaseId = lb.id.replace(/-v?\d{1,3}\.\d{1,3}\.\d{1,3}(?:-[\w.]+)?$/, '');
+                const installedBaseId = BundleIdentityMatcher.extractBaseId(installedBundle.bundleId);
+                const latestBaseId = BundleIdentityMatcher.extractBaseId(lb.id);
                 return installedBaseId === latestBaseId;
             }
         });
@@ -436,13 +514,8 @@ export class RegistryManager {
         // Apply version consolidation for GitHub sources
         let results = allBundles;
         try {
-            // Set up source type resolver for accurate consolidation
-            this.versionConsolidator.setSourceTypeResolver((sourceId: string) => {
-                const source = sources.find(s => s.id === sourceId);
-                return source?.type || 'local';
-            });
-            
             // Consolidate bundles (only GitHub bundles will be consolidated)
+            // Source type resolver is already configured in constructor
             results = this.versionConsolidator.consolidateBundles(allBundles);
             this.logger.debug(`Consolidated ${allBundles.length} bundles into ${results.length} entries`);
         } catch (error) {
@@ -534,65 +607,148 @@ export class RegistryManager {
     async installBundle(bundleId: string, options: InstallOptions): Promise<void> {
         this.logger.info(`Installing bundle: ${bundleId}`, options);
         
-        // Get bundle details
-        // For versioned bundles, we need to extract the identity first to find the consolidated bundle
-        let searchId = bundleId;
-        
-        // If a specific version is requested, try to find the bundle by identity
-        if (options.version) {
-            // Try to determine source type from cached bundles
-            const sources = await this.storage.getSources();
-            for (const source of sources) {
-                const cachedBundles = await this.storage.getCachedSourceBundles(source.id);
-                const matchingBundle = cachedBundles.find(b => b.id === bundleId);
-                if (matchingBundle) {
-                    // Found the bundle, extract identity for searching
-                    searchId = VersionManager.extractBundleIdentity(bundleId, source.type);
-                    break;
-                }
-            }
-        }
-        
-        let bundle = await this.getBundleDetails(searchId);
+        // Resolve the bundle to install (handles version-specific requests)
+        const bundle = await this.resolveInstallationBundle(bundleId, options);
         
         // Check if already installed
         const existing = await this.storage.getInstalledBundle(bundleId, options.scope);
-        
         if (existing && !options.force) {
-            throw new Error(`Bundle '${bundleId}' is already installed. Use force=true to reinstall.`);
+            // If a different version is being installed, allow it (treat as version change)
+            if (existing.version !== bundle.version) {
+                this.logger.info(`Version change detected: ${existing.version} → ${bundle.version}`);
+                options.force = true;
+            } else {
+                throw new Error(`Bundle '${bundleId}' is already installed. Use force=true to reinstall.`);
+            }
         }
 
         // Get source
+        const source = await this.getSourceForBundle(bundle);
+        
+        // Download and install
+        const installation = await this.downloadAndInstall(bundle, source, options);
+        
+        // Record installation
+        await this.storage.recordInstallation(installation);
+        
+        this._onBundleInstalled.fire(installation);
+        this.logger.info(`Bundle '${bundleId}' installed successfully`);
+    }
+
+    /**
+     * Resolve the bundle to install, handling version-specific requests
+     */
+    private async resolveInstallationBundle(
+        bundleId: string,
+        options: InstallOptions
+    ): Promise<Bundle> {
+        // If a specific version is requested and bundleId already contains a version,
+        // try to get that exact bundle first
+        if (options.version && BundleIdentityMatcher.hasVersionSuffix(bundleId)) {
+            try {
+                // Try to get the exact versioned bundle
+                const bundle = await this.getBundleDetails(bundleId);
+                // Verify the version matches what was requested
+                if (bundle.version === options.version) {
+                    return bundle;
+                }
+            } catch (error) {
+                // If exact bundle not found, fall through to identity-based search
+                this.logger.debug(`Exact bundle ${bundleId} not found, trying identity-based search`);
+            }
+        }
+        
+        // Determine search ID (may need to extract identity for version lookups)
+        const searchId = await this.determineSearchId(bundleId, options);
+        let bundle = await this.getBundleDetails(searchId);
+        
+        // Apply version override if requested
+        if (options.version) {
+            bundle = await this.applyVersionOverride(bundle, bundleId, options.version);
+        }
+        
+        return bundle;
+    }
+
+    /**
+     * Determine the search ID for bundle lookup
+     */
+    private async determineSearchId(bundleId: string, options: InstallOptions): Promise<string> {
+        if (!options.version) {
+            return bundleId;
+        }
+        
+        // For version-specific requests, try to extract identity
+        const sources = await this.storage.getSources();
+        for (const source of sources) {
+            const cachedBundles = await this.storage.getCachedSourceBundles(source.id);
+            const matchingBundle = cachedBundles.find(b => b.id === bundleId);
+            if (matchingBundle) {
+                return VersionManager.extractBundleIdentity(bundleId, source.type);
+            }
+        }
+        
+        return bundleId;
+    }
+
+    /**
+     * Apply version override to bundle
+     */
+    private async applyVersionOverride(
+        bundle: Bundle,
+        originalBundleId: string,
+        requestedVersion: string
+    ): Promise<Bundle> {
+        const sources = await this.storage.getSources();
+        const source = sources.find(s => s.id === bundle.sourceId);
+        
+        if (!source) {
+            this.logger.warn('Source not found for version override, using latest');
+            return bundle;
+        }
+        
+        const identity = VersionManager.extractBundleIdentity(originalBundleId, source.type);
+        const specificVersion = this.versionConsolidator.getBundleVersion(identity, requestedVersion);
+        
+        if (specificVersion) {
+            this.logger.info(`Installing specific version ${requestedVersion} instead of latest ${bundle.version}`);
+            const versionedId = `${identity}-${specificVersion.version}`;
+            return {
+                ...bundle,
+                id: versionedId,
+                version: specificVersion.version,
+                downloadUrl: specificVersion.downloadUrl,
+                manifestUrl: specificVersion.manifestUrl,
+                lastUpdated: specificVersion.publishedAt
+            };
+        }
+        
+        this.logger.warn(`Requested version ${requestedVersion} not found, using latest ${bundle.version}`);
+        return bundle;
+    }
+
+    /**
+     * Get source for a bundle
+     */
+    private async getSourceForBundle(bundle: Bundle): Promise<RegistrySource> {
         const sources = await this.storage.getSources();
         const source = sources.find(s => s.id === bundle.sourceId);
         
         if (!source) {
             throw new Error(`Source '${bundle.sourceId}' not found`);
         }
+        
+        return source;
+    }
 
-        // Handle version-specific installation
-        // If a specific version is requested, retrieve it from the version consolidator
-        if (options.version) {
-            const identity = VersionManager.extractBundleIdentity(bundleId, source.type);
-            const specificVersion = this.versionConsolidator.getBundleVersion(identity, options.version);
-            
-            if (specificVersion) {
-                this.logger.info(`Installing specific version ${options.version} instead of latest ${bundle.version}`);
-                // Update bundle object with version-specific URLs and ID before installation
-                const versionedId = `${identity}-${specificVersion.version}`;
-                bundle = {
-                    ...bundle,
-                    id: versionedId,
-                    version: specificVersion.version,
-                    downloadUrl: specificVersion.downloadUrl,
-                    manifestUrl: specificVersion.manifestUrl,
-                    lastUpdated: specificVersion.publishedAt
-                };
-            } else {
-                this.logger.warn(`Requested version ${options.version} not found in available versions, falling back to latest version ${bundle.version}`);
-            }
-        }
-
+    /**
+     * Download and install a bundle
+     */
+    private async downloadAndInstall(
+        bundle: Bundle,
+        source: RegistrySource,
+        options: InstallOptions
+    ): Promise<InstalledBundle> {
         const adapter = this.getAdapter(source);
         
         // Unified download path: all adapters use downloadBundle()
@@ -612,11 +768,7 @@ export class RegistryManager {
         installation.sourceId = bundle.sourceId;
         installation.sourceType = source.type;
         
-        // Record installation
-        await this.storage.recordInstallation(installation);
-        
-        this._onBundleInstalled.fire(installation);
-        this.logger.info(`Bundle '${bundleId}' installed successfully`);
+        return installation;
     }
 
     /**
@@ -658,15 +810,14 @@ export class RegistryManager {
         }
 
         // Get new bundle details
-        // If version is specified, search for bundles with that version
-        // Otherwise, get the latest version
+        // Extract identity for GitHub bundles to find the latest version
+        const identity = current.sourceType === 'github' 
+            ? VersionManager.extractBundleIdentity(bundleId, 'github')
+            : bundleId.replace(/-v?\d+\.\d+\.\d+(-[\w.]+)?$/, '');
+        
         let bundle: Bundle;
         if (version) {
             // Search for the specific version
-            // For versioned bundles, construct the versioned ID
-            const identity = current.sourceType === 'github' 
-                ? VersionManager.extractBundleIdentity(bundleId, 'github')
-                : bundleId.replace(/-v?\d+\.\d+\.\d+(-[\w.]+)?$/, '');
             const versionedId = `${identity}-${version}`;
             
             try {
@@ -681,13 +832,21 @@ export class RegistryManager {
                 }
             }
         } else {
-            bundle = await this.getBundleDetails(bundleId);
+            // Try to get bundle by identity first (for GitHub bundles with versions)
+            try {
+                bundle = await this.getBundleDetails(identity);
+                this.logger.debug(`Found bundle by identity: ${identity} -> ${bundle.id} v${bundle.version}`);
+            } catch (error) {
+                // Fall back to exact bundleId if identity lookup fails
+                this.logger.debug(`Identity lookup failed for '${identity}', trying exact bundleId '${bundleId}'`);
+                bundle = await this.getBundleDetails(bundleId);
+            }
         }
         
         // Check if update is needed
         if (current.version === bundle.version) {
-            this.logger.info(`Bundle '${bundleId}' is already at version ${bundle.version}`);
-            return;
+            this.logger.info(`Bundle '${bundleId}' is already at version ${bundle.version}, reinstalling...`);
+            // Continue with reinstall instead of returning early
         }
 
         // Get source and adapter
@@ -750,6 +909,54 @@ export class RegistryManager {
 
         this.logger.info(`Found ${updates.length} bundle updates`);
         return updates;
+    }
+
+    /**
+     * Get all available versions for a bundle
+     * 
+     * Queries the version consolidator to retrieve all versions for a given bundle.
+     * Falls back to returning only the current version if consolidator is unavailable.
+     * 
+     * @param bundleId - The bundle ID to get versions for
+     * @returns Array of version strings in descending order (latest first)
+     * 
+     * @example
+     * ```typescript
+     * const versions = await registryManager.getAvailableVersions('owner-repo-v2.0.0');
+     * // Returns: ['2.0.0', '1.5.0', '1.0.0']
+     * ```
+     */
+    async getAvailableVersions(bundleId: string): Promise<string[]> {
+        try {
+            // Get bundle to determine source type
+            const bundle = await this.getBundleDetails(bundleId);
+            const sources = await this.storage.getSources();
+            const source = sources.find(s => s.id === bundle.sourceId);
+            const sourceType = source?.type ?? 'local';
+            
+            // Extract identity for version lookup
+            const identity = VersionManager.extractBundleIdentity(bundleId, sourceType);
+            
+            // Get all versions from consolidator
+            const bundleVersions = this.versionConsolidator.getAllVersions(identity);
+            
+            if (bundleVersions.length === 0) {
+                // If no versions in cache, return current version
+                return [bundle.version];
+            }
+
+            // Extract version strings (already sorted by consolidator)
+            return bundleVersions.map(v => v.version);
+        } catch (error) {
+            this.logger.error('Failed to get available versions', error as Error);
+            // Fallback: try to get bundle and return its version
+            try {
+                const bundle = await this.getBundleDetails(bundleId);
+                return [bundle.version];
+            } catch {
+                return [];
+            }
+        }
     }
 
     // ===== Profile Management =====
@@ -1207,6 +1414,15 @@ export class RegistryManager {
             default:
                 return bundles;
         }
+    }
+
+    /**
+     * Get source type for a source ID
+     * Used by version consolidator for identity matching
+     */
+    private getSourceType(sourceId: string): SourceType {
+        const source = this.sourcesCache.find(s => s.id === sourceId);
+        return source?.type ?? 'local';
     }
 
     /**

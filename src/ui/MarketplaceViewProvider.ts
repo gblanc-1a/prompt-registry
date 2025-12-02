@@ -11,6 +11,7 @@ import { RegistryManager } from '../services/RegistryManager';
 import { Bundle, InstalledBundle } from '../types/registry';
 import { extractAllTags, extractBundleSources } from '../utils/filterUtils';
 import { VersionManager } from '../utils/versionManager';
+import { BundleIdentityMatcher } from '../utils/bundleIdentityMatcher';
 
 /**
  * Message types sent from webview to extension
@@ -47,30 +48,15 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
 
         // Listen to bundle installation events to refresh marketplace
         this.registryManager.onBundleInstalled((installation) => {
-            try {
-                this.logger.debug(`Bundle installed event received: ${installation.bundleId} v${installation.version}, refreshing marketplace`);
-                this.loadBundles();
-            } catch (error) {
-                this.logger.error('Error handling bundle installed event', error as Error);
-            }
+            this.handleBundleEvent('installed', installation.bundleId, () => this.loadBundles());
         });
 
         this.registryManager.onBundleUninstalled((bundleId) => {
-            try {
-                this.logger.debug(`Bundle uninstalled event received: ${bundleId}, refreshing marketplace`);
-                this.loadBundles();
-            } catch (error) {
-                this.logger.error('Error handling bundle uninstalled event', error as Error);
-            }
+            this.handleBundleEvent('uninstalled', bundleId, () => this.loadBundles());
         });
 
         this.registryManager.onBundleUpdated((installation) => {
-            try {
-                this.logger.debug(`Bundle updated event received: ${installation.bundleId} v${installation.version}, refreshing marketplace`);
-                this.loadBundles();
-            } catch (error) {
-                this.logger.error('Error handling bundle updated event', error as Error);
-            }
+            this.handleBundleEvent('updated', installation.bundleId, () => this.loadBundles());
         });
     }
 
@@ -95,6 +81,28 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
 
         // Load and send bundles data
         this.loadBundles();
+    }
+
+    /**
+     * Handle bundle events with error handling and user notification
+     */
+    private handleBundleEvent(
+        eventType: 'installed' | 'uninstalled' | 'updated',
+        bundleId: string,
+        action: () => void | Promise<void>
+    ): void {
+        try {
+            this.logger.debug(`Bundle ${eventType} event received: ${bundleId}, refreshing marketplace`);
+            action();
+        } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            this.logger.error(`Error handling bundle ${eventType} event`, error as Error);
+            
+            // Show user-facing error notification
+            vscode.window.showErrorMessage(
+                `Failed to refresh marketplace after bundle ${eventType}: ${errorMsg}`
+            );
+        }
     }
 
     /**
@@ -144,15 +152,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         bundleId: string,
         sourceType: string
     ): boolean {
-        if (sourceType === 'github') {
-            // For GitHub, extract identity without version suffix
-            const installedIdentity = VersionManager.extractBundleIdentity(installedId, sourceType as any);
-            const bundleIdentity = VersionManager.extractBundleIdentity(bundleId, sourceType as any);
-            return installedIdentity === bundleIdentity;
-        }
-
-        // For non-GitHub sources, exact match required
-        return installedId === bundleId;
+        return BundleIdentityMatcher.matches(installedId, bundleId, sourceType as any);
     }
 
     /**
@@ -466,40 +466,14 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                 return;
             }
 
-            const scope = installed.scope || 'user';
-
-            // Show progress notification
+            // Use the unified update flow from RegistryManager
             await vscode.window.withProgress({
                 location: vscode.ProgressLocation.Notification,
                 title: `Updating bundle...`,
                 cancellable: false
             }, async (progress) => {
-                // Step 1: Uninstall current version
-                progress.report({ message: 'Uninstalling current version...' });
-                this.logger.debug(`Uninstalling current version: ${installed.bundleId}`);
-                
-                try {
-                    await this.registryManager.uninstallBundle(installed.bundleId, scope);
-                } catch (uninstallError) {
-                    const errorMsg = uninstallError instanceof Error ? uninstallError.message : String(uninstallError);
-                    this.logger.error('Failed to uninstall current version during update', uninstallError as Error);
-                    throw new Error(`Failed to uninstall current version: ${errorMsg}`);
-                }
-
-                // Step 2: Install latest version
-                progress.report({ message: 'Installing latest version...' });
-                this.logger.debug(`Installing latest version: ${bundleId}`);
-                
-                try {
-                    await this.registryManager.installBundle(bundleId, {
-                        scope,
-                        version: 'latest'
-                    });
-                } catch (installError) {
-                    const errorMsg = installError instanceof Error ? installError.message : String(installError);
-                    this.logger.error('Failed to install latest version during update', installError as Error);
-                    throw new Error(`Failed to install latest version: ${errorMsg}`);
-                }
+                progress.report({ message: 'Updating bundle...' });
+                await this.registryManager.updateBundle(installed.bundleId);
             });
 
             vscode.window.showInformationMessage(`✅ Bundle updated successfully!`);
@@ -589,32 +563,8 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
      */
     private async getAvailableVersions(bundle: Bundle): Promise<string[]> {
         try {
-            // Get the version consolidator from RegistryManager
-            const versionConsolidator = (this.registryManager as any).versionConsolidator;
-            
-            if (!versionConsolidator) {
-                this.logger.warn('Version consolidator not available');
-                return [bundle.version];
-            }
-
-            // Get bundle identity
-            const sources = await this.registryManager.listSources();
-            const source = sources.find(s => s.id === bundle.sourceId);
-            const sourceType = source?.type || 'local';
-            
-            const identity = VersionManager.extractBundleIdentity(bundle.id, sourceType as any);
-            
-            // Get all versions from consolidator
-            const bundleVersions = versionConsolidator.getAllVersions(identity);
-            
-            if (bundleVersions.length === 0) {
-                // If no versions in cache, return current version
-                return [bundle.version];
-            }
-
-            // Extract version strings (already sorted by consolidator)
-            return bundleVersions.map((v: any) => v.version);
-
+            // Use public API from RegistryManager
+            return await this.registryManager.getAvailableVersions(bundle.id);
         } catch (error) {
             this.logger.error('Failed to get available versions', error as Error);
             return [bundle.version];
@@ -913,11 +863,11 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         <div class="info-grid">
             <div class="info-row">
                 <div class="info-label">Bundle ID:</div>
-                <div class="info-value"><code>${bundle.id}</code></div>
+                <div class="info-value"><code>${isInstalled ? installed!.bundleId : bundle.id}</code></div>
             </div>
             <div class="info-row">
                 <div class="info-label">Version:</div>
-                <div class="info-value">${bundle.version}</div>
+                <div class="info-value">${isInstalled ? installed!.version : bundle.version}</div>
             </div>
             <div class="info-row">
                 <div class="info-label">Author:</div>
@@ -2111,7 +2061,24 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
 
                     <div class="bundle-actions" onclick="event.stopPropagation()">
                         \${bundle.buttonState === 'update' 
-                            ? \`<button class="btn btn-primary" onclick="updateBundle('\${bundle.id}')">Update\${bundle.installedVersion ? ' (v' + bundle.installedVersion + ' → v' + bundle.version + ')' : ''}</button>\`
+                            ? bundle.availableVersions && bundle.availableVersions.length > 1
+                                ? \`<div class="version-selector-group">
+                                        <button class="btn btn-primary" onclick="updateBundle('\${bundle.id}')">Update\${bundle.installedVersion ? ' (v' + bundle.installedVersion + ' → v' + bundle.version + ')' : ''}</button>
+                                        <button class="version-selector-arrow" onclick="toggleVersionDropdown('\${bundle.id}-update', event)">▾</button>
+                                        <div class="version-dropdown" id="version-dropdown-\${bundle.id}-update">
+                                            <div class="version-item uninstall" onclick="uninstallBundle('\${bundle.id}', event)">
+                                                <span>Uninstall</span>
+                                            </div>
+                                            <div class="version-dropdown-header">Switch Version</div>
+                                            \${(bundle.availableVersions || []).map((versionObj, index) => \`
+                                                <div class="version-item \${versionObj.version === bundle.installedVersion ? 'current' : ''}" onclick="installBundleVersion('\${bundle.id}', '\${versionObj.version}', event)">
+                                                    <span>v\${versionObj.version}</span>
+                                                    \${versionObj.version === bundle.installedVersion ? '<span class="version-badge">Current</span>' : index === 0 ? '<span class="version-badge latest">Latest</span>' : ''}
+                                                </div>
+                                            \`).join('')}
+                                        </div>
+                                    </div>\`
+                                : \`<button class="btn btn-primary" onclick="updateBundle('\${bundle.id}')">Update\${bundle.installedVersion ? ' (v' + bundle.installedVersion + ' → v' + bundle.version + ')' : ''}</button>\`
                             : bundle.buttonState === 'uninstall'
                             ? bundle.availableVersions && bundle.availableVersions.length > 1
                                 ? \`<div class="version-selector-group">

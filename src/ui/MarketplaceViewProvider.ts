@@ -356,7 +356,29 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         try {
             this.logger.info(`Uninstalling bundle from marketplace: ${bundleId}`);
 
-            await this.registryManager.uninstallBundle(bundleId, 'user');
+            // Find the actual installed bundle using identity matching
+            const installedBundles = await this.registryManager.listInstalledBundles();
+            const sources = await this.registryManager.listSources();
+            
+            // Get the bundle to determine its source type
+            const bundles = await this.registryManager.searchBundles({});
+            const bundle = bundles.find(b => b.id === bundleId);
+            
+            if (!bundle) {
+                throw new Error('Bundle not found');
+            }
+            
+            const source = sources.find(s => s.id === bundle.sourceId);
+            const installed = installedBundles.find(ib => 
+                this.matchesBundleIdentity(ib.bundleId, bundle.id, source?.type || 'local')
+            );
+
+            if (!installed) {
+                throw new Error(`Bundle '${bundleId}' is not installed`);
+            }
+
+            // Use the stored bundle ID from the installation record
+            await this.registryManager.uninstallBundle(installed.bundleId, installed.scope || 'user');
 
             vscode.window.showInformationMessage(`✅ Bundle uninstalled successfully!`);
 
@@ -470,9 +492,13 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                 return;
             }
 
-            // Check if installed to get manifest
+            // Check if installed to get manifest - use identity matching for GitHub bundles
             const installedBundles = await this.registryManager.listInstalledBundles();
-            const installed = installedBundles.find(ib => ib.bundleId === bundleId);
+            const sources = await this.registryManager.listSources();
+            const source = sources.find(s => s.id === bundle.sourceId);
+            const installed = installedBundles.find(ib => 
+                this.matchesBundleIdentity(ib.bundleId, bundle.id, source?.type || 'local')
+            );
             const breakdown = this.getContentBreakdown(bundle, installed?.manifest);
 
             // Create webview panel
@@ -1370,6 +1396,105 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             opacity: 0.9;
         }
 
+        /* Version selector styles */
+        .version-selector {
+            position: relative;
+            display: inline-block;
+        }
+
+        .version-selector-btn {
+            padding: 8px 12px;
+            background: var(--vscode-button-background);
+            color: var(--vscode-button-foreground);
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: background 0.2s;
+        }
+
+        .version-selector-btn:hover {
+            background: var(--vscode-button-hoverBackground);
+        }
+
+        .version-selector-icon {
+            font-size: 11px;
+        }
+
+        .version-dropdown {
+            position: absolute;
+            bottom: 100%;
+            left: 0;
+            margin-bottom: 4px;
+            background: var(--vscode-dropdown-background);
+            border: 1px solid var(--vscode-dropdown-border);
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+            min-width: 200px;
+            max-height: 300px;
+            overflow-y: auto;
+            display: none;
+        }
+
+        .version-dropdown.show {
+            display: block;
+        }
+
+        .version-dropdown-header {
+            padding: 8px 12px;
+            border-bottom: 1px solid var(--vscode-dropdown-border);
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--vscode-descriptionForeground);
+        }
+
+        .version-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            transition: background 0.15s;
+        }
+
+        .version-item:hover {
+            background: var(--vscode-list-hoverBackground);
+        }
+
+        .version-item.current {
+            background: var(--vscode-list-activeSelectionBackground);
+            color: var(--vscode-list-activeSelectionForeground);
+        }
+
+        .version-item.uninstall {
+            color: var(--vscode-errorForeground);
+            font-weight: 600;
+            border-bottom: 1px solid var(--vscode-dropdown-border);
+        }
+
+        .version-item.uninstall:hover {
+            background: var(--vscode-inputValidation-errorBackground);
+        }
+
+        .version-badge {
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 8px;
+            background: var(--vscode-badge-background);
+            color: var(--vscode-badge-foreground);
+        }
+
+        .version-badge.latest {
+            background: var(--vscode-gitDecoration-addedResourceForeground);
+            color: white;
+        }
+
         .empty-state {
             text-align: center;
             padding: 60px 20px;
@@ -1830,7 +1955,9 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                     </div>
 
                     <div class="bundle-actions" onclick="event.stopPropagation()">
-                        \${bundle.installed 
+                        \${bundle.buttonState === 'update' 
+                            ? \`<button class="btn btn-primary" onclick="updateBundle('\${bundle.id}')">Update\${bundle.installedVersion ? ' (v' + bundle.installedVersion + ' → v' + bundle.version + ')' : ''}</button>\`
+                            : bundle.buttonState === 'uninstall'
                             ? \`<button class="btn btn-danger" onclick="uninstallBundle('\${bundle.id}')">Uninstall</button>\`
                             : \`<button class="btn btn-primary" onclick="installBundle('\${bundle.id}')">Install</button>\`
                         }
@@ -1853,6 +1980,10 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
 
         function installBundle(bundleId) {
             vscode.postMessage({ type: 'install', bundleId });
+        }
+
+        function updateBundle(bundleId) {
+            vscode.postMessage({ type: 'update', bundleId });
         }
 
         function uninstallBundle(bundleId) {

@@ -1,80 +1,82 @@
+---
+name: TypeScript Project Guidelines
+description: Coding standards and best practices for TypeScript projects
+applyTo: "**/*.ts"
+---
 
-Best practices and coding guidelines for this project.
+# TypeScript Project Coding Standards
 
-## Purpose
+## General Principles
 
-These instructions help maintain code quality and consistency across the project.
+Follow these principles when writing TypeScript code:
 
-## Coding Standards
+- **Clarity**: Write self-documenting code with clear variable and function names
+- **Type Safety**: Leverage TypeScript's type system to catch errors early
+- **Consistency**: Follow established patterns throughout the codebase
+- **Simplicity**: Keep functions focused and single-purpose
+- **Documentation**: Document public APIs with JSDoc comments
 
-### General Principles
+## Code Style
 
-- **Clarity**: Write code that is easy to read and understand
-- **Consistency**: Follow established patterns and conventions
-- **Simplicity**: Keep solutions simple and maintainable
-- **Documentation**: Comment complex logic and public APIs
+### TypeScript/JavaScript Best Practices
 
-### TypeScript/JavaScript
+- Use `const` by default, `let` if reassignment is needed (never `var`)
+- Use arrow functions for callbacks: `(param) => { }`
+- Use template literals for string interpolation
+- Prefer interfaces over type aliases for object shapes
+- Use enums sparingly; consider string unions instead
 
-\`\`\`typescript
-// Good: Clear function with JSDoc
+### Function Guidelines
+
+```typescript
 /**
- * Calculate the total price including tax
- * @param price - Base price
- * @param taxRate - Tax rate as decimal (e.g., 0.1 for 10%)
- * @returns Total price with tax
+ * Calculate total price including tax
+ * @param price - Base price in dollars
+ * @param taxRate - Tax rate as decimal (0.1 = 10%)
+ * @returns Total price with tax applied
  */
 function calculateTotal(price: number, taxRate: number): number {
-    return price * (1 + taxRate);
+  return price * (1 + taxRate);
 }
-
-// Bad: Unclear and undocumented
-function calc(p: number, t: number) {
-    return p * (1 + t);
-}
-\`\`\`
+```
 
 ### Error Handling
 
-- Always handle errors gracefully
-- Provide meaningful error messages
-- Log errors for debugging
-- Don't swallow exceptions silently
+- Always handle errors gracefully with try-catch where appropriate
+- Throw meaningful error messages with context
+- Use custom error classes for domain-specific errors
+- Log errors with sufficient context for debugging
 
 ### Testing
 
 - Write unit tests for all business logic
-- Test edge cases and error conditions
-- Use descriptive test names
+- Test both happy path and error cases
 - Maintain test coverage above 80%
+- Use descriptive test names that explain the scenario
 
 ## File Organization
 
-- Group related code together
-- Use clear, descriptive file names
-- Keep files focused and single-purpose
-- Avoid files longer than 300 lines
+- One logical concept per file
+- Keep files under 300 lines when possible
+- Group related functionality in directories
+- Use clear, descriptive file names (kebab-case for files)
 
-## Git Commit Messages
+## Git Conventions
 
-Follow conventional commits format:
-\`\`\`
+Use conventional commit messages:
+```
 feat: add user authentication
 fix: resolve memory leak in cache
 docs: update API documentation
-test: add tests for payment processing
-\`\`\`
+test: add edge case tests
+refactor: simplify validation logic
+```
 
-## Code Review Guidelines
+## Code Review Focus
 
-- Review for logic correctness first
-- Check for potential bugs and edge cases
-- Ensure tests are comprehensive
-- Verify documentation is updated
-- Be constructive and respectful
-
-## Resources
-
-- [Clean Code](https://www.amazon.com/Clean-Code-Handbook-Software-Craftsmanship/dp/0132350882)
-- [Effective TypeScript](https://effectivetypescript.com/)
-- [Test Driven Development](https://martinfowler.com/bliki/TestDrivenDevelopment.html)
+During review, prioritize:
+1. Logic correctness and edge cases
+2. Type safety and null checks
+3. Test coverage and clarity
+4. Documentation accuracy
+5. Performance implications

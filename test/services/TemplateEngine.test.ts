@@ -43,7 +43,7 @@ suite('TemplateEngine', () => {
             };
 
             const content = await templateEngine.renderTemplate('example-prompt', context);
-            assert.ok(content.includes('# Example Prompt'), 'Should contain header');
+            assert.ok(content.includes('---') && content.includes('name:'), 'Should contain frontmatter');
         });
 
         test('should substitute variables in template', async () => {
@@ -96,7 +96,7 @@ suite('TemplateEngine', () => {
 
             assert.ok(fs.existsSync(targetPath), 'File should be created');
             const content = fs.readFileSync(targetPath, 'utf8');
-            assert.ok(content.includes('# Example Prompt'), 'Should have correct content');
+            assert.ok(content.includes('---') && content.includes('name:'), 'Should have correct content');
 
             // Cleanup
             fs.rmSync(tempDir, { recursive: true });
@@ -150,7 +150,7 @@ suite('TemplateEngine', () => {
 
             assert.ok(fs.existsSync(path.join(tempDir, 'prompts')), 'Should create prompts directory');
             assert.ok(fs.existsSync(path.join(tempDir, 'instructions')), 'Should create instructions directory');
-            assert.ok(fs.existsSync(path.join(tempDir, 'chatmodes')), 'Should create chatmodes directory');
+            assert.ok(fs.existsSync(path.join(tempDir, 'agents')), 'Should create agents directory');
             assert.ok(fs.existsSync(path.join(tempDir, 'collections')), 'Should create collections directory');
             assert.ok(fs.existsSync(path.join(tempDir, '.github', 'workflows')), 'Should create workflows directory');
             assert.ok(fs.existsSync(path.join(tempDir, 'scripts')), 'Should create scripts directory');
@@ -170,7 +170,7 @@ suite('TemplateEngine', () => {
             
             assert.ok(fs.existsSync(path.join(tempDir, 'prompts/example.prompt.md')), 'Should create example prompt');
             assert.ok(fs.existsSync(path.join(tempDir, 'instructions/example.instructions.md')), 'Should create example instruction');
-            assert.ok(fs.existsSync(path.join(tempDir, 'chatmodes/example.chatmode.md')), 'Should create example chatmode');
+            assert.ok(fs.existsSync(path.join(tempDir, 'agents/example.agent.md')), 'Should create example agent');
             assert.ok(fs.existsSync(path.join(tempDir, 'collections/example.collection.yml')), 'Should create example collection');
             assert.ok(fs.existsSync(path.join(tempDir, 'README.md')), 'Should create README');
             assert.ok(fs.existsSync(path.join(tempDir, 'package.json')), 'Should create package.json');

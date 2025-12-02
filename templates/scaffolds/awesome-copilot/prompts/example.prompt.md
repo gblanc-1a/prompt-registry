@@ -1,54 +1,36 @@
-# Example Prompt
+---
+name: Create README Documentation
+description: Generate a comprehensive README file for a project
+---
 
-Create a comprehensive README file for this project.
+# Create a comprehensive README file for this project.
 
 ## Context
 
-You are helping to document a software project. The README should be:
-- Clear and concise
-- Include getting started instructions
-- Explain the purpose and benefits
-- Provide examples and usage
+You are helping to document a software project. The README should include:
+- Clear and concise description of what the project does
+- Installation and setup instructions  
+- Usage examples and getting started guide
+- Contribution guidelines
+- License information
 
-## Instructions
+## Guidelines
 
-1. Analyze the project structure
-2. Identify key features
-3. Write clear, engaging documentation
-4. Include code examples where appropriate
-5. Add badges and links
+- Use Markdown formatting for clarity
+- Include code examples where appropriate
+- Add badges for build status, version, and license
+- Structure with clear section headings
+- Keep language simple and accessible
 
 ## Output Format
 
-The README should include:
-- Project title and description
-- Installation instructions
-- Usage examples
-- Contributing guidelines
-- License information
-
-## Example
-
-For a web application, include:
-\`\`\`markdown
-# My Awesome Project
-
-A brief description of what this project does.
-
-## Installation
-
-\`\`\`bash
-npm install my-awesome-project
-\`\`\`
-
-## Usage
-
-\`\`\`javascript
-const app = require('my-awesome-project');
-app.start();
-\`\`\`
-\`\`\`
-
-## Tags
-
-#documentation #readme #project-setup
+Provide a complete README with these sections:
+1. Project title and tagline
+2. Brief description (2-3 sentences)
+3. Features overview (bullet points)
+4. Installation instructions
+5. Quick start guide
+6. Usage examples
+7. Contributing guidelines
+8. License section
+9. Acknowledgments (if applicable)

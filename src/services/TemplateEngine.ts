@@ -108,7 +108,7 @@ export class TemplateEngine {
         const directories = [
             'prompts',
             'instructions',
-            'chatmodes',
+            'agents',
             'collections',
             '.github/workflows',
             'scripts'

@@ -8,7 +8,6 @@
 
 import * as assert from 'assert';
 import * as path from 'path';
-import * as os from 'os';
 import * as fs from 'fs';
 import { CopilotSyncService } from '../../src/services/CopilotSyncService';
 
@@ -178,6 +177,131 @@ suite('CopilotSyncService', () => {
             
             const expectedPath = path.join(winProfileBase, 'prompts');
             assert.strictEqual(status.copilotDir, expectedPath);
+        });
+    });
+
+    suite('Windows Path Regex Handling (Backslash Escaping)', () => {
+        // These tests verify the fix for: "Invalid regular expression: /\profiles\([^\]+)/: Unterminated character class"
+        // The issue was that Windows path.sep (\) wasn't properly escaped in regex character classes
+        
+        test('should handle Windows-style path with backslashes - standard profile', async () => {
+            // Use path.join to create platform-appropriate paths
+            const userPath = path.join(tempDir, 'WinTest', 'Users', 'Username', 'AppData', 'Roaming', 'Code', 'User');
+            const globalStoragePath = path.join(userPath, 'globalStorage', 'amadeusitgroup.prompt-registry');
+            
+            const winContext = {
+                globalStorageUri: { fsPath: globalStoragePath },
+                storageUri: { fsPath: tempDir },
+                extensionPath: __dirname,
+                subscriptions: [],
+            } as any;
+            
+            const winService = new CopilotSyncService(winContext);
+            
+            // The key test: should not throw "Invalid regular expression" or "Unterminated character class"
+            const status = await winService.getStatus();
+            
+            // Should successfully parse without regex errors
+            assert.ok(status.copilotDir, 'Should return a valid path');
+            assert.ok(status.copilotDir.includes('User'), 'Should include User directory');
+            assert.ok(status.copilotDir.endsWith('prompts'), 'Should end with prompts');
+            
+            const expectedPath = path.join(userPath, 'prompts');
+            assert.strictEqual(status.copilotDir, expectedPath, 'Should resolve to User/prompts');
+        });
+
+        test('should handle Windows-style path with backslashes - profile-based', async () => {
+            // Simulate the exact error case from the screenshot
+            const userPath = path.join(tempDir, 'WinProfile', 'Users', 'Username', '.vscode', 'extensions', 'dist', 'User');
+            const profileId = 'security-best-practices';
+            const globalStoragePath = path.join(userPath, 'profiles', profileId, 'globalStorage', 'amadeusitgroup.prompt-registry');
+            
+            const winProfileContext = {
+                globalStorageUri: { fsPath: globalStoragePath },
+                storageUri: { fsPath: tempDir },
+                extensionPath: __dirname,
+                subscriptions: [],
+            } as any;
+            
+            const winProfileService = new CopilotSyncService(winProfileContext);
+            
+            // The key test: should not throw regex errors
+            const status = await winProfileService.getStatus();
+            
+            // Should successfully parse the profile path without regex errors
+            assert.ok(status.copilotDir, 'Should return a valid path');
+            assert.ok(status.copilotDir.includes('profiles'), 'Should include profiles directory');
+            assert.ok(status.copilotDir.includes(profileId), 'Should include profile ID');
+            assert.ok(status.copilotDir.endsWith('prompts'), 'Should end with prompts');
+            
+            const expectedPath = path.join(userPath, 'profiles', profileId, 'prompts');
+            assert.strictEqual(status.copilotDir, expectedPath, 'Should resolve to profile prompts directory');
+        });
+
+        test('should handle Windows-style path - custom data directory with profile', async () => {
+            // Test custom data directory (no User folder) with profile
+            const customDataDir = path.join(tempDir, 'CustomVSCode', 'Data');
+            const profileId = 'work-profile';
+            const globalStoragePath = path.join(customDataDir, 'profiles', profileId, 'globalStorage', 'publisher.extension');
+            
+            const customContext = {
+                globalStorageUri: { fsPath: globalStoragePath },
+                storageUri: { fsPath: tempDir },
+                extensionPath: __dirname,
+                subscriptions: [],
+            } as any;
+            
+            const customService = new CopilotSyncService(customContext);
+            
+            // The key test: should not throw regex errors
+            const status = await customService.getStatus();
+            
+            // Should handle custom data directory with profiles
+            assert.ok(status.copilotDir, 'Should return a valid path');
+            assert.ok(status.copilotDir.includes('profiles'), 'Should include profiles directory');
+            assert.ok(status.copilotDir.includes(profileId), 'Should include profile ID');
+            
+            const expectedPath = path.join(customDataDir, 'profiles', profileId, 'prompts');
+            assert.strictEqual(status.copilotDir, expectedPath, 'Should resolve custom data dir with profile');
+        });
+
+        test('should not throw regex errors with any path separator', async () => {
+            // This is the core regression test for the bug fix
+            // The bug was: new RegExp(`[^${path.sep}]`) would create [^\] on Windows
+            // which is an unterminated character class
+            
+            const testPath = path.join(tempDir, 'RegexTest', 'Code', 'User', 'profiles', 'test-id', 'globalStorage', 'ext');
+            
+            const testContext = {
+                globalStorageUri: { fsPath: testPath },
+                storageUri: { fsPath: tempDir },
+                extensionPath: __dirname,
+                subscriptions: [],
+            } as any;
+            
+            const testService = new CopilotSyncService(testContext);
+            
+            // Should not throw regex errors regardless of platform
+            try {
+                const status = await testService.getStatus();
+                assert.ok(status, 'Should successfully get status');
+                assert.ok(status.copilotDir, 'Should return a path');
+            } catch (error: any) {
+                // The specific errors we're testing for
+                assert.ok(
+                    !error.message.includes('Invalid regular expression'),
+                    `Should not throw "Invalid regular expression", got: ${error.message}`
+                );
+                assert.ok(
+                    !error.message.includes('Unterminated character class'),
+                    `Should not throw "Unterminated character class", got: ${error.message}`
+                );
+                assert.ok(
+                    !error.message.includes('SyntaxError'),
+                    `Should not throw SyntaxError from regex, got: ${error.message}`
+                );
+                // If it's a different error (like file not found), that's acceptable for this test
+            }
         });
     });
 

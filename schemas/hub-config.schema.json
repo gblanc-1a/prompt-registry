@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "https://github.com/wherka/prompt-registry/schemas/hub-config.schema.json",
+  "$id": "https://github.com/AmadeusITGroup/prompt-registry/blob/main/schemas/hub-config.schema.json",
   "title": "Hub Configuration Schema",
   "description": "JSON Schema for Prompt Registry hub configuration files",
   "type": "object",

@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { Logger } from '../utils/logger';
+import { replaceVariables } from '../utils/regexUtils';
 
 export interface TemplateContext {
     projectName: string;
@@ -73,11 +74,8 @@ export class TemplateEngine {
         // Enhance context with computed values
         const enhancedContext = this.enhanceContext(context);
         
-        // Substitute variables
-        for (const [key, value] of Object.entries(enhancedContext)) {
-            const placeholder = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
-            content = content.replace(placeholder, value);
-        }
+        // Substitute variables using safe regex utility
+        content = replaceVariables(content, enhancedContext);
 
         return content;
     }

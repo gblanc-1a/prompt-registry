@@ -4,6 +4,7 @@ import * as semver from 'semver';
 import { GitHubRelease, GitHubAsset, VersionInfo, BundleInfo } from '../types/github';
 import { Platform } from '../types/platform';
 import { Logger } from '../utils/logger';
+import { escapeRegex } from '../utils/regexUtils';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
@@ -302,7 +303,10 @@ export class GitHubService {
      */
     public findPlatformBundle(release: GitHubRelease, platform: Platform): BundleInfo | null {
         const platformPrefix = this.getPlatformPrefix(platform);
-        const bundlePattern = new RegExp(`^${platformPrefix}-installation-bundle-(.*)\\.zip$`, 'i');
+        // Note: Current platform prefixes ('vscode', 'windsurf', etc.) don't contain special chars,
+        // but escaping is kept for future-proofing in case platform names change
+        const escapedPrefix = escapeRegex(platformPrefix);
+        const bundlePattern = new RegExp(`^${escapedPrefix}-installation-bundle-(.*)\\.zip$`, 'i');
 
         for (const asset of release.assets) {
             const match = asset.name.match(bundlePattern);

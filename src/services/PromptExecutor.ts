@@ -5,6 +5,7 @@
 
 import * as vscode from 'vscode';
 import { Logger } from '../utils/logger';
+import { replaceVariables } from '../utils/regexUtils';
 
 export interface PromptExecutionOptions {
     promptContent: string;
@@ -142,13 +143,11 @@ export class PromptExecutor {
         variables: Record<string, string>,
         options: PromptExecutionOptions
     ): Promise<void> {
-        // Substitute template variables
-        let processedPrompt = promptTemplate;
-        
-        for (const [key, value] of Object.entries(variables)) {
-            const pattern = new RegExp(`\\{${key}\\}`, 'g');
-            processedPrompt = processedPrompt.replace(pattern, value);
-        }
+        // Substitute template variables using safe regex utility
+        const processedPrompt = replaceVariables(promptTemplate, variables, {
+            prefix: '{',
+            suffix: '}'
+        });
 
         // Execute with processed prompt
         await this.execute({

@@ -19,6 +19,7 @@ import * as path from 'path';
 import { promisify } from 'util';
 import * as yaml from 'js-yaml';
 import { Logger } from '../utils/logger';
+import { escapeRegex } from '../utils/regexUtils';
 import { DeploymentManifest } from '../types/registry';
 
 const readFile = promisify(fs.readFile);
@@ -74,7 +75,8 @@ export class CopilotSyncService {
             const baseDir = path.dirname(path.dirname(globalStoragePath));
             
             // Check if we're in a profiles structure
-            const profilesMatch = baseDir.match(new RegExp(`profiles${path.sep}([^${path.sep}]+)`));
+            const escapedSep = escapeRegex(path.sep);
+            const profilesMatch = baseDir.match(new RegExp(`profiles${escapedSep}([^${escapedSep}]+)`));
             if (profilesMatch) {
                 const profileId = profilesMatch[1];
                 const profileName = this.getActiveProfileName(baseDir) || profileId;
@@ -91,7 +93,8 @@ export class CopilotSyncService {
         // Check if this is a profile-based path by looking for '/profiles/' after User
         // Path structure: .../User/profiles/<profile-id>/globalStorage/...
         const remainingPath = globalStoragePath.substring(userDir.length);
-        const profilesMatch = remainingPath.match(new RegExp(`^${path.sep}profiles${path.sep}([^${path.sep}]+)`));
+        const escapedSep = escapeRegex(path.sep);
+        const profilesMatch = remainingPath.match(new RegExp(`^${escapedSep}profiles${escapedSep}([^${escapedSep}]+)`));
         
         if (profilesMatch) {
             // Profile-based path: include the profile directory

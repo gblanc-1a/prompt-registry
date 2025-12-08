@@ -15,10 +15,11 @@
 5. [Adapter Pattern](#adapter-pattern)
 6. [Authentication Model](#authentication-model)
 7. [Installation Flow](#installation-flow)
-8. [UI Components](#ui-components)
-9. [Cross-Platform Support](#cross-platform-support)
-10. [Security Model](#security-model)
-11. [Extension Points](#extension-points)
+8. [Update System](#update-system)
+9. [UI Components](#ui-components)
+10. [Cross-Platform Support](#cross-platform-support)
+11. [Security Model](#security-model)
+12. [Extension Points](#extension-points)
 
 ---
 
@@ -87,6 +88,13 @@ graph TB
         SS[Storage Service]
     end
     
+    subgraph "Update System"
+        US[Update Scheduler]
+        UC[Update Checker]
+        AUS[Auto-Update Service]
+        UCA[Update Cache]
+    end
+    
     subgraph "Adapter Layer"
         GHA[GitHub Adapter]
         GLA[GitLab Adapter]
@@ -116,16 +124,27 @@ graph TB
     RM -->|fetch bundles| LCA
     RM -->|fetch bundles| ACA
     
+    US -->|triggers| UC
+    UC -->|checks| RM
+    UC -->|caches| UCA
+    AUS -->|updates via| RM
+    US -->|notifies| MV
+    US -->|notifies| TV
+    
     BI -->|sync| CS
     BI -->|save state| SS
     
     CS -->|write files| CP
     SS -->|persist| GS
     SS -->|persist| WS
+    UCA -->|persist| GS
     
     style RM fill:#4CAF50
     style BI fill:#2196F3
     style CS fill:#FF9800
+    style US fill:#9C27B0
+    style UC fill:#9C27B0
+    style AUS fill:#9C27B0
 ```
 
 ### Component Responsibilities
@@ -148,6 +167,11 @@ graph TB
 | **McpConfigService** | Reads/writes VS Code's mcp.json configuration with atomic operations |
 | **CopilotSyncService** | Syncs installed bundles to Copilot directories |
 | **StorageService** | Manages persistent state (sources, installations, profiles) |
+| **UpdateScheduler** | Manages timing of update checks (startup, daily/weekly/manual) |
+| **UpdateChecker** | Detects available updates by comparing installed vs latest versions |
+| **AutoUpdateService** | Performs background bundle updates with rollback on failure |
+| **UpdateCache** | Caches update check results with configurable TTL |
+| **NotificationManager** | Central service for user notifications |
 
 #### **Adapter Layer**
 
@@ -489,6 +513,197 @@ graph TD
     style BUF fill:#FF9800
     style WRITE fill:#FF9800
 ```
+
+---
+
+## Update System
+
+The Update System provides automatic detection and installation of bundle updates with configurable scheduling and notifications.
+
+### Update System Architecture
+
+```mermaid
+graph TB
+    subgraph "Scheduling"
+        US[UpdateScheduler]
+        ST[Startup Timer<br/>5s delay]
+        PT[Periodic Timer<br/>daily/weekly]
+    end
+    
+    subgraph "Detection"
+        UC[UpdateChecker]
+        UCA[UpdateCache]
+        RM[RegistryManager]
+    end
+    
+    subgraph "Notification"
+        BN[BundleUpdateNotifications]
+        NM[NotificationManager]
+    end
+    
+    subgraph "Auto-Update"
+        AUS[AutoUpdateService]
+        BO[BundleOperations<br/>Interface]
+        SO[SourceOperations<br/>Interface]
+    end
+    
+    US --> ST
+    US --> PT
+    ST --> UC
+    PT --> UC
+    
+    UC --> UCA
+    UC --> RM
+    UCA -->|cache hit| RET[Return Cached]
+    UCA -->|cache miss| RM
+    
+    UC --> BN
+    BN --> NM
+    
+    NM -->|Update Now| AUS
+    AUS --> BO
+    AUS --> SO
+    BO --> RM
+    
+    style US fill:#9C27B0
+    style UC fill:#9C27B0
+    style AUS fill:#9C27B0
+    style UCA fill:#9C27B0
+```
+
+### Update Check Flow
+
+```mermaid
+sequenceDiagram
+    participant EXT as Extension
+    participant US as UpdateScheduler
+    participant UC as UpdateChecker
+    participant UCA as UpdateCache
+    participant RM as RegistryManager
+    participant BN as BundleNotifications
+    participant USER as User
+    
+    EXT->>US: initialize()
+    Note over US: Wait 5 seconds
+    US->>UC: checkForUpdates()
+    
+    UC->>UCA: get()
+    alt Cache Valid
+        UCA-->>UC: cached results
+    else Cache Expired
+        UC->>RM: checkUpdates()
+        RM->>RM: Compare installed vs latest
+        RM-->>UC: BundleUpdate[]
+        UC->>UC: enrichUpdateResults()
+        UC->>UCA: set(enrichedResults)
+    end
+    
+    UC-->>US: UpdateCheckResult[]
+    
+    alt Updates Available
+        US->>BN: showUpdateNotification()
+        BN->>USER: "X updates available"
+        
+        alt User clicks "Update Now"
+            USER->>US: triggerUpdate()
+            US->>EXT: onUpdatesDetected event
+        end
+    end
+```
+
+### Auto-Update Flow
+
+The auto-update system uses a **hybrid approach**: the global `autoUpdate` setting acts as a gate, and only bundles with per-bundle auto-update enabled will install automatically in the background.
+
+```mermaid
+sequenceDiagram
+    participant US as UpdateScheduler
+    participant UC as UpdateChecker
+    participant AUS as AutoUpdateService
+    participant BO as BundleOperations
+    participant BN as BundleNotifications
+    participant LOG as Logger
+    
+    Note over US: Scheduled or startup check
+    
+    US->>UC: checkForUpdates()
+    UC-->>US: UpdateCheckResult[] (with autoUpdateEnabled flag)
+    
+    alt Global autoUpdate = true
+        US->>AUS: autoUpdateBundles(updates)
+        
+        Note over AUS: Filter to autoUpdateEnabled bundles only
+        AUS->>AUS: Filter updates by autoUpdateEnabled
+        
+        loop For each opted-in bundle (batch size = 3)
+            AUS->>AUS: ensureUpdateNotInProgress()
+            AUS->>BO: updateBundle(bundleId, targetVersion)
+            
+            alt Success
+                BO-->>AUS: void
+                AUS->>BN: showAutoUpdateComplete()
+                AUS->>LOG: "Auto-update completed"
+            else Failure
+                BO-->>AUS: Error
+                AUS->>BN: showUpdateFailure()
+                AUS->>LOG: "Auto-update failed"
+            end
+        end
+    else Global autoUpdate = false
+        Note over US: Skip auto-update, proceed to notifications
+    end
+    
+    US->>BN: showUpdateNotification(updates)
+    Note over BN: Show notification for all applicable updates
+```
+
+### Configuration Options
+
+| Setting | Type | Default | Description |
+|---------|------|---------|-------------|
+| `updateCheck.enabled` | boolean | `true` | Enable automatic update checks |
+| `updateCheck.frequency` | enum | `daily` | Check frequency: `daily`, `weekly`, `manual` |
+| `updateCheck.notificationPreference` | enum | `all` | Notifications: `all`, `critical`, `none` |
+| `updateCheck.autoUpdate` | boolean | `false` | Global gate for background auto-updates |
+| `updateCheck.cacheTTL` | number | `300000` | Cache TTL in milliseconds (5 min default) |
+
+**Important:** For a bundle to auto-update in the background, **both** conditions must be true:
+1. Global `updateCheck.autoUpdate` must be `true`
+2. Per-bundle auto-update preference must be enabled (via "Enable Auto-Update" command)
+
+### Dependency Injection Pattern
+
+To avoid circular dependencies between `AutoUpdateService` and `RegistryManager`, the service uses interface-based dependency injection:
+
+```typescript
+// Focused interfaces for DI
+interface BundleOperations {
+    updateBundle(bundleId: string, version?: string): Promise<void>;
+    listInstalledBundles(): Promise<InstalledBundle[]>;
+    getBundleDetails(bundleId: string): Promise<Bundle>;
+}
+
+interface SourceOperations {
+    listSources(): Promise<RegistrySource[]>;
+    syncSource(sourceId: string): Promise<void>;
+}
+
+// AutoUpdateService receives operations, not RegistryManager
+class AutoUpdateService {
+    constructor(
+        private readonly bundleOps: BundleOperations,
+        private readonly sourceOps: SourceOperations,
+        private readonly bundleNotifications: BundleUpdateNotifications,
+        private readonly storage: RegistryStorage
+    ) {}
+}
+```
+
+### Concurrency Control
+
+- **Batch Size**: 3 concurrent updates (prevents API rate limiting)
+- **Active Updates Set**: Prevents duplicate update operations for same bundle
+- **Check-in-Progress Flag**: Prevents overlapping update check cycles
 
 ---
 

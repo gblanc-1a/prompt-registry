@@ -67,6 +67,10 @@ const DEFAULT_CONFIG: RegistryConfig = {
 export class RegistryStorage {
     private paths: StoragePaths;
     private configCache?: RegistryConfig;
+    
+    // Constants for ID sanitization
+    private static readonly MAX_FILENAME_LENGTH = 200;
+    private static readonly ALLOWED_CHARS_REGEX = /[^A-Za-z0-9._-]/g;
 
     constructor(private context: vscode.ExtensionContext) {
         const storagePath = context.globalStorageUri.fsPath;
@@ -157,6 +161,30 @@ export class RegistryStorage {
      */
     getPaths(): StoragePaths {
         return { ...this.paths };
+    }
+    
+    /**
+     * Sanitize an ID for safe use in filenames
+     * Replaces characters outside [A-Za-z0-9._-] with underscore
+     * Enforces maximum length to prevent filesystem issues
+     * 
+     * @param id - The bundle ID, source ID, or other identifier
+     * @returns Sanitized string safe for use in filenames
+     */
+    private sanitizeFilename(id: string): string {
+        if (!id || id.length === 0) {
+            throw new Error('ID cannot be empty');
+        }
+        
+        // Replace disallowed characters with underscore
+        let sanitized = id.replace(RegistryStorage.ALLOWED_CHARS_REGEX, '_');
+        
+        // Enforce max length (leave room for .json extension)
+        if (sanitized.length > RegistryStorage.MAX_FILENAME_LENGTH) {
+            sanitized = sanitized.substring(0, RegistryStorage.MAX_FILENAME_LENGTH);
+        }
+        
+        return sanitized;
     }
 
     // ===== Source Management =====
@@ -273,7 +301,8 @@ export class RegistryStorage {
      * Cache bundle metadata
      */
     async cacheBundleMetadata(bundle: Bundle): Promise<void> {
-        const filepath = path.join(this.paths.bundlesCache, `${bundle.id}.json`);
+        const sanitizedId = this.sanitizeFilename(bundle.id);
+        const filepath = path.join(this.paths.bundlesCache, `${sanitizedId}.json`);
         const data = JSON.stringify(bundle, null, 2);
         await writeFile(filepath, data, 'utf-8');
     }
@@ -283,7 +312,8 @@ export class RegistryStorage {
      */
     async getCachedBundleMetadata(bundleId: string): Promise<Bundle | undefined> {
         try {
-            const filepath = path.join(this.paths.bundlesCache, `${bundleId}.json`);
+            const sanitizedId = this.sanitizeFilename(bundleId);
+            const filepath = path.join(this.paths.bundlesCache, `${sanitizedId}.json`);
             const data = await readFile(filepath, 'utf-8');
             return JSON.parse(data) as Bundle;
         } catch {
@@ -295,7 +325,8 @@ export class RegistryStorage {
      * Cache source bundles
      */
     async cacheSourceBundles(sourceId: string, bundles: Bundle[]): Promise<void> {
-        const filepath = path.join(this.paths.sourcesCache, `${sourceId}.json`);
+        const sanitizedId = this.sanitizeFilename(sourceId);
+        const filepath = path.join(this.paths.sourcesCache, `${sanitizedId}.json`);
         const data = JSON.stringify(bundles, null, 2);
         await writeFile(filepath, data, 'utf-8');
     }
@@ -305,7 +336,8 @@ export class RegistryStorage {
      */
     async getCachedSourceBundles(sourceId: string): Promise<Bundle[]> {
         try {
-            const filepath = path.join(this.paths.sourcesCache, `${sourceId}.json`);
+            const sanitizedId = this.sanitizeFilename(sourceId);
+            const filepath = path.join(this.paths.sourcesCache, `${sanitizedId}.json`);
             const data = await readFile(filepath, 'utf-8');
             return JSON.parse(data) as Bundle[];
         } catch {
@@ -318,7 +350,8 @@ export class RegistryStorage {
      */
     async clearSourceCache(sourceId: string): Promise<void> {
         try {
-            const filepath = path.join(this.paths.sourcesCache, `${sourceId}.json`);
+            const sanitizedId = this.sanitizeFilename(sourceId);
+            const filepath = path.join(this.paths.sourcesCache, `${sanitizedId}.json`);
             if (fs.existsSync(filepath)) {
                 await unlink(filepath);
             }
@@ -366,7 +399,8 @@ export class RegistryStorage {
      */
     async removeInstallation(bundleId: string, scope: 'user' | 'workspace'): Promise<void> {
         const scopePath = scope === 'user' ? this.paths.userInstalled : this.paths.installed;
-        const filepath = path.join(scopePath, `${bundleId}.json`);
+        const sanitizedId = this.sanitizeFilename(bundleId);
+        const filepath = path.join(scopePath, `${sanitizedId}.json`);
         
         if (fs.existsSync(filepath)) {
             await unlink(filepath);
@@ -412,7 +446,8 @@ export class RegistryStorage {
     async getInstalledBundle(bundleId: string, scope: 'user' | 'workspace'): Promise<InstalledBundle | undefined> {
         try {
             const scopePath = scope === 'user' ? this.paths.userInstalled : this.paths.installed;
-            const filepath = path.join(scopePath, `${bundleId}.json`);
+            const sanitizedId = this.sanitizeFilename(bundleId);
+            const filepath = path.join(scopePath, `${sanitizedId}.json`);
             const data = await readFile(filepath, 'utf-8');
             return JSON.parse(data) as InstalledBundle;
         } catch {
@@ -425,7 +460,8 @@ export class RegistryStorage {
      */
     private getInstalledBundlePath(bundle: InstalledBundle): string {
         const scopePath = bundle.scope === 'user' ? this.paths.userInstalled : this.paths.installed;
-        return path.join(scopePath, `${bundle.bundleId}.json`);
+        const sanitizedId = this.sanitizeFilename(bundle.bundleId);
+        return path.join(scopePath, `${sanitizedId}.json`);
     }
 
     // ===== Settings Management =====
@@ -462,5 +498,44 @@ export class RegistryStorage {
         
         // Clear all caches
         await this.clearAllCaches();
+    }
+
+    // ===== Update Preferences Management =====
+
+    /**
+     * Bundle update preferences
+     */
+    private readonly UPDATE_PREFERENCES_KEY = 'bundleUpdatePreferences';
+
+    /**
+     * Get all update preferences
+     */
+    async getUpdatePreferences(): Promise<Record<string, { autoUpdate: boolean; lastChecked?: string }>> {
+        const prefs = this.context.globalState.get<Record<string, { autoUpdate: boolean; lastChecked?: string }>>(
+            this.UPDATE_PREFERENCES_KEY,
+            {}
+        );
+        return prefs;
+    }
+
+    /**
+     * Set update preference for a specific bundle
+     */
+    async setUpdatePreference(bundleId: string, autoUpdate: boolean): Promise<void> {
+        const prefs = await this.getUpdatePreferences();
+        prefs[bundleId] = {
+            autoUpdate,
+            lastChecked: new Date().toISOString()
+        };
+        await this.context.globalState.update(this.UPDATE_PREFERENCES_KEY, prefs);
+    }
+
+    /**
+     * Get update preference for a specific bundle
+     * Returns false if no preference is set
+     */
+    async getUpdatePreference(bundleId: string): Promise<boolean> {
+        const prefs = await this.getUpdatePreferences();
+        return prefs[bundleId]?.autoUpdate ?? false;
     }
 }

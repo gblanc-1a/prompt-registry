@@ -102,24 +102,6 @@ export class TemplateEngine {
     async scaffoldProject(targetPath: string, context: TemplateContext): Promise<void> {
         this.logger.info(`Scaffolding project at: ${targetPath}`);
         
-        // Create directory structure
-        const directories = [
-            'prompts',
-            'instructions',
-            'agents',
-            'collections',
-            '.github/workflows',
-            'scripts'
-        ];
-
-        for (const dir of directories) {
-            const dirPath = path.join(targetPath, dir);
-            if (!fs.existsSync(dirPath)) {
-                fs.mkdirSync(dirPath, { recursive: true });
-                this.logger.debug(`Created directory: ${dirPath}`);
-            }
-        }
-
         // Copy all templates
         const manifest = await this.loadManifest();
         for (const [name, template] of Object.entries(manifest.templates)) {
@@ -146,30 +128,38 @@ export class TemplateEngine {
      * Get target path for a template, handling special cases
      */
     private getTargetPath(basePath: string, name: string, templatePath: string): string {
+        let relativePath = templatePath;
+
         // Handle README.template.md -> README.md
         if (templatePath === 'README.template.md') {
-            return path.join(basePath, 'README.md');
+            relativePath = 'README.md';
         }
-        
         // Handle package.template.json -> package.json
-        if (templatePath === 'package.template.json') {
-            return path.join(basePath, 'package.json');
+        else if (templatePath === 'package.template.json') {
+            relativePath = 'package.json';
+        }
+        // Generic template extension stripping
+        else if (templatePath.endsWith('.template')) {
+            relativePath = templatePath.slice(0, -9);
+        }
+        else if (templatePath.includes('.template.')) {
+            relativePath = templatePath.replace('.template.', '.');
         }
         
         // Handle workflows -> .github/workflows
-        if (templatePath.startsWith('workflows/')) {
-            const filename = path.basename(templatePath);
+        if (relativePath.startsWith('workflows/')) {
+            const filename = path.basename(relativePath);
             return path.join(basePath, '.github', 'workflows', filename);
         }
         
-        // Handle validation script -> scripts/
-        if (name === 'validation-script') {
-            const filename = path.basename(templatePath);
+        // Handle validation script -> scripts/ (Legacy support for Awesome Copilot)
+        if (name === 'validation-script' && relativePath.includes('validate-collections.js')) {
+            const filename = path.basename(relativePath);
             return path.join(basePath, 'scripts', filename);
         }
         
-        // Default: use template path as-is
-        return path.join(basePath, templatePath);
+        // Default: use template path as-is (resolved relative path)
+        return path.join(basePath, relativePath);
     }
 
     /**
@@ -181,6 +171,27 @@ export class TemplateEngine {
         // Compute packageName from projectName (kebab-case)
         if (context.projectName) {
             enhanced.packageName = context.projectName.toLowerCase().replace(/\s+/g, '-');
+            // Also map to 'name' if not present
+            if (!enhanced.name) {
+                enhanced.name = enhanced.packageName;
+            }
+        }
+
+        // Ensure defaults for required fields
+        if (!enhanced.description) {
+            enhanced.description = 'A new APM package';
+        }
+        if (!enhanced.author) {
+            enhanced.author = process.env.USER || 'user';
+        }
+        
+        // Format tags
+        if (enhanced.tags) {
+            if (Array.isArray(enhanced.tags)) {
+                enhanced.tags = enhanced.tags.map((t: string) => `"${t}"`).join(', ');
+            }
+        } else {
+            enhanced.tags = '"apm", "prompt-registry"';
         }
         
         return enhanced;

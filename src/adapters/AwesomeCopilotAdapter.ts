@@ -150,16 +150,27 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
             const collectionFiles = await this.listCollectionFiles();
             this.logger.debug(`Found ${collectionFiles.length} collection files`);
 
-            // Step 2: Parse each collection
+            // Step 2: Parse each collection (with concurrency limit)
             const bundles: Bundle[] = [];
-            for (const file of collectionFiles) {
-                try {
-                    const bundle = await this.parseCollection(file);
+            const CONCURRENCY_LIMIT = 5;
+
+            for (let i = 0; i < collectionFiles.length; i += CONCURRENCY_LIMIT) {
+                const chunk = collectionFiles.slice(i, i + CONCURRENCY_LIMIT);
+                this.logger.debug(`Processing chunk ${i / CONCURRENCY_LIMIT + 1}/${Math.ceil(collectionFiles.length / CONCURRENCY_LIMIT)}`);
+
+                const chunkResults = await Promise.all(chunk.map(async (file) => {
+                    try {
+                        return await this.parseCollection(file);
+                    } catch (error) {
+                        this.logger.warn(`Failed to parse collection ${file}:`, error as Error);
+                        return null;
+                    }
+                }));
+
+                for (const bundle of chunkResults) {
                     if (bundle) {
                         bundles.push(bundle);
                     }
-                } catch (error) {
-                    this.logger.warn(`Failed to parse collection ${file}:`, error as Error);
                 }
             }
 

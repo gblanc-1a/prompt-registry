@@ -13,6 +13,8 @@ import { LocalAdapter } from '../adapters/LocalAdapter';
 import { AwesomeCopilotAdapter } from '../adapters/AwesomeCopilotAdapter';
 import { BundleInstaller } from './BundleInstaller';
 import { LocalAwesomeCopilotAdapter } from '../adapters/LocalAwesomeCopilotAdapter';
+import { LocalApmAdapter } from '../adapters/LocalApmAdapter';
+import { ApmAdapter } from '../adapters/ApmAdapter';
 import { VersionConsolidator } from './VersionConsolidator';
 import { VersionManager } from '../utils/versionManager';
 import { BundleIdentityMatcher } from '../utils/bundleIdentityMatcher';
@@ -59,6 +61,8 @@ export class RegistryManager {
     private _onBundleInstalled = new vscode.EventEmitter<InstalledBundle>();
     private _onBundleUninstalled = new vscode.EventEmitter<string>();
     private _onBundleUpdated = new vscode.EventEmitter<InstalledBundle>();
+    private _onBundlesInstalled = new vscode.EventEmitter<InstalledBundle[]>();
+    private _onBundlesUninstalled = new vscode.EventEmitter<string[]>();
     private _onProfileActivated = new vscode.EventEmitter<Profile>();
     private _onProfileDeactivated = new vscode.EventEmitter<string>();
     private _onProfileCreated = new vscode.EventEmitter<Profile>();
@@ -73,6 +77,8 @@ export class RegistryManager {
     readonly onBundleInstalled = this._onBundleInstalled.event;
     readonly onBundleUninstalled = this._onBundleUninstalled.event;
     readonly onBundleUpdated = this._onBundleUpdated.event;
+    readonly onBundlesInstalled = this._onBundlesInstalled.event;
+    readonly onBundlesUninstalled = this._onBundlesUninstalled.event;
     readonly onProfileActivated = this._onProfileActivated.event;
     readonly onProfileDeactivated = this._onProfileDeactivated.event;
     readonly onProfileCreated = this._onProfileCreated.event;
@@ -98,6 +104,8 @@ export class RegistryManager {
         RepositoryAdapterFactory.register('local', LocalAdapter);
         RepositoryAdapterFactory.register('awesome-copilot', AwesomeCopilotAdapter);
         RepositoryAdapterFactory.register('local-awesome-copilot', LocalAwesomeCopilotAdapter);
+        RepositoryAdapterFactory.register('local-apm', LocalApmAdapter);
+        RepositoryAdapterFactory.register('apm', ApmAdapter);
     }
 
 	/**
@@ -588,7 +596,7 @@ export class RegistryManager {
     /**
      * Install a bundle
      */
-    async installBundle(bundleId: string, options: InstallOptions): Promise<void> {
+    async installBundle(bundleId: string, options: InstallOptions, silent: boolean = false): Promise<InstalledBundle> {
         this.logger.info(`Installing bundle: ${bundleId}`, options);
         
         // Resolve the bundle to install (handles version-specific requests)
@@ -606,8 +614,46 @@ export class RegistryManager {
         // Record installation
         await this.storage.recordInstallation(installation);
         
-        this._onBundleInstalled.fire(installation);
+        if (!silent) {
+            this._onBundleInstalled.fire(installation);
+        }
         this.logger.info(`Bundle '${bundleId}' installed successfully`);
+        
+        return installation;
+    }
+
+    /**
+     * Install multiple bundles in parallel
+     */
+    async installBundles(bundles: {bundleId: string, options: InstallOptions}[]): Promise<void> {
+        const installed: InstalledBundle[] = [];
+        const CONCURRENCY_LIMIT = 5;
+
+        this.logger.info(`Batch installing ${bundles.length} bundles...`);
+
+        for (let i = 0; i < bundles.length; i += CONCURRENCY_LIMIT) {
+            const chunk = bundles.slice(i, i + CONCURRENCY_LIMIT);
+            
+            const results = await Promise.all(chunk.map(async (b) => {
+                try {
+                    return await this.installBundle(b.bundleId, b.options, true);
+                } catch (error) {
+                    this.logger.error(`Failed to install bundle ${b.bundleId}`, error as Error);
+                    return null;
+                }
+            }));
+
+            for (const result of results) {
+                if (result) {
+                    installed.push(result);
+                }
+            }
+        }
+
+        if (installed.length > 0) {
+            this._onBundlesInstalled.fire(installed);
+            this.logger.info(`Batch installation complete: ${installed.length}/${bundles.length} bundles installed`);
+        }
     }
 
     /**
@@ -789,7 +835,7 @@ export class RegistryManager {
     /**
      * Uninstall a bundle
      */
-    async uninstallBundle(bundleId: string, scope: 'user' | 'workspace' = 'user'): Promise<void> {
+    async uninstallBundle(bundleId: string, scope: 'user' | 'workspace' = 'user', silent: boolean = false): Promise<void> {
         this.logger.info(`Uninstalling bundle: ${bundleId}`);
         
         // Get installation record
@@ -806,8 +852,45 @@ export class RegistryManager {
         // This ensures we remove the correct record even for versioned bundles
         await this.storage.removeInstallation(installed.bundleId, scope);
         
-        this._onBundleUninstalled.fire(installed.bundleId);
+        if (!silent) {
+            this._onBundleUninstalled.fire(installed.bundleId);
+        }
         this.logger.info(`Bundle '${installed.bundleId}' uninstalled successfully`);
+    }
+
+    /**
+     * Uninstall multiple bundles in parallel
+     */
+    async uninstallBundles(bundleIds: string[], scope: 'user' | 'workspace' = 'user'): Promise<void> {
+        const uninstalled: string[] = [];
+        const CONCURRENCY_LIMIT = 5;
+
+        this.logger.info(`Batch uninstalling ${bundleIds.length} bundles...`);
+
+        for (let i = 0; i < bundleIds.length; i += CONCURRENCY_LIMIT) {
+            const chunk = bundleIds.slice(i, i + CONCURRENCY_LIMIT);
+            
+            const results = await Promise.all(chunk.map(async (id) => {
+                try {
+                    await this.uninstallBundle(id, scope, true);
+                    return id;
+                } catch (error) {
+                    this.logger.error(`Failed to uninstall bundle ${id}`, error as Error);
+                    return null;
+                }
+            }));
+
+            for (const result of results) {
+                if (result) {
+                    uninstalled.push(result);
+                }
+            }
+        }
+
+        if (uninstalled.length > 0) {
+            this._onBundlesUninstalled.fire(uninstalled);
+            this.logger.info(`Batch uninstallation complete: ${uninstalled.length}/${bundleIds.length} bundles uninstalled`);
+        }
     }
 
     /**
@@ -1233,17 +1316,34 @@ export class RegistryManager {
         this.logger.info(`Installing ${profile.bundles.length} bundles for profile '${profileId}'`);
         
         const allSources = await this.storage.getSources();
+        const installed: InstalledBundle[] = [];
+        const CONCURRENCY_LIMIT = 5;
         
-        for (const bundleRef of profile.bundles) {
-            progress.report({ message: `Installing ${bundleRef.id}...` });
-            try {
-                await this.installProfileBundle(bundleRef, profileId, allSources);
-            } catch (error) {
-                this.logger.error(`Failed to install bundle ${bundleRef.id}`, error as Error);
+        for (let i = 0; i < profile.bundles.length; i += CONCURRENCY_LIMIT) {
+            const chunk = profile.bundles.slice(i, i + CONCURRENCY_LIMIT);
+            
+            const results = await Promise.all(chunk.map(async (bundleRef) => {
+                progress.report({ message: `Installing ${bundleRef.id}...` });
+                try {
+                    return await this.installProfileBundle(bundleRef, profileId, allSources, true);
+                } catch (error) {
+                    this.logger.error(`Failed to install bundle ${bundleRef.id}`, error as Error);
+                    return null;
+                }
+            }));
+
+            for (const result of results) {
+                if (result) {
+                    installed.push(result);
+                }
             }
         }
         
-        this.logger.info(`Profile bundle installation complete`);
+        if (installed.length > 0) {
+            this._onBundlesInstalled.fire(installed);
+        }
+        
+        this.logger.info(`Profile bundle installation complete: ${installed.length} installed`);
     }
 
     /**
@@ -1252,15 +1352,16 @@ export class RegistryManager {
     private async installProfileBundle(
         bundleRef: ProfileBundle,
         profileId: string,
-        allSources: RegistrySource[]
-    ): Promise<void> {
+        allSources: RegistrySource[],
+        silent: boolean = false
+    ): Promise<InstalledBundle | null> {
         // Check if bundle is already installed
         const installedBundles = await this.storage.getInstalledBundles();
         const alreadyInstalled = installedBundles.find(b => b.bundleId === bundleRef.id);
         
         if (alreadyInstalled) {
             this.logger.info(`Bundle ${bundleRef.id} already installed, skipping`);
-            return;
+            return null;
         }
         
         // Search for the bundle
@@ -1280,14 +1381,14 @@ export class RegistryManager {
         
         if (!matchingBundle) {
             this.logger.warn(`Bundle not found: ${bundleRef.id}`);
-            return;
+            return null;
         }
         
         // Get source and adapter
         const source = allSources.find(s => s.id === matchingBundle.sourceId);
         if (!source) {
             this.logger.warn(`Source not found for bundle: ${matchingBundle.sourceId}`);
-            return;
+            return null;
         }
 
         const adapter = this.getAdapter(source);
@@ -1313,9 +1414,14 @@ export class RegistryManager {
 
         // Record installation and fire event
         await this.storage.recordInstallation(installation);
-        this._onBundleInstalled.fire(installation);
+        
+        if (!silent) {
+            this._onBundleInstalled.fire(installation);
+        }
         
         this.logger.info(`Successfully installed: ${matchingBundle.id}`);
+        
+        return installation;
     }
 
     /**
@@ -1341,14 +1447,7 @@ export class RegistryManager {
                     
                     if (profileBundles.length > 0) {
                         this.logger.info(`Uninstalling ${profileBundles.length} bundles from hub profile '${profileId}'`);
-                        for (const bundle of profileBundles) {
-                            try {
-                                this.logger.info(`Uninstalling bundle: ${bundle.bundleId}`);
-                                await this.uninstallBundle(bundle.bundleId);
-                            } catch (error) {
-                                this.logger.error(`Failed to uninstall bundle ${bundle.bundleId}`, error as Error);
-                            }
-                        }
+                        await this.uninstallBundles(profileBundles.map(b => b.bundleId));
                     }
                     
                     // Fire event to update tree view
@@ -1366,29 +1465,18 @@ export class RegistryManager {
             throw new Error(`Profile not found: ${profileId}`);
         }
         
-        // if (!profile.active) {
-        //     this.logger.warn(`Profile ${profileId} is not active`);
-        //     return;
-        // }
-        
         // Uninstall bundles associated with this profile
         const installedBundles = await this.storage.getInstalledBundles();
         const profileBundles = installedBundles.filter(b => b.profileId === profileId);
         
         this.logger.info(`Uninstalling ${profileBundles.length} bundles from profile '${profileId}'`);
         
-        for (const bundle of profileBundles) {
-            try {
-                this.logger.info(`Uninstalling bundle: ${bundle.bundleId}`);
-                await this.uninstallBundle(bundle.bundleId);
-            } catch (error) {
-                this.logger.error(`Failed to uninstall bundle ${bundle.bundleId}`, error as Error);
-            }
-        }
+        await this.uninstallBundles(profileBundles.map(b => b.bundleId));
         
         // Mark profile as inactive
         await this.storage.updateProfile(profileId, { active: false });
         
+        this._onProfileDeactivated.fire(profileId);
         this.logger.info(`Profile '${profileId}' deactivated successfully`);
     }
 

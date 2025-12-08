@@ -58,6 +58,14 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         this.registryManager.onBundleUpdated((installation) => {
             this.handleBundleEvent('updated', installation.bundleId, () => this.loadBundles());
         });
+
+        this.registryManager.onBundlesInstalled((installations) => {
+            this.handleBundleEvent('installed', `${installations.length} bundles`, () => this.loadBundles());
+        });
+
+        this.registryManager.onBundlesUninstalled((bundleIds) => {
+            this.handleBundleEvent('uninstalled', `${bundleIds.length} bundles`, () => this.loadBundles());
+        });
     }
 
     public resolveWebviewView(

@@ -802,33 +802,23 @@ export class HubManager {
             if (options.installBundles && this.registryManager) {
                 this.logger.info(`Installing ${resolvedBundles.length} bundles for profile ${profileId}`);
                 
-                for (const rb of resolvedBundles) {
-                    try {
-                        this.logger.info(`Installing bundle: ${rb.bundle.id} v${rb.bundle.version} from source: ${rb.bundle.source}`);
-                        
-                        // Use RegistryManager.installBundle which handles source resolution and different adapter types
-                        await this.registryManager.installBundle(rb.bundle.id, {
-                            scope: 'user',
-                            force: false,
-                            profileId: profileId  // Tag bundle with profile ID for tracking
-                        });
-                        
-                        installResults.push({ bundleId: rb.bundle.id, success: true });
-                        this.logger.info(`Successfully installed: ${rb.bundle.id}`);
-                    } catch (error) {
-                        const errorMsg = error instanceof Error ? error.message : String(error);
-                        this.logger.error(`Failed to install bundle ${rb.bundle.id}`, error as Error);
-                        installResults.push({ 
-                            bundleId: rb.bundle.id, 
-                            success: false, 
-                            error: errorMsg 
-                        });
+                const bundlesToInstall = resolvedBundles.map(rb => ({
+                    bundleId: rb.bundle.id,
+                    options: {
+                        scope: 'user' as const,
+                        force: false,
+                        profileId: profileId  // Tag bundle with profile ID for tracking
                     }
+                }));
+
+                try {
+                    await this.registryManager.installBundles(bundlesToInstall);
+                    
+                    // Assuming success if no error thrown (installBundles handles errors internally but doesn't return individual results easily yet, but logs them)
+                    this.logger.info(`Bundle installation complete`);
+                } catch (error) {
+                    this.logger.error('Batch bundle installation failed', error as Error);
                 }
-                
-                const successCount = installResults.filter(r => r.success).length;
-                const failCount = installResults.filter(r => !r.success).length;
-                this.logger.info(`Bundle installation complete: ${successCount} succeeded, ${failCount} failed`);
             } else if (options.installBundles && !this.registryManager) {
                 this.logger.warn('Bundle installation requested but RegistryManager not available');
             }

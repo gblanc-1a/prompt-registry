@@ -13,14 +13,17 @@ import { getEnabledDefaultHubs, DefaultHubConfig } from './config/defaultHubs';
 import { HubStorage } from './storage/HubStorage';
 import { SchemaValidator } from './services/SchemaValidator';
 import { SettingsCommands } from './commands/SettingsCommands';
-import { ScaffoldCommand } from './commands/ScaffoldCommand';
+import { ScaffoldCommand, ScaffoldType } from './commands/ScaffoldCommand';
 import { AddResourceCommand } from './commands/AddResourceCommand';
 import { ValidateCollectionsCommand } from './commands/ValidateCollectionsCommand';
+import { ValidateApmCommand } from './commands/ValidateApmCommand';
 import { CreateCollectionCommand } from './commands/CreateCollectionCommand';
 import { StatusBar } from './ui/statusBar';
 import { Notifications } from './ui/notifications';
 import { Logger } from './utils/logger';
 import { CopilotIntegration } from './integrations/CopilotIntegration';
+
+import { ApmRuntimeManager } from './services/ApmRuntimeManager';
 
 // Legacy imports (to be migrated)
 import { selectVersionCommand } from './commands/selectVersionCommand';
@@ -53,6 +56,7 @@ export class PromptRegistryExtension {
     private hubProfileCommands: HubProfileCommands | undefined;
     private hubManager: HubManager | undefined;
     private validateCollectionsCommand: ValidateCollectionsCommand | undefined;
+    private validateApmCommand: ValidateApmCommand | undefined;
     private createCollectionCommand: CreateCollectionCommand | undefined;
     private copilotIntegration: CopilotIntegration | undefined;
     
@@ -94,6 +98,9 @@ export class PromptRegistryExtension {
     public async activate(): Promise<void> {
         try {
             this.logger.info('Activating Prompt Registry extension...');
+
+            // Initialize Runtime Manager with context
+            ApmRuntimeManager.getInstance().initialize(this.context);
 
             // Initialize Registry Manager
             await this.registryManager.initialize();
@@ -156,6 +163,7 @@ export class PromptRegistryExtension {
 
             // Dispose collection commands
             this.validateCollectionsCommand?.dispose();
+            this.validateApmCommand?.dispose();
             this.createCollectionCommand?.dispose();
 
             // Dispose UI components
@@ -196,6 +204,7 @@ export class PromptRegistryExtension {
         const scaffoldCommand = new ScaffoldCommand();
         const addResourceCommand = new AddResourceCommand();
         this.validateCollectionsCommand = new ValidateCollectionsCommand(this.context);
+        this.validateApmCommand = new ValidateApmCommand(this.context);
         this.createCollectionCommand = new CreateCollectionCommand();
 
         // Legacy commands
@@ -261,13 +270,36 @@ export class PromptRegistryExtension {
             vscode.commands.registerCommand('promptRegistry.showPopular', () => this.bundleCommands!.showPopular()),
             vscode.commands.registerCommand('promptRegistry.listInstalled', () => this.bundleCommands!.listInstalled()),
             
-            // Scaffold Command - Create awesome-copilot structure
+            // Scaffold Command - Create project structure
             vscode.commands.registerCommand('promptRegistry.scaffoldProject', async () => {
+                const scaffoldTypeChoice = await vscode.window.showQuickPick(
+                    [
+                        {
+                            label: 'Awesome Copilot Project',
+                            description: 'Standard prompt library structure',
+                            value: ScaffoldType.AwesomeCopilot
+                        },
+                        {
+                            label: 'APM Package',
+                            description: 'Distributable prompt package (apm.yml)',
+                            value: ScaffoldType.Apm
+                        }
+                    ],
+                    {
+                        placeHolder: 'Select project type',
+                        title: 'Scaffold Project'
+                    }
+                );
+
+                if (!scaffoldTypeChoice) {
+                    return;
+                }
+
                 const targetPath = await vscode.window.showOpenDialog({
                     canSelectFiles: false,
                     canSelectFolders: true,
                     canSelectMany: false,
-                    title: 'Select Target Directory for Scaffold'
+                    title: `Select Target Directory for ${scaffoldTypeChoice.label}`
                 });
 
                 if (targetPath && targetPath[0]) {
@@ -318,20 +350,55 @@ export class PromptRegistryExtension {
                         githubRunner = customRunner || 'ubuntu-latest';
                     }
 
+                    // Collect additional info for APM projects
+                    let description: string | undefined;
+                    let author: string | undefined;
+                    let tags: string[] | undefined;
+
+                    if (scaffoldTypeChoice.value === ScaffoldType.Apm) {
+                        description = await vscode.window.showInputBox({
+                            prompt: 'Enter package description',
+                            placeHolder: 'A short description of your package'
+                        });
+
+                        author = await vscode.window.showInputBox({
+                            prompt: 'Enter author name',
+                            placeHolder: 'Your Name <email@example.com>',
+                            value: process.env.USER || 'user'
+                        });
+
+                        const tagsInput = await vscode.window.showInputBox({
+                            prompt: 'Enter tags (comma separated)',
+                            placeHolder: 'ai, prompts, coding',
+                            value: 'apm, prompts'
+                        });
+                        
+                        if (tagsInput) {
+                            tags = tagsInput.split(',').map(t => t.trim()).filter(t => t.length > 0);
+                        }
+                    }
+
                     try {
                         await vscode.window.withProgress(
                             {
                                 location: vscode.ProgressLocation.Notification,
-                                title: 'Scaffolding awesome-copilot project...',
+                                title: `Scaffolding ${scaffoldTypeChoice.label}...`,
                                 cancellable: false
                             },
                             async () => {
-                                await scaffoldCommand.execute(targetPath[0].fsPath, { projectName, githubRunner });
+                                const cmd = new ScaffoldCommand(undefined, scaffoldTypeChoice.value);
+                                await cmd.execute(targetPath[0].fsPath, { 
+                                    projectName, 
+                                    githubRunner,
+                                    description,
+                                    author,
+                                    tags
+                                });
                             }
                         );
 
                         const action = await vscode.window.showInformationMessage(
-                            'Awesome-copilot project scaffolded successfully!',
+                            `${scaffoldTypeChoice.label} scaffolded successfully!`,
                             'Open Folder',
                             'View README'
                         );
@@ -365,6 +432,10 @@ export class PromptRegistryExtension {
             
             vscode.commands.registerCommand('promptRegistry.listCollections', async () => {
                 await this.validateCollectionsCommand!.execute({ listOnly: true });
+            }),
+            
+            vscode.commands.registerCommand('promptRegistry.validateApm', async () => {
+                await this.validateApmCommand!.execute();
             }),
             
             vscode.commands.registerCommand('promptRegistry.createCollection', async () => {
@@ -532,6 +603,22 @@ export class PromptRegistryExtension {
     }
 
     /**
+     * Check if current workspace is an APM repository
+     */
+    private isApmRepository(): boolean {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) {
+            return false;
+        }
+
+        const workspaceRoot = workspaceFolders[0].uri.fsPath;
+        const fs = require('fs');
+        const path = require('path');
+
+        return fs.existsSync(path.join(workspaceRoot, 'apm.yml'));
+    }
+
+    /**
      * Show command menu with all available extension commands
      */
     private async showCommandMenu(): Promise<void> {
@@ -540,6 +627,7 @@ export class PromptRegistryExtension {
         }
 
         const isAwesomeCopilotRepo = this.isAwesomeCopilotRepository();
+        const isApmRepo = this.isApmRepository();
 
         const commands: CommandItem[] = [
             // Profile Management
@@ -641,6 +729,21 @@ export class PromptRegistryExtension {
             );
         }
 
+        // Add APM Package Management section only for APM repositories
+        if (isApmRepo) {
+            commands.push(
+                {
+                    label: '$(package) Package Management',
+                    kind: vscode.QuickPickItemKind.Separator
+                },
+                {
+                    label: '$(check-all) Validate APM Package',
+                    description: 'Validate APM manifest and prompt files',
+                    command: 'promptRegistry.validateApm'
+                }
+            );
+        }
+
         // Project Scaffolding
         commands.push(
             {
@@ -648,8 +751,8 @@ export class PromptRegistryExtension {
                 kind: vscode.QuickPickItemKind.Separator
             },
             {
-                label: '$(folder-library) Scaffold Awesome-Copilot Project',
-                description: 'Create new awesome-copilot structure',
+                label: '$(folder-library) Scaffold Project',
+                description: 'Create new prompt project (Awesome-Copilot or APM)',
                 command: 'promptRegistry.scaffoldProject'
             }
         );

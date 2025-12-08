@@ -4,9 +4,7 @@ import { TemplateEngine, TemplateContext } from '../services/TemplateEngine';
 
 export enum ScaffoldType {
     AwesomeCopilot = 'awesome-copilot',
-    // Future types can be added here:
-    // Basic = 'basic',
-    // Enterprise = 'enterprise',
+    Apm = 'apm',
 }
 
 export interface ScaffoldOptions {
@@ -14,6 +12,9 @@ export interface ScaffoldOptions {
     skipExamples?: boolean;
     type?: ScaffoldType;
     githubRunner?: string;
+    description?: string;
+    author?: string;
+    tags?: string[];
 }
 
 /**
@@ -47,7 +48,10 @@ export class ScaffoldCommand {
             const context: TemplateContext = {
                 projectName: options?.projectName || path.basename(targetPath) || 'awesome-copilot',
                 collectionId: this.generateCollectionId(options?.projectName || path.basename(targetPath)),
-                githubRunner: options?.githubRunner || 'ubuntu-latest'
+                githubRunner: options?.githubRunner || 'ubuntu-latest',
+                description: options?.description,
+                author: options?.author,
+                tags: options?.tags,
             };
 
             // Use template engine to scaffold the entire project

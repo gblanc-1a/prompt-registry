@@ -56,6 +56,16 @@ export class SourceCommands {
                         description: 'Local filesystem directory with .collection.yml files  based on Awesome Copilot specification',
                         value: 'local-awesome-copilot' as SourceType
                     },
+                    {
+                        label: '$(package) APM Repository',
+                        description: 'Remote APM repository (GitHub) containing apm.yml',
+                        value: 'apm' as SourceType
+                    },
+                    {
+                        label: '$(folder-library) Local APM Package',
+                        description: 'Local filesystem directory containing apm.yml',
+                        value: 'local-apm' as SourceType
+                    },
                 ],
                 {
                     placeHolder: 'Select source type',
@@ -118,12 +128,22 @@ export class SourceCommands {
                 config = {
                     collectionsPath: collectionsPath || 'collections'
                 };
+            } else if (sourceType.value === 'apm') {
+                const branch = await vscode.window.showInputBox({
+                    prompt: 'Enter branch name (or press Enter for "main")',
+                    placeHolder: 'main',
+                    value: 'main'
+                });
+                
+                config = {
+                    branch: branch || 'main'
+                };
             }
 
             // Step 4: Check if private/authentication needed (skip for local sources)
             let token: string | undefined;
             let isPrivate: { label: string; description: string; value: boolean } | undefined;
-            const isLocalSource = sourceType.value === 'local' || sourceType.value === 'local-awesome-copilot';
+            const isLocalSource = sourceType.value === 'local' || sourceType.value === 'local-awesome-copilot' || sourceType.value === 'local-apm';
             
             if (!isLocalSource) {
                 isPrivate = await vscode.window.showQuickPick(
@@ -643,6 +663,29 @@ export class SourceCommands {
                     canSelectFiles: false,
                     canSelectMany: false,
                     title: 'Select local awesome-copilot collections directory'
+                });
+                
+                return uris && uris.length > 0 ? uris[0].fsPath : undefined;
+            }
+
+            case 'apm':
+                return await vscode.window.showInputBox({
+                    prompt: 'Enter GitHub repository URL',
+                    placeHolder: 'https://github.com/owner/repo',
+                    validateInput: (value) => {
+                        if (!value || !value.match(/github\.com/)) {
+                            return 'Please enter a valid GitHub URL';
+                        }
+                        return undefined;
+                    }
+                });
+
+            case 'local-apm': {
+                const uris = await vscode.window.showOpenDialog({
+                    canSelectFolders: true,
+                    canSelectFiles: false,
+                    canSelectMany: false,
+                    title: 'Select local APM package directory'
                 });
                 
                 return uris && uris.length > 0 ? uris[0].fsPath : undefined;

@@ -98,7 +98,7 @@
       },
       {
         "command": "promptRegistry.scaffoldProject",
-        "title": "Scaffold Awesome-Copilot Project",
+        "title": "Scaffold Project",
         "category": "Prompt Registry"
       },
       {
@@ -109,6 +109,11 @@
       {
         "command": "promptRegistry.validateCollections",
         "title": "Validate Collections",
+        "category": "Prompt Registry"
+      },
+      {
+        "command": "promptRegistry.validateApm",
+        "title": "Validate APM Package",
         "category": "Prompt Registry"
       },
       {

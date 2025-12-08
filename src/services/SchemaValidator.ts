@@ -135,6 +135,20 @@ export class SchemaValidator {
     }
 
     /**
+     * Validate an APM manifest against the schema
+     * @param data APM manifest data
+     * @param options Validation options
+     * @returns Validation result
+     */
+    async validateApm(
+        data: any,
+        options: ValidationOptions = {}
+    ): Promise<ValidationResult> {
+        const schemaPath = path.join(this.extensionPath, 'schemas', 'apm.schema.json');
+        return this.validate(data, schemaPath, options);
+    }
+
+    /**
      * Format AJV errors into user-friendly messages
      * @param errors AJV error objects
      * @returns Formatted error messages

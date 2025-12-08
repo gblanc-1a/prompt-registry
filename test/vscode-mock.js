@@ -37,6 +37,9 @@ module.exports = {
     remoteName: undefined,
     shell: '/bin/bash'
   },
+  authentication: {
+    getSession: () => Promise.resolve(undefined)
+  },
   ConfigurationTarget: {
     Global: 1,
     Workspace: 2,

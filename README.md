@@ -10,22 +10,22 @@
 
 ## 📋 Table of Contents
 
-- [Overview](#overview)
-- [Terminology & Architecture](#terminology--architecture)
-- [Features](#features)
-- [Installation](#installation)
-- [Quick Start](#quick-start)
-- [Usage](#usage)
+- [Overview](#-overview)
+- [Terminology & Architecture](#-terminology--architecture)
+- [Features](#-features)
+- [Installation](#-installation)
+- [Quick Start](#-quick-start)
+- [Usage](#-usage)
   - [Browsing the Marketplace](#browsing-the-marketplace)
   - [Installing Bundles](#installing-bundles)
   - [Managing Sources](#managing-sources)
   - [Working with Profiles](#working-with-profiles)
-- [Supported Sources](#supported-sources)
-- [Architecture](#architecture)
-- [Configuration](#configuration)
-- [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
-- [License](#license)
+- [Supported Sources](#-supported-sources)
+- [Architecture](#️-architecture)
+- [Configuration](#️-configuration)
+- [Troubleshooting](#-troubleshooting)
+- [Contributing](#-contributing)
+- [License](#-license)
 
 ---
 
@@ -583,7 +583,7 @@ profiles:
 
 The **Registry Explorer** sidebar provides a comprehensive view of your Prompt Registry ecosystem.
 
-#### Overview
+#### Explorer Overview
 
 Access via the sidebar icon or:
 ```bash

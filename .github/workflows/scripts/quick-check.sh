@@ -14,7 +14,11 @@ npm run lint
 echo "▶ Compiling..."
 npm run compile
 
-# 3. Unit tests only
+# 3. Compile Tests
+echo "▶ Compiling tests..."
+npm run compile-tests
+
+# 4. Unit tests only
 echo "▶ Unit tests..."
 npm run test:unit
 

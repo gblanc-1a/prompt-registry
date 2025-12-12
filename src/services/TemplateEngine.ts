@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as vscode from 'vscode';
 import { Logger } from '../utils/logger';
 import { replaceVariables } from '../utils/regexUtils';
 
@@ -83,24 +84,31 @@ export class TemplateEngine {
     /**
      * Copy a template to target location with variable substitution
      */
-    async copyTemplate(name: string, targetPath: string, context: TemplateContext): Promise<void> {
+    async copyTemplate(name: string, targetPath: string | vscode.Uri, context: TemplateContext): Promise<void> {
         const content = await this.renderTemplate(name, context);
         
+        // Resolve target URI
+        const targetUri = typeof targetPath === 'string' ? vscode.Uri.file(targetPath) : targetPath;
+        
         // Ensure target directory exists
-        const targetDir = path.dirname(targetPath);
-        if (!fs.existsSync(targetDir)) {
-            fs.mkdirSync(targetDir, { recursive: true });
+        const targetDir = vscode.Uri.joinPath(targetUri, '..');
+        try {
+            await vscode.workspace.fs.createDirectory(targetDir);
+        } catch (error) {
+            // Ignore error if directory already exists
         }
 
-        fs.writeFileSync(targetPath, content, 'utf8');
-        this.logger.debug(`Copied template '${name}' to: ${targetPath}`);
+        // Write file using workspace filesystem (supports remote)
+        await vscode.workspace.fs.writeFile(targetUri, Buffer.from(content, 'utf8'));
+        this.logger.debug(`Copied template '${name}' to: ${targetUri.fsPath}`);
     }
 
     /**
      * Scaffold a complete project
      */
-    async scaffoldProject(targetPath: string, context: TemplateContext): Promise<void> {
-        this.logger.info(`Scaffolding project at: ${targetPath}`);
+    async scaffoldProject(targetPath: string | vscode.Uri, context: TemplateContext): Promise<void> {
+        const targetUri = typeof targetPath === 'string' ? vscode.Uri.file(targetPath) : targetPath;
+        this.logger.info(`Scaffolding project at: ${targetUri.fsPath}`);
         
         // Copy all templates
         const manifest = await this.loadManifest();
@@ -109,7 +117,9 @@ export class TemplateEngine {
                 continue;
             }
 
-            const targetFile = this.getTargetPath(targetPath, name, template.path);
+            const relativePath = this.resolveRelativePath(name, template.path);
+            const targetFile = vscode.Uri.joinPath(targetUri, relativePath);
+            
             await this.copyTemplate(name, targetFile, context);
         }
 
@@ -125,9 +135,10 @@ export class TemplateEngine {
     }
 
     /**
-     * Get target path for a template, handling special cases
+     * Resolve relative path for a template, handling special cases
+     * Replaces getTargetPath by returning the relative path component
      */
-    private getTargetPath(basePath: string, name: string, templatePath: string): string {
+    private resolveRelativePath(name: string, templatePath: string): string {
         let relativePath = templatePath;
 
         // Handle README.template.md -> README.md
@@ -149,17 +160,16 @@ export class TemplateEngine {
         // Handle workflows -> .github/workflows
         if (relativePath.startsWith('workflows/')) {
             const filename = path.basename(relativePath);
-            return path.join(basePath, '.github', 'workflows', filename);
+            return path.join('.github', 'workflows', filename);
         }
         
         // Handle validation script -> scripts/ (Legacy support for Awesome Copilot)
         if (name === 'validation-script' && relativePath.includes('validate-collections.js')) {
             const filename = path.basename(relativePath);
-            return path.join(basePath, 'scripts', filename);
+            return path.join('scripts', filename);
         }
         
-        // Default: use template path as-is (resolved relative path)
-        return path.join(basePath, relativePath);
+        return relativePath;
     }
 
     /**

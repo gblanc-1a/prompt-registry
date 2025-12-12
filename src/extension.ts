@@ -18,6 +18,7 @@ import { AddResourceCommand } from './commands/AddResourceCommand';
 import { ValidateCollectionsCommand } from './commands/ValidateCollectionsCommand';
 import { ValidateApmCommand } from './commands/ValidateApmCommand';
 import { CreateCollectionCommand } from './commands/CreateCollectionCommand';
+import { GitHubAuthCommand } from './commands/GitHubAuthCommand';
 import { StatusBar } from './ui/statusBar';
 import { Notifications } from './ui/notifications';
 import { Logger } from './utils/logger';
@@ -30,9 +31,6 @@ import { selectVersionCommand } from './commands/selectVersionCommand';
 import { UpdateCommand } from './commands/updateCommand';
 import { StatusCommand } from './commands/statusCommand';
 import { ValidateAccessCommand } from './commands/validateAccessCommand';
-import { UninstallCommand } from './commands/uninstallCommand';
-import { RefactoredUninstallCommand } from './commands/refactoredUninstallCommand';
-import { EnhancedInstallCommand } from './commands/enhancedInstallCommand';
 import { UpdateManager } from './services/updateManager';
 import { InstallationManager } from './services/installationManager';
 import { RegistrySource } from './types/registry';
@@ -203,6 +201,7 @@ export class PromptRegistryExtension {
         this.hubProfileCommands = new HubProfileCommands(this.context);
         const scaffoldCommand = new ScaffoldCommand();
         const addResourceCommand = new AddResourceCommand();
+        const githubAuthCommand = new GitHubAuthCommand(this.registryManager);
         this.validateCollectionsCommand = new ValidateCollectionsCommand(this.context);
         this.validateApmCommand = new ValidateApmCommand(this.context);
         this.createCollectionCommand = new CreateCollectionCommand();
@@ -211,9 +210,6 @@ export class PromptRegistryExtension {
         const updateCommand = new UpdateCommand();
         const statusCommand = new StatusCommand();
         const validateAccessCommand = new ValidateAccessCommand();
-        const uninstallCommand = new UninstallCommand(this.installationManager, this.logger);
-        const enhancedInstallCommand = new EnhancedInstallCommand();
-        const refactoredUninstallCommand = new RefactoredUninstallCommand();
 
         // Register command handlers
         const commands = [
@@ -387,7 +383,7 @@ export class PromptRegistryExtension {
                             },
                             async () => {
                                 const cmd = new ScaffoldCommand(undefined, scaffoldTypeChoice.value);
-                                await cmd.execute(targetPath[0].fsPath, { 
+                                await cmd.execute(targetPath[0], { 
                                     projectName, 
                                     githubRunner,
                                     description,
@@ -471,6 +467,7 @@ export class PromptRegistryExtension {
             vscode.commands.registerCommand('promptregistry.uninstall', () => statusCommand.uninstall()),
             vscode.commands.registerCommand('promptregistry.showHelp', () => statusCommand.showHelp()),
             vscode.commands.registerCommand('promptregistry.validateAccess', () => validateAccessCommand.execute()),
+            vscode.commands.registerCommand('promptregistry.forceGitHubAuth', () => githubAuthCommand.execute()),
 
             // vscode.commands.registerCommand('promptregistry.uninstallAll', () => uninstallCommand.executeUninstallAll()),
             // vscode.commands.registerCommand('promptregistry.enhancedInstall', () => enhancedInstallCommand.execute()),
@@ -581,22 +578,29 @@ export class PromptRegistryExtension {
     /**
      * Check if current workspace is an awesome-copilot repository
      */
-    private isAwesomeCopilotRepository(): boolean {
+    private async isAwesomeCopilotRepository(): Promise<boolean> {
         const workspaceFolders = vscode.workspace.workspaceFolders;
         if (!workspaceFolders || workspaceFolders.length === 0) {
             return false;
         }
 
-        const workspaceRoot = workspaceFolders[0].uri.fsPath;
-        const fs = require('fs');
-        const path = require('path');
-
+        const workspaceRoot = workspaceFolders[0].uri;
+        
         // Check for key directories that indicate an awesome-copilot structure
         const requiredDirs = ['collections', 'prompts', 'instructions', 'agents'];
-        const existingDirs = requiredDirs.filter(dir => {
-            const dirPath = path.join(workspaceRoot, dir);
-            return fs.existsSync(dirPath) && fs.statSync(dirPath).isDirectory();
-        });
+        const existingDirs = [];
+        
+        for (const dir of requiredDirs) {
+            const dirUri = vscode.Uri.joinPath(workspaceRoot, dir);
+            try {
+                const stat = await vscode.workspace.fs.stat(dirUri);
+                if (stat.type === vscode.FileType.Directory) {
+                    existingDirs.push(dir);
+                }
+            } catch (error) {
+                // Directory doesn't exist
+            }
+        }
 
         // Consider it an awesome-copilot repo if at least collections and one other directory exists
         return existingDirs.includes('collections') && existingDirs.length >= 2;
@@ -605,17 +609,21 @@ export class PromptRegistryExtension {
     /**
      * Check if current workspace is an APM repository
      */
-    private isApmRepository(): boolean {
+    private async isApmRepository(): Promise<boolean> {
         const workspaceFolders = vscode.workspace.workspaceFolders;
         if (!workspaceFolders || workspaceFolders.length === 0) {
             return false;
         }
 
-        const workspaceRoot = workspaceFolders[0].uri.fsPath;
-        const fs = require('fs');
-        const path = require('path');
-
-        return fs.existsSync(path.join(workspaceRoot, 'apm.yml'));
+        const workspaceRoot = workspaceFolders[0].uri;
+        const apmYmlUri = vscode.Uri.joinPath(workspaceRoot, 'apm.yml');
+        
+        try {
+            await vscode.workspace.fs.stat(apmYmlUri);
+            return true;
+        } catch (error) {
+            return false;
+        }
     }
 
     /**
@@ -626,8 +634,8 @@ export class PromptRegistryExtension {
             command?: string;
         }
 
-        const isAwesomeCopilotRepo = this.isAwesomeCopilotRepository();
-        const isApmRepo = this.isApmRepository();
+        const isAwesomeCopilotRepo = await this.isAwesomeCopilotRepository();
+        const isApmRepo = await this.isApmRepository();
 
         const commands: CommandItem[] = [
             // Profile Management

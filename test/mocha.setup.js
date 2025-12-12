@@ -1,5 +1,6 @@
 // Mock vscode module for unit tests
 const path = require('path');
+const fs = require('fs');
 const Module = require('module');
 
 // Ensure this is running in Mocha context
@@ -25,7 +26,54 @@ Module._resolveFilename = function (request, parent, isMain) {
 
 // Mock vscode API
 const vscode = {
+  FileType: {
+    Unknown: 0,
+    File: 1,
+    Directory: 2,
+    SymbolicLink: 64
+  },
   workspace: {
+    fs: {
+      createDirectory: (uri) => {
+          if (uri.scheme === 'file') {
+              return fs.promises.mkdir(uri.fsPath, { recursive: true });
+          }
+          return Promise.resolve();
+      },
+      writeFile: (uri, content) => {
+          if (uri.scheme === 'file') {
+              return fs.promises.writeFile(uri.fsPath, content);
+          }
+          return Promise.resolve();
+      },
+      readFile: (uri) => {
+          if (uri.scheme === 'file') {
+              return fs.promises.readFile(uri.fsPath);
+          }
+          return Promise.resolve(new Uint8Array());
+      },
+      stat: (uri) => {
+          if (uri.scheme === 'file') {
+              return fs.promises.stat(uri.fsPath).then(stats => {
+                  return {
+                      type: stats.isDirectory() ? 2 : (stats.isFile() ? 1 : 0),
+                      ctime: stats.ctimeMs,
+                      mtime: stats.mtimeMs,
+                      size: stats.size
+                  };
+              });
+          }
+          return Promise.resolve({ type: 1, ctime: 0, mtime: 0, size: 0 });
+      },
+      readDirectory: (uri) => {
+          if (uri.scheme === 'file') {
+              return fs.promises.readdir(uri.fsPath, { withFileTypes: true }).then(entries => {
+                  return entries.map(e => [e.name, e.isDirectory() ? 2 : 1]);
+              });
+          }
+          return Promise.resolve([]);
+      }
+    },
     getConfiguration: (section) => ({
       get: (key, defaultValue) => {
         // Return mock configuration values for testing
@@ -41,7 +89,14 @@ const vscode = {
         return defaultValue;
       },
       update: async (key, value, target) => undefined
-    })
+    }),
+    workspaceFolders: [
+        {
+            uri: { fsPath: '/mock/workspace' },
+            name: 'workspace',
+            index: 0
+        }
+    ]
   },
   window: {
     showInformationMessage: () => Promise.resolve(),
@@ -59,7 +114,8 @@ const vscode = {
         dispose: function() { return undefined; }
       };
       return channel;
-    }
+    },
+    withProgress: (options, task) => task({ report: () => {} })
   },
   authentication: {
     // Mock authentication API for GitHub tests
@@ -73,7 +129,26 @@ const vscode = {
       authority: '',
       path: path,
       query: '',
-      fragment: ''
+      fragment: '',
+      toString: () => `file://${path}`
+    }),
+    joinPath: (base, ...segments) => {
+        const pathModule = require('path');
+        const joined = pathModule.join(base.path, ...segments);
+        return {
+            fsPath: joined,
+            scheme: base.scheme,
+            authority: base.authority,
+            path: joined,
+            query: '',
+            fragment: '',
+            toString: () => `${base.scheme}://${joined}`
+        };
+    },
+    parse: (value) => ({
+        fsPath: value,
+        scheme: 'file',
+        path: value
     })
   },
   EventEmitter: class EventEmitter {

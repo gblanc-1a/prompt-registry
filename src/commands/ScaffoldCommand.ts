@@ -1,4 +1,5 @@
 import * as path from 'path';
+import * as vscode from 'vscode';
 import { Logger } from '../utils/logger';
 import { TemplateEngine, TemplateContext } from '../services/TemplateEngine';
 
@@ -37,17 +38,21 @@ export class ScaffoldCommand {
     /**
      * Execute the scaffold command
      * 
-     * @param targetPath - Target directory path
+     * @param targetPath - Target directory path or URI
      * @param options - Scaffold options
      */
-    async execute(targetPath: string, options?: ScaffoldOptions): Promise<void> {
+    async execute(targetPath: string | vscode.Uri, options?: ScaffoldOptions): Promise<void> {
         try {
-            this.logger.info(`Scaffolding ${this.scaffoldType} structure at: ${targetPath}`);
+            const targetUri = typeof targetPath === 'string' ? vscode.Uri.file(targetPath) : targetPath;
+            this.logger.info(`Scaffolding ${this.scaffoldType} structure at: ${targetUri.fsPath}`);
             
+            // Resolve project name from path if not provided
+            const projectDirName = path.basename(targetUri.path); // Use path instead of fsPath for consistency across platforms
+
             // Prepare template context
             const context: TemplateContext = {
-                projectName: options?.projectName || path.basename(targetPath) || 'awesome-copilot',
-                collectionId: this.generateCollectionId(options?.projectName || path.basename(targetPath)),
+                projectName: options?.projectName || projectDirName || 'awesome-copilot',
+                collectionId: this.generateCollectionId(options?.projectName || projectDirName),
                 githubRunner: options?.githubRunner || 'ubuntu-latest',
                 description: options?.description,
                 author: options?.author,
@@ -55,7 +60,7 @@ export class ScaffoldCommand {
             };
 
             // Use template engine to scaffold the entire project
-            await this.templateEngine.scaffoldProject(targetPath, context);
+            await this.templateEngine.scaffoldProject(targetUri, context);
 
             this.logger.info('Scaffold completed successfully');
         } catch (error) {

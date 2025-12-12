@@ -113,6 +113,16 @@ secrets.json
 *.rar
 *.vsix
 
+# Version control
+.gitignore
+.gitattributes
+.git/
+
+# Docker
+Dockerfile*
+docker-compose*
+.dockerignore
+
 # Integration test files
 INTEGRATION_TEST_*.md
 

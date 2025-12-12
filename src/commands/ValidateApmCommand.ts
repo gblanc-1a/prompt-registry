@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
-import * as fs from 'fs';
 import * as path from 'path';
 import * as yaml from 'js-yaml';
 import { SchemaValidator } from '../services/SchemaValidator';
+import { TextDecoder } from 'util';
 
 interface ValidationResult {
     errors: string[];
@@ -32,11 +32,13 @@ export class ValidateApmCommand {
             return;
         }
 
-        const workspaceRoot = workspaceFolders[0].uri.fsPath;
-        const manifestPath = path.join(workspaceRoot, 'apm.yml');
+        const workspaceRoot = workspaceFolders[0].uri;
+        const manifestUri = vscode.Uri.joinPath(workspaceRoot, 'apm.yml');
 
-        if (!fs.existsSync(manifestPath)) {
-            vscode.window.showErrorMessage(`apm.yml not found in workspace root: ${workspaceRoot}`);
+        try {
+            await vscode.workspace.fs.stat(manifestUri);
+        } catch (error) {
+            vscode.window.showErrorMessage(`apm.yml not found in workspace root: ${workspaceRoot.fsPath}`);
             return;
         }
 
@@ -45,7 +47,7 @@ export class ValidateApmCommand {
 
         this.log('🔍 APM Package Validation\n');
 
-        const result = await this.validateManifest(manifestPath);
+        const result = await this.validateManifest(manifestUri);
 
         if (result.manifest) {
             this.log(`📦 ${result.manifest.name} v${result.manifest.version}`);
@@ -72,28 +74,30 @@ export class ValidateApmCommand {
         }
         
         // Also check .apm directory
-        const apmDir = path.join(workspaceRoot, '.apm');
-        if (fs.existsSync(apmDir)) {
+        const apmDir = vscode.Uri.joinPath(workspaceRoot, '.apm');
+        try {
+             await vscode.workspace.fs.stat(apmDir);
              // Basic directory check (could be expanded)
              this.log('\nChecking .apm directory structure...');
-             const files = this.scanPrompts(apmDir);
+             const files = await this.scanPrompts(apmDir);
              if (files.length > 0) {
                  this.log(`Found ${files.length} prompt file(s) in .apm directory`);
              } else {
                  this.log('⚠️  .apm directory exists but contains no prompt files', 'warning');
              }
-        } else {
+        } catch (error) {
             this.log('\n⚠️  .apm directory not found (no prompts)', 'warning');
         }
     }
 
-    private async validateManifest(filePath: string): Promise<ValidationResult> {
+    private async validateManifest(fileUri: vscode.Uri): Promise<ValidationResult> {
         const errors: string[] = [];
         const warnings: string[] = [];
         let manifest: any = null;
 
         try {
-            const content = fs.readFileSync(filePath, 'utf8');
+            const contentBytes = await vscode.workspace.fs.readFile(fileUri);
+            const content = new TextDecoder().decode(contentBytes);
             manifest = yaml.load(content);
 
             if (!manifest || typeof manifest !== 'object') {
@@ -119,22 +123,23 @@ export class ValidateApmCommand {
         }
     }
     
-    private scanPrompts(dir: string, fileList: string[] = []): string[] {
+    private async scanPrompts(dirUri: vscode.Uri, fileList: string[] = []): Promise<string[]> {
         const PROMPT_EXTENSIONS = ['.prompt.md', '.instructions.md', '.chatmode.md', '.agent.md'];
         
         try {
-            const files = fs.readdirSync(dir);
-            files.forEach(file => {
-                const filePath = path.join(dir, file);
-                const stat = fs.statSync(filePath);
-                if (stat.isDirectory() && !file.startsWith('.')) {
-                    this.scanPrompts(filePath, fileList);
+            const entries = await vscode.workspace.fs.readDirectory(dirUri);
+            
+            for (const [name, type] of entries) {
+                const entryUri = vscode.Uri.joinPath(dirUri, name);
+                
+                if (type === vscode.FileType.Directory && !name.startsWith('.')) {
+                    await this.scanPrompts(entryUri, fileList);
                 } else {
-                    if (PROMPT_EXTENSIONS.some(ext => file.endsWith(ext))) {
-                        fileList.push(filePath);
+                    if (PROMPT_EXTENSIONS.some(ext => name.endsWith(ext))) {
+                        fileList.push(entryUri.fsPath);
                     }
                 }
-            });
+            }
         } catch (e) {
             // ignore
         }

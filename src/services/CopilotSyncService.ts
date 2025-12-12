@@ -622,7 +622,8 @@ export class CopilotSyncService {
             // Remove each synced file
             let removedCount = 0;
             for (const promptDef of manifest.prompts) {
-                const copilotFile = this.determineCopilotFileType(promptDef, '', bundleId);
+                const sourcePath = path.join(bundlePath, promptDef.file);
+                const copilotFile = this.determineCopilotFileType(promptDef, sourcePath, bundleId);
                 
                 if (fs.existsSync(copilotFile.targetPath)) {
                     const stats = await lstat(copilotFile.targetPath);
@@ -633,7 +634,30 @@ export class CopilotSyncService {
                         this.logger.debug(`Removed: ${path.basename(copilotFile.targetPath)}`);
                         removedCount++;
                     } else {
-                        this.logger.warn(`Skipping non-symlink file: ${path.basename(copilotFile.targetPath)}`);
+                        // In some environments (like WSL -> Windows), symlinks might fail and fall back to copy
+                        // Check if file content matches source before deleting
+                        try {
+                            if (fs.existsSync(copilotFile.sourcePath)) {
+                                const targetContent = await readFile(copilotFile.targetPath, 'utf-8');
+                                const sourceContent = await readFile(copilotFile.sourcePath, 'utf-8');
+                                
+                                // Normalize line endings (CRLF -> LF) for comparison
+                                const normalizedTarget = targetContent.replace(/\r\n/g, '\n');
+                                const normalizedSource = sourceContent.replace(/\r\n/g, '\n');
+                                
+                                if (normalizedTarget === normalizedSource) {
+                                    await unlink(copilotFile.targetPath);
+                                    this.logger.debug(`Removed copied file: ${path.basename(copilotFile.targetPath)}`);
+                                    removedCount++;
+                                } else {
+                                    this.logger.warn(`Skipping modified file: ${path.basename(copilotFile.targetPath)}`);
+                                }
+                            } else {
+                                this.logger.warn(`Skipping non-symlink file (source not found): ${path.basename(copilotFile.targetPath)}`);
+                            }
+                        } catch (err) {
+                            this.logger.warn(`Failed to compare/remove file ${path.basename(copilotFile.targetPath)}: ${err}`);
+                        }
                     }
                 }
             }

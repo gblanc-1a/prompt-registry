@@ -69,7 +69,8 @@ export class SourceCommands {
                 ],
                 {
                     placeHolder: 'Select source type',
-                    title: 'Add Registry Source'
+                    title: 'Add Registry Source',
+                    ignoreFocusOut: true
                 }
             );
 
@@ -86,7 +87,8 @@ export class SourceCommands {
                         return 'Source name is required';
                     }
                     return undefined;
-                }
+                },
+                ignoreFocusOut: true
             });
 
             if (!name) {
@@ -105,13 +107,15 @@ export class SourceCommands {
                 const branch = await vscode.window.showInputBox({
                     prompt: 'Enter branch name (or press Enter for "main")',
                     placeHolder: 'main',
-                    value: 'main'
+                    value: 'main',
+                    ignoreFocusOut: true
                 });
 
                 const collectionsPath = await vscode.window.showInputBox({
                     prompt: 'Enter collections directory path (or press Enter for "collections")',
                     placeHolder: 'collections',
-                    value: 'collections'
+                    value: 'collections',
+                    ignoreFocusOut: true
                 });
 
                 config = {
@@ -122,7 +126,8 @@ export class SourceCommands {
                 const collectionsPath = await vscode.window.showInputBox({
                     prompt: 'Enter collections directory path (or press Enter for "collections")',
                     placeHolder: 'collections',
-                    value: 'collections'
+                    value: 'collections',
+                    ignoreFocusOut: true
                 });
 
                 config = {
@@ -132,7 +137,8 @@ export class SourceCommands {
                 const branch = await vscode.window.showInputBox({
                     prompt: 'Enter branch name (or press Enter for "main")',
                     placeHolder: 'main',
-                    value: 'main'
+                    value: 'main',
+                    ignoreFocusOut: true
                 });
                 
                 config = {
@@ -153,7 +159,8 @@ export class SourceCommands {
                     ],
                     {
                         placeHolder: 'Is this source private?',
-                        title: 'Source Access'
+                        title: 'Source Access',
+                        ignoreFocusOut: true
                     }
                 );
 
@@ -161,7 +168,8 @@ export class SourceCommands {
                     token = await vscode.window.showInputBox({
                         prompt: 'Enter access token (optional - can be configured later)',
                         password: true,
-                        placeHolder: 'Leave empty to configure later'
+                        placeHolder: 'Leave empty to configure later',
+                        ignoreFocusOut: true
                     });
                 }
             }
@@ -176,7 +184,8 @@ export class SourceCommands {
                         return 'Priority must be a positive number';
                     }
                     return undefined;
-                }
+                },
+                ignoreFocusOut: true
             });
 
             if (!priority) {
@@ -274,7 +283,8 @@ export class SourceCommands {
                     })),
                     {
                         placeHolder: 'Select source to edit',
-                        title: 'Edit Source'
+                        title: 'Edit Source',
+                        ignoreFocusOut: true
                     }
                 );
 
@@ -306,7 +316,8 @@ export class SourceCommands {
                 ],
                 {
                     placeHolder: `Edit "${source.name}"`,
-                    title: 'Source Edit Options'
+                    title: 'Source Edit Options',
+                    ignoreFocusOut: true
                 }
             );
 
@@ -364,7 +375,8 @@ export class SourceCommands {
                     })),
                     {
                         placeHolder: 'Select source to remove',
-                        title: 'Remove Source'
+                        title: 'Remove Source',
+                        ignoreFocusOut: true
                     }
                 );
 
@@ -434,7 +446,8 @@ export class SourceCommands {
                     })),
                     {
                         placeHolder: 'Select source to sync',
-                        title: 'Sync Source'
+                        title: 'Sync Source',
+                        ignoreFocusOut: true
                     }
                 );
 
@@ -550,7 +563,8 @@ export class SourceCommands {
                 })),
                 {
                     placeHolder: 'Select a source to view actions',
-                    title: 'Registry Sources'
+                    title: 'Registry Sources',
+                    ignoreFocusOut: true
                 }
             );
 
@@ -563,7 +577,8 @@ export class SourceCommands {
                     { label: '$(trash) Remove', value: 'remove', enabled: true },
                 ].filter(a => a.enabled), {
                     placeHolder: `Actions for "${selected.source.name}"`,
-                    title: 'Source Actions'
+                    title: 'Source Actions',
+                    ignoreFocusOut: true
                 });
 
                 if (action) {
@@ -606,7 +621,8 @@ export class SourceCommands {
                             return 'Please enter a valid GitHub URL';
                         }
                         return undefined;
-                    }
+                    },
+                    ignoreFocusOut: true
                 });
 
             case 'gitlab':
@@ -618,7 +634,8 @@ export class SourceCommands {
                             return 'URL is required';
                         }
                         return undefined;
-                    }
+                    },
+                    ignoreFocusOut: true
                 });
 
             case 'http':
@@ -630,7 +647,8 @@ export class SourceCommands {
                             return 'Please enter a valid HTTP/HTTPS URL';
                         }
                         return undefined;
-                    }
+                    },
+                    ignoreFocusOut: true
                 });
 
             case 'local': {
@@ -654,7 +672,8 @@ export class SourceCommands {
                             return 'Please enter a valid GitHub URL';
                         }
                         return undefined;
-                    }
+                    },
+                    ignoreFocusOut: true
                 });
 
             case 'local-awesome-copilot': {
@@ -677,7 +696,8 @@ export class SourceCommands {
                             return 'Please enter a valid GitHub URL';
                         }
                         return undefined;
-                    }
+                    },
+                    ignoreFocusOut: true
                 });
 
             case 'local-apm': {
@@ -722,7 +742,8 @@ export class SourceCommands {
                     return 'Source name is required';
                 }
                 return undefined;
-            }
+            },
+            ignoreFocusOut: true
         });
 
         if (newName && newName !== source.name) {
@@ -757,7 +778,8 @@ export class SourceCommands {
         const token = await vscode.window.showInputBox({
             prompt: 'Enter access token (leave empty to remove)',
             password: true,
-            placeHolder: 'Access token'
+            placeHolder: 'Access token',
+            ignoreFocusOut: true
         });
 
         if (token !== undefined) {
@@ -789,7 +811,8 @@ export class SourceCommands {
                     return 'Priority must be a positive number';
                 }
                 return undefined;
-            }
+            },
+            ignoreFocusOut: true
         });
 
         if (newPriority) {
@@ -825,7 +848,8 @@ export class SourceCommands {
                     })),
                     {
                         placeHolder: 'Select source to toggle',
-                        title: 'Toggle Source'
+                        title: 'Toggle Source',
+                        ignoreFocusOut: true
                     }
                 );
 

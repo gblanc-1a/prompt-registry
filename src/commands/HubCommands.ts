@@ -181,7 +181,8 @@ export class HubCommands {
             const selected = await vscode.window.showQuickPick(items, {
                 placeHolder: 'Select a hub to view details',
                 matchOnDescription: true,
-                matchOnDetail: true
+                matchOnDetail: true,
+                ignoreFocusOut: true
             });
 
             if (selected) {
@@ -234,7 +235,8 @@ export class HubCommands {
                 ];
 
                 const selected = await vscode.window.showQuickPick(items, {
-                    placeHolder: 'Select hub to sync'
+                    placeHolder: 'Select hub to sync',
+                    ignoreFocusOut: true
                 });
 
                 if (!selected) {
@@ -300,7 +302,8 @@ export class HubCommands {
                 }));
 
                 const selected = await vscode.window.showQuickPick(items, {
-                    placeHolder: 'Select hub to delete'
+                    placeHolder: 'Select hub to delete',
+                    ignoreFocusOut: true
                 });
 
                 if (!selected) {
@@ -374,7 +377,8 @@ export class HubCommands {
             // Show quick-pick
             const selected = await vscode.window.showQuickPick(items, {
                 placeHolder: 'Select a hub to activate',
-                title: 'Switch Active Hub'
+                title: 'Switch Active Hub',
+                ignoreFocusOut: true
             });
 
             if (!selected) {
@@ -417,18 +421,21 @@ export class HubCommands {
             const hubName = await vscode.window.showInputBox({
                 prompt: 'Enter hub name',
                 placeHolder: 'My Awesome Hub',
-                validateInput: (value) => value.trim() ? null : 'Hub name is required'
+                validateInput: (value) => value.trim() ? null : 'Hub name is required',
+                ignoreFocusOut: true
             });
             if (!hubName) { return; }
 
             const hubDescription = await vscode.window.showInputBox({
                 prompt: 'Enter hub description',
-                placeHolder: 'A curated collection of prompts for...'
+                placeHolder: 'A curated collection of prompts for...',
+                ignoreFocusOut: true
             });
 
             const maintainer = await vscode.window.showInputBox({
                 prompt: 'Enter maintainer name/email',
-                placeHolder: 'Your Name <email@example.com>'
+                placeHolder: 'Your Name <email@example.com>',
+                ignoreFocusOut: true
             });
 
             // Build hub config
@@ -649,7 +656,8 @@ export class HubCommands {
         ];
 
         const selected = await vscode.window.showQuickPick(options, {
-            placeHolder: 'Select hub source type'
+            placeHolder: 'Select hub source type',
+            ignoreFocusOut: true
         });
 
         return selected?.value;
@@ -669,7 +677,8 @@ export class HubCommands {
                             return 'Please enter a valid GitHub repository (owner/repo)';
                         }
                         return null;
-                    }
+                    },
+                    ignoreFocusOut: true
                 });
 
                 if (!location) {
@@ -678,7 +687,8 @@ export class HubCommands {
 
                 const ref = await vscode.window.showInputBox({
                     prompt: 'Enter branch, tag, or commit (optional, default: main)',
-                    placeHolder: 'main'
+                    placeHolder: 'main',
+                    ignoreFocusOut: true
                 });
 
                 return {
@@ -697,7 +707,8 @@ export class HubCommands {
                             return 'Please enter a valid HTTPS URL';
                         }
                         return null;
-                    }
+                    },
+                    ignoreFocusOut: true
                 });
 
                 return location ? { type: 'url', location } : undefined;
@@ -741,7 +752,8 @@ export class HubCommands {
                     return 'Hub ID cannot start or end with a hyphen';
                 }
                 return null;
-            }
+            },
+            ignoreFocusOut: true
         });
 
         return hubId === undefined ? null : (hubId || '');

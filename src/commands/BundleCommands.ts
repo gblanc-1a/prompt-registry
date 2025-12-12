@@ -28,6 +28,7 @@ export class BundleCommands {
             const searchQuery = await vscode.window.showInputBox({
                 prompt: 'Search for bundles',
                 placeHolder: 'e.g., python developer',
+                ignoreFocusOut: true
             });
 
             if (!searchQuery) {
@@ -62,7 +63,8 @@ export class BundleCommands {
                         })),
                         {
                             placeHolder: `Found ${bundles.length} bundle(s)`,
-                            title: 'Select Bundle to Install'
+                            title: 'Select Bundle to Install',
+                            ignoreFocusOut: true
                         }
                     );
 
@@ -108,7 +110,8 @@ export class BundleCommands {
                 ],
                 {
                     placeHolder: 'Select installation scope',
-                    title: `Install ${bundle.name}`
+                    title: `Install ${bundle.name}`,
+                    ignoreFocusOut: true
                 }
             );
 
@@ -187,7 +190,8 @@ export class BundleCommands {
                     })),
                     {
                         placeHolder: 'Select bundle to uninstall',
-                        title: 'Uninstall Bundle'
+                        title: 'Uninstall Bundle',
+                        ignoreFocusOut: true
                     }
                 );
 
@@ -320,7 +324,8 @@ export class BundleCommands {
                         {
                             placeHolder: `${updates.length} update(s) available`,
                             title: 'Bundle Updates',
-                            canPickMany: true
+                            canPickMany: true,
+                            ignoreFocusOut: true
                         }
                     );
 
@@ -359,6 +364,7 @@ export class BundleCommands {
                 const searchQuery = await vscode.window.showInputBox({
                     prompt: 'Search for bundles',
                     placeHolder: 'e.g., python developer',
+                    ignoreFocusOut: true
                 });
 
                 if (!searchQuery) {
@@ -382,7 +388,8 @@ export class BundleCommands {
                     })),
                     {
                         placeHolder: 'Select bundle to view',
-                        title: 'Bundle Search'
+                        title: 'Bundle Search',
+                        ignoreFocusOut: true
                     }
                 );
 
@@ -431,7 +438,8 @@ export class BundleCommands {
                 }
             ], {
                 placeHolder: bundle.name,
-                title: 'Bundle Details'
+                title: 'Bundle Details',
+                ignoreFocusOut: true
             });
 
             if (action) {
@@ -476,7 +484,8 @@ export class BundleCommands {
                 ],
                 {
                     placeHolder: 'Select a category',
-                    title: 'Browse Bundles by Category'
+                    title: 'Browse Bundles by Category',
+                    ignoreFocusOut: true
                 }
             );
 
@@ -511,7 +520,8 @@ export class BundleCommands {
                         })),
                         {
                             placeHolder: `${bundles.length} bundle(s) in ${category.label}`,
-                            title: 'Select Bundle'
+                            title: 'Select Bundle',
+                            ignoreFocusOut: true
                         }
                     );
 
@@ -557,7 +567,8 @@ export class BundleCommands {
                         })),
                         {
                             placeHolder: 'Popular bundles',
-                            title: 'Most Downloaded Bundles'
+                            title: 'Most Downloaded Bundles',
+                            ignoreFocusOut: true
                         }
                     );
 
@@ -613,7 +624,8 @@ export class BundleCommands {
                 })),
                 {
                     placeHolder: `${installed.length} bundle(s) installed`,
-                    title: 'Installed Bundles'
+                    title: 'Installed Bundles',
+                    ignoreFocusOut: true
                 }
             );
 

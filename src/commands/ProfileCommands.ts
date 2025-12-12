@@ -41,7 +41,8 @@ export class ProfileCommands {
                         return 'Profile name must be less than 50 characters';
                     }
                     return undefined;
-                }
+                },
+                ignoreFocusOut: true
             });
 
             if (!name) {
@@ -52,6 +53,7 @@ export class ProfileCommands {
             const description = await vscode.window.showInputBox({
                 prompt: 'Enter profile description (optional)',
                 placeHolder: 'e.g., Prompts for full-stack web development',
+                ignoreFocusOut: true
             }) || '';
 
             // Step 3: Select icon
@@ -60,7 +62,8 @@ export class ProfileCommands {
                 icons.map(icon => ({ label: icon, description: icon })),
                 {
                     placeHolder: 'Select an icon for the profile',
-                    title: 'Profile Icon'
+                    title: 'Profile Icon',
+                    ignoreFocusOut: true
                 }
             );
 
@@ -156,7 +159,8 @@ export class ProfileCommands {
                     })),
                     {
                         placeHolder: 'Select profile to edit',
-                        title: 'Edit Profile'
+                        title: 'Edit Profile',
+                        ignoreFocusOut: true
                     }
                 );
 
@@ -185,7 +189,8 @@ export class ProfileCommands {
                 ],
                 {
                     placeHolder: `Edit "${profile.name}"`,
-                    title: 'Profile Edit Options'
+                    title: 'Profile Edit Options',
+                    ignoreFocusOut: true
                 }
             );
 
@@ -249,7 +254,8 @@ export class ProfileCommands {
 
                 const selected = await vscode.window.showQuickPick(items, {
                     placeHolder: 'Select a profile to activate',
-                    title: 'Activate Profile'
+                    title: 'Activate Profile',
+                    ignoreFocusOut: true
                 });
 
                 if (!selected) {
@@ -307,7 +313,8 @@ export class ProfileCommands {
 
                 const selected = await vscode.window.showQuickPick(items, {
                     placeHolder: 'Select a profile to deactivate',
-                    title: 'Deactivate Profile'
+                    title: 'Deactivate Profile',
+                    ignoreFocusOut: true
                 });
 
                 if (!selected) {
@@ -362,7 +369,8 @@ export class ProfileCommands {
                     })),
                     {
                         placeHolder: 'Select profile to delete',
-                        title: 'Delete Profile'
+                        title: 'Delete Profile',
+                        ignoreFocusOut: true
                     }
                 );
 
@@ -436,7 +444,8 @@ export class ProfileCommands {
                     })),
                     {
                         placeHolder: 'Select profile to export',
-                        title: 'Export Profile'
+                        title: 'Export Profile',
+                        ignoreFocusOut: true
                     }
                 );
 
@@ -612,7 +621,8 @@ export class ProfileCommands {
                 {
                     placeHolder: 'Select bundles to add to profile',
                     canPickMany: true,
-                    title: 'Bundle Selection'
+                    title: 'Bundle Selection',
+                    ignoreFocusOut: true
                 }
             );
 
@@ -631,7 +641,8 @@ export class ProfileCommands {
                     ],
                     {
                         placeHolder: `Is "${item.bundle.name}" required?`,
-                        title: 'Bundle Requirement'
+                        title: 'Bundle Requirement',
+                        ignoreFocusOut: true
                     }
                 );
 
@@ -678,7 +689,8 @@ export class ProfileCommands {
                     return 'Profile name is required';
                 }
                 return undefined;
-            }
+            },
+            ignoreFocusOut: true
         });
 
         if (newName && newName !== profile.name) {
@@ -701,6 +713,7 @@ export class ProfileCommands {
         const newDescription = await vscode.window.showInputBox({
             prompt: 'Enter new description',
             value: profile.description,
+            ignoreFocusOut: true
         });
 
         if (newDescription !== undefined && newDescription !== profile.description) {
@@ -719,7 +732,8 @@ export class ProfileCommands {
             icons.map(icon => ({ label: icon, description: icon })),
             {
                 placeHolder: 'Select new icon',
-                title: 'Change Profile Icon'
+                title: 'Change Profile Icon',
+                ignoreFocusOut: true
             }
         );
 
@@ -738,7 +752,8 @@ export class ProfileCommands {
             { label: '$(remove) Remove Bundles', value: 'remove' },
         ], {
             placeHolder: 'Bundle Management',
-            title: 'Manage Profile Bundles'
+            title: 'Manage Profile Bundles',
+            ignoreFocusOut: true
         });
 
         if (!action) {
@@ -783,7 +798,8 @@ export class ProfileCommands {
                     {
                         placeHolder: 'Select bundles to remove',
                         canPickMany: true,
-                        title: 'Remove Bundles'
+                        title: 'Remove Bundles',
+                        ignoreFocusOut: true
                     }
                 );
 

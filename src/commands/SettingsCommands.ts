@@ -34,7 +34,8 @@ export class SettingsCommands {
                 ],
                 { 
                     placeHolder: 'Select export format',
-                    title: 'Export Registry Settings'
+                    title: 'Export Registry Settings',
+                    ignoreFocusOut: true
                 }
             );
 
@@ -124,7 +125,8 @@ export class SettingsCommands {
                 ],
                 { 
                     placeHolder: 'Choose import strategy',
-                    title: 'Import Strategy'
+                    title: 'Import Strategy',
+                    ignoreFocusOut: true
                 }
             );
 

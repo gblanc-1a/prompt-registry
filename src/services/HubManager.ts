@@ -15,6 +15,7 @@ import { HubStorage, LoadHubResult } from '../storage/HubStorage';
 import { Logger } from '../utils/logger';
 import { SchemaValidator, ValidationResult } from './SchemaValidator';
 import { HubConfig, HubProfile, HubReference, validateHubConfig, sanitizeHubId , HubSource, HubProfileBundle , ProfileActivationState, ProfileActivationOptions, ProfileActivationResult, ProfileDeactivationResult, ProfileChanges, ChangeQuickPickItem, DialogOption, ConflictResolutionDialog } from '../types/hub';
+import { RegistrySource } from '../types/registry';
 
 const execAsync = promisify(exec);
 
@@ -656,9 +657,9 @@ export class HubManager {
      */
     private findDuplicateSource(
         source: HubSource,
-        existingSources: import('../types/registry').RegistrySource[]
-    ): import('../types/registry').RegistrySource | undefined {
-        return existingSources.find((existing: import('../types/registry').RegistrySource) => {
+        existingSources: RegistrySource[]
+    ): RegistrySource | undefined {
+        return existingSources.find((existing: RegistrySource) => {
             // Must have same type and URL
             if (existing.type !== source.type || existing.url !== source.url) {
                 return false;
@@ -726,7 +727,7 @@ export class HubManager {
                 const sourceId = `hub-${hubId}-${hubSource.id}`;
                 
                 // Check if source with same ID already exists (from this hub)
-                const existingSourceById = existingSources.find((s: import('../types/registry').RegistrySource) => s.id === sourceId);
+                const existingSourceById = existingSources.find((s: RegistrySource) => s.id === sourceId);
                 
                 if (existingSourceById) {
                     // Update existing source from same hub
@@ -768,7 +769,7 @@ export class HubManager {
                 this.logger.info(`Adding new hub source: ${sourceId} (${hubSource.name})`);
                 
                 // Convert HubSource to RegistrySource
-                const registrySource: import('../types/registry').RegistrySource = {
+                const registrySource: RegistrySource = {
                     id: sourceId,
                     name: hubSource.name,
                     type: hubSource.type,

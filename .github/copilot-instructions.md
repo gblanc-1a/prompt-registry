@@ -25,6 +25,17 @@ These are short, actionable notes to help an AI coding assistant be productive i
   - Package VSIX: `npm run package:vsix` (via `vsce package`) or `npm run package:full` for a full prepared package.
   - Pretest pipeline: `npm run pretest` runs compile-tests, compile, then lint — tests expect compiled JS in `dist`/`test-dist`.
 
+- **Bug fixing methodology:**
+  1. **Write a test that reproduces the issue FIRST** - before fixing anything
+     - Start with unit test testing the specific behavior
+     - Test should FAIL with the bug present, PASS after fix
+  2. **If unit tests pass but bug persists in production:**
+     - Check actual runtime data: inspect storage files in `globalStorage/amadeusitgroup.prompt-registry/`
+     - Look for discrepancies (duplicate data, wrong formats, unexpected counts)
+     - Upgrade to integration test: call via commands (`vscode.commands.executeCommand`), use real services (not mocks), inspect actual storage
+  3. **Search for all code paths** - bug might be in multiple places (e.g., both `commands/` and `services/`)
+  4. **Integration test > unit test** when issue involves cross-layer concerns or persistence
+
 - Project-specific conventions
   - Singletons: `RegistryManager.getInstance(context?)` requires an ExtensionContext on first call. Many services follow this pattern; pass `context` from `extension.ts` when activating.
   - Storage: persistent data lives under the extension's global storage (`context.globalStorageUri.fsPath`). `RegistryStorage.getPaths()` exposes locations; tests may mock or read these paths.
@@ -37,6 +48,7 @@ These are short, actionable notes to help an AI coding assistant be productive i
   - Network: adapters use `axios`/https and must handle redirects and rate limits. Unit tests use `nock` for HTTP mocking.
   - File I/O: Bundle extraction uses `adm-zip` and filesystem operations—ensure temp directories are cleaned in tests.
   - VS Code API: activation lifecycle, `ExtensionContext` storage URIs and event emitters are core — tests for extension behavior should use the VS Code test runner.
+  - **Layering**: Commands (`src/commands/*`) should delegate to services (`src/services/*`), not duplicate logic. If both layers implement the same operation, you'll get duplicate executions.
 
 - Quick examples you can use in edits
   - Add a new adapter: copy `src/adapters/HttpAdapter.ts`, implement `fetchBundles()`/`getDownloadUrl()`/`validate()` and register it in `RegistryManager` constructor.

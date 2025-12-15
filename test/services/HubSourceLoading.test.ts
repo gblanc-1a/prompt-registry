@@ -140,7 +140,7 @@ suite('Hub Source Loading', () => {
             assert.ok(!mockRegistry.hasSource('hub-test-hub-disabled-disabled-source'), 'Should not have disabled source');
         });
 
-        test('should update existing hub sources on re-import', async () => {
+        test('should skip existing hub sources on re-load (no duplicates)', async () => {
             const fixturePath = path.join(__dirname, '..', 'fixtures', 'hubs', 'hub-two-sources.yml');
             const ref: HubReference = {
                 type: 'local',
@@ -160,11 +160,11 @@ suite('Hub Source Loading', () => {
             // Re-load sources from same hub (simulates re-import/sync)
             await hubManager.loadHubSources('test-hub-update');
 
-            // Verify sources were updated, not duplicated
+            // Verify sources were skipped (already loaded), not duplicated
             const sourcesAfterReload = await mockRegistry.listSources();
             assert.strictEqual(sourcesAfterReload.length, 2, 'Should still have only 2 sources (no duplicates)');
-            assert.strictEqual(mockRegistry.updateSourceCalls.length, 2, 'Should have 2 update calls');
-            assert.strictEqual(mockRegistry.addSourceCalls.length, 0, 'Should have 0 add calls on reload');
+            assert.strictEqual(mockRegistry.addSourceCalls.length, 0, 'Should have 0 add calls on reload (sources already exist)');
+            assert.strictEqual(mockRegistry.updateSourceCalls.length, 0, 'Should have 0 update calls on reload (sources already exist and unchanged)');
         });
     });
 
@@ -364,6 +364,100 @@ suite('Hub Source Loading', () => {
             const sources = await mockRegistry.listSources();
             assert.ok(sources.length > 0, 'Sources should be loaded automatically');
             assert.ok(mockRegistry.addSourceCalls.length > 0, 'addSource should have been called');
+        });
+
+        test('should NOT duplicate sources when importing then setting as active hub', async () => {
+            const fixturePath = path.join(__dirname, '..', 'fixtures', 'hubs', 'hub-two-sources.yml');
+            const ref: HubReference = {
+                type: 'local',
+                location: fixturePath
+            };
+
+            // Reset mock to ensure clean state
+            mockRegistry.reset();
+
+            // Step 1: Import hub (calls loadHubSources internally)
+            const hubId = await hubManager.importHub(ref, 'test-no-dup');
+            const sourcesAfterImport = await mockRegistry.listSources();
+            const addCallsAfterImport = mockRegistry.addSourceCalls.length;
+            
+            assert.strictEqual(sourcesAfterImport.length, 2, 'Should have 2 sources after import');
+            assert.strictEqual(addCallsAfterImport, 2, 'Should have made 2 addSource calls during import');
+
+            // Step 2: Set as active hub (should NOT call loadHubSources again or skip if it does)
+            await hubManager.setActiveHub(hubId);
+            const sourcesAfterActivation = await mockRegistry.listSources();
+            const addCallsAfterActivation = mockRegistry.addSourceCalls.length;
+
+            // Critical assertions: No duplicates should exist
+            assert.strictEqual(sourcesAfterActivation.length, 2, 
+                'Should STILL have only 2 sources after activation (NO DUPLICATES)');
+            assert.strictEqual(addCallsAfterActivation, 2, 
+                'Should STILL have only 2 addSource calls total (no additional adds during activation)');
+
+            // Verify source IDs are unique
+            const sourceIds = sourcesAfterActivation.map(s => s.id);
+            const uniqueIds = new Set(sourceIds);
+            assert.strictEqual(sourceIds.length, uniqueIds.size, 'All source IDs should be unique');
+
+            // Verify specific sources exist exactly once
+            const source1Count = sourcesAfterActivation.filter(s => s.id === 'hub-test-no-dup-source-1').length;
+            const source2Count = sourcesAfterActivation.filter(s => s.id === 'hub-test-no-dup-source-2').length;
+            assert.strictEqual(source1Count, 1, 'Source 1 should exist exactly once');
+            assert.strictEqual(source2Count, 1, 'Source 2 should exist exactly once');
+        });
+
+        test('should NOT duplicate sources when calling loadHubSources multiple times', async () => {
+            const fixturePath = path.join(__dirname, '..', 'fixtures', 'hubs', 'hub-two-sources.yml');
+            const ref: HubReference = {
+                type: 'local',
+                location: fixturePath
+            };
+
+            // Import hub
+            const hubId = await hubManager.importHub(ref, 'test-multi-load');
+            mockRegistry.reset();
+
+            // Call loadHubSources multiple times manually (simulating concurrent or repeated calls)
+            await Promise.all([
+                hubManager.loadHubSources(hubId),
+                hubManager.loadHubSources(hubId),
+                hubManager.loadHubSources(hubId)
+            ]);
+
+            const sources = await mockRegistry.listSources();
+
+            // Should still have only 2 unique sources
+            assert.strictEqual(sources.length, 2, 'Should have only 2 sources despite multiple loadHubSources calls');
+            
+            // Verify no duplicate IDs
+            const sourceIds = sources.map(s => s.id);
+            const uniqueIds = new Set(sourceIds);
+            assert.strictEqual(sourceIds.length, uniqueIds.size, 'All source IDs should be unique');
+        });
+
+        test('should use prefixed source IDs (hub-{hubId}-{sourceId})', async () => {
+            const fixturePath = path.join(__dirname, '..', 'fixtures', 'hubs', 'hub-two-sources.yml');
+            const ref: HubReference = {
+                type: 'local',
+                location: fixturePath
+            };
+
+            const hubId = await hubManager.importHub(ref, 'test-prefix');
+            const sources = await mockRegistry.listSources();
+
+            // All sources from this hub should have prefixed IDs
+            const hubSources = sources.filter(s => s.hubId === 'test-prefix');
+            assert.ok(hubSources.length > 0, 'Should have sources from hub');
+
+            for (const source of hubSources) {
+                assert.ok(source.id.startsWith('hub-test-prefix-'), 
+                    `Source ID "${source.id}" should start with "hub-test-prefix-"`);
+                
+                // Should NOT be just the unprefixed source ID from hub config
+                assert.notStrictEqual(source.id, 'source-1', 'Should not use unprefixed ID');
+                assert.notStrictEqual(source.id, 'source-2', 'Should not use unprefixed ID');
+            }
         });
 
         test('should reload sources when syncing hub', async () => {

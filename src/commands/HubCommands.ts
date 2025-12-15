@@ -115,37 +115,8 @@ export class HubCommands {
                         // Load the hub
                         const importedHubConfig = await this.hubManager.loadHub(importedHubId);
 
-                        // Sync sources from hub
-                        if (importedHubConfig.config.sources && importedHubConfig.config.sources.length > 0) {
-                            progress.report({ message: 'Importing sources...' });
-                            try {
-                                const existingSources = await this.registryManager.listSources();
-                                
-                                for (const sourceConfig of importedHubConfig.config.sources) {
-                                    // Check if source already exists
-                                    const existing = existingSources.find(s => s.id === sourceConfig.id);
-                                    
-                                    if (existing) {
-                                        this.logger.info(`Source ${sourceConfig.id} already exists, skipping import from hub.`);
-                                    } else {
-                                        try {
-                                            // Inject hubId to track provenance
-                                            const sourceToAdd = {
-                                                ...sourceConfig,
-                                                hubId: importedHubId
-                                            };
-                                            await this.registryManager.addSource(sourceToAdd);
-                                            this.logger.info(`Imported source ${sourceConfig.id} from hub`);
-                                        } catch (error) {
-                                            this.logger.error(`Failed to import source ${sourceConfig.id}`, error as Error);
-                                        }
-                                    }
-                                }
-                                this.logger.info(`Processed ${importedHubConfig.config.sources.length} sources from hub`);
-                            } catch (error) {
-                                this.logger.error('Failed to sync sources from hub', error as Error);
-                            }
-                        }
+                        // Note: Sources are automatically loaded by HubManager.importHub() via loadHubSources()
+                        // No need to manually import sources here - that would create duplicates
                         
                         if (importedHubConfig.config.profiles && importedHubConfig.config.profiles.length > 0) {
                             progress.report({ message: 'Creating profiles...' });

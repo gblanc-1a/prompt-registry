@@ -75,6 +75,7 @@ export class HubManager {
 
     private authToken: string | undefined;
     private authMethod: 'vscode' | 'gh-cli' | 'explicit' | 'none' = 'none';
+    private loadingHubSources = new Set<string>(); // Track hubs currently loading sources
 
 
     /**
@@ -700,16 +701,21 @@ export class HubManager {
             return;
         }
 
-        this.logger.info(`Loading sources from hub: ${hubId}`);
+        // Prevent concurrent loading of sources from the same hub
+        if (this.loadingHubSources.has(hubId)) {
+            this.logger.info(`Sources from hub ${hubId} are already being loaded, skipping duplicate call`);
+            return;
+        }
+
+        this.loadingHubSources.add(hubId);
         
         try {
+            this.logger.info(`Loading sources from hub: ${hubId}`);
+            
             const hubData = await this.storage.loadHub(hubId);
             const hubSources = hubData.config.sources || [];
             
             this.logger.info(`Found ${hubSources.length} sources in hub ${hubId}`);
-            
-            // Get existing sources to avoid duplicates
-            const existingSources = await this.registryManager.listSources();
             
             let addedCount = 0;
             let skippedCount = 0;
@@ -726,29 +732,20 @@ export class HubManager {
                 // Create unique source ID by prefixing with hub ID
                 const sourceId = `hub-${hubId}-${hubSource.id}`;
                 
+                // Get fresh list of existing sources for each iteration to catch concurrency issues
+                const existingSources = await this.registryManager.listSources();
+                
                 // Check if source with same ID already exists (from this hub)
                 const existingSourceById = existingSources.find((s: RegistrySource) => s.id === sourceId);
                 
                 if (existingSourceById) {
-                    // Update existing source from same hub
-                    this.logger.info(`Updating existing hub source: ${sourceId}`);
-                    await this.registryManager.updateSource(sourceId, {
-                        name: hubSource.name,
-                        type: hubSource.type,
-                        url: hubSource.url,
-                        enabled: hubSource.enabled,
-                        priority: hubSource.priority,
-                        private: hubSource.private,
-                        token: hubSource.token,
-                        metadata: hubSource.metadata,
-                        config: hubSource.config,
-                        hubId: hubId
-                    });
-                    updatedCount++;
+                    // Source already loaded from this hub
+                    this.logger.debug(`Source already loaded from this hub: ${sourceId}, skipping`);
+                    skippedCount++;
                     continue;
                 }
                 
-                // Check if duplicate source already exists (same URL + config)
+                // Check if duplicate source already exists (same URL + config from different hub or manual add)
                 const duplicateSource = this.findDuplicateSource(hubSource, existingSources);
                 
                 if (duplicateSource) {
@@ -794,6 +791,9 @@ export class HubManager {
         } catch (error) {
             this.logger.error(`Failed to load sources from hub ${hubId}`, error as Error);
             throw error;
+        } finally {
+            // Always remove the lock, even if there was an error
+            this.loadingHubSources.delete(hubId);
         }
     }
 

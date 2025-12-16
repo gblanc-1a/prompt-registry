@@ -137,6 +137,22 @@ export class VersionManager {
         // Extract originals
         return validVersions.map(v => v.original);
     }
+
+    /**
+     * Check if two bundle IDs represent the same bundle identity
+     * Handles versioned IDs and different source types
+     * 
+     * @param id1 - First bundle ID
+     * @param type1 - Source type of first bundle
+     * @param id2 - Second bundle ID
+     * @param type2 - Source type of second bundle
+     * @returns True if they represent the same bundle identity
+     */
+    static isSameBundleIdentity(id1: string, type1: SourceType, id2: string, type2: SourceType): boolean {
+        const identity1 = this.extractBundleIdentity(id1, type1);
+        const identity2 = this.extractBundleIdentity(id2, type2);
+        return identity1 === identity2;
+    }
     
     /**
      * Extract bundle identity from GitHub bundle ID by removing version suffix

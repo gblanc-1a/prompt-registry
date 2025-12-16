@@ -75,9 +75,12 @@ suite('Auto-Update Preference Storage - Integration', () => {
         
         // Initialize storage (won't create directories due to stub)
         await storage.initialize();
-        
+
         // Replace RegistryManager's storage with our test storage
-        (registryManager as any).storage = storage;
+        ;(registryManager as any).storage = storage;
+
+        // Initialize RegistryManager so AutoUpdatePreferenceManager is wired for tests
+        await registryManager.initialize();
         
         // Create AutoUpdateService with real storage
         autoUpdateService = new AutoUpdateService(

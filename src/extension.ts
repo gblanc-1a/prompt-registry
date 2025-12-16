@@ -28,6 +28,7 @@ import { UpdateScheduler } from './services/UpdateScheduler';
 import { UpdateChecker } from './services/UpdateChecker';
 import { NotificationManager } from './services/NotificationManager';
 import { AutoUpdateService } from './services/AutoUpdateService';
+import { NotificationService } from './services/NotificationService';
 import {
     getValidUpdateCheckFrequency,
     getValidNotificationPreference
@@ -74,6 +75,7 @@ export class PromptRegistryExtension {
     private updateChecker: UpdateChecker | undefined;
     private notificationManager: NotificationManager | undefined;
     private autoUpdateService: AutoUpdateService | undefined;
+    private notificationService: NotificationService | undefined;
 
     // Legacy (to be removed)
     private readonly installationManager: InstallationManager;
@@ -505,10 +507,6 @@ export class PromptRegistryExtension {
             vscode.commands.registerCommand('promptregistry.showHelp', () => statusCommand.showHelp()),
             vscode.commands.registerCommand('promptregistry.validateAccess', () => validateAccessCommand.execute()),
             vscode.commands.registerCommand('promptregistry.forceGitHubAuth', () => githubAuthCommand.execute()),
-
-            // vscode.commands.registerCommand('promptregistry.uninstallAll', () => uninstallCommand.executeUninstallAll()),
-            // vscode.commands.registerCommand('promptregistry.enhancedInstall', () => enhancedInstallCommand.execute()),
-            // vscode.commands.registerCommand('promptregistry.enhancedUninstall', () => refactoredUninstallCommand.execute()),
         ];
 
         // Add to disposables
@@ -625,6 +623,8 @@ export class PromptRegistryExtension {
                 }
             );
 
+            this.notificationService = new NotificationService(bundleNotifications);
+
             // Create update service factory to inject dependencies
             this.autoUpdateService = new AutoUpdateService(
                 // Bundle operations
@@ -654,6 +654,10 @@ export class PromptRegistryExtension {
                 },
                 this.autoUpdateService
             );
+
+            if (this.notificationService) {
+                this.updateScheduler.setNotificationService(this.notificationService);
+            }
 
             // Wire up update detection to tree provider
             if (this.treeProvider) {
@@ -726,7 +730,7 @@ export class PromptRegistryExtension {
      * Bypasses cache and displays results immediately
      */
     private async handleManualUpdateCheck(): Promise<void> {
-        if (!this.updateScheduler || !this.updateChecker || !this.notificationManager) {
+        if (!this.updateChecker || !this.notificationService) {
             this.logger.warn('Update system not initialized');
             await vscode.window.showWarningMessage('Update system is not initialized yet. Please try again in a moment.');
             return;
@@ -740,11 +744,8 @@ export class PromptRegistryExtension {
                     cancellable: false
                 },
                 async () => {
-                    // Trigger manual check (bypasses cache)
-                    await this.updateScheduler!.checkNow();
-
-                    // Get the results
-                    const updates = await this.updateChecker!.getCachedResults();
+                    // Trigger manual check (bypasses cache) and refresh cache directly via UpdateChecker
+                    const updates = await this.updateChecker!.checkForUpdates(true);
 
                     if (!updates || updates.length === 0) {
                         await vscode.window.showInformationMessage('All bundles are up to date!');
@@ -765,16 +766,10 @@ export class PromptRegistryExtension {
                         );
                     }
 
-                    // Use BundleUpdateNotifications for bundle update notifications
-                    const { BundleUpdateNotifications } = await import('./notifications/BundleUpdateNotifications');
-                    const bundleNotifications = new BundleUpdateNotifications(
-                        async (bundleId: string) => {
-                            return await this.registryManager.getBundleName(bundleId);
-                        }
-                    );
-                    await bundleNotifications.showUpdateNotification({
+                    await this.notificationService!.showUpdateNotification({
                         updates,
-                        notificationPreference
+                        notificationPreference,
+                        source: 'manual'
                     });
                 }
             );

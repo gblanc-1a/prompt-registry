@@ -75,7 +75,7 @@ export async function selectVersionCommand(): Promise<void> {
             GitHubService.resetInstance();
             
             // Execute install command
-            await vscode.commands.executeCommand('promptregistry.enhancedInstall');
+            await vscode.commands.executeCommand('promptRegistry.installBundle');
         }
 
     } catch (error) {

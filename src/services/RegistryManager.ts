@@ -20,6 +20,7 @@ import { VersionManager } from '../utils/versionManager';
 import { BundleIdentityMatcher } from '../utils/bundleIdentityMatcher';
 import { HubManager } from './HubManager';
 import { AutoUpdateService } from './AutoUpdateService';
+import { AutoUpdatePreferenceManager } from './AutoUpdatePreferenceManager';
 import {
     RegistrySource,
     Bundle,
@@ -56,6 +57,7 @@ export class RegistryManager {
     private storage: RegistryStorage;
     private hubManager?: HubManager;
     private _autoUpdateService?: AutoUpdateService;
+    private autoUpdatePreferenceManager?: AutoUpdatePreferenceManager;
     private installer: BundleInstaller;
     private logger: Logger;
     private adapters = new Map<string, IRepositoryAdapter>();
@@ -142,22 +144,22 @@ export class RegistryManager {
      * Enable auto-update for a bundle (facade method)
      */
     async enableAutoUpdate(bundleId: string): Promise<void> {
-        if (!this._autoUpdateService) {
-            throw new Error('Auto-update service is not available. Please restart VS Code.');
+        if (!this.autoUpdatePreferenceManager) {
+            throw new Error('AutoUpdatePreferenceManager is not initialized. Please restart VS Code.');
         }
-        await this._autoUpdateService.setAutoUpdate(bundleId, true);
-        this._onAutoUpdatePreferenceChanged.fire({ bundleId, enabled: true });
+        // AutoUpdatePreferenceManager will fire its event, which we propagate via our event emitter
+        await this.autoUpdatePreferenceManager.setUpdatePreference(bundleId, true);
     }
 
     /**
      * Disable auto-update for a bundle (facade method)
      */
     async disableAutoUpdate(bundleId: string): Promise<void> {
-        if (!this._autoUpdateService) {
-            throw new Error('Auto-update service is not available. Please restart VS Code.');
+        if (!this.autoUpdatePreferenceManager) {
+            throw new Error('AutoUpdatePreferenceManager is not initialized. Please restart VS Code.');
         }
-        await this._autoUpdateService.setAutoUpdate(bundleId, false);
-        this._onAutoUpdatePreferenceChanged.fire({ bundleId, enabled: false });
+        // AutoUpdatePreferenceManager will fire its event, which we propagate via our event emitter
+        await this.autoUpdatePreferenceManager.setUpdatePreference(bundleId, false);
     }
 
     /**
@@ -187,8 +189,25 @@ export class RegistryManager {
      * Initialize the registry
      */
     async initialize(): Promise<void> {
+        // Prevent multiple initializations
+        if (this.autoUpdatePreferenceManager) {
+            this.logger.debug('RegistryManager already initialized, skipping re-initialization');
+            return;
+        }
+
         this.logger.info('Initializing Prompt Registry...');
         await this.storage.initialize();
+
+        // Initialize AutoUpdatePreferenceManager and wire its events
+        this.autoUpdatePreferenceManager = new AutoUpdatePreferenceManager(this.storage);
+        this.autoUpdatePreferenceManager.onPreferenceChanged(event => {
+            // Propagate AutoUpdatePreferenceManager events via RegistryManager's event emitter
+            this._onAutoUpdatePreferenceChanged.fire({
+                bundleId: event.bundleId,
+                enabled: event.autoUpdate
+            });
+        });
+
         await this.loadAdapters();
         this.logger.info('Prompt Registry initialized successfully');
     }
@@ -199,6 +218,20 @@ export class RegistryManager {
      */
     getStorage(): RegistryStorage {
         return this.storage;
+    }
+
+    /**
+     * Get the shared AutoUpdatePreferenceManager instance
+     * Used by commands and UI surfaces to access preference functionality
+     * 
+     * @returns The shared AutoUpdatePreferenceManager instance
+     * @throws Error if called before initialize()
+     */
+    getAutoUpdatePreferenceManager(): AutoUpdatePreferenceManager {
+        if (!this.autoUpdatePreferenceManager) {
+            throw new Error('AutoUpdatePreferenceManager not initialized. Call initialize() first.');
+        }
+        return this.autoUpdatePreferenceManager;
     }
 
     /**

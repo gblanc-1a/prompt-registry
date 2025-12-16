@@ -5,6 +5,24 @@
  * correctness properties hold across all valid executions.
  * 
  * Feature: bundle-update-notifications
+ * 
+ * ## Property Test Index
+ * 
+ * ### Cache Behavior (Properties 1-20)
+ * - Cache invalidation, TTL expiration, forced bypass
+ * 
+ * ### Update Detection (Properties 21-40)
+ * - Version comparisons, filtering, auto-update preferences
+ * 
+ * ### Concurrent Updates (Properties 41-50)
+ * - Concurrent checks, cache consistency
+ * 
+ * ### Edge Cases & Limits (Properties 51-69)
+ * - Empty results, large datasets, malformed data
+ * 
+ * ### Error Resilience (Properties 70-72)
+ * - Network timeouts, validation errors, unexpected errors during enrichment
+ * - Each error type skips only affected bundles without aborting the entire check
  */
 import * as fc from 'fast-check';
 import * as sinon from 'sinon';
@@ -636,4 +654,383 @@ suite('UpdateChecker Property Tests', () => {
             { numRuns: PropertyTestConfig.RUNS.STANDARD, verbose: false }
         );
     });
+
+    /**
+     * Error Resilience During Enrichment (Properties 70-72)
+     * 
+     * These properties verify that UpdateChecker handles partial failures gracefully:
+     * - Validation errors from malformed bundle metadata
+     * - Network timeouts or connection failures
+     * - Unexpected runtime errors
+     * 
+     * Expected behavior: skip only affected bundles, enrich all others, never throw
+     */
+    suite('Error Resilience During Enrichment', () => {
+        /**
+         * Property 70: Enrichment skips validation errors without aborting others
+         * Feature: bundle-update-notifications, enrichment
+         *
+         * For any mix of bundles where some detail lookups fail with validation errors,
+         * the UpdateChecker should still return enriched results for all other bundles
+         * and must not throw.
+         *
+         * Validates: Scenario 4.1 (non-failed bundles enriched, validation errors skipped)
+         */
+        test('Property 70: Enrichment skips validation errors without aborting others', async () => {
+        await fc.assert(
+            fc.asyncProperty(
+                fc.uniqueArray(
+                    fc.record({
+                        bundleId: BundleGenerators.bundleId(),
+                        hasValidationError: fc.boolean()
+                    }),
+                    {
+                        minLength: MIN_BUNDLES,
+                        maxLength: MAX_BUNDLES,
+                        selector: (config) => config.bundleId
+                    }
+                ),
+                async (bundleConfigs) => {
+                    const testSandbox = sinon.createSandbox();
+                    const storage = new Map<string, any>();
+                    const testMemento: vscode.Memento = {
+                        get: testSandbox.stub().callsFake((key: string, defaultValue?: any) => {
+                            return storage.get(key) ?? defaultValue;
+                        }),
+                        update: testSandbox.stub().callsFake(async (key: string, value: any) => {
+                            if (value === undefined) {
+                                storage.delete(key);
+                            } else {
+                                storage.set(key, value);
+                            }
+                        }),
+                        keys: testSandbox.stub().returns([])
+                    };
+
+                    const testRegistryManager = testSandbox.createStubInstance(RegistryManager);
+                    const testRegistryStorage = testSandbox.createStubInstance(RegistryStorage);
+                    const testUpdateChecker = new UpdateChecker(
+                        testRegistryManager as any,
+                        testRegistryStorage as any,
+                        testMemento
+                    );
+
+                    try {
+                        const updates: BundleUpdate[] = bundleConfigs.map(config => ({
+                            bundleId: config.bundleId,
+                            currentVersion: '1.0.0',
+                            latestVersion: '2.0.0'
+                        }));
+
+                        testRegistryManager.checkUpdates.resolves(updates);
+
+                        for (const config of bundleConfigs) {
+                            if (config.hasValidationError) {
+                                testRegistryManager.getBundleDetails
+                                    .withArgs(config.bundleId)
+                                    .rejects(new Error('Invalid schema for bundle'));
+                            } else {
+                                testRegistryManager.getBundleDetails
+                                    .withArgs(config.bundleId)
+                                    .resolves({
+                                        id: config.bundleId,
+                                        name: config.bundleId,
+                                        version: '2.0.0',
+                                        description: 'Test bundle',
+                                        author: 'test',
+                                        tags: [],
+                                        environments: [],
+                                        sourceId: 'test-source',
+                                        downloadUrl: 'https://example.com/bundle.zip',
+                                        manifestUrl: 'https://example.com/manifest.yml',
+                                        lastUpdated: new Date().toISOString(),
+                                        contents: { prompts: 0, instructions: 0, chatmodes: 0, agents: 0 }
+                                    } as any);
+                            }
+                        }
+
+                        testRegistryStorage.getUpdatePreference.resolves(false);
+
+                        let results;
+                        try {
+                            results = await testUpdateChecker.checkForUpdates(true);
+                        } catch {
+                            // Current implementation throws on validation errors; target behavior must not.
+                            return false;
+                        }
+
+                        // Expect only bundles without validation errors to be enriched
+                        const expectedEnrichedIds = bundleConfigs
+                            .filter(c => !c.hasValidationError)
+                            .map(c => c.bundleId)
+                            .sort();
+
+                        const actualEnrichedIds = results
+                            .map((r: any) => r.bundleId)
+                            .sort();
+
+                        if (actualEnrichedIds.length !== expectedEnrichedIds.length) {
+                            return false;
+                        }
+
+                        for (let i = 0; i < expectedEnrichedIds.length; i++) {
+                            if (actualEnrichedIds[i] !== expectedEnrichedIds[i]) {
+                                return false;
+                            }
+                        }
+
+                        return true;
+                    } finally {
+                        testSandbox.restore();
+                    }
+                }
+            ),
+            { ...PropertyTestConfig.FAST_CHECK_OPTIONS, numRuns: PropertyTestConfig.RUNS.STANDARD }
+        );
+    });
+
+    /**
+     * Property 71: Enrichment handles unexpected errors without aborting others
+     * Feature: bundle-update-notifications, enrichment
+     *
+     * For any mix of bundles where some detail lookups fail with unexpected errors,
+     * the UpdateChecker should still return enriched results for all other bundles
+     * and must not throw.
+     *
+     * Validates: Scenario 4.1 / 4.3 (unexpected errors skipped, others enriched)
+     */
+    test('Property 71: Enrichment handles unexpected errors without aborting others', async () => {
+        await fc.assert(
+            fc.asyncProperty(
+                fc.uniqueArray(
+                    fc.record({
+                        bundleId: BundleGenerators.bundleId(),
+                        hasUnexpectedError: fc.boolean()
+                    }),
+                    {
+                        minLength: MIN_BUNDLES,
+                        maxLength: MAX_BUNDLES,
+                        selector: (config) => config.bundleId
+                    }
+                ),
+                async (bundleConfigs) => {
+                    const testSandbox = sinon.createSandbox();
+                    const storage = new Map<string, any>();
+                    const testMemento: vscode.Memento = {
+                        get: testSandbox.stub().callsFake((key: string, defaultValue?: any) => {
+                            return storage.get(key) ?? defaultValue;
+                        }),
+                        update: testSandbox.stub().callsFake(async (key: string, value: any) => {
+                            if (value === undefined) {
+                                storage.delete(key);
+                            } else {
+                                storage.set(key, value);
+                            }
+                        }),
+                        keys: testSandbox.stub().returns([])
+                    };
+
+                    const testRegistryManager = testSandbox.createStubInstance(RegistryManager);
+                    const testRegistryStorage = testSandbox.createStubInstance(RegistryStorage);
+                    const testUpdateChecker = new UpdateChecker(
+                        testRegistryManager as any,
+                        testRegistryStorage as any,
+                        testMemento
+                    );
+
+                    try {
+                        const updates: BundleUpdate[] = bundleConfigs.map(config => ({
+                            bundleId: config.bundleId,
+                            currentVersion: '1.0.0',
+                            latestVersion: '2.0.0'
+                        }));
+
+                        testRegistryManager.checkUpdates.resolves(updates);
+
+                        for (const config of bundleConfigs) {
+                            if (config.hasUnexpectedError) {
+                                testRegistryManager.getBundleDetails
+                                    .withArgs(config.bundleId)
+                                    .rejects(new Error('Unexpected failure during enrichment'));
+                            } else {
+                                testRegistryManager.getBundleDetails
+                                    .withArgs(config.bundleId)
+                                    .resolves({
+                                        id: config.bundleId,
+                                        name: config.bundleId,
+                                        version: '2.0.0',
+                                        description: 'Test bundle',
+                                        author: 'test',
+                                        tags: [],
+                                        environments: [],
+                                        sourceId: 'test-source',
+                                        downloadUrl: 'https://example.com/bundle.zip',
+                                        manifestUrl: 'https://example.com/manifest.yml',
+                                        lastUpdated: new Date().toISOString(),
+                                        contents: { prompts: 0, instructions: 0, chatmodes: 0, agents: 0 }
+                                    } as any);
+                            }
+                        }
+
+                        testRegistryStorage.getUpdatePreference.resolves(false);
+
+                        let results;
+                        try {
+                            results = await testUpdateChecker.checkForUpdates(true);
+                        } catch {
+                            // Current implementation throws on unexpected errors; target behavior must not.
+                            return false;
+                        }
+
+                        const expectedEnrichedIds = bundleConfigs
+                            .filter(c => !c.hasUnexpectedError)
+                            .map(c => c.bundleId)
+                            .sort();
+
+                        const actualEnrichedIds = results
+                            .map((r: any) => r.bundleId)
+                            .sort();
+
+                        if (actualEnrichedIds.length !== expectedEnrichedIds.length) {
+                            return false;
+                        }
+
+                        for (let i = 0; i < expectedEnrichedIds.length; i++) {
+                            if (actualEnrichedIds[i] !== expectedEnrichedIds[i]) {
+                                return false;
+                            }
+                        }
+
+                        return true;
+                    } finally {
+                        testSandbox.restore();
+                    }
+                }
+            ),
+            { ...PropertyTestConfig.FAST_CHECK_OPTIONS, numRuns: PropertyTestConfig.RUNS.STANDARD }
+        );
+    });
+
+    /**
+     * Property 72: Network timeouts skip only affected bundles
+     * Feature: bundle-update-notifications, enrichment
+     *
+     * For any mix of bundles where some detail lookups fail with network errors,
+     * the UpdateChecker should still complete successfully, enriching all other
+     * bundles and skipping only the ones that experienced a network issue.
+     *
+     * Validates: Scenario 4.3 (network timeout during enrichment)
+     */
+    test('Property 72: Network timeouts skip only affected bundles', async () => {
+        await fc.assert(
+            fc.asyncProperty(
+                fc.uniqueArray(
+                    fc.record({
+                        bundleId: BundleGenerators.bundleId(),
+                        hasNetworkError: fc.boolean()
+                    }),
+                    {
+                        minLength: MIN_BUNDLES,
+                        maxLength: MAX_BUNDLES,
+                        selector: (config) => config.bundleId
+                    }
+                ),
+                async (bundleConfigs) => {
+                    const testSandbox = sinon.createSandbox();
+                    const storage = new Map<string, any>();
+                    const testMemento: vscode.Memento = {
+                        get: testSandbox.stub().callsFake((key: string, defaultValue?: any) => {
+                            return storage.get(key) ?? defaultValue;
+                        }),
+                        update: testSandbox.stub().callsFake(async (key: string, value: any) => {
+                            if (value === undefined) {
+                                storage.delete(key);
+                            } else {
+                                storage.set(key, value);
+                            }
+                        }),
+                        keys: testSandbox.stub().returns([])
+                    };
+
+                    const testRegistryManager = testSandbox.createStubInstance(RegistryManager);
+                    const testRegistryStorage = testSandbox.createStubInstance(RegistryStorage);
+                    const testUpdateChecker = new UpdateChecker(
+                        testRegistryManager as any,
+                        testRegistryStorage as any,
+                        testMemento
+                    );
+
+                    try {
+                        const updates: BundleUpdate[] = bundleConfigs.map(config => ({
+                            bundleId: config.bundleId,
+                            currentVersion: '1.0.0',
+                            latestVersion: '2.0.0'
+                        }));
+
+                        testRegistryManager.checkUpdates.resolves(updates);
+
+                        for (const config of bundleConfigs) {
+                            if (config.hasNetworkError) {
+                                testRegistryManager.getBundleDetails
+                                    .withArgs(config.bundleId)
+                                    .rejects(new Error('Network timeout while fetching bundle details'));
+                            } else {
+                                testRegistryManager.getBundleDetails
+                                    .withArgs(config.bundleId)
+                                    .resolves({
+                                        id: config.bundleId,
+                                        name: config.bundleId,
+                                        version: '2.0.0',
+                                        description: 'Test bundle',
+                                        author: 'test',
+                                        tags: [],
+                                        environments: [],
+                                        sourceId: 'test-source',
+                                        downloadUrl: 'https://example.com/bundle.zip',
+                                        manifestUrl: 'https://example.com/manifest.yml',
+                                        lastUpdated: new Date().toISOString(),
+                                        contents: { prompts: 0, instructions: 0, chatmodes: 0, agents: 0 }
+                                    } as any);
+                            }
+                        }
+
+                        testRegistryStorage.getUpdatePreference.resolves(false);
+
+                        let results;
+                        try {
+                            results = await testUpdateChecker.checkForUpdates(true);
+                        } catch {
+                            // Network errors should be handled gracefully and not throw
+                            return false;
+                        }
+
+                        const expectedEnrichedIds = bundleConfigs
+                            .filter(c => !c.hasNetworkError)
+                            .map(c => c.bundleId)
+                            .sort();
+
+                        const actualEnrichedIds = results
+                            .map((r: any) => r.bundleId)
+                            .sort();
+
+                        if (actualEnrichedIds.length !== expectedEnrichedIds.length) {
+                            return false;
+                        }
+
+                        for (let i = 0; i < expectedEnrichedIds.length; i++) {
+                            if (actualEnrichedIds[i] !== expectedEnrichedIds[i]) {
+                                return false;
+                            }
+                        }
+
+                        return true;
+                    } finally {
+                        testSandbox.restore();
+                    }
+                }
+            ),
+            { ...PropertyTestConfig.FAST_CHECK_OPTIONS, numRuns: PropertyTestConfig.RUNS.STANDARD }
+        );
+        });
+    }); // End of Error Resilience During Enrichment suite
 });

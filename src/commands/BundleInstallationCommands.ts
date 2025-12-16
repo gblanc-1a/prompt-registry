@@ -8,6 +8,7 @@ import { RegistryManager } from '../services/RegistryManager';
 import { Bundle, InstallOptions } from '../types/registry';
 import { Logger } from '../utils/logger';
 import { ErrorHandler } from '../utils/errorHandler';
+import { unifiedInstallFlow } from '../services/UnifiedInstallFlow';
 
 /**
  * Bundle Installation Commands Handler
@@ -31,86 +32,21 @@ export class BundleInstallationCommands {
                 return;
             }
 
-            // Get bundle details
+            // Get bundle details for custom success message
             const bundle = await this.registryManager.getBundleDetails(bundleId);
 
-            // Ask for installation scope
-            const scope = await vscode.window.showQuickPick(
-                [
-                    {
-                        label: '$(account) User',
-                        description: 'Install for current user (all workspaces)',
-                        value: 'user' as const
-                    },
-                    {
-                        label: '$(folder) Workspace',
-                        description: 'Install for current workspace only',
-                        value: 'workspace' as const
-                    }
-                ],
+            // Use UnifiedInstallFlow with user prompts (commands always prompt)
+            await unifiedInstallFlow(
+                this.registryManager,
+                this.registryManager.getAutoUpdatePreferenceManager(),
                 {
-                    placeHolder: 'Select installation scope',
-                    title: `Install ${bundle.name}`,
-                    ignoreFocusOut: true
+                    bundleId,
+                    version: 'latest',
+                    // Don't skip prompts - commands should always ask the user
+                    showProgressNotification: true,
+                    // Don't show success message - command handles custom toast with actions
+                    showSuccessMessage: false
                 }
-            );
-
-            if (!scope) {
-                return;
-            }
-
-            // Ask for auto-update preference
-            const autoUpdateChoice = await vscode.window.showQuickPick(
-                [
-                    {
-                        label: '$(sync) Enable auto-update',
-                        description: 'Automatically install updates when available',
-                        detail: 'Recommended for staying up-to-date with the latest features and fixes',
-                        value: true
-                    },
-                    {
-                        label: '$(circle-slash) Manual updates only',
-                        description: 'You will be notified but updates must be installed manually',
-                        detail: 'Choose this if you prefer to review changes before updating',
-                        value: false
-                    }
-                ],
-                {
-                    placeHolder: 'Enable auto-update for this bundle?',
-                    title: `Install ${bundle.name} - Auto-Update Preference`,
-                    ignoreFocusOut: true
-                }
-            );
-
-            if (autoUpdateChoice === undefined) {
-                return;
-            }
-
-            const options: InstallOptions = {
-                scope: scope.value,
-                version: 'latest'
-            };
-
-            // Install with progress
-            await vscode.window.withProgress(
-                {
-                    location: vscode.ProgressLocation.Notification,
-                    title: `Installing ${bundle.name}...`,
-                    cancellable: false
-                },
-                async (progress) => {
-                    progress.report({ message: 'Downloading...' });
-                    await this.registryManager.installBundle(bundleId, options);
-                    progress.report({ message: 'Complete', increment: 100 });
-                }
-            );
-
-            // Store auto-update preference after successful installation
-            const storage = this.registryManager.getStorage();
-            await storage.setUpdatePreference(bundleId, autoUpdateChoice.value);
-            
-            this.logger.info(
-                `Auto-update preference for '${bundleId}' set to: ${autoUpdateChoice.value}`
             );
 
             vscode.window.showInformationMessage(

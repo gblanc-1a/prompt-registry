@@ -205,6 +205,28 @@ const vscode = {
       this.listeners = [];
     }
   },
+  // Minimal TreeItem/ThemeIcon mocks for UI providers
+  TreeItemCollapsibleState: {
+    None: 0,
+    Collapsed: 1,
+    Expanded: 2
+  },
+  TreeItem: class TreeItem {
+    constructor(label, collapsibleState) {
+      this.label = label;
+      this.collapsibleState = collapsibleState;
+      this.contextValue = undefined;
+      this.iconPath = undefined;
+      this.tooltip = undefined;
+      this.description = undefined;
+      this.command = undefined;
+    }
+  },
+  ThemeIcon: class ThemeIcon {
+    constructor(id) {
+      this.id = id;
+    }
+  },
   env: {
     appName: 'Visual Studio Code',
     appRoot: '/mock/app/root',

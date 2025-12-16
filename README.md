@@ -356,8 +356,9 @@ Click on any bundle tile to see:
 
 1. **Browse** - Find a bundle in the marketplace
 2. **Review** - Click the tile to view details and version information
-3. **Install** - Click the **Install** button (or **Update** if a newer version is available)
-4. **Verify** - Check the installed badge appears with version number
+3. **Choose Auto-Update** - Use the toggle in the bundle details to enable/disable auto-update for that bundle
+4. **Install** - Click the **Install** button (or **Update** if a newer version is available)
+5. **Verify** - Check the installed badge appears with version number
 
 #### From Tree View
 

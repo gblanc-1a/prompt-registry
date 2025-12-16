@@ -20,6 +20,7 @@ These are short, actionable notes to help an AI coding assistant be productive i
   - Build extension: `npm run compile` (production webpack bundle) or `npm run watch` (dev watch).
   - Compile tests: `npm run compile-tests` (generates test-dist). Use `npm run watch-tests` to auto-compile tests.
   - Run unit tests: `npm run test:unit` (mocha against `test-dist`).
+  - Run a single test: `npm run test:one` (i.e. `npm run test:one -- test/services/BundleStateManagement.integration.test.ts`).
   - Run integration/extension tests: `npm run test:integration` (uses @vscode/test-electron runner). Run on a machine with a GUI or headless environment configured.
   - Lint: `npm run lint` (eslint on `src/*.ts`).
   - Package VSIX: `npm run package:vsix` (via `vsce package`) or `npm run package:full` for a full prepared package.

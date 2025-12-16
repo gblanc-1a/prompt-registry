@@ -116,6 +116,13 @@ suite('BundleInstallationCommands - Property Tests', () => {
         // Create stubbed instances
         mockRegistryManager = sandbox.createStubInstance(RegistryManager);
         mockStorage = sandbox.createStubInstance(RegistryStorage);
+        mockRegistryManager.getStorage.returns(mockStorage as any);
+        
+        // Mock AutoUpdatePreferenceManager
+        mockRegistryManager.getAutoUpdatePreferenceManager.returns({
+            setUpdatePreference: mockStorage.setUpdatePreference,
+            getUpdatePreference: mockStorage.getUpdatePreference
+        } as any);
         
         // Stub VS Code APIs
         mockShowQuickPick = sandbox.stub(vscode.window, 'showQuickPick');

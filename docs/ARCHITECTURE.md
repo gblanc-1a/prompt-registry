@@ -537,6 +537,7 @@ graph TB
     end
     
     subgraph "Notification"
+        NS[NotificationService]
         BN[BundleUpdateNotifications]
         NM[NotificationManager]
     end
@@ -557,7 +558,8 @@ graph TB
     UCA -->|cache hit| RET[Return Cached]
     UCA -->|cache miss| RM
     
-    UC --> BN
+    UC --> NS
+    NS --> BN
     BN --> NM
     
     NM -->|Update Now| AUS
@@ -580,6 +582,7 @@ sequenceDiagram
     participant UC as UpdateChecker
     participant UCA as UpdateCache
     participant RM as RegistryManager
+    participant NS as NotificationService
     participant BN as BundleNotifications
     participant USER as User
     
@@ -601,7 +604,8 @@ sequenceDiagram
     UC-->>US: UpdateCheckResult[]
     
     alt Updates Available
-        US->>BN: showUpdateNotification()
+        US->>NS: showUpdateNotification(source="background")
+        NS->>BN: showUpdateNotification()
         BN->>USER: "X updates available"
         
         alt User clicks "Update Now"
@@ -653,8 +657,10 @@ sequenceDiagram
         Note over US: Skip auto-update, proceed to notifications
     end
     
-    US->>BN: showUpdateNotification(updates)
-    Note over BN: Show notification for all applicable updates
+    US->>NS: showUpdateNotification(source="background")
+    NS->>BN: showUpdateNotification(updates)
+    Note over NS: Deduplicates notifications across manual/background checks (5 min TTL)
+    Note over BN: Shows notification for all applicable updates
 ```
 
 ### Configuration Options
@@ -668,8 +674,10 @@ sequenceDiagram
 | `updateCheck.cacheTTL` | number | `300000` | Cache TTL in milliseconds (5 min default) |
 
 **Important:** For a bundle to auto-update in the background, **both** conditions must be true:
-1. Global `updateCheck.autoUpdate` must be `true`
-2. Per-bundle auto-update preference must be enabled (via "Enable Auto-Update" command)
+1. Global `updateCheck.autoUpdate` must be `true` (read by `AutoUpdatePreferenceManager.isGlobalAutoUpdateEnabled()` and `UpdateScheduler`)
+2. Per-bundle auto-update preference must be enabled (managed by `AutoUpdatePreferenceManager` and surfaced via UI toggles)
+
+Per-bundle preferences are stored in `RegistryStorage` and exposed to UI components through `AutoUpdateService.getAllAutoUpdatePreferences()` so that tree views and the marketplace can render auto-update status without per-bundle storage calls.
 
 ### Dependency Injection Pattern
 

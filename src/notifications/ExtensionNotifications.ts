@@ -123,7 +123,7 @@ export class ExtensionNotifications {
         
         switch (action) {
             case 'Retry':
-                vscode.commands.executeCommand('promptregistry.enhancedInstall');
+                vscode.commands.executeCommand('promptRegistry.installBundle');
                 return 'retry';
             case 'Show Logs':
                 this.logger.show();

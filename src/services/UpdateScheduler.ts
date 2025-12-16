@@ -8,6 +8,7 @@ import { UpdateChecker } from './UpdateChecker';
 import { UpdateCheckResult } from './UpdateCache';
 import { BundleUpdateNotifications } from '../notifications/BundleUpdateNotifications';
 import { AutoUpdateService } from './AutoUpdateService';
+import { NotificationService } from './NotificationService';
 import { Logger } from '../utils/logger';
 import { 
     UpdateCheckFrequency, 
@@ -44,6 +45,7 @@ const SCHEDULER_CONSTANTS = {
 export class UpdateScheduler {
     private readonly updateChecker: UpdateChecker;
     private readonly bundleNotifications: BundleUpdateNotifications;
+    private notificationService?: NotificationService;
     private readonly autoUpdateService?: AutoUpdateService;
     private readonly logger: Logger;
     private scheduledCheckTimer?: NodeJS.Timeout;
@@ -94,6 +96,10 @@ export class UpdateScheduler {
                 dispose: () => this.dispose()
             });
         }
+    }
+
+    setNotificationService(notificationService: NotificationService): void {
+        this.notificationService = notificationService;
     }
 
     /**
@@ -307,10 +313,19 @@ export class UpdateScheduler {
                 }
                 
                 this.logger.debug(`Showing update notification with preference: ${notificationPreference}`);
-                await this.bundleNotifications.showUpdateNotification({
-                    updates,
-                    notificationPreference
-                });
+
+                if (this.notificationService) {
+                    await this.notificationService.showUpdateNotification({
+                        updates,
+                        notificationPreference,
+                        source: 'background'
+                    });
+                } else {
+                    await this.bundleNotifications.showUpdateNotification({
+                        updates,
+                        notificationPreference
+                    });
+                }
             }
         } catch (error) {
             this.logger.error('Update check failed', error as Error);

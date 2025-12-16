@@ -12,6 +12,7 @@ import { UI_CONSTANTS } from '../utils/constants';
 import { extractAllTags, extractBundleSources } from '../utils/filterUtils';
 import { VersionManager } from '../utils/versionManager';
 import { BundleIdentityMatcher } from '../utils/bundleIdentityMatcher';
+import { unifiedInstallFlow } from '../services/UnifiedInstallFlow';
 
 /**
  * Message types sent from webview to extension
@@ -42,6 +43,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     private readonly logger: Logger;
     private sourceSyncDebounceTimer?: NodeJS.Timeout;
     private disposables: vscode.Disposable[] = [];
+    private autoUpdateCheckboxState: Map<string, boolean> = new Map();
 
     constructor(
         private readonly context: vscode.ExtensionContext,
@@ -250,6 +252,14 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                 ? await autoUpdateService.getAllAutoUpdatePreferences()
                 : {};
 
+            // Initialize checkbox state from stored preferences for installed bundles
+            const preferenceManager = this.registryManager.getAutoUpdatePreferenceManager();
+            for (const installed of installedBundles) {
+                const storedPref = await preferenceManager.getUpdatePreference(installed.bundleId);
+                const effectivePref = storedPref ?? true;  // Default opt-in when no preference exists
+                this.autoUpdateCheckboxState.set(installed.bundleId, effectivePref);
+            }
+
             const enhancedBundles = await Promise.all(bundles.map(async bundle => {
                 // Find matching installed bundle using identity matching
                 const source = sources.find(s => s.id === bundle.sourceId);
@@ -457,19 +467,26 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         try {
             this.logger.info(`Installing bundle from marketplace: ${bundleId}`);
 
-            // Use RegistryManager to install
-            await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: `Installing bundle...`,
-                cancellable: false
-            }, async () => {
-                await this.registryManager.installBundle(bundleId, {
-                    scope: 'user',
-                    version: 'latest'
-                });
-            });
+            // Get auto-update preference from checkbox state (default to true)
+            const autoUpdate = this.autoUpdateCheckboxState.get(bundleId) ?? true;
 
-            vscode.window.showInformationMessage(`✅ Bundle installed successfully!`);
+            // Use UnifiedInstallFlow with marketplace defaults
+            await unifiedInstallFlow(
+                this.registryManager,
+                this.registryManager.getAutoUpdatePreferenceManager(),
+                {
+                    bundleId,
+                    version: 'latest',
+                    scope: 'user',  // Marketplace defaults to user scope
+                    autoUpdate,
+                    skipScopePrompt: true,  // Marketplace already selected scope
+                    skipAutoUpdatePrompt: true,  // Marketplace uses checkbox state
+                    showProgressNotification: true
+                }
+            );
+
+            // Clear checkbox state after successful install
+            this.autoUpdateCheckboxState.delete(bundleId);
 
             // Refresh marketplace
             await this.loadBundles();
@@ -563,19 +580,27 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         try {
             this.logger.info(`Installing specific version of bundle: ${bundleId} v${version}`);
 
-            // Use RegistryManager to install with specific version
-            await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: `Installing bundle v${version}...`,
-                cancellable: false
-            }, async () => {
-                await this.registryManager.installBundle(bundleId, {
-                    scope: 'user',
-                    version: version
-                });
-            });
+            // Get auto-update preference from checkbox state (default to true)
+            const autoUpdate = this.autoUpdateCheckboxState.get(bundleId) ?? true;
 
-            vscode.window.showInformationMessage(`✅ Bundle v${version} installed successfully!`);
+            // Use UnifiedInstallFlow with specific version
+            await unifiedInstallFlow(
+                this.registryManager,
+                this.registryManager.getAutoUpdatePreferenceManager(),
+                {
+                    bundleId,
+                    version,
+                    scope: 'user',  // Marketplace defaults to user scope
+                    autoUpdate,
+                    skipScopePrompt: true,
+                    skipAutoUpdatePrompt: true,
+                    showProgressNotification: true,
+                    successMessage: `✅ Bundle v${version} installed successfully!`
+                }
+            );
+
+            // Clear checkbox state after successful install
+            this.autoUpdateCheckboxState.delete(bundleId);
 
             // Refresh marketplace
             await this.loadBundles();
@@ -639,20 +664,21 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
      */
     private async handleToggleAutoUpdate(bundleId: string, enabled: boolean): Promise<void> {
         try {
-            this.logger.info(`Toggling auto-update for bundle '${bundleId}' to ${enabled}`);
+            this.logger.info(`Setting auto-update checkbox for bundle '${bundleId}' to ${enabled}`);
 
-            // Use RegistryManager facade methods to ensure event is emitted
-            if (enabled) {
-                await this.registryManager.enableAutoUpdate(bundleId);
-            } else {
-                await this.registryManager.disableAutoUpdate(bundleId);
+            // Store checkbox state for use during installation
+            // For already-installed bundles, this will persist to storage via AutoUpdatePreferenceManager
+            this.autoUpdateCheckboxState.set(bundleId, enabled);
+
+            // If bundle is already installed, persist the change immediately
+            const installations = await this.registryManager.listInstalledBundles();
+            const isInstalled = installations.some(inst => inst.bundleId === bundleId);
+
+            if (isInstalled) {
+                await this.registryManager.getAutoUpdatePreferenceManager().setUpdatePreference(bundleId, enabled);
+                const status = enabled ? 'enabled' : 'disabled';
+                vscode.window.showInformationMessage(`Auto-update ${status} for ${bundleId}`);
             }
-
-            // Show confirmation
-            const status = enabled ? 'enabled' : 'disabled';
-            vscode.window.showInformationMessage(`Auto-update ${status} for ${bundleId}`);
-
-            // Note: UI refresh is handled automatically by event listener registered in activateBundleListeners()
 
         } catch (error) {
             this.logger.error('Failed to toggle auto-update', error as Error);

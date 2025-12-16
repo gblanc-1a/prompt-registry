@@ -33,7 +33,7 @@ export class UpdateCommand {
                     'Install Prompt Registry'
                 ).then((action) => {
                     if (action === 'Install Prompt Registry') {
-                        vscode.commands.executeCommand('promptregistry.enhancedInstall');
+                        vscode.commands.executeCommand('promptRegistry.installBundle');
                     }
                 });
                 return;

@@ -31,7 +31,7 @@ export class StatusCommand {
                     'Install Prompt Registry'
                 ).then((action) => {
                     if (action === 'Install Prompt Registry') {
-                        vscode.commands.executeCommand('promptregistry.enhancedInstall');
+                        vscode.commands.executeCommand('promptRegistry.installBundle');
                     }
                 });
                 return;
@@ -94,7 +94,7 @@ export class StatusCommand {
                     'Install Prompt Registry'
                 ).then((action) => {
                     if (action === 'Install Prompt Registry') {
-                        vscode.commands.executeCommand('promptregistry.enhancedInstall');
+                        vscode.commands.executeCommand('promptRegistry.installBundle');
                     }
                 });
                 return;

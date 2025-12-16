@@ -2,6 +2,10 @@ import * as vscode from 'vscode';
 import { UpdateCheckResult } from '../services/UpdateCache';
 import { BaseNotificationService } from './BaseNotificationService';
 
+export const UPDATE_NOW_ACTION = 'Update Now';
+export const VIEW_CHANGES_ACTION = 'View Changes';
+export const DISMISS_ACTION = 'Dismiss';
+
 export interface BundleUpdateNotificationOptions {
     updates: UpdateCheckResult[];
     notificationPreference: 'all' | 'critical' | 'none';
@@ -49,7 +53,7 @@ export class BundleUpdateNotifications extends BaseNotificationService {
         const message = await this.buildUpdateMessage(updatesToShow);
         const action = await this.showSuccessWithActions(
             message,
-            ['Update Now', 'View Changes', 'Dismiss']
+            [UPDATE_NOW_ACTION, VIEW_CHANGES_ACTION, DISMISS_ACTION]
         );
         
         await this.handleNotificationAction(action, updatesToShow);
@@ -207,7 +211,7 @@ export class BundleUpdateNotifications extends BaseNotificationService {
         updates: UpdateCheckResult[]
     ): Promise<void> {
         switch (action) {
-            case 'Update Now':
+            case UPDATE_NOW_ACTION:
                 // Trigger update command
                 if (updates.length === 1) {
                     await vscode.commands.executeCommand('promptRegistry.updateBundle', updates[0].bundleId);
@@ -215,7 +219,7 @@ export class BundleUpdateNotifications extends BaseNotificationService {
                     await vscode.commands.executeCommand('promptRegistry.updateAllBundles');
                 }
                 break;
-            case 'View Changes':
+            case VIEW_CHANGES_ACTION:
                 // Open release notes for first update
                 if (updates.length > 0 && updates[0].releaseNotes) {
                     await vscode.env.openExternal(vscode.Uri.parse(updates[0].releaseNotes));

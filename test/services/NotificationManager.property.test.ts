@@ -7,7 +7,12 @@ import * as assert from 'assert';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import * as fc from 'fast-check';
-import { BundleUpdateNotifications } from '../../src/notifications/BundleUpdateNotifications';
+import {
+    BundleUpdateNotifications,
+    UPDATE_NOW_ACTION,
+    VIEW_CHANGES_ACTION,
+    DISMISS_ACTION,
+} from '../../src/notifications/BundleUpdateNotifications';
 
 suite('BundleUpdateNotifications - Property Tests', () => {
     let sandbox: sinon.SinonSandbox;
@@ -61,7 +66,7 @@ suite('BundleUpdateNotifications - Property Tests', () => {
                 async (updates) => {
                     // Reset stubs for each iteration
                     showInformationMessageStub.reset();
-                    showInformationMessageStub.resolves('Dismiss');
+                    showInformationMessageStub.resolves(DISMISS_ACTION);
 
                     const bundleNotifications = new BundleUpdateNotifications();
                     const options = {
@@ -118,7 +123,7 @@ suite('BundleUpdateNotifications - Property Tests', () => {
                 async (updates) => {
                     // Reset stubs for each iteration
                     showInformationMessageStub.reset();
-                    showInformationMessageStub.resolves('Dismiss');
+                    showInformationMessageStub.resolves(DISMISS_ACTION);
 
                     const bundleNotifications = new BundleUpdateNotifications();
                     const options = {
@@ -147,19 +152,19 @@ suite('BundleUpdateNotifications - Property Tests', () => {
                     );
 
                     assert.strictEqual(
-                        buttons.includes('Update Now'),
+                        buttons.includes(UPDATE_NOW_ACTION),
                         true,
                         'Notification should include "Update Now" button'
                     );
 
                     assert.strictEqual(
-                        buttons.includes('View Changes'),
+                        buttons.includes(VIEW_CHANGES_ACTION),
                         true,
                         'Notification should include "View Changes" button'
                     );
 
                     assert.strictEqual(
-                        buttons.includes('Dismiss'),
+                        buttons.includes(DISMISS_ACTION),
                         true,
                         'Notification should include "Dismiss" button'
                     );
@@ -191,7 +196,7 @@ suite('BundleUpdateNotifications - Property Tests', () => {
                 async (updates) => {
                     // Reset stubs for each iteration
                     showInformationMessageStub.reset();
-                    showInformationMessageStub.resolves('Dismiss');
+                    showInformationMessageStub.resolves(DISMISS_ACTION);
 
                     const bundleNotifications = new BundleUpdateNotifications();
                     const options = {
@@ -258,9 +263,9 @@ suite('BundleUpdateNotifications - Property Tests', () => {
                     // Reset stubs for each iteration
                     showInformationMessageStub.reset();
                     executeCommandStub.reset();
-                    
+
                     // Simulate user clicking "Update Now"
-                    showInformationMessageStub.resolves('Update Now');
+                    showInformationMessageStub.resolves(UPDATE_NOW_ACTION);
                     executeCommandStub.resolves();
 
                     const bundleNotifications = new BundleUpdateNotifications();
@@ -323,9 +328,9 @@ suite('BundleUpdateNotifications - Property Tests', () => {
                     // Reset stubs for each iteration
                     showInformationMessageStub.reset();
                     openExternalStub.reset();
-                    
+
                     // Simulate user clicking "View Changes"
-                    showInformationMessageStub.resolves('View Changes');
+                    showInformationMessageStub.resolves(VIEW_CHANGES_ACTION);
                     openExternalStub.resolves(true);
 
                     const bundleNotifications = new BundleUpdateNotifications();
@@ -380,9 +385,9 @@ suite('BundleUpdateNotifications - Property Tests', () => {
         const loggerErrorStub = sandbox.stub(loggerInstance, 'error');
         
         showInformationMessageStub.reset();
-        showInformationMessageStub.resolves('Dismiss');
+        showInformationMessageStub.resolves(DISMISS_ACTION);
         showErrorMessageStub.reset();
-        showErrorMessageStub.resolves('Dismiss');
+        showErrorMessageStub.resolves(DISMISS_ACTION);
         
         const bundleNotifications = new BundleUpdateNotifications();
         

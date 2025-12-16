@@ -11,6 +11,7 @@ import { RegistryStorage } from '../storage/RegistryStorage';
 import { Logger } from '../utils/logger';
 import { ErrorHandler } from '../utils/errorHandler';
 import { isBundleUpdateArray, isSourceArray } from '../utils/typeGuards';
+import { CONCURRENCY_CONSTANTS } from '../utils/constants';
 
 /**
  * Update checker service
@@ -102,17 +103,48 @@ export class UpdateChecker {
     private async enrichUpdateResults(updates: Array<{ bundleId: string; currentVersion: string; latestVersion: string; changelog?: string }>): Promise<UpdateCheckResult[]> {
         const enriched: UpdateCheckResult[] = [];
         const skipped: Array<{ bundleId: string; reason: string }> = [];
+        let unexpectedErrorNotified = false;
 
-        for (const update of updates) {
-            const result = await this.enrichSingleUpdate(update);
-            if (result.enriched) {
-                enriched.push(result.enriched);
-            } else if (result.skipped) {
-                skipped.push(result.skipped);
+        const handleUnexpectedErrorNotification = async (error: Error): Promise<void> => {
+            if (unexpectedErrorNotified) {
+                return;
             }
+            unexpectedErrorNotified = true;
+            await ErrorHandler.handle(error, {
+                operation: 'UpdateChecker.enrichUpdateResults',
+                showUserMessage: true,
+                logLevel: 'warn'
+            });
+        };
+
+        for (let i = 0; i < updates.length; i += CONCURRENCY_CONSTANTS.BATCH_SIZE) {
+            const batch = updates.slice(i, i + CONCURRENCY_CONSTANTS.BATCH_SIZE);
+            this.logger.debug(
+                `Processing update enrichment batch ${Math.floor(i / CONCURRENCY_CONSTANTS.BATCH_SIZE) + 1} with ${batch.length} bundle(s)`
+            );
+
+            const results = await Promise.allSettled(
+                batch.map(update => this.enrichSingleUpdate(update, handleUnexpectedErrorNotification))
+            );
+
+            results.forEach((result, index) => {
+                const update = batch[index];
+
+                if (result.status === 'fulfilled') {
+                    const value = result.value;
+                    if (value.enriched) {
+                        enriched.push(value.enriched);
+                    } else if (value.skipped) {
+                        skipped.push(value.skipped);
+                    }
+                } else {
+                    const error = result.reason instanceof Error ? result.reason : new Error(String(result.reason));
+                    this.logger.error(`Unexpected rejection enriching '${update.bundleId}'`, error);
+                    skipped.push({ bundleId: update.bundleId, reason: 'unexpected error' });
+                }
+            });
         }
 
-        // Log summary of skipped bundles for visibility
         if (skipped.length > 0) {
             this.logger.warn(
                 `Skipped ${skipped.length} bundle(s) during update check enrichment: ` +
@@ -127,7 +159,10 @@ export class UpdateChecker {
      * Enrich a single update with metadata and preferences
      * Returns structured result with enriched data or skip reason
      */
-    private async enrichSingleUpdate(update: { bundleId: string; currentVersion: string; latestVersion: string; changelog?: string }): Promise<{
+    private async enrichSingleUpdate(
+        update: { bundleId: string; currentVersion: string; latestVersion: string; changelog?: string },
+        notifyUnexpectedError: (error: Error) => Promise<void>
+    ): Promise<{
         enriched?: UpdateCheckResult;
         skipped?: { bundleId: string; reason: string };
     }> {
@@ -152,7 +187,7 @@ export class UpdateChecker {
         } catch (error) {
             const err = error instanceof Error ? error : new Error(String(error));
             const errorType = ErrorHandler.categorize(err);
-            
+
             switch (errorType) {
                 case 'network':
                     this.logger.debug(`Network error enriching '${update.bundleId}', skipping`, err);
@@ -164,11 +199,13 @@ export class UpdateChecker {
                     this.logger.debug(`Authentication error enriching '${update.bundleId}'`, err);
                     return { skipped: { bundleId: update.bundleId, reason: 'authentication error' } };
                 case 'validation':
+                    this.logger.error(`Validation error enriching '${update.bundleId}', skipping bundle`, err);
+                    return { skipped: { bundleId: update.bundleId, reason: 'validation error' } };
                 case 'unexpected':
                 default:
-                    // Unexpected error - log and re-throw to surface the issue
-                    this.logger.error(`Unexpected error enriching '${update.bundleId}'`, err);
-                    throw new Error(`Failed to enrich update results: ${err.message}`);
+                    this.logger.error(`Unexpected error enriching '${update.bundleId}', skipping bundle`, err);
+                    await notifyUnexpectedError(err);
+                    return { skipped: { bundleId: update.bundleId, reason: 'unexpected error' } };
             }
         }
     }

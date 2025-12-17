@@ -1,4 +1,6 @@
-# Local Validation Guide
+# Local Validation
+
+For validation architecture details, see [Architecture: Validation](./architecture/validation.md).
 
 ## 🎯 Quick Reference
 
@@ -10,6 +12,16 @@
 | `./.github/workflows/scripts/validate-locally.sh` | Full CI simulation | ~2-5min | Before pushing |
 | `npm run pretest` | Pre-test setup | ~1min | Before running tests |
 | `npm test` | All tests | ~2min | Verify functionality |
+
+### Essential Commands
+
+| Command | Purpose | When |
+|---------|---------|------|
+| `npm run lint` | Code style | During development |
+| `npm run compile` | Build | Before testing |
+| `npm run test:unit` | Unit tests | Fast feedback |
+| `npm test` | All tests | Before pushing |
+| `npm run package:full` | Production VSIX | Before release |
 
 ## 📋 Validation Workflow (Matches GitHub Actions)
 
@@ -68,7 +80,7 @@ ls -lh *.vsix
 
 ### For Quick Iterations (30 seconds)
 ```bash
-./quick-check.sh
+./.github/workflows/scripts/quick-check.sh
 ```
 Runs: `lint → compile → unit tests`
 
@@ -85,6 +97,19 @@ npm run watch
 
 # Terminal 2: Watch mode for tests
 npm run watch-tests
+```
+
+### Manual Quick Check
+```bash
+npm run lint && npm run compile && npm run test:unit
+```
+
+### Full Manual Validation
+```bash
+npm run lint
+npm run compile
+npm test
+npm run package:full
 ```
 
 ## 📊 Understanding Test Organization
@@ -190,11 +215,9 @@ npm audit --omit=dev
 
 ### Example 1: Fixing a Bug
 ```bash
-# 1. Make changes to src/
-vim src/services/BundleInstaller.ts
-
+# 1. Update source files in src/
 # 2. Quick check
-./quick-check.sh
+./.github/workflows/scripts/quick-check.sh
 
 # 3. If passed, commit
 git add .
@@ -210,9 +233,7 @@ git checkout -b feature/new-feature
 npm run watch        # Terminal 1
 npm run watch-tests  # Terminal 2
 
-# 3. Write tests
-vim test/services/NewFeature.test.ts
-
+# 3. Update test files
 # 4. Full validation before push
 ./.github/workflows/scripts/validate-locally.sh
 
@@ -234,60 +255,41 @@ npm run package:full
 # 4. Test the VSIX locally
 code --install-extension *.vsix
 
-# 5. If all good, create release
+# 5. Tag for release (publication happens via GitHub Actions)
 git tag v0.2.0
 git push --tags
 ```
 
+**Note:** Creating a GitHub release triggers automatic publication and should be done after proper validation. See [Release Process](./releasing.md) for publication workflow.
+
 ## 📦 Package Size Optimization
 
-Production package should be **< 2MB**. If larger:
+Production package should be **< 2MB**. If larger, check contents:
 
 ```bash
-# Check what's included
 unzip -l *.vsix | grep extension/ | sort -k4 -rn | head -20
-
-# Common culprits:
-# - node_modules/ (should use bundled dist/)
-# - src/ (should be excluded)
-# - test/ (should be excluded)
-# - .github/ (should be excluded)
 ```
+
+Common culprits: `node_modules/`, `src/`, `test/`, `.github/` (should be excluded)
 
 ## 🔍 Debugging Failed CI
 
 When GitHub Actions fails:
 
-1. **Check which job failed** in GitHub Actions UI
-2. **Reproduce locally:**
-   ```bash
-   ./.github/workflows/scripts/validate-locally.sh
-   ```
-3. **Check specific step:**
-   ```bash
-   npm run lint          # If lint job failed
-   npm run test:unit     # If tests failed
-   npm run package:full  # If packaging failed
-   ```
+1. Check which job failed in GitHub Actions UI
+2. Reproduce locally: `./.github/workflows/scripts/validate-locally.sh`
+3. Check specific step: `npm run lint`, `npm run test:unit`, or `npm run package:full`
 
 ## 💡 Pro Tips
 
-1. **Use watch mode during development**
-   - Faster feedback loop
-   - Catches errors immediately
+- **Use watch mode** for faster feedback during development
+- **Run quick-check.sh frequently** after changes and before switching branches
+- **Run validate-locally.sh before pushing** to catch CI failures early
+- **Keep test data small** for faster execution and easier debugging
+- **Use coverage reports** to find untested code and guide testing efforts
 
-2. **Run quick-check.sh frequently**
-   - After every significant change
-   - Before switching branches
+## See Also
 
-3. **Run validate-locally.sh before pushing**
-   - Catches CI failures early
-   - Saves GitHub Actions minutes
-
-4. **Keep test data small**
-   - Faster test execution
-   - Easier debugging
-
-5. **Use coverage reports**
-   - Find untested code
-   - Guide testing efforts
+- [Development Setup](./development-setup.md)
+- [Testing](./testing.md)
+- [Architecture: Validation](./architecture/validation.md)

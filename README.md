@@ -4,1000 +4,118 @@
 
 [![VS Code Marketplace](https://img.shields.io/badge/VS%20Code-Marketplace-blue?logo=visual-studio-code)](https://marketplace.visualstudio.com/items?itemName=AmadeusITGroup.prompt-registry)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Version](https://img.shields.io/badge/version-0.0.1-green.svg)](https://github.com/AmadeusITGroup/prompt-registry)
+[![Version](https://img.shields.io/badge/version-0.0.2-green.svg)](https://github.com/AmadeusITGroup/prompt-registry)
 
 ---
 
-## 📋 Table of Contents
+**Prompt Registry** transforms how you discover and manage GitHub Copilot prompts. Browse a visual marketplace, search by tags, and install curated prompt libraries with a single click—no manual file copying or repository cloning required.
 
-- [Overview](#-overview)
-- [Terminology & Architecture](#-terminology--architecture)
-- [Features](#-features)
-- [Installation](#-installation)
-- [Quick Start](#-quick-start)
-- [Usage](#-usage)
-  - [Browsing the Marketplace](#browsing-the-marketplace)
-  - [Installing Bundles](#installing-bundles)
-  - [Managing Sources](#managing-sources)
-  - [Working with Profiles](#working-with-profiles)
-- [Supported Sources](#-supported-sources)
-- [Architecture](#️-architecture)
-- [Configuration](#️-configuration)
-- [Troubleshooting](#-troubleshooting)
-- [Contributing](#-contributing)
-- [License](#-license)
-
----
-
-## 🌟 Overview
-
-**Prompt Registry** transforms how you discover and manage GitHub Copilot prompts. Instead of manually copying prompt files or cloning repositories, browse a visual marketplace, search by tags, and install curated prompt libraries with a single click.
-
-![Prompty Registry - main views](./docs/assets/prompt-registry-in-vscode.png)
-
-### Why Prompt Registry?
-
-- 🎯 **Discover** - Browse curated prompt collections from multiple sources
-- ⚡ **Install** - One-click installation with automatic Copilot sync
-- 🔄 **Manage** - Update, organize, and uninstall bundles easily
-- 👥 **Share** - Create and distribute your own prompt libraries
-- 🌍 **Multi-Platform** - Works on macOS, Linux, and Windows
-
----
-
-## 📚 Terminology & Architecture
-
-Understanding how Prompt Registry organizes your Copilot enhancements:
-
-### Core Concepts
-
-**Primitives** (Bottom Layer)
-- **Prompts** - Reusable prompt templates for specific tasks
-- **Instructions** - System instructions and guidelines
-- **Chat Modes** - Conversation configurations
-- **Agents** - Autonomous task execution patterns
-- **MCP Servers** - Model Context Protocol integrations
-
-**Collection** (Organization Layer)
-A logical grouping of primitives around a specific role, persona, or job function. Think of it as a skill set or expertise area—e.g., "API Documentation Expert" or "Code Review Specialist". Collections live in repositories (sources) exposed via YAML manifests.
-
-**Bundle** (Deployment Unit)
-A deployable package representing a collection. Currently used interchangeably with "collection," but enables future support for non-collection source types.
-
-**Source** (Repository Layer)
-A repository hosting one or more bundles/collections. Examples: GitHub repo, local directory, or Awesome Copilot registry.
-
-**Profile** (Composition Layer)
-A logical grouping of bundles from multiple sources. Allows you to compose skills from different teams/organizations into a unified workspace setup—activate with a single click.
-
-**Hub** (Enterprise Layer)
-A centralized repository of versioned, certified profiles and sources. Like an OS release: pre-tested combinations of tools guaranteed to work well together. Share across your organization to simplify setup and ensure consistency.
-
-### Architecture Diagram
-
-```mermaid
-graph TD
-    subgraph Primitives["🔧 Primitives (Copilot Enhancements)"]
-        Prompt["📝 Prompts"]
-        Instruction["📖 Instructions"]
-        ChatMode["�� Chat Modes"]
-        Agent["🤖 Agents"]
-        MCP["🔌 MCP Servers"]
-    end
-    
-    subgraph Collection["📦 Collection/Bundle"]
-        CollectionGroup["Role/Skill Set
-(e.g., API Expert)"]
-        Manifest["YAML Manifest"]
-    end
-    
-    subgraph Source["📁 Source"]
-        SourceDesc["Repository
-(GitHub, Local, etc.)"]
-        MultiCollections["Multiple Collections"]
-    end
-    
-    subgraph Profile["👥 Profile"]
-        ProfileDesc["Workspace Composition"]
-        BundleSet["Grouped Bundles
-from Multiple Sources"]
-    end
-    
-    subgraph Hub["🏢 Hub"]
-        HubDesc["Organizational Registry"]
-        Profiles["Certified Profiles"]
-        Sources["Managed Sources"]
-    end
-    
-    GitHub["🌐 Copilot"]
-    User["👤 User"]
-    
-    Prompt --> CollectionGroup
-    Instruction --> CollectionGroup
-    ChatMode --> CollectionGroup
-    Agent --> CollectionGroup
-    MCP --> CollectionGroup
-    
-    CollectionGroup --> Manifest
-    Manifest --> SourceDesc
-    MultiCollections --> SourceDesc
-    
-    SourceDesc --> BundleSet
-    BundleSet --> ProfileDesc
-    
-    ProfileDesc --> Profiles
-    SourceDesc --> Sources
-    Profiles --> HubDesc
-    Sources --> HubDesc
-    
-    HubDesc --> User
-    ProfileDesc --> GitHub
-    User -->|"1. Add Source"| Source
-    User -->|"2. Create Profile"| Profile
-    User -->|"3. Activate"| Hub
-    GitHub -->|"Enriched"| User
-```
-
-### Real-Life Example: Enterprise AI Engineering Hub
-
-**Scenario:** Your organization wants to standardize AI engineering across teams.
-
-```
-🏢 Corporate AI Hub (Central Management)
-├── 📁 Source: DataTeam/ml-prompts (GitHub)
-│   └── 📦 Bundle: "ML Model Training"
-│       ├── 📝 Prompts: Training scripts, debugging tips
-│       ├── 📖 Instructions: Best practices
-│       └── 🔌 MCP: Model evaluation servers
-│
-├── 📁 Source: SecurityTeam/secure-coding (GitHub)
-│   └── 📦 Bundle: "Security Code Review"
-│       ├── 📝 Prompts: Vulnerability patterns
-│       ├── 📖 Instructions: OWASP guidelines
-│       └── �� Chat Mode: Interactive security audit
-│
-└── 👥 Profile: "Junior Engineer Onboarding"
-    ├── ✅ Bundle: ML Model Training (v2.1.0)
-    ├── ✅ Bundle: Security Code Review (v1.5.0)
-    ├── ✅ Bundle: API Documentation (v3.0.0)
-    └── ✅ Bundle: Testing Best Practices (v1.8.0)
-
-👤 New Engineer Workflow:
-1. Opens VS Code
-2. Opens Prompt Registry → "Import Hub"(optional)
-3. Clicks "Activate Profile: Junior Engineer Onboarding"
-4. ✅ All skills installed in one click
-5. Ready to code with Copilot enhancements from day 1!
-```
-
-**Benefits:**
-- ⏱️ **Onboarding:** Minutes instead of days
-- 🎯 **Consistency:** All engineers use certified versions
-- 🔄 **Updates:** Hub maintainers update once, everyone gets new versions
-- 👥 **Collaboration:** Cross-team skills easily shared
-
----
-
-## ✨ Features
-
-### 🎨 Visual Marketplace
-
-Browse prompt bundles in a modern, tile-based interface inspired by VS Code's extension marketplace:
-
-- **Rich Metadata**: See descriptions, tags, content breakdown, and installation status
-- **Search & Filter**: Find prompts by keywords, tags, or content type
-- **Content Preview**: View detailed information before installing
-- **One-Click Install**: Install bundles instantly from the marketplace
-
-### 🔌 Multi-Source Support
-
-Connect to various prompt sources:
-
-*Note:* some of the flows are still experimental and may not work perfectly.
-
-| Source Type | Description | Use Case |
-|------------|-------------|----------|
-| **Awesome Copilot** | Curated community collections | Discover popular prompts |
-| **Local Awesome Copilot** | Local awesome-copilot collections | Develop/test collections locally |
-| **GitHub** | Direct from GitHub repositories | Team/project-specific prompts |
-| **Local** | File system directories | Private/offline prompts |
-
-### 📦 Bundle Management
-
-- **Install/Uninstall**: Manage bundles through UI or commands
-- **Version Tracking**: Track installed versions with semantic versioning
-- **Version Consolidation**: Multiple versions of the same bundle are grouped, showing only the latest
-- **Update Detection**: Automatically detect when newer versions are available
-- **Automatic Updates**: Background updates with configurable frequency (daily/weekly/manual)
-- **Auto-Sync**: Automatic synchronization with GitHub Copilot
-- **Conflict Resolution**: Handle duplicate bundles gracefully
-
-### 👥 Profile Management
-
-Organize prompts by project, team, or environment:
-
-```
-Work Projects Profile
-  ├── testing-automation (v1.0.0)
-  ├── code-review (v2.1.0)
-  └── api-documentation (v1.5.0)
-
-Personal Profile
-  ├── creative-writing (v1.0.0)
-  └── learning-resources (v0.9.0)
-```
-
-### ⚙️ Settings Management
-
-Export and import your entire Prompt Registry configuration:
-
-- **📤 Export** - Save sources, profiles, and settings to JSON/YAML
-- **📥 Import** - Restore configuration with merge or replace strategies
-- **🔄 Backup** - Keep configuration safe before changes
-- **👥 Share** - Distribute team configurations easily
-- **💾 Version Control** - Track settings in Git with YAML format
-
-
-### 🌍 Cross-Platform
-
-Automatically detects and uses the correct directories:
-
-- **macOS**: `~/Library/Application Support/Code/User/prompts`
-- **Linux**: `~/.config/Code/User/prompts`
-- **Windows**: `%APPDATA%/Code/User/prompts`
-
-Supports all VS Code flavors: Stable, Insiders, and Windsurf.
-
----
-
-## 📦 Installation
-
-### From VS Code Marketplace
-
-1. Open VS Code
-2. Press `Ctrl+Shift+X` (or `Cmd+Shift+X` on macOS)
-3. Search for "Prompt Registry"
-4. Click **Install**
-
-### From VSIX
-
-```bash
-# Download the latest .vsix file
-code --install-extension prompt-registry-2.0.0.vsix
-```
-
-### From Source
-
-```bash
-git clone https://github.com/AmadeusITGroup/prompt-registry.git
-cd prompt-registry
-npm install
-npm run compile
-code --install-extension .
-```
+![Prompt Registry - main views](./docs/assets/prompt-registry-in-vscode.png)
 
 ---
 
 ## 🚀 Quick Start
 
-### 1. Add a Source
+1. **Install** — Search "Prompt Registry" in VS Code Extensions (`Ctrl+Shift+X`)
+2. **Select Hub** — On first launch, choose a hub from the welcome dialog (or skip to configure later)
+3. **Browse** — Click "MARKETPLACE" in the Prompt Registry sidebar
+4. **Install** — Click any bundle tile, then click **Install**
+5. **Use** — Your prompts are now available in GitHub Copilot! 🎉
 
-First, add a prompt source to the registry:
+The extension automatically adds the Awesome Copilot source and syncs your selected hub's profiles on startup.
 
-```
-Ctrl+Shift+P → "Prompt Registry: Add Source"
-```
-
-Choose a source type:
-- **Awesome Copilot Collection** - Pre-configured curated prompts
-- **GitHub Repository** - Enter repository URL
-- **Local Directory** - Select a folder
-
-### 2. Browse the Marketplace
-
-Open the Prompt Registry Marketplace:
-
-```
-Click "MARKETPLACE" in the Prompt Registry sidebar
-```
-
-Or use the command:
-
-```
-Ctrl+Shift+P → "Prompt Registry: Open Marketplace"
-```
-
-### 3. Install a Bundle
-
-Click on any bundle tile to view details, then click **Install**.
-
-Your prompts are now available in GitHub Copilot! 🎉
+→ [Full Getting Started Guide](./docs/user-guide/getting-started.md)
 
 ---
 
-## 📖 Usage
+## ✨ Key Features
 
-### Browsing the Marketplace
-
-The marketplace provides multiple ways to discover prompts:
-
-#### Search
-```
-Type in the search box to filter by:
-- Bundle name
-- Description keywords
-- Tags
-```
-
-#### Filter by Content Type
-```
-Click filter buttons to show only:
-- Prompts
-- Instructions
-- Chat Modes
-- Agents
-```
-
-#### View Details
-```
-Click on any bundle tile to see:
-- Full description
-- Current version and available versions
-- Content breakdown (prompts, instructions, etc.)
-- Installation information
-- Update availability status
-- Tags and metadata
-- List of included files
-```
-
-### Installing Bundles
-
-#### From Marketplace
-
-1. **Browse** - Find a bundle in the marketplace
-2. **Review** - Click the tile to view details and version information
-3. **Install** - Click the **Install** button (or **Update** if a newer version is available)
-4. **Verify** - Check the installed badge appears with version number
-
-#### From Tree View
-
-1. **Navigate** - Go to Registry Explorer in sidebar
-2. **Find** - Locate a bundle under a source
-3. **Install** - Right-click → "Install Bundle"
-
-#### From Command Palette
-
-```bash
-Ctrl+Shift+P → "Prompt Registry: Install Bundle"
-# Select source → Select bundle → Confirm
-```
-
-### Managing Sources
-
-#### Add Source
-
-```bash
-Ctrl+Shift+P → "Prompt Registry: Add Source"
-```
-
-**Awesome Copilot Collection** (Recommended for beginners):
-- Pre-configured
-- Curated community prompts
-- Automatically updated
-
-**GitHub Repository**:
-- Repository URL: `https://github.com/owner/repo`
-- Branch: `main` (optional)
-- Collections Path: `collections` (optional)
-
-**Local Directory**:
-- Select a folder containing `deployment-manifest.yml`
-
-#### Edit Source
-
-```bash
-Right-click source in tree view → "Edit Source"
-```
-
+- **🎨 Visual Marketplace** — Browse bundles in a tile-based interface with search, filters, and one-click install ([details](./docs/user-guide/marketplace.md))
+- **🔌 Multi-Source Support** — Connect to GitHub, local directories, APM repositories, or Awesome Copilot collections ([details](./docs/user-guide/sources.md))
+- **📦 Version Management** — Track versions, detect updates, and enable automatic background updates ([details](./docs/user-guide/configuration.md))
+- **👥 Profiles & Hubs** — Organize bundles by project/team and share configurations across your organization ([details](./docs/user-guide/profiles-and-hubs.md))
+- **🌍 Cross-Platform** — Works on macOS, Linux, and Windows with all VS Code flavors
 
 ---
 
-## 🎨 Creating Prompt Projects
+## 📚 Documentation
 
-### Scaffold Command
+| Audience | Description | Link |
+|----------|-------------|------|
+| **Users** | Installation, marketplace, sources, profiles, troubleshooting | [User Guide](./docs/user-guide/getting-started.md) |
+| **Authors** | Creating, validating, and publishing prompt collections | [Author Guide](./docs/author-guide/creating-source-bundle.md) |
+| **Contributors** | Development setup, architecture, testing, coding standards | [Contributor Guide](./docs/contributor-guide/development-setup.md) |
+| **Reference** | Commands, settings, adapter API, hub schema | [Reference Docs](./docs/reference/commands.md) |
 
-Quickly create a new GitHub Copilot prompt project with proper structure:
+→ [Full Documentation Index](./docs/README.md)
 
-```
-Ctrl+Shift+P → "Prompt Registry: Scaffold Awesome Copilot Project"
-```
+---
 
-The scaffold will create:
-- **Prompts** - Sample prompt files
-- **Instructions** - Getting started guides
-- **Chat Modes** - Conversation configurations
-- **Collections** - Organized prompt collections
-- **Workflows** - Validation scripts
-- **Documentation** - README and best practices
+## 📦 Installation
 
-### Project Types
+**From VS Code Marketplace:**
+1. Open VS Code → Press `Ctrl+Shift+X`
+2. Search "Prompt Registry" → Click **Install**
 
-| Type | Description | Status |
-|------|-------------|--------|
-| **Awesome Copilot** | Full-featured template with all resource types | ✅ Available |
-| **Basic** | Minimal template for quick starts | 🔜 Coming Soon |
-| **Enterprise** | Advanced template with governance | 🔜 Coming Soon |
-
-### Collection Validation
-
-Validate your collections against the schema:
-
-```
-Ctrl+Shift+P → "Prompt Registry: Validate Collections"
-```
-
-Features:
-- ✅ **JSON Schema Validation** - Ensures proper structure
-- 🔍 **File Reference Checking** - Verifies all files exist
-- ⚠️ **Best Practice Warnings** - Helpful suggestions
-- 📊 **Detailed Reports** - Clear error messages
-
-#### Remove Source
-
+**From VSIX:**
 ```bash
-Right-click source in tree view → "Remove Source"
+code --install-extension prompt-registry-0.0.2.vsix
 ```
 
-### Managing Bundle Versions
-
-Prompt Registry uses semantic versioning to track and manage bundle versions.
-
-#### Version Consolidation
-
-When multiple versions of the same bundle exist (e.g., from GitHub releases), they are automatically consolidated:
-
-- **Latest Version Shown**: The marketplace displays only the latest version of each bundle
-- **Version History**: All available versions are tracked and accessible
-- **Smart Grouping**: Bundles from the same repository are grouped by owner/repo identity
-
-#### Update Detection
-
-The extension automatically detects when updates are available:
-
+**From Source:**
 ```bash
-# Check for updates
-Right-click installed bundle → "Check for Updates"
-
-# Update to latest version
-Click "Update" button in marketplace or tree view
-
-# Update all bundles at once
-Ctrl+Shift+P → "Prompt Registry: Update All Bundles"
+git clone https://github.com/AmadeusITGroup/prompt-registry.git
+cd prompt-registry
+npm install
+npm run package:vsix
+code --install-extension prompt-registry-0.0.2.vsix
 ```
 
-**Update Indicators:**
-- 🔄 **Update Available** - Newer version detected
-- ✅ **Up to Date** - Latest version installed
-- 📦 **Not Installed** - Bundle not yet installed
-
-#### Automatic Updates
-
-The extension uses a auto-update system that combines global settings with per-bundle preferences:
-
+**For custom VS Code instances** (with custom user-data-dir/extensions-dir):
 ```bash
-# Configure in Settings
-File → Preferences → Settings → Extensions → Prompt Registry
+# After building the VSIX above, install to your custom VS Code instance
+code --user-data-dir "$ud" --extensions-dir "$ed" --install-extension prompt-registry-0.0.2.vsix
 ```
 
-**Auto-Update Settings:**
-
-| Setting | Description | Default |
-|---------|-------------|---------|
-| `promptregistry.updateCheck.enabled` | Enable automatic update checks | `true` |
-| `promptregistry.updateCheck.frequency` | Check frequency: `daily`, `weekly`, or `manual` | `daily` |
-| `promptregistry.updateCheck.notificationPreference` | Notifications: `all`, `critical`, or `none` | `all` |
-| `promptregistry.updateCheck.autoUpdate` | Enable background auto-updates (global gate) | `false` |
-| `promptregistry.updateCheck.cacheTTL` | Cache duration for update checks (ms) | `300000` |
-
-**How It Works:**
-1. On activation, the extension waits 5 seconds before checking for updates
-2. Updates are checked according to the configured frequency
-3. When updates are found, a notification appears with "Update Now" option
-4. **If global auto-update is enabled AND a bundle has per-bundle auto-update enabled**, that bundle installs silently in the background
-5. Bundles without per-bundle auto-update enabled remain manual-only, even if global auto-update is on
-6. Failed auto-updates trigger a notification with retry option
-
-**Per-Bundle Auto-Update:**
-```bash
-# Enable auto-update for a specific bundle (required for background updates)
-Right-click bundle → "Enable Auto-Update"
-
-# Disable auto-update for a specific bundle
-Right-click bundle → "Disable Auto-Update"
-```
-
-> **Note:** Both the global `autoUpdate` setting AND per-bundle auto-update must be enabled for background updates. This two-level opt-in ensures bundles only update automatically when explicitly configured.
-
-### Working with Profiles
-
-Profiles help organize bundles by project, team, or environment.
-
-#### Shared Profiles vs Favorites
-
-In the **Registry Explorer**, profiles can come from two places:
-
-- **Shared profiles (from a Hub)**: centrally managed profiles that your organization/team publishes.
-- **Local profiles**: profiles you create and manage locally.
-
-The Explorer offers two complementary profile views:
-
-- **Shared Profiles**: the full catalog of available hub profiles (grouped by hub).
-- **Favorites**: a focused *daily working set* containing only the hub profiles you marked as favorite, plus your local profiles.
-
-Use the **⭐ Toggle Favorites View** button to switch between **Shared Profiles** and **Favorites**.
-
-![Registry Explorer - Shared Profiles view](./docs/assets/registry-explorer-shared-profiles.png)
-
-![Registry Explorer - Favorites view](./docs/assets/registry-explorer-favorites.png)
-
-**Typical workflow:** browse the full catalog in **Shared Profiles**, favorite the few profiles you use regularly, then switch to **Favorites** for day-to-day work.
-
-Favorites contains an **Active Profile** section, your favorited hub profiles (grouped by hub), and a **Local Profiles** section.
-
-#### Favorite a Hub Profile (to build your working set)
-
-1. In the **Registry Explorer**, click the **⭐ Toggle Favorites View** button until you see **Shared Profiles**.
-2. Expand a hub and find a profile.
-3. Right-click the profile and choose **Toggle Favorite**.
-4. Click **⭐ Toggle Favorites View** again to switch to **Favorites** and see your curated list (favorited profiles are marked with `⭐`).
-
-#### Create Profile
-
-```bash
-Ctrl+Shift+P → "Prompt Registry: Create Profile"
-# Enter profile name (e.g., "Work Projects")
-```
-
-#### Install to Profile
-
-```bash
-When installing a bundle:
-1. Choose "Profile" scope
-2. Select target profile
-3. Bundle installs only to that profile
-```
-
-#### Activate Profile
-
-```bash
-Ctrl+Shift+P → "Prompt Registry: Activate Profile"
-# or Right-click a profile in Registry Explorer → "Activate Profile"
-```
-
-#### Deactivate Profile
-
-```bash
-Ctrl+Shift+P → "Prompt Registry: Deactivate Profile"
-# or Right-click the active profile in Registry Explorer → "Deactivate Profile"
-```
-
-The active profile is shown with an **[Active]** label. In **Favorites** view, the **Active Profile** section always shows which profile is currently active (or **None**) so you don't need to expand nested trees to find it.
-
-#### View Profile Contents
-
-```bash
-Registry Explorer → Shared Profiles or Favorites → Expand a profile
-# See all bundles in that profile
-```
-
-
-### Working with Hubs
-
-Hubs provide centralized configuration management for sources and profiles.
-
-#### Export Hub
-
-Create a hub configuration from your current sources and profiles:
-
-```bash
-Ctrl+Shift+P → "Prompt Registry: Export Hub Configuration"
-# Provide hub details:
-#   - Hub Name
-#   - Description
-#   - Maintainer Name>
-# Save as hub-config.yml
-# Commit to version control or share with your team
-```
-
-**Use Cases:**
-- Share team configurations across organization
-- Version control your prompt setup
-- Create reusable hub templates
-- Backup your current configuration
-
-
-#### Import Hub
-
-```bash
-Ctrl+Shift+P → "Prompt Registry: Import Hub"
-# Choose source type: GitHub or Local
-# Provide hub location
-```
-
-#### Browse Hub Profiles
-
-```bash
-Ctrl+Shift+P → "Prompt Registry: Browse Hub Profiles"
-# View and activate profiles from imported hubs
-```
-
-#### Sync Hub
-
-```bash
-Right-click hub in Registry Explorer → "Sync Hub"
-# Updates hub configuration and profiles
-```
-
-#### Hub Configuration
-
-Hubs use YAML format with metadata, sources, and profiles:
->
-```yaml
-version: "1.0.0"
-metadata:
-  name: "Team Hub"
-  description: "Shared prompt configuration"
-sources:
-  - id: "team-prompts"
-    type: "github"
-    repository: "org/prompts"
-profiles:
-  - id: "backend"
-    name: "Backend Developer"
-    bundles:
-      - id: "api-design"
-        version: "latest"
-```
-
-### Using Registry Explorer
-
-The **Registry Explorer** sidebar provides a comprehensive view of your Prompt Registry ecosystem.
-
-#### Explorer Overview
-
-Access via the sidebar icon or:
-```bash
-Ctrl+Shift+P → "View: Show Prompt Registry Explorer"
-```
-
-#### Features
-
-**📦 Installed Bundles**
-- View all installed bundles by scope (User/Workspace)
-- Right-click for actions: View Details, Update, Uninstall, Check Updates
-- See installation status and version information
-- Visual indicators for available updates
-
-**👥 Profiles (Shared / Favorites)**
-- Browse the full catalog of hub profiles in **Shared Profiles**
-- Build a focused daily working set in **Favorites** (includes **Active Profile**, favorited hub profiles, and **Local Profiles**)
-- Use **⭐ Toggle Favorites View** to switch between the two views
-
-**📡 Sources**
-- View all configured sources with priority and status
-- Right-click context menu for quick actions:
-  - **Edit Source** - Modify configuration, change priority, toggle enabled/disabled
-  - **Sync Source** - Refresh bundle listings from source
-  - **Toggle Enabled/Disabled** - Quick enable/disable without editing
-  - **Remove Source** - Delete source configuration
-- Status indicators: ✓ (enabled) or ○ (disabled)
-
-**⚙️ Settings Management**
-- **Export Settings** - Save complete configuration (sources, profiles, settings)
-  - JSON format: Pretty-printed, easy to read
-  - YAML format: Human-friendly, version control compatible
-- **Import Settings** - Restore or share configuration
-  - Merge strategy: Add new sources/profiles, keep existing
-  - Replace strategy: Clear all, restore from file
-  - Format auto-detection from file extension
-
-#### Settings Export/Import
-
-Export your entire Prompt Registry configuration for backup, sharing, or migration:
-
-```bash
-# Export
-1. Click Export button in Registry Explorer toolbar
-2. Choose format: JSON or YAML
-3. Select save location
-4. Optionally open file after export
-
-# Import
-1. Click Import button in Registry Explorer toolbar
-2. Select settings file (.json, .yaml, .yml)
-3. Choose strategy:
-   - Merge: Add new items, keep existing
-   - Replace: Clear all, restore from file
-4. Confirm operation
-```
-
-**What's Included in Export:**
-- All sources with URLs, types, priorities, and credentials
-- All profiles with their bundle associations
-- Extension settings (auto-updates, logging, etc.)
-- Timestamp and version information
-
-**Use Cases:**
-- 🔄 **Backup** - Save configuration before major changes
-- 👥 **Team Sharing** - Distribute standard source configurations
-- �� **Multi-Machine** - Sync settings across workstations
-- 🔧 **Version Control** - Track configuration changes in Git
-
+---
 
 ## 🔌 Supported Sources
 
-### Awesome Copilot Collection
+| Source Type | Description |
+|-------------|-------------|
+| **Awesome Copilot** | Curated community collections |
+| **GitHub** | Direct from GitHub repositories |
+| **Local** | File system directories |
+| **APM** | APM package repositories |
 
-**Pre-configured curated source for community prompts.**
-
-```yaml
-Type: awesome-copilot
-URL: https://github.com/github/awesome-copilot
-Branch: main
-Collections Path: collections
-```
-
-Features:
-- ✅ Community-curated collections
-- ✅ Well-tested prompts
-- ✅ Regular updates
-- ✅ Wide variety of use cases
-
-
-### Local Awesome Copilot Collection
-
-**Local filesystem-based awesome-copilot collections for development and testing.**
-
-```yaml
-Type: local-awesome-copilot
-URL: /path/to/collections  # or file:///path/to/collections
-Collections Path: collections (default)
-```
-
-Features:
-- ✅ Develop collections locally before publishing
-- ✅ Test collection structure and content
-- ✅ No network dependencies
-- ✅ Fast iteration during development
-- ✅ Same format as awesome-copilot adapter
-
-**Directory Structure:**
-```
-/path/to/collections/
-├── collections/
-│   ├── azure-cloud.collection.yml
-│   └── python-dev.collection.yml
-├── prompts/
-│   ├── azure-resource-health.prompt.md
-│   └── python-testing.prompt.md
-└── instructions/
-    └── bicep-best-practices.instructions.md
-```
-
-**Collection File Format (.collection.yml):**
-```yaml
-id: my-collection
-name: My Collection
-description: Description of your collection
-tags: [tag1, tag2, tag3]
-items:
-  - path: prompts/example.prompt.md
-    kind: prompt
-  - path: instructions/guidelines.instructions.md
-    kind: instruction
-  - path: chatmodes/mode.chatmode.md
-    kind: chat-mode
-```
-
-**Add Local Collection Source:**
-1. Open Command Palette (`Ctrl+Shift+P`)
-2. Run `Prompt Registry: Add Source`
-3. Select type: `local-awesome-copilot`
-4. Enter path: `/path/to/your/collections`
-5. Bundles appear in Registry Explorer
-
-**Use Cases:**
-- 🔧 **Development** - Build and test collections locally
-- 🧪 **Testing** - Validate structure before GitHub push
-- 🚀 **Prototyping** - Quick experimentation with prompts
-- 📝 **Documentation** - Create examples for contributors
-
-### GitHub Repository
-
-**Any GitHub repository with collections.**
-
-```yaml
-Type: github
-URL: https://github.com/owner/repo
-Branch: main
-Collections Path: prompts/collections
-```
-
-Requirements:
-- Repository must be public (or provide authentication)
-- Collections directory with `.collection.yml` files
-- Each collection references prompt files
-
-
-## 🏗️ Architecture
-
-### High-Level Overview
-
-```mermaid
-graph TB
-    subgraph "User Interface"
-        MV[Marketplace View]
-        TV[Tree View]
-    end
-    
-    subgraph "Core Services"
-        RM[Registry Manager]
-        BI[Bundle Installer]
-        CS[Copilot Sync]
-    end
-    
-    subgraph "Adapters"
-        ACA[Awesome Copilot]
-        GHA[GitHub]
-        GLA[GitLab]
-        HTA[HTTP]
-        LCA[Local]
-    end
-    
-    MV --> RM
-    TV --> RM
-    RM --> BI
-    BI --> CS
-    RM --> ACA
-    RM --> GHA
-    RM --> GLA
-    RM --> HTA
-    RM --> LCA
-    
-    style RM fill:#4CAF50
-    style BI fill:#2196F3
-    style CS fill:#FF9800
-```
-
-**For detailed architecture, see [ARCHITECTURE.md](./docs/ARCHITECTURE.md)**
-
-### Key Components
-
-- **Registry Manager**: Orchestrates sources, bundles, and installations
-- **Version Consolidator**: Groups multiple bundle versions and selects latest
-- **Version Manager**: Semantic versioning operations and comparisons
-- **Bundle Installer**: Handles extraction, validation, and installation
-- **Copilot Sync**: Syncs bundles to GitHub Copilot directories
-- **Adapters**: Source-specific implementations (GitHub, GitLab, etc.)
-- **UI Providers**: Marketplace and tree view interfaces
-
-### Installation Flow
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Marketplace
-    participant Adapter
-    participant Installer
-    participant Copilot
-    
-    User->>Marketplace: Click Install
-    Marketplace->>Adapter: Download bundle
-    Adapter-->>Installer: ZIP archive
-    Installer->>Installer: Extract & validate
-    Installer->>Copilot: Sync prompts
-    Copilot-->>User: Ready to use
-```
+→ [Source Configuration Guide](./docs/user-guide/sources.md)
 
 ---
 
-## ⚙️ Configuration
+## 🏗️ Architecture Overview
 
-### Extension Settings
-
-Access via `File → Preferences → Settings → Extensions → Prompt Registry`
-
-| Setting | Description | Default |
-|---------|-------------|---------|
-| `promptRegistry.autoSync` | Auto-sync to Copilot on install | `true` |
-| `promptRegistry.cacheTimeout` | Bundle cache TTL (minutes) | `5` |
-| `promptRegistry.defaultScope` | Default installation scope | `user` |
-| `promptRegistry.showNotifications` | Show success notifications | `true` |
-| `promptregistry.updateCheck.enabled` | Enable automatic update checks | `true` |
-| `promptregistry.updateCheck.frequency` | Check frequency: `daily`, `weekly`, `manual` | `daily` |
-| `promptregistry.updateCheck.notificationPreference` | Notification level: `all`, `critical`, `none` | `all` |
-| `promptregistry.updateCheck.autoUpdate` | Auto-install updates in background | `false` |
-| `promptregistry.updateCheck.cacheTTL` | Update check cache TTL (milliseconds) | `300000` |
-
-### Source Configuration
-
-Sources are stored in `~/.vscode/extensions/.../registry.json`:
-
-```json
-{
-  "sources": [
-    {
-      "id": "awesome-copilot",
-      "name": "Awesome Copilot Collection",
-      "type": "awesome-copilot",
-      "url": "https://github.com/microsoft/prompt-bundle-spec",
-      "enabled": true
-    }
-  ]
-}
+```
+Marketplace/Tree View → Registry Manager → Adapters (GitHub, Local, etc.)
+                              ↓
+                       Bundle Installer → Copilot Sync
 ```
 
+→ [Full Architecture Documentation](./docs/contributor-guide/architecture.md)
 
 ---
 
 ## 🔧 Troubleshooting
 
-### Common Issues
+**Bundles not showing in Copilot?**
+- Check sync completed in extension logs
+- Run "Prompt Registry: Sync All Bundles"
+- Restart VS Code (`Ctrl+R`)
 
-#### Bundles Not Showing in Copilot
+**Installation fails?**
+- Verify network connection and repository access
+- Check bundle has valid `deployment-manifest.yml`
 
-**Problem**: Installed bundles don't appear in GitHub Copilot.
-
-**Solution**:
-1. Check sync completed: View extension logs
-2. Verify directory: Check OS-specific path exists
-3. Restart VS Code: Reload window (`Ctrl+R`)
-4. Manual sync: Run "Prompt Registry: Sync All Bundles"
-
-#### Installation Fails
-
-**Problem**: "Failed to install bundle" error.
-
-**Solutions**:
-- **Network Error**: Check internet connection
-- **Permission Error**: Ensure write access to user directory
-- **Invalid Bundle**: Verify bundle has valid manifest
-- **Disk Space**: Check available storage
-
-#### Source Connection Failed
-
-**Problem**: Cannot fetch bundles from source.
-
-**Solutions**:
-- **GitHub**: Check repository URL and visibility
-- **Authentication**: Add access token if needed
-- **Network**: Verify HTTPS access not blocked
-- **Rate Limiting**: Wait before retrying
-
-#### Wrong Installation Path (macOS)
-
-**Problem**: Prompts install to `~/.config/Code` instead of `~/Library/Application Support/Code`.
-
-**Solution**: Update to latest version (2.0.0+) with proper macOS support.
-
-### Debug Mode
->
-Enable debug logging:
-
-```json
-{
-  "promptRegistry.debug": true
-}
-```
-
-View logs in Output panel: `View → Output → Prompt Registry`
-
-### Getting Help
-
-- 📖 [Documentation](./docs/)
-- 🐛 [Report Issues](https://github.com/AmadeusITGroup/prompt-registry/issues)
-- 💬 [Discussions](https://github.com/AmadeusITGroup/prompt-registry/discussions)
-- 📧 [Email Support](mailto:support@example.com)
+→ [Full Troubleshooting Guide](./docs/user-guide/troubleshooting.md)
 
 ---
 
@@ -1005,99 +123,13 @@ View logs in Output panel: `View → Output → Prompt Registry`
 
 We welcome contributions! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
 
-### Development Setup
-
-```bash
-# Clone repository
-git clone https://github.com/AmadeusITGroup/prompt-registry.git
-cd prompt-registry
-
-# Install dependencies
-npm install
-
-# Compile
-npm run compile
-
-# Watch mode (auto-compile)
-npm run watch
-
-# Run tests
-npm test
-
-# Package extension
-vsce package
-```
-
-### Creating a New Adapter
-
-See [ARCHITECTURE.md#extension-points](./docs/ARCHITECTURE.md#extension-points) for details on implementing custom adapters.
-
-### Project Structure
-
-```
-prompt-registry/
-├── src/
-│   ├── adapters/          # Source adapters
-│   ├── commands/          # Command implementations
-│   ├── services/          # Core services
-│   ├── ui/               # UI providers
-│   ├── types/            # TypeScript types
-│   └── utils/            # Utilities
-├── docs/                  # Documentation
-├── test/                  # Test suites
-└── package.json          # Extension manifest
-```
-
----
-
-## 📚 Documentation
-
-- **[Architecture](./docs/ARCHITECTURE.md)**
-- **[Quick Start](./docs/QUICK_START.md)**
-- **[Developer Guide](./docs/DEVELOPER_GUIDE.md)**
-- **[Testing Strategy](./docs/TESTING_STRATEGY.md)**
-
----
-
-## 🗺️ Roadmap
-
-### Current Version
-
-- ✅ Visual marketplace interface
-- ✅ Multi-source support (6 adapter types)
-- ✅ Profile management
-- ✅ Cross-platform support (macOS, Linux, Windows)
-- ✅ Auto-sync with GitHub Copilot
-- ✅ Search and filtering
-- ✅ Clickable marketplace tiles
-
-### Upcoming
-
-- 🔄 Community ratings and reviews
-- 🔄 Repository level installation support
-- 🔄 MCP Support (experimental at the moment)
-- ✅ Bundle versioning with semantic version support
-- ✅ Version consolidation (group multiple versions)
-- ✅ Update detection and notifications
-- ✅ Automatic bundle updates (background updates with configurable frequency)
-- 🔄 Version rollback
-- 🔄 Dependency management
-- 🔄 Bundle analytics
-
-### Future
-
-- 📋 More package types (APM, Packmind..)
-- 📋 Bundle authoring tools
-- 📋 AI-powered recommendations
-- 📋 Collaborative prompt sharing
-- 📋 Bundle analytics
-- 📋 Proper adapters for GitLab, HTTP ..
+→ [Development Setup](./docs/contributor-guide/development-setup.md) | [Coding Standards](./docs/contributor-guide/coding-standards.md)
 
 ---
 
 ## 📄 License
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](./LICENSE) file for details.
+[Apache 2.0](./LICENSE.txt) — See [SECURITY.md](./SECURITY.md) for security policy.
 
 ---
 
@@ -1106,33 +138,11 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](./LICE
 - **Microsoft** - For GitHub Copilot and VS Code
 - **Awesome Copilot Community** - For curated prompt collections
 - **Contributors** - Everyone who has contributed to this project
-
----
-
-## 📊 Stats
-
-- **Supported Source Types**: 4 (GitHub, Local, Awesome Copilot, Local Awesome Copilot)
-- **Platforms**: macOS, Linux, Windows
-- **VS Code Flavors**: Stable, Insiders, Windsurf
-- **Architecture**: Adapter pattern with extensible design
-- **Bundle Format**: YAML-based deployment manifests
-
 ---
 
 ## 🔗 Links
 
-- **Homepage**: [https://prompt-registry.dev](https://prompt-registry.dev)
-- **Documentation**: [https://docs.prompt-registry.dev](https://docs.prompt-registry.dev)
-- **GitHub**: [https://github.com/AmadeusITGroup/prompt-registry](https://github.com/AmadeusITGroup/prompt-registry)
-- **Issues**: [https://github.com/AmadeusITGroup/prompt-registry/issues](https://github.com/AmadeusITGroup/prompt-registry/issues)
-- **Marketplace**: [VS Code Marketplace](https://marketplace.visualstudio.com/)
-
----
-
-<div align="center">
-
-**Made with ❤️ by the Prompt Registry Team**
-
-[Report Bug](https://github.com/AmadeusITGroup/prompt-registry/issues) · [Request Feature](https://github.com/AmadeusITGroup/prompt-registry/issues) · [Documentation](./docs/)
-
-</div>
+- [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=AmadeusITGroup.prompt-registry)
+- [GitHub Repository](https://github.com/AmadeusITGroup/prompt-registry)
+- [Report Issues](https://github.com/AmadeusITGroup/prompt-registry/issues)
+- [Discussions](https://github.com/AmadeusITGroup/prompt-registry/discussions)

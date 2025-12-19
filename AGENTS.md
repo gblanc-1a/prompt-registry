@@ -178,9 +178,21 @@ Open extension global storage path (see `RegistryStorage.getPaths().installed`) 
 
 ---
 
-## Folder-Specific Guidance
+## Documentation Updates
 
-Additional AGENTS.md files exist in:
+After implementing features or fixing bugs:
+1. **Check if documentation needs updating** — New commands, settings, or user-facing changes require doc updates
+2. **Keep documentation concise** — One clear sentence beats three vague ones
+3. **Update the right file** — See [docs/AGENTS.md](docs/AGENTS.md) for file placement guidance
+
+---
+
+## **MANDATORY** Folder-Specific Guidance
+
+**MANDATORY** When you plan to work in one of those folders you **MUST** read the related AGENTS.md files exist in:
+- `.kiro/spec/AGENTS.md` — Guidance for creation of specifications design and tasks
+- `docs/AGENTS.md` — Documentation structure and update guidelines
 - `test/AGENTS.md` — Test writing patterns and helpers
+- `test/e2e/AGENTS.md` — Guidance for writing e2e tests
 - `src/adapters/AGENTS.md` — Adapter implementation guide
 - `src/services/AGENTS.md` — Service layer patterns

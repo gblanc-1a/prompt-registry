@@ -132,8 +132,8 @@ prompt-registry/
 
 - **`src/extension.ts`**: Extension activation and setup
 - **`src/types/registry.ts`**: Core type definitions
-- **`ARCHITECTURE.md`**: Detailed architecture documentation
-- **`PROJECT_SUMMARY.md`**: Project status and decisions
+- **[Architecture](docs/contributor-guide/architecture.md)**: Detailed architecture documentation
+- **[Core Flows](docs/contributor-guide/core-flows.md)**: Key system flows and processes
 
 ---
 
@@ -162,7 +162,7 @@ We welcome all types of contributions:
 
 1. **Check for existing work**: Search issues and PRs to avoid duplicates
 2. **Discuss large changes**: Open an issue first for major features
-3. **Read the docs**: Review `ARCHITECTURE.md` and `PROJECT_SUMMARY.md`
+3. **Read the docs**: Review [Architecture](docs/contributor-guide/architecture.md) and [Core Flows](docs/contributor-guide/core-flows.md)
 
 ---
 

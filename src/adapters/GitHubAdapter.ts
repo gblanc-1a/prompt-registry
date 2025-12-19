@@ -167,7 +167,7 @@ export class GitHubAdapter extends RepositoryAdapter {
         if (!this.attemptedMethods.has('vscode')) {
             try {
                 this.logger.debug('[GitHubAdapter] Trying VSCode GitHub authentication...');
-                const session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: false });
+                const session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: true });
                 if (session) {
                     this.authMethod = 'vscode';
                     this.logger.info('[GitHubAdapter] ✓ Using VSCode GitHub authentication');

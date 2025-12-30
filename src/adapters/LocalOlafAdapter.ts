@@ -1290,6 +1290,14 @@ export class LocalOlafAdapter extends RepositoryAdapter {
     }
 
     /**
+     * Get the source name to use for directory paths
+     * Uses source.name with fallback to source.id
+     */
+    private getSourceName(): string {
+        return this.source.name || this.source.id;
+    }
+
+    /**
      * Register a single skill in the competency index
      */
     private async registerSkillInCompetencyIndex(skill: SkillInfo, installPath: string, competencyIndex: any[]): Promise<void> {
@@ -1302,11 +1310,14 @@ export class LocalOlafAdapter extends RepositoryAdapter {
                 return;
             }
             
+            // Get the actual source name instead of hardcoded "olaf-local"
+            const sourceName = this.getSourceName();
+            
             // Process each entry point
             for (const entryPoint of entryPoints) {
                 // Construct the file path for the competency index
-                // Format: external-skills/olaf-local/{skillName}/prompts/{fileName}
-                const promptFilePath = `external-skills/olaf-local/${skill.folderName}${entryPoint.path}`;
+                // Format: external-skills/{sourceName}/{skillName}/prompts/{fileName}
+                const promptFilePath = `external-skills/${sourceName}/${skill.folderName}${entryPoint.path}`;
                 
                 this.logger.info(`[LocalOlafAdapter] Processing entry point for skill ${skill.id}: ${promptFilePath}`);
                 
@@ -1392,14 +1403,15 @@ export class LocalOlafAdapter extends RepositoryAdapter {
             }
             
             // Remove entries for all skills in the bundle
-            // Use the same hardcoded path as during installation to ensure consistency
+            // Use the actual source name to ensure consistency with installation
             let removedCount = 0;
+            const sourceName = this.getSourceName();
             
             for (const skill of bundleInfo.validatedSkills) {
                 const entryPoints = skill.manifest.entry_points || [];
                 
                 for (const entryPoint of entryPoints) {
-                    const promptFilePath = `external-skills/olaf-local/${skill.folderName}${entryPoint.path}`;
+                    const promptFilePath = `external-skills/${sourceName}/${skill.folderName}${entryPoint.path}`;
                     
                     // Find and remove entries matching this skill's file path
                     const initialLength = competencyIndex.length;
@@ -1488,7 +1500,8 @@ export class LocalOlafAdapter extends RepositoryAdapter {
             
             // Create external-skills directory structure
             const externalSkillsPath = path.join(workspacePath, '.olaf', 'external-skills');
-            const sourceSkillsPath = path.join(externalSkillsPath, 'olaf-local');
+            const sourceName = this.getSourceName();
+            const sourceSkillsPath = path.join(externalSkillsPath, sourceName);
             
             // Ensure directories exist
             if (!fs.existsSync(externalSkillsPath)) {
@@ -1561,7 +1574,8 @@ export class LocalOlafAdapter extends RepositoryAdapter {
             }
             
             const workspacePath = workspaceFolders[0].uri.fsPath;
-            const sourceSkillsPath = path.join(workspacePath, '.olaf', 'external-skills', 'olaf-local');
+            const sourceName = this.getSourceName();
+            const sourceSkillsPath = path.join(workspacePath, '.olaf', 'external-skills', sourceName);
             
             // Find the bundle definition to get skill information
             const bundleDefinitions = await this.scanBundleDefinitions();

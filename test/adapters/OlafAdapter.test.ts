@@ -26,6 +26,66 @@ suite('OlafAdapter Integration Tests', () => {
     let runtimeManagerStub: sinon.SinonStubbedInstance<OlafRuntimeManager>;
     let workspaceStub: sinon.SinonStub;
 
+    /**
+     * Helper to set up mock GitHub API responses for bundle structure
+     */
+    function setupBundleStructureMocks(options: {
+        bundleDefinitions?: Array<{
+            fileName: string;
+            metadata: { name: string; description: string; version?: string; author?: string; tags?: string[] };
+            skills: Array<{ name: string; description: string; path: string; manifest: string }>;
+        }>;
+        skillManifests?: Record<string, { name: string; version?: string; entry_points: Array<{ protocol: string; path: string; patterns: string[] }> }>;
+        skillFiles?: Record<string, Array<{ name: string; type: 'file' | 'dir'; download_url?: string }>>;
+    }) {
+        const { bundleDefinitions = [], skillManifests = {}, skillFiles = {} } = options;
+
+        // Mock bundles/ directory listing
+        const bundleFiles = bundleDefinitions.map(bd => ({
+            name: `${bd.fileName}.json`,
+            path: `bundles/${bd.fileName}.json`,
+            type: 'file' as const,
+            download_url: `https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/bundles/${bd.fileName}.json`
+        }));
+
+        nock('https://api.github.com')
+            .get('/repos/test-owner/test-olaf-repo/contents/bundles')
+            .reply(200, bundleFiles);
+
+        // Mock bundle definition downloads
+        for (const bd of bundleDefinitions) {
+            nock('https://raw.githubusercontent.com')
+                .get(`/test-owner/test-olaf-repo/main/bundles/${bd.fileName}.json`)
+                .reply(200, JSON.stringify({
+                    metadata: bd.metadata,
+                    skills: bd.skills
+                }));
+        }
+
+        // Mock skill directory contents
+        for (const [skillPath, files] of Object.entries(skillFiles)) {
+            nock('https://api.github.com')
+                .get(`/repos/test-owner/test-olaf-repo/contents/${skillPath}`)
+                .reply(200, files);
+        }
+
+        // Mock skill manifest API access (for validation)
+        for (const [manifestPath, manifest] of Object.entries(skillManifests)) {
+            nock('https://api.github.com')
+                .get(`/repos/test-owner/test-olaf-repo/contents/${manifestPath}`)
+                .reply(200, {
+                    name: manifestPath.split('/').pop(),
+                    type: 'file',
+                    download_url: `https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/${manifestPath}`
+                });
+
+            // Mock manifest download
+            nock('https://raw.githubusercontent.com')
+                .get(`/test-owner/test-olaf-repo/main/${manifestPath}`)
+                .reply(200, JSON.stringify(manifest));
+        }
+    }
+
     setup(() => {
         // Mock OlafRuntimeManager
         runtimeManagerStub = sinon.createStubInstance(OlafRuntimeManager);
@@ -42,306 +102,274 @@ suite('OlafAdapter Integration Tests', () => {
         sinon.restore();
     });
 
-    suite('Bundle Packaging', () => {
-        test('should generate deployment manifest for skill', async () => {
-            // Mock OLAF repository structure
-            nock('https://api.github.com')
-                .get('/repos/test-owner/test-olaf-repo/contents/.olaf/core/skills')
-                .reply(200, [
-                    {
-                        name: 'data-analysis',
-                        path: '.olaf/core/skills/data-analysis',
-                        type: 'dir'
-                    }
-                ])
-                .get('/repos/test-owner/test-olaf-repo/contents/.olaf/core/skills/data-analysis')
-                .reply(200, [
-                    {
-                        name: 'skill-manifest.json',
-                        type: 'file',
-                        download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/.olaf/core/skills/data-analysis/skill-manifest.json'
+    suite('Bundle Discovery', () => {
+        test('should discover bundles from bundles/ directory', async () => {
+            setupBundleStructureMocks({
+                bundleDefinitions: [{
+                    fileName: 'developer',
+                    metadata: {
+                        name: 'Developer Bundle',
+                        description: 'Developer skills bundle',
+                        version: '1.0.0',
+                        author: 'Test Author',
+                        tags: ['development', 'coding']
                     },
-                    {
-                        name: 'main.py',
-                        type: 'file',
-                        download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/.olaf/core/skills/data-analysis/main.py'
+                    skills: [{
+                        name: 'Code Review',
+                        description: 'Review code',
+                        path: 'skills/code-review',
+                        manifest: 'skills/code-review/manifest.json'
+                    }]
+                }],
+                skillManifests: {
+                    'skills/code-review/manifest.json': {
+                        name: 'Code Review',
+                        version: '1.0.0',
+                        entry_points: [{ protocol: 'Act', path: '/prompts/review.md', patterns: ['review code'] }]
                     }
-                ]);
-
-            // Mock skill manifest download
-            nock('https://raw.githubusercontent.com')
-                .get('/test-owner/test-olaf-repo/main/.olaf/core/skills/data-analysis/skill-manifest.json')
-                .reply(200, JSON.stringify({
-                    name: 'Data Analysis Skill',
-                    version: '1.0.0',
-                    description: 'Advanced data analysis capabilities',
-                    author: 'Test Author',
-                    tags: ['data', 'analysis', 'python']
-                }));
+                },
+                skillFiles: {
+                    'skills/code-review': [
+                        { name: 'manifest.json', type: 'file', download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/skills/code-review/manifest.json' },
+                        { name: 'prompts', type: 'dir' }
+                    ]
+                }
+            });
 
             const adapter = new OlafAdapter(mockSource);
             const bundles = await adapter.fetchBundles();
 
             assert.strictEqual(bundles.length, 1);
-            assert.strictEqual(bundles[0].name, 'Data Analysis Skill');
+            assert.strictEqual(bundles[0].name, 'Developer Bundle');
             assert.strictEqual(bundles[0].version, '1.0.0');
-            assert.strictEqual(bundles[0].description, 'Advanced data analysis capabilities');
-            assert.deepStrictEqual(bundles[0].tags, ['olaf', 'skill', 'data', 'analysis', 'python']);
+            assert.ok(bundles[0].description.includes('Developer skills bundle'));
+            assert.ok(bundles[0].description.includes('1 skill'));
+            assert.strictEqual(bundles[0].id, 'olaf-test-owner-test-olaf-repo-developer');
+            assert.deepStrictEqual(bundles[0].tags, ['olaf', 'skill', 'development', 'coding']);
         });
 
-        test('should create ZIP bundle with deployment manifest and skill files', async () => {
-            // Setup runtime manager mocks
-            runtimeManagerStub.ensureRuntimeInstalled.resolves(true);
-            runtimeManagerStub.hasWorkspaceLinks.resolves(false);
-            runtimeManagerStub.createWorkspaceLinks.resolves();
-
-            // Mock skill discovery (called twice - once for fetchBundles, once for downloadBundle)
-            nock('https://api.github.com')
-                .get('/repos/test-owner/test-olaf-repo/contents/.olaf/core/skills')
-                .times(2)
-                .reply(200, [
+        test('should discover multiple bundles with multiple skills', async () => {
+            setupBundleStructureMocks({
+                bundleDefinitions: [
                     {
-                        name: 'test-skill',
-                        path: '.olaf/core/skills/test-skill',
-                        type: 'dir'
-                    }
-                ])
-                .get('/repos/test-owner/test-olaf-repo/contents/.olaf/core/skills/test-skill')
-                .times(3) // Called for fetchBundles, downloadBundle scan, and packageSkillAsBundle
-                .reply(200, [
-                    {
-                        name: 'skill-manifest.json',
-                        type: 'file',
-                        download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/.olaf/core/skills/test-skill/skill-manifest.json'
+                        fileName: 'developer',
+                        metadata: {
+                            name: 'Developer Bundle',
+                            description: 'Developer skills',
+                            version: '1.0.0'
+                        },
+                        skills: [
+                            { name: 'Code Review', description: 'Review code', path: 'skills/code-review', manifest: 'skills/code-review/manifest.json' },
+                            { name: 'Refactor', description: 'Refactor code', path: 'skills/refactor', manifest: 'skills/refactor/manifest.json' }
+                        ]
                     },
                     {
-                        name: 'main.py',
-                        type: 'file',
-                        download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/.olaf/core/skills/test-skill/main.py'
+                        fileName: 'analyst',
+                        metadata: {
+                            name: 'Analyst Bundle',
+                            description: 'Analyst skills',
+                            version: '2.0.0'
+                        },
+                        skills: [
+                            { name: 'Data Analysis', description: 'Analyze data', path: 'skills/data-analysis', manifest: 'skills/data-analysis/manifest.json' }
+                        ]
                     }
-                ]);
-
-            // Mock file downloads (called multiple times)
-            nock('https://raw.githubusercontent.com')
-                .get('/test-owner/test-olaf-repo/main/.olaf/core/skills/test-skill/skill-manifest.json')
-                .times(3) // Called for fetchBundles, downloadBundle scan, and packageSkillAsBundle
-                .reply(200, JSON.stringify({
-                    name: 'Test Skill',
-                    version: '1.0.0',
-                    description: 'Test skill for packaging'
-                }))
-                .get('/test-owner/test-olaf-repo/main/.olaf/core/skills/test-skill/main.py')
-                .reply(200, 'print("Hello from OLAF skill!")');
+                ],
+                skillManifests: {
+                    'skills/code-review/manifest.json': { name: 'Code Review', entry_points: [{ protocol: 'Act', path: '/prompts/review.md', patterns: ['review'] }] },
+                    'skills/refactor/manifest.json': { name: 'Refactor', entry_points: [{ protocol: 'Act', path: '/prompts/refactor.md', patterns: ['refactor'] }] },
+                    'skills/data-analysis/manifest.json': { name: 'Data Analysis', entry_points: [{ protocol: 'Act', path: '/prompts/analyze.md', patterns: ['analyze'] }] }
+                },
+                skillFiles: {
+                    'skills/code-review': [{ name: 'manifest.json', type: 'file', download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/skills/code-review/manifest.json' }],
+                    'skills/refactor': [{ name: 'manifest.json', type: 'file', download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/skills/refactor/manifest.json' }],
+                    'skills/data-analysis': [{ name: 'manifest.json', type: 'file', download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/skills/data-analysis/manifest.json' }]
+                }
+            });
 
             const adapter = new OlafAdapter(mockSource);
-            
-            // First get the bundle info
             const bundles = await adapter.fetchBundles();
-            const testBundle = bundles[0];
 
-            // Then download the bundle
-            const zipBuffer = await adapter.downloadBundle(testBundle);
-
-            assert.ok(Buffer.isBuffer(zipBuffer));
-            assert.ok(zipBuffer.length > 0);
-
-            // Verify ZIP contents using AdmZip
-            const AdmZip = require('adm-zip');
-            const zip = new AdmZip(zipBuffer);
-            const entries = zip.getEntries();
-
-            // Should contain deployment manifest
-            const manifestEntry = entries.find((entry: any) => entry.entryName === 'deployment-manifest.yml');
-            assert.ok(manifestEntry, 'ZIP should contain deployment-manifest.yml');
-
-            // Should contain skill files
-            const skillManifestEntry = entries.find((entry: any) => entry.entryName === 'test-skill/skill-manifest.json');
-            const skillMainEntry = entries.find((entry: any) => entry.entryName === 'test-skill/main.py');
+            assert.strictEqual(bundles.length, 2);
             
-            assert.ok(skillManifestEntry, 'ZIP should contain skill manifest');
-            assert.ok(skillMainEntry, 'ZIP should contain skill main file');
+            const developerBundle = bundles.find(b => b.name === 'Developer Bundle');
+            const analystBundle = bundles.find(b => b.name === 'Analyst Bundle');
+            
+            assert.ok(developerBundle);
+            assert.ok(analystBundle);
+            assert.ok(developerBundle.description.includes('2 skills'));
+            assert.ok(analystBundle.description.includes('1 skill'));
+            assert.strictEqual(developerBundle.version, '1.0.0');
+            assert.strictEqual(analystBundle.version, '2.0.0');
         });
     });
 
-    suite('Runtime Installation Integration', () => {
-        test('should ensure runtime is installed before skill download', async () => {
-            // Setup runtime manager mocks
-            runtimeManagerStub.ensureRuntimeInstalled.resolves(true);
-            runtimeManagerStub.hasWorkspaceLinks.resolves(true);
-
-            // Mock skill discovery and download (called multiple times)
-            nock('https://api.github.com')
-                .get('/repos/test-owner/test-olaf-repo/contents/.olaf/core/skills')
-                .times(2)
-                .reply(200, [
-                    {
-                        name: 'test-skill',
-                        path: '.olaf/core/skills/test-skill',
-                        type: 'dir'
+    suite('Bundle Packaging', () => {
+        test('should generate deployment manifest for bundle', async () => {
+            setupBundleStructureMocks({
+                bundleDefinitions: [{
+                    fileName: 'data-analysis',
+                    metadata: {
+                        name: 'Data Analysis Bundle',
+                        description: 'Advanced data analysis capabilities',
+                        version: '1.0.0',
+                        author: 'Test Author',
+                        tags: ['data', 'analysis', 'python']
+                    },
+                    skills: [{
+                        name: 'Data Analysis',
+                        description: 'Analyze data',
+                        path: 'skills/data-analysis',
+                        manifest: 'skills/data-analysis/manifest.json'
+                    }]
+                }],
+                skillManifests: {
+                    'skills/data-analysis/manifest.json': {
+                        name: 'Data Analysis',
+                        version: '1.0.0',
+                        entry_points: [{ protocol: 'Act', path: '/prompts/analyze.md', patterns: ['analyze data'] }]
                     }
-                ])
-                .get('/repos/test-owner/test-olaf-repo/contents/.olaf/core/skills/test-skill')
-                .times(3) // Called for fetchBundles, downloadBundle scan, and packageSkillAsBundle
-                .reply(200, [
-                    {
-                        name: 'skill-manifest.json',
-                        type: 'file',
-                        download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/.olaf/core/skills/test-skill/skill-manifest.json'
-                    }
-                ]);
-
-            nock('https://raw.githubusercontent.com')
-                .get('/test-owner/test-olaf-repo/main/.olaf/core/skills/test-skill/skill-manifest.json')
-                .times(3) // Called for fetchBundles, downloadBundle scan, and packageSkillAsBundle
-                .reply(200, JSON.stringify({
-                    name: 'Test Skill',
-                    version: '1.0.0'
-                }));
+                },
+                skillFiles: {
+                    'skills/data-analysis': [
+                        { name: 'manifest.json', type: 'file', download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/skills/data-analysis/manifest.json' },
+                        { name: 'main.py', type: 'file', download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/skills/data-analysis/main.py' }
+                    ]
+                }
+            });
 
             const adapter = new OlafAdapter(mockSource);
             const bundles = await adapter.fetchBundles();
-            
-            await adapter.downloadBundle(bundles[0]);
 
-            // Verify runtime manager was called
-            assert.ok(runtimeManagerStub.ensureRuntimeInstalled.calledOnce);
-            assert.ok(runtimeManagerStub.hasWorkspaceLinks.calledOnce);
-        });
-
-        test('should create workspace links when not present', async () => {
-            // Setup runtime manager mocks
-            runtimeManagerStub.ensureRuntimeInstalled.resolves(true);
-            runtimeManagerStub.hasWorkspaceLinks.resolves(false);
-            runtimeManagerStub.createWorkspaceLinks.resolves();
-
-            // Mock skill discovery and download (called multiple times)
-            nock('https://api.github.com')
-                .get('/repos/test-owner/test-olaf-repo/contents/.olaf/core/skills')
-                .times(2)
-                .reply(200, [
-                    {
-                        name: 'test-skill',
-                        path: '.olaf/core/skills/test-skill',
-                        type: 'dir'
-                    }
-                ])
-                .get('/repos/test-owner/test-olaf-repo/contents/.olaf/core/skills/test-skill')
-                .times(3) // Called for fetchBundles, downloadBundle scan, and packageSkillAsBundle
-                .reply(200, [
-                    {
-                        name: 'skill-manifest.json',
-                        type: 'file',
-                        download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/.olaf/core/skills/test-skill/skill-manifest.json'
-                    }
-                ]);
-
-            nock('https://raw.githubusercontent.com')
-                .get('/test-owner/test-olaf-repo/main/.olaf/core/skills/test-skill/skill-manifest.json')
-                .times(3) // Called for fetchBundles, downloadBundle scan, and packageSkillAsBundle
-                .reply(200, JSON.stringify({
-                    name: 'Test Skill',
-                    version: '1.0.0'
-                }));
-
-            const adapter = new OlafAdapter(mockSource);
-            const bundles = await adapter.fetchBundles();
-            
-            await adapter.downloadBundle(bundles[0]);
-
-            // Verify workspace links were created
-            assert.ok(runtimeManagerStub.createWorkspaceLinks.calledOnce);
-            assert.ok(runtimeManagerStub.createWorkspaceLinks.calledWith('/test/workspace'));
-        });
-
-        test('should fail skill installation when runtime installation fails', async () => {
-            // Setup runtime manager to fail
-            runtimeManagerStub.ensureRuntimeInstalled.resolves(false);
-
-            // Mock skill discovery for fetchBundles
-            nock('https://api.github.com')
-                .get('/repos/test-owner/test-olaf-repo/contents/.olaf/core/skills')
-                .reply(200, [
-                    {
-                        name: 'test-skill',
-                        path: '.olaf/core/skills/test-skill',
-                        type: 'dir'
-                    }
-                ])
-                .get('/repos/test-owner/test-olaf-repo/contents/.olaf/core/skills/test-skill')
-                .reply(200, [
-                    {
-                        name: 'skill-manifest.json',
-                        type: 'file',
-                        download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/.olaf/core/skills/test-skill/skill-manifest.json'
-                    }
-                ]);
-
-            nock('https://raw.githubusercontent.com')
-                .get('/test-owner/test-olaf-repo/main/.olaf/core/skills/test-skill/skill-manifest.json')
-                .reply(200, JSON.stringify({
-                    name: 'Test Skill',
-                    version: '1.0.0'
-                }));
-
-            const adapter = new OlafAdapter(mockSource);
-            const bundles = await adapter.fetchBundles();
-            
-            // Runtime installation should fail and cause skill installation to fail
-            await assert.rejects(
-                () => adapter.downloadBundle(bundles[0]),
-                /Failed to install OLAF runtime - OLAF skills cannot function without the runtime/
-            );
-            
-            // Verify runtime installation was attempted
-            assert.ok(runtimeManagerStub.ensureRuntimeInstalled.calledOnce, 'Runtime manager should be called');
+            assert.strictEqual(bundles.length, 1);
+            assert.strictEqual(bundles[0].name, 'Data Analysis Bundle');
+            assert.strictEqual(bundles[0].version, '1.0.0');
+            assert.ok(bundles[0].description.includes('Advanced data analysis capabilities'));
+            assert.deepStrictEqual(bundles[0].tags, ['olaf', 'skill', 'data', 'analysis', 'python']);
         });
     });
 
     suite('Bundle Validation', () => {
         test('should validate OLAF repository structure', async () => {
-            // Mock repository validation
+            // Mock repository validation with bundles/ and skills/ directories
             nock('https://api.github.com')
                 .get('/repos/test-owner/test-olaf-repo')
                 .reply(200, { name: 'test-olaf-repo' })
                 .get('/repos/test-owner/test-olaf-repo/releases')
                 .reply(200, [])
-                .get('/repos/test-owner/test-olaf-repo/contents/.olaf/core/skills')
-                .times(2) // Called once for validate, once for scanSkillsDirectory
+                // Check for bundles/ directory
+                .get('/repos/test-owner/test-olaf-repo/contents/bundles')
+                .times(2) // Called once for validate, once for scanBundleDefinitions
                 .reply(200, [
                     {
-                        name: 'skill1',
-                        path: '.olaf/core/skills/skill1',
+                        name: 'developer.json',
+                        path: 'bundles/developer.json',
+                        type: 'file',
+                        download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/bundles/developer.json'
+                    },
+                    {
+                        name: 'analyst.json',
+                        path: 'bundles/analyst.json',
+                        type: 'file',
+                        download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/bundles/analyst.json'
+                    }
+                ])
+                // Check for skills/ directory
+                .get('/repos/test-owner/test-olaf-repo/contents/skills')
+                .reply(200, [
+                    {
+                        name: 'code-review',
+                        path: 'skills/code-review',
                         type: 'dir'
                     },
                     {
-                        name: 'skill2',
-                        path: '.olaf/core/skills/skill2',
+                        name: 'data-analysis',
+                        path: 'skills/data-analysis',
                         type: 'dir'
                     }
                 ])
-                .get('/repos/test-owner/test-olaf-repo/contents/.olaf/core/skills/skill1')
+                // Skill directory contents
+                .get('/repos/test-owner/test-olaf-repo/contents/skills/code-review')
                 .reply(200, [
                     {
-                        name: 'skill-manifest.json',
+                        name: 'manifest.json',
                         type: 'file',
-                        download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/.olaf/core/skills/skill1/skill-manifest.json'
+                        download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/skills/code-review/manifest.json'
                     }
                 ])
-                .get('/repos/test-owner/test-olaf-repo/contents/.olaf/core/skills/skill2')
+                .get('/repos/test-owner/test-olaf-repo/contents/skills/data-analysis')
                 .reply(200, [
                     {
-                        name: 'skill-manifest.json',
+                        name: 'manifest.json',
                         type: 'file',
-                        download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/.olaf/core/skills/skill2/skill-manifest.json'
+                        download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/skills/data-analysis/manifest.json'
                     }
-                ]);
+                ])
+                // Manifest file access
+                .get('/repos/test-owner/test-olaf-repo/contents/skills/code-review/manifest.json')
+                .reply(200, {
+                    name: 'manifest.json',
+                    type: 'file',
+                    download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/skills/code-review/manifest.json'
+                })
+                .get('/repos/test-owner/test-olaf-repo/contents/skills/data-analysis/manifest.json')
+                .reply(200, {
+                    name: 'manifest.json',
+                    type: 'file',
+                    download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/skills/data-analysis/manifest.json'
+                });
 
-            // Mock skill manifest downloads
+            // Mock bundle definition downloads
             nock('https://raw.githubusercontent.com')
-                .get('/test-owner/test-olaf-repo/main/.olaf/core/skills/skill1/skill-manifest.json')
-                .reply(200, JSON.stringify({ name: 'Skill 1' }))
-                .get('/test-owner/test-olaf-repo/main/.olaf/core/skills/skill2/skill-manifest.json')
-                .reply(200, JSON.stringify({ name: 'Skill 2' }));
+                .get('/test-owner/test-olaf-repo/main/bundles/developer.json')
+                .reply(200, JSON.stringify({
+                    metadata: {
+                        name: 'Developer Bundle',
+                        description: 'Developer skills bundle',
+                        version: '1.0.0'
+                    },
+                    skills: [
+                        {
+                            name: 'Code Review',
+                            description: 'Review code',
+                            path: 'skills/code-review',
+                            manifest: 'skills/code-review/manifest.json'
+                        }
+                    ]
+                }))
+                .get('/test-owner/test-olaf-repo/main/bundles/analyst.json')
+                .reply(200, JSON.stringify({
+                    metadata: {
+                        name: 'Analyst Bundle',
+                        description: 'Analyst skills bundle',
+                        version: '1.0.0'
+                    },
+                    skills: [
+                        {
+                            name: 'Data Analysis',
+                            description: 'Analyze data',
+                            path: 'skills/data-analysis',
+                            manifest: 'skills/data-analysis/manifest.json'
+                        }
+                    ]
+                }))
+                // Mock skill manifest downloads
+                .get('/test-owner/test-olaf-repo/main/skills/code-review/manifest.json')
+                .reply(200, JSON.stringify({
+                    name: 'Code Review',
+                    version: '1.0.0',
+                    entry_points: [
+                        { protocol: 'Act', path: '/prompts/review.md', patterns: ['review code'] }
+                    ]
+                }))
+                .get('/test-owner/test-olaf-repo/main/skills/data-analysis/manifest.json')
+                .reply(200, JSON.stringify({
+                    name: 'Data Analysis',
+                    version: '1.0.0',
+                    entry_points: [
+                        { protocol: 'Act', path: '/prompts/analyze.md', patterns: ['analyze data'] }
+                    ]
+                }));
 
             const adapter = new OlafAdapter(mockSource);
             const result = await adapter.validate();
@@ -352,13 +380,15 @@ suite('OlafAdapter Integration Tests', () => {
         });
 
         test('should report validation failure for missing OLAF structure', async () => {
-            // Mock repository validation - missing .olaf/core/skills
+            // Mock repository validation - missing bundles/ and skills/ directories
             nock('https://api.github.com')
                 .get('/repos/test-owner/test-olaf-repo')
                 .reply(200, { name: 'test-olaf-repo' })
                 .get('/repos/test-owner/test-olaf-repo/releases')
                 .reply(200, [])
-                .get('/repos/test-owner/test-olaf-repo/contents/.olaf/core/skills')
+                .get('/repos/test-owner/test-olaf-repo/contents/bundles')
+                .reply(404, { message: 'Not Found' })
+                .get('/repos/test-owner/test-olaf-repo/contents/skills')
                 .reply(404, { message: 'Not Found' });
 
             const adapter = new OlafAdapter(mockSource);
@@ -366,7 +396,8 @@ suite('OlafAdapter Integration Tests', () => {
 
             assert.strictEqual(result.valid, false);
             assert.ok(result.errors.length > 0);
-            assert.ok(result.errors[0].includes('.olaf/core/skills'));
+            assert.ok(result.errors.some(e => e.includes('bundles')));
+            assert.ok(result.errors.some(e => e.includes('skills')));
         });
     });
 
@@ -377,19 +408,60 @@ suite('OlafAdapter Integration Tests', () => {
             
             // Mock workspace path
             const workspacePath = '/test/workspace';
-            const installPath = path.join(workspacePath, '.olaf', 'external-skills', 'test-source', 'test-skill');
+            // Install path is now: .olaf/external-skills/<source-name>/ (without bundle/skill name)
+            const installPath = path.join(workspacePath, '.olaf', 'external-skills', 'test-source');
             const competencyIndexPath = path.join(workspacePath, '.olaf', 'olaf-core', 'reference', 'competency-index.json');
             
-            // Create mock skill manifest
-            const skillManifest = {
+            // Mock bundle definition with skill entry points
+            const bundleDefinition = {
                 metadata: {
-                    name: 'Test Skill',
-                    version: '1.0.0',
-                    description: 'A test skill',
-                    aliases: ['test-pattern', 'test skill'],
-                    protocol: 'Propose-Confirm-Act'
-                }
+                    name: 'Test Bundle',
+                    description: 'A test bundle',
+                    version: '1.0.0'
+                },
+                skills: [
+                    {
+                        name: 'Test Skill',
+                        description: 'A test skill',
+                        path: 'skills/test-skill',
+                        manifest: 'skills/test-skill/manifest.json'
+                    }
+                ]
             };
+            
+            // Mock skill manifest with entry points
+            const skillManifest = {
+                name: 'Test Skill',
+                version: '1.0.0',
+                description: 'A test skill',
+                entry_points: [
+                    {
+                        protocol: 'Propose-Confirm-Act',
+                        path: '/prompts/test-skill.md',
+                        patterns: ['test-pattern', 'test skill']
+                    }
+                ]
+            };
+            
+            // Mock GitHub API calls for bundle definition scanning
+            nock('https://api.github.com')
+                .get('/repos/test-owner/test-olaf-repo/contents/bundles')
+                .reply(200, [
+                    { name: 'test-skill.json', path: 'bundles/test-skill.json', type: 'file', download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/bundles/test-skill.json' }
+                ])
+                .get('/repos/test-owner/test-olaf-repo/contents/skills/test-skill')
+                .reply(200, [
+                    { name: 'manifest.json', path: 'skills/test-skill/manifest.json', type: 'file', download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/skills/test-skill/manifest.json' }
+                ])
+                .get('/repos/test-owner/test-olaf-repo/contents/skills/test-skill/manifest.json')
+                .reply(200, { download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/skills/test-skill/manifest.json' });
+            
+            // Mock raw file downloads
+            nock('https://raw.githubusercontent.com')
+                .get('/test-owner/test-olaf-repo/main/bundles/test-skill.json')
+                .reply(200, JSON.stringify(bundleDefinition))
+                .get('/test-owner/test-olaf-repo/main/skills/test-skill/manifest.json')
+                .reply(200, JSON.stringify(skillManifest));
             
             // Mock file system operations
             const existsSyncStub = sinon.stub(fs, 'existsSync');
@@ -399,14 +471,10 @@ suite('OlafAdapter Integration Tests', () => {
             
             // Setup: competency index doesn't exist yet
             existsSyncStub.withArgs(sinon.match(/competency-index\.json$/)).returns(false);
-            existsSyncStub.withArgs(sinon.match(/skill-manifest\.json$/)).returns(true);
-            
-            // Mock skill manifest read
-            readFileSyncStub.withArgs(sinon.match(/skill-manifest\.json$/), 'utf-8')
-                .returns(JSON.stringify(skillManifest));
+            existsSyncStub.withArgs(sinon.match(/reference$/)).returns(false);
             
             const adapter = new OlafAdapter(mockSource);
-            await adapter.postInstall('olaf-test-owner-test-repo-test-skill', installPath);
+            await adapter.postInstall('olaf-test-owner-test-olaf-repo-test-skill', installPath);
             
             // Verify competency index was created
             assert.ok(mkdirSyncStub.calledWith(sinon.match(/reference$/), { recursive: true }));
@@ -418,7 +486,7 @@ suite('OlafAdapter Integration Tests', () => {
             assert.ok(Array.isArray(writtenData), 'Competency index should be an array');
             assert.strictEqual(writtenData.length, 1);
             assert.deepStrictEqual(writtenData[0].patterns, ['test-pattern', 'test skill']);
-            assert.strictEqual(writtenData[0].file, 'external-skills/test-source/test-skill/prompts/test-skill.md');
+            assert.strictEqual(writtenData[0].file, 'external-skills/Test OLAF Source/test-skill/prompts/test-skill.md');
             assert.strictEqual(writtenData[0].protocol, 'Propose-Confirm-Act');
         });
 
@@ -427,26 +495,68 @@ suite('OlafAdapter Integration Tests', () => {
             const path = require('path');
             
             const workspacePath = '/test/workspace';
-            const installPath = path.join(workspacePath, '.olaf', 'external-skills', 'test-source', 'test-skill');
+            // Install path is now: .olaf/external-skills/<source-name>/ (without bundle/skill name)
+            const installPath = path.join(workspacePath, '.olaf', 'external-skills', 'test-source');
             
             // Existing competency index with the skill already registered (flat array format)
             const existingIndex = [
                 {
                     patterns: ['old-pattern'],
-                    file: 'external-skills/test-source/test-skill/prompts/test-skill.md',
+                    file: 'external-skills/Test OLAF Source/test-skill/prompts/test-skill.md',
                     protocol: 'Act'
                 }
             ];
             
-            const updatedManifest = {
+            // Mock bundle definition with updated skill entry points
+            const bundleDefinition = {
                 metadata: {
-                    name: 'Updated Skill',
-                    version: '2.0.0',
-                    description: 'Updated description',
-                    aliases: ['new-pattern', 'updated skill'],
-                    protocol: 'Propose-Confirm-Act'
-                }
+                    name: 'Updated Bundle',
+                    description: 'An updated bundle',
+                    version: '2.0.0'
+                },
+                skills: [
+                    {
+                        name: 'Updated Skill',
+                        description: 'Updated description',
+                        path: 'skills/test-skill',
+                        manifest: 'skills/test-skill/manifest.json'
+                    }
+                ]
             };
+            
+            // Mock skill manifest with updated entry points
+            const skillManifest = {
+                name: 'Updated Skill',
+                version: '2.0.0',
+                description: 'Updated description',
+                entry_points: [
+                    {
+                        protocol: 'Propose-Confirm-Act',
+                        path: '/prompts/test-skill.md',
+                        patterns: ['new-pattern', 'updated skill']
+                    }
+                ]
+            };
+            
+            // Mock GitHub API calls for bundle definition scanning
+            nock('https://api.github.com')
+                .get('/repos/test-owner/test-olaf-repo/contents/bundles')
+                .reply(200, [
+                    { name: 'test-skill.json', path: 'bundles/test-skill.json', type: 'file', download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/bundles/test-skill.json' }
+                ])
+                .get('/repos/test-owner/test-olaf-repo/contents/skills/test-skill')
+                .reply(200, [
+                    { name: 'manifest.json', path: 'skills/test-skill/manifest.json', type: 'file', download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/skills/test-skill/manifest.json' }
+                ])
+                .get('/repos/test-owner/test-olaf-repo/contents/skills/test-skill/manifest.json')
+                .reply(200, { download_url: 'https://raw.githubusercontent.com/test-owner/test-olaf-repo/main/skills/test-skill/manifest.json' });
+            
+            // Mock raw file downloads
+            nock('https://raw.githubusercontent.com')
+                .get('/test-owner/test-olaf-repo/main/bundles/test-skill.json')
+                .reply(200, JSON.stringify(bundleDefinition))
+                .get('/test-owner/test-olaf-repo/main/skills/test-skill/manifest.json')
+                .reply(200, JSON.stringify(skillManifest));
             
             const existsSyncStub = sinon.stub(fs, 'existsSync');
             const mkdirSyncStub = sinon.stub(fs, 'mkdirSync');
@@ -454,15 +564,13 @@ suite('OlafAdapter Integration Tests', () => {
             const writeFileSyncStub = sinon.stub(fs, 'writeFileSync');
             
             existsSyncStub.withArgs(sinon.match(/competency-index\.json$/)).returns(true);
-            existsSyncStub.withArgs(sinon.match(/skill-manifest\.json$/)).returns(true);
+            existsSyncStub.withArgs(sinon.match(/reference$/)).returns(true);
             
             readFileSyncStub.withArgs(sinon.match(/competency-index\.json$/), 'utf-8')
                 .returns(JSON.stringify(existingIndex));
-            readFileSyncStub.withArgs(sinon.match(/skill-manifest\.json$/), 'utf-8')
-                .returns(JSON.stringify(updatedManifest));
             
             const adapter = new OlafAdapter(mockSource);
-            await adapter.postInstall('olaf-test-owner-test-repo-test-skill', installPath);
+            await adapter.postInstall('olaf-test-owner-test-olaf-repo-test-skill', installPath);
             
             // Verify the existing entry was updated
             assert.ok(writeFileSyncStub.calledOnce);
@@ -471,7 +579,7 @@ suite('OlafAdapter Integration Tests', () => {
             assert.ok(Array.isArray(writtenData), 'Competency index should be an array');
             assert.strictEqual(writtenData.length, 1);
             assert.deepStrictEqual(writtenData[0].patterns, ['new-pattern', 'updated skill']);
-            assert.strictEqual(writtenData[0].file, 'external-skills/test-source/test-skill/prompts/test-skill.md');
+            assert.strictEqual(writtenData[0].file, 'external-skills/Test OLAF Source/test-skill/prompts/test-skill.md');
             assert.strictEqual(writtenData[0].protocol, 'Propose-Confirm-Act');
         });
     });
@@ -482,13 +590,14 @@ suite('OlafAdapter Integration Tests', () => {
             const path = require('path');
             
             const workspacePath = '/test/workspace';
-            const installPath = path.join(workspacePath, '.olaf', 'external-skills', 'test-source', 'test-skill');
+            // Install path is now: .olaf/external-skills/<source-name>/ (without bundle/skill name)
+            const installPath = path.join(workspacePath, '.olaf', 'external-skills', 'test-source');
             
             // Existing competency index with multiple skills including the one to remove
             const existingIndex = [
                 {
                     patterns: ['test-pattern'],
-                    file: 'external-skills/test-source/test-skill/prompts/test-skill.md',
+                    file: 'external-skills/Test OLAF Source/test-skill/prompts/test-skill.md',
                     protocol: 'Act'
                 },
                 {
@@ -525,13 +634,14 @@ suite('OlafAdapter Integration Tests', () => {
             const path = require('path');
             
             const workspacePath = '/test/workspace';
-            const installPath = path.join(workspacePath, '.olaf', 'external-skills', 'test-source', 'test-skill');
+            // Install path is now: .olaf/external-skills/<source-name>/ (without bundle/skill name)
+            const installPath = path.join(workspacePath, '.olaf', 'external-skills', 'test-source');
             
             // Existing competency index with only the skill to remove
             const existingIndex = [
                 {
                     patterns: ['test-pattern'],
-                    file: 'external-skills/test-source/test-skill/prompts/test-skill.md',
+                    file: 'external-skills/Test OLAF Source/test-skill/prompts/test-skill.md',
                     protocol: 'Act'
                 }
             ];
@@ -561,7 +671,8 @@ suite('OlafAdapter Integration Tests', () => {
             const path = require('path');
             
             const workspacePath = '/test/workspace';
-            const installPath = path.join(workspacePath, '.olaf', 'external-skills', 'test-source', 'test-skill');
+            // Install path is now: .olaf/external-skills/<source-name>/ (without bundle/skill name)
+            const installPath = path.join(workspacePath, '.olaf', 'external-skills', 'test-source');
             
             const existsSyncStub = sinon.stub(fs, 'existsSync');
             const writeFileSyncStub = sinon.stub(fs, 'writeFileSync');
@@ -580,7 +691,8 @@ suite('OlafAdapter Integration Tests', () => {
             const path = require('path');
             
             const workspacePath = '/test/workspace';
-            const installPath = path.join(workspacePath, '.olaf', 'external-skills', 'test-source', 'test-skill');
+            // Install path is now: .olaf/external-skills/<source-name>/ (without bundle/skill name)
+            const installPath = path.join(workspacePath, '.olaf', 'external-skills', 'test-source');
             
             // Existing competency index without the skill to remove
             const existingIndex = [

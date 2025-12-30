@@ -25,6 +25,7 @@ const writeFile = promisify(fs.writeFile);
 const readFile = promisify(fs.readFile);
 const readdir = promisify(fs.readdir);
 const stat = promisify(fs.stat);
+const lstat = promisify(fs.lstat);
 const unlink = promisify(fs.unlink);
 const rmdir = promisify(fs.rmdir);
 
@@ -145,18 +146,13 @@ export class BundleInstaller {
             this.logger.debug(`Installation directory: ${installDir}`);
 
             // Step 6: Copy files to installation directory
-            // For OLAF bundles, the ZIP contains a skill folder, so we need to copy from inside it
+            // For OLAF bundles, copy all skill folders directly (skip deployment-manifest.yml)
             const isOlafBundle = sourceType === 'olaf' || sourceType === 'local-olaf' || bundle.id.startsWith('olaf-');
-            if (isOlafBundle && bundle.name) {
-                // Check if there's a subfolder with the skill name
-                const skillSubfolder = path.join(extractDir, bundle.name);
-                if (require('fs').existsSync(skillSubfolder)) {
-                    this.logger.debug(`[BundleInstaller] OLAF bundle detected, copying from skill subfolder: ${skillSubfolder}`);
-                    await this.copyBundleFiles(skillSubfolder, installDir);
-                } else {
-                    // Fallback to normal copy if subfolder doesn't exist
-                    await this.copyBundleFiles(extractDir, installDir);
-                }
+            if (isOlafBundle) {
+                // Copy all directories (skill folders) from the extracted bundle
+                // Skip deployment-manifest.yml as it's only needed for validation
+                this.logger.debug(`[BundleInstaller] OLAF bundle detected, copying skill folders to: ${installDir}`);
+                await this.copyOlafSkillFolders(extractDir, installDir);
             } else {
                 await this.copyBundleFiles(extractDir, installDir);
             }
@@ -366,15 +362,14 @@ export class BundleInstaller {
             
             const workspacePath = workspaceFolders[0].uri.fsPath;
             
-            // Use bundle name (from skill manifest) as the skill directory name
-            // This ensures we use the clean skill name like "create-prompt" instead of the folder name
-            const skillName = bundleName || bundleId;
-            
             // Use source name for directory organization, fallback to 'default' if not provided
             const sourceDir = sourceName || 'default';
             
-            this.logger.info(`[BundleInstaller] Installing OLAF skill '${skillName}' to .olaf/external-skills/${sourceDir}`);
-            return path.join(workspacePath, '.olaf', 'external-skills', sourceDir, skillName);
+            // For OLAF bundles with multiple skills, install directly to the source directory
+            // The ZIP contains skill folders that will be copied directly here
+            // Result: .olaf/external-skills/<source-name>/skill1/, .olaf/external-skills/<source-name>/skill2/
+            this.logger.info(`[BundleInstaller] Installing OLAF bundle to .olaf/external-skills/${sourceDir}`);
+            return path.join(workspacePath, '.olaf', 'external-skills', sourceDir);
         }
         
         // Standard bundle installation
@@ -414,6 +409,30 @@ export class BundleInstaller {
     }
 
     /**
+     * Copy OLAF skill folders from extracted bundle to installation directory
+     * Only copies directories (skill folders), skipping deployment-manifest.yml
+     * Each skill folder is copied directly to the target directory
+     */
+    private async copyOlafSkillFolders(sourceDir: string, targetDir: string): Promise<void> {
+        const files = await readdir(sourceDir);
+
+        for (const file of files) {
+            const sourcePath = path.join(sourceDir, file);
+            const stats = await stat(sourcePath);
+
+            // Only copy directories (skill folders), skip files like deployment-manifest.yml
+            if (stats.isDirectory()) {
+                const targetPath = path.join(targetDir, file);
+                this.logger.debug(`[BundleInstaller] Copying skill folder: ${file} -> ${targetPath}`);
+                await this.ensureDirectory(targetPath);
+                await this.copyBundleFiles(sourcePath, targetPath);
+            } else {
+                this.logger.debug(`[BundleInstaller] Skipping file (not a skill folder): ${file}`);
+            }
+        }
+    }
+
+    /**
      * Ensure directory exists
      */
     private async ensureDirectory(dir: string): Promise<void> {
@@ -424,6 +443,7 @@ export class BundleInstaller {
 
     /**
      * Remove directory recursively
+     * Handles symbolic links safely by removing only the link, not the target
      */
     private async removeDirectory(dir: string): Promise<void> {
         if (!fs.existsSync(dir)) {
@@ -434,9 +454,13 @@ export class BundleInstaller {
 
         for (const file of files) {
             const filePath = path.join(dir, file);
-            const stats = await stat(filePath);
+            const stats = await lstat(filePath); // Use lstat to detect symbolic links
 
-            if (stats.isDirectory()) {
+            if (stats.isSymbolicLink()) {
+                // For symbolic links, remove only the link, not the target
+                await unlink(filePath);
+                this.logger.debug(`Removed symbolic link: ${filePath}`);
+            } else if (stats.isDirectory()) {
                 await this.removeDirectory(filePath);
             } else {
                 await unlink(filePath);

@@ -1,12 +1,12 @@
 /**
  * OLAF repository adapter
- * Handles GitHub repositories containing AI skills in .olaf/core/skills structure
+ * Handles GitHub repositories containing AI skills in bundles/ and skills/ structure
  */
 
 import { RepositoryAdapter } from './RepositoryAdapter';
 import { GitHubAdapter } from './GitHubAdapter';
 import { Bundle, ValidationResult, RegistrySource, SourceMetadata, BundleDependency } from '../types/registry';
-import { SkillManifest, SkillInfo, OlafRepositoryInfo } from '../types/olaf';
+import { SkillManifest, SkillInfo, OlafRepositoryInfo, BundleDefinition, BundleDefinitionInfo, LocalOlafSkillManifest, SkillReference } from '../types/olaf';
 import { Logger } from '../utils/logger';
 import { OlafRuntimeManager } from '../services/OlafRuntimeManager';
 import * as vscode from 'vscode';
@@ -24,7 +24,7 @@ interface GitHubDirectoryContent {
 
 /**
  * OLAF adapter implementation using GitHub functionality via composition
- * Discovers and packages AI skills from .olaf/core/skills directory structure
+ * Discovers and packages AI skills from bundles/ and skills/ directory structure
  */
 export class OlafAdapter extends RepositoryAdapter {
     readonly type = 'olaf';
@@ -78,45 +78,112 @@ export class OlafAdapter extends RepositoryAdapter {
     }
 
     /**
-     * Override fetchBundles to implement OLAF-specific skill discovery
-     * Scans .olaf/core/skills directory and converts skills to bundles
+     * Override fetchBundles to implement OLAF-specific bundle discovery
+     * Scans bundles/ directory for bundle definitions and converts them to Bundle objects
      */
     async fetchBundles(): Promise<Bundle[]> {
-        this.logger.info(`[OlafAdapter] Fetching skills from OLAF repository: ${this.source.url}`);
+        this.logger.info(`[OlafAdapter] Fetching bundles from OLAF repository: ${this.source.url}`);
         
         try {
-            // Discover skills in the repository
-            const skills = await this.scanSkillsDirectory();
-            this.logger.info(`[OlafAdapter] Found ${skills.length} skills in repository`);
+            // Discover bundle definitions in the repository
+            const bundleDefinitions = await this.scanBundleDefinitions();
+            this.logger.info(`[OlafAdapter] Found ${bundleDefinitions.length} bundle definitions in repository`);
             
-            // Convert skills to bundles
+            // Convert bundle definitions to Bundle objects
             const bundles: Bundle[] = [];
-            for (const skill of skills) {
+            for (const bundleInfo of bundleDefinitions) {
                 try {
-                    const bundle = this.createBundleFromSkill(skill);
+                    const bundle = this.createBundleFromDefinition(bundleInfo);
                     bundles.push(bundle);
-                    this.logger.debug(`[OlafAdapter] Created bundle for skill: ${skill.id}`);
+                    this.logger.debug(`[OlafAdapter] Created bundle: ${bundle.id} (${bundleInfo.validatedSkills.length} skills)`);
                 } catch (error) {
-                    this.logger.warn(`[OlafAdapter] Failed to create bundle for skill ${skill.id}: ${error}`);
-                    // Continue processing other skills
+                    this.logger.warn(`[OlafAdapter] Failed to create bundle from definition ${bundleInfo.fileName}: ${error}`);
+                    // Continue processing other bundles
                 }
             }
             
-            this.logger.info(`[OlafAdapter] Successfully created ${bundles.length} bundles from skills`);
+            this.logger.info(`[OlafAdapter] Successfully created ${bundles.length} bundles from definitions`);
             return bundles;
             
         } catch (error) {
             this.logger.error(`[OlafAdapter] Failed to fetch bundles: ${error}`);
-            throw new Error(`Failed to fetch OLAF skills: ${error}`);
+            throw new Error(`Failed to fetch OLAF bundles: ${error}`);
         }
     }
 
     /**
+     * Create Bundle object from BundleDefinitionInfo
+     * Maps bundle definition metadata to Bundle properties
+     */
+    private createBundleFromDefinition(bundleInfo: BundleDefinitionInfo): Bundle {
+        const { owner, repo } = this.parseGitHubUrl();
+        const metadata = bundleInfo.definition.metadata;
+        
+        // Bundle ID is already generated in scanBundleDefinitions: olaf-{owner}-{repo}-{bundleFileName}
+        const bundleId = bundleInfo.id;
+        
+        // Include skill count in description for UI display
+        const skillCount = bundleInfo.validatedSkills.length;
+        const skillNames = bundleInfo.validatedSkills.map(s => s.manifest.name || s.folderName).join(', ');
+        const enhancedDescription = `${metadata.description} (${skillCount} skill${skillCount !== 1 ? 's' : ''}: ${skillNames})`;
+        
+        // Map bundle definition metadata to Bundle properties
+        const bundle: Bundle = {
+            id: bundleId,
+            name: metadata.name,
+            version: metadata.version || '1.0.0',
+            description: enhancedDescription,
+            author: metadata.author || owner,
+            sourceId: this.source.id,
+            environments: ['vscode', 'kiro', 'windsurf'], // OLAF bundles work across IDEs
+            tags: this.normalizeTags(metadata.tags),
+            lastUpdated: new Date().toISOString(),
+            size: this.estimateBundleSize(bundleInfo.validatedSkills),
+            dependencies: [],
+            license: 'Unknown',
+            repository: this.source.url,
+            homepage: `https://github.com/${owner}/${repo}/tree/main/bundles/${bundleInfo.fileName}.json`,
+            
+            // OLAF-specific URLs
+            manifestUrl: this.getManifestUrl(bundleId),
+            downloadUrl: this.getDownloadUrl(bundleId),
+        };
+        
+        this.logger.debug(`[OlafAdapter] Created bundle: ${bundle.id} (${bundle.name} v${bundle.version}, ${skillCount} skills)`);
+        return bundle;
+    }
+
+    /**
+     * Estimate bundle size based on total skill files
+     */
+    private estimateBundleSize(skills: SkillInfo[]): string {
+        // Sum up estimated sizes for all skills
+        let totalFiles = 0;
+        for (const skill of skills) {
+            totalFiles += skill.files.length;
+        }
+        
+        // Rough estimation: assume average file size and add manifest overhead
+        const estimatedBytes = totalFiles * 2048; // 2KB average per file
+        
+        if (estimatedBytes < 1024) {
+            return `${estimatedBytes} B`;
+        }
+        if (estimatedBytes < 1024 * 1024) {
+            return `${(estimatedBytes / 1024).toFixed(1)} KB`;
+        }
+        return `${(estimatedBytes / (1024 * 1024)).toFixed(1)} MB`;
+    }
+
+    /**
      * Validate OLAF repository structure
-     * Checks for .olaf/core/skills directory and validates accessibility
+     * Checks for bundles/ and skills/ directories at root level and validates accessibility
      */
     async validate(): Promise<ValidationResult> {
         this.logger.info(`[OlafAdapter] Validating OLAF repository: ${this.source.url}`);
+        
+        const errors: string[] = [];
+        const warnings: string[] = [];
         
         try {
             const { owner, repo } = this.parseGitHubUrl();
@@ -127,43 +194,69 @@ export class OlafAdapter extends RepositoryAdapter {
                 return baseValidation;
             }
             
-            // Check for OLAF-specific structure
             const apiBase = 'https://api.github.com';
-            const skillsPath = '.olaf/core/skills';
-            const url = `${apiBase}/repos/${owner}/${repo}/contents/${skillsPath}`;
             
+            // Check for bundles/ directory at root level
+            let hasBundlesDir = false;
             try {
-                await this.makeGitHubRequest(url);
-                
-                // Try to discover skills
-                const skills = await this.scanSkillsDirectory();
-                
-                return {
-                    valid: true,
-                    errors: [],
-                    warnings: skills.length === 0 ? ['No valid skills found in .olaf/core/skills directory'] : [],
-                    bundlesFound: skills.length,
-                };
-                
+                const bundlesUrl = `${apiBase}/repos/${owner}/${repo}/contents/bundles`;
+                await this.makeGitHubRequest(bundlesUrl);
+                hasBundlesDir = true;
+                this.logger.debug(`[OlafAdapter] Found bundles/ directory`);
             } catch (error) {
-                // Check if it's a 404 (missing directory) vs other errors
                 if (error instanceof Error && error.message.includes('404')) {
-                    return {
-                        valid: false,
-                        errors: [`Repository does not contain required .olaf/core/skills directory structure`],
-                        warnings: [],
-                        bundlesFound: 0,
-                    };
+                    errors.push(`Missing required 'bundles' directory at repository root`);
+                } else {
+                    errors.push(`Failed to access bundles directory: ${error}`);
                 }
-                
-                // Other errors (auth, network, etc.)
+            }
+            
+            // Check for skills/ directory at root level
+            let hasSkillsDir = false;
+            try {
+                const skillsUrl = `${apiBase}/repos/${owner}/${repo}/contents/skills`;
+                await this.makeGitHubRequest(skillsUrl);
+                hasSkillsDir = true;
+                this.logger.debug(`[OlafAdapter] Found skills/ directory`);
+            } catch (error) {
+                if (error instanceof Error && error.message.includes('404')) {
+                    errors.push(`Missing required 'skills' directory at repository root`);
+                } else {
+                    errors.push(`Failed to access skills directory: ${error}`);
+                }
+            }
+            
+            // If either directory is missing, return validation failure
+            if (!hasBundlesDir || !hasSkillsDir) {
                 return {
                     valid: false,
-                    errors: [`Failed to validate OLAF repository structure: ${error}`],
-                    warnings: [],
+                    errors,
+                    warnings,
                     bundlesFound: 0,
                 };
             }
+            
+            // Scan bundle definitions and report bundle count
+            let bundleCount = 0;
+            try {
+                const bundleDefinitions = await this.scanBundleDefinitions();
+                bundleCount = bundleDefinitions.length;
+                
+                if (bundleCount === 0) {
+                    warnings.push('No valid bundle definitions found in bundles/ directory');
+                } else {
+                    this.logger.info(`[OlafAdapter] Found ${bundleCount} valid bundle definition(s)`);
+                }
+            } catch (scanError) {
+                warnings.push(`Failed to scan bundle definitions: ${scanError}`);
+            }
+            
+            return {
+                valid: true,
+                errors: [],
+                warnings,
+                bundlesFound: bundleCount,
+            };
             
         } catch (error) {
             return {
@@ -173,6 +266,316 @@ export class OlafAdapter extends RepositoryAdapter {
                 bundlesFound: 0,
             };
         }
+    }
+
+    /**
+     * Scan bundles/ directory for JSON bundle definition files
+     * Returns list of bundle definition file paths for further processing
+     */
+    private async scanBundleDefinitions(): Promise<BundleDefinitionInfo[]> {
+        const { owner, repo } = this.parseGitHubUrl();
+        const apiBase = 'https://api.github.com';
+        const bundlesUrl = `${apiBase}/repos/${owner}/${repo}/contents/bundles`;
+        
+        this.logger.debug(`[OlafAdapter] Scanning bundle definitions: ${bundlesUrl}`);
+        
+        try {
+            const contents: GitHubDirectoryContent[] = await this.makeGitHubRequest(bundlesUrl);
+            const bundleDefinitions: BundleDefinitionInfo[] = [];
+            const errors: string[] = [];
+            
+            // Filter for JSON files only, ignoring subdirectories and other file types
+            const jsonFiles = contents.filter(item => 
+                item.type === 'file' && item.name.endsWith('.json')
+            );
+            
+            this.logger.debug(`[OlafAdapter] Found ${jsonFiles.length} JSON files in bundles/ directory`);
+            
+            for (const jsonFile of jsonFiles) {
+                try {
+                    const definition = await this.parseBundleDefinition(jsonFile);
+                    const fileName = jsonFile.name.replace('.json', '');
+                    const bundleId = `olaf-${owner}-${repo}-${fileName}`;
+                    
+                    // Validate skill references
+                    try {
+                        const validatedSkills = await this.validateSkillReferences(definition);
+                        
+                        bundleDefinitions.push({
+                            id: bundleId,
+                            fileName,
+                            filePath: jsonFile.path,
+                            definition,
+                            validatedSkills,
+                        });
+                        
+                        this.logger.info(`[OlafAdapter] Successfully processed bundle: ${fileName} (${validatedSkills.length} skills)`);
+                    } catch (skillError) {
+                        const errorMsg = `Bundle ${fileName}: ${skillError}`;
+                        errors.push(errorMsg);
+                        this.logger.warn(`[OlafAdapter] ${errorMsg}`);
+                        // Continue processing other bundles
+                    }
+                } catch (parseError) {
+                    const errorMsg = `Failed to parse bundle definition ${jsonFile.name}: ${parseError}`;
+                    errors.push(errorMsg);
+                    this.logger.warn(`[OlafAdapter] ${errorMsg}`);
+                    // Continue processing other bundles
+                }
+            }
+            
+            // Log summary of processing results
+            if (bundleDefinitions.length > 0) {
+                this.logger.info(`[OlafAdapter] Successfully processed ${bundleDefinitions.length} bundle(s)`);
+            }
+            
+            if (errors.length > 0) {
+                this.logger.warn(`[OlafAdapter] Encountered ${errors.length} error(s) while processing bundles`);
+            }
+            
+            return bundleDefinitions;
+            
+        } catch (error) {
+            this.logger.error(`[OlafAdapter] Failed to scan bundle definitions: ${error}`);
+            throw new Error(`Failed to scan bundles directory: ${error}`);
+        }
+    }
+
+    /**
+     * Parse and validate bundle definition JSON file
+     * Extracts metadata fields and skill references
+     */
+    private async parseBundleDefinition(jsonFile: GitHubDirectoryContent): Promise<BundleDefinition> {
+        this.logger.debug(`[OlafAdapter] Parsing bundle definition: ${jsonFile.name}`);
+        
+        if (!jsonFile.download_url) {
+            throw new Error(`No download URL for bundle definition: ${jsonFile.name}`);
+        }
+        
+        try {
+            const content = await this.downloadFileContent(jsonFile.download_url);
+            const data = JSON.parse(content.toString('utf-8'));
+            
+            // Validate required structure with specific error messages
+            if (!data.metadata || typeof data.metadata !== 'object') {
+                throw new Error(`Missing or invalid metadata section in ${jsonFile.name}`);
+            }
+            
+            if (!data.metadata.name || typeof data.metadata.name !== 'string') {
+                throw new Error(`Missing or invalid metadata.name in ${jsonFile.name}`);
+            }
+            
+            if (!data.metadata.description || typeof data.metadata.description !== 'string') {
+                throw new Error(`Missing or invalid metadata.description in ${jsonFile.name}`);
+            }
+            
+            if (!data.skills || !Array.isArray(data.skills)) {
+                throw new Error(`Missing or invalid skills array in ${jsonFile.name}`);
+            }
+            
+            if (data.skills.length === 0) {
+                throw new Error(`Bundle ${jsonFile.name} contains no skills`);
+            }
+            
+            // Validate each skill reference
+            for (let i = 0; i < data.skills.length; i++) {
+                const skill = data.skills[i];
+                const skillContext = `skill ${i + 1} in ${jsonFile.name}`;
+                
+                if (!skill.name || typeof skill.name !== 'string') {
+                    throw new Error(`Missing or invalid name field for ${skillContext}`);
+                }
+                if (!skill.description || typeof skill.description !== 'string') {
+                    throw new Error(`Missing or invalid description field for ${skillContext}`);
+                }
+                if (!skill.path || typeof skill.path !== 'string') {
+                    throw new Error(`Missing or invalid path field for ${skillContext}`);
+                }
+                if (!skill.manifest || typeof skill.manifest !== 'string') {
+                    throw new Error(`Missing or invalid manifest field for ${skillContext}`);
+                }
+            }
+            
+            return data as BundleDefinition;
+            
+        } catch (error) {
+            if (error instanceof SyntaxError) {
+                throw new Error(`Invalid JSON syntax in ${jsonFile.name}: ${error.message}`);
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * Validate that all skills referenced in bundle definition exist in skills/ directory
+     * Returns validated SkillInfo[] for valid skills, logs warnings for invalid ones
+     */
+    private async validateSkillReferences(bundleDefinition: BundleDefinition): Promise<SkillInfo[]> {
+        const { owner, repo } = this.parseGitHubUrl();
+        const apiBase = 'https://api.github.com';
+        const validatedSkills: SkillInfo[] = [];
+        const errors: string[] = [];
+        
+        for (let i = 0; i < bundleDefinition.skills.length; i++) {
+            const skillRef = bundleDefinition.skills[i];
+            const skillContext = `skill "${skillRef.name}" (${i + 1}/${bundleDefinition.skills.length})`;
+            
+            try {
+                // Check if skill directory exists in skills/ directory
+                const skillDirUrl = `${apiBase}/repos/${owner}/${repo}/contents/${skillRef.path}`;
+                let skillContents: GitHubDirectoryContent[];
+                
+                try {
+                    skillContents = await this.makeGitHubRequest(skillDirUrl);
+                } catch (error) {
+                    if (error instanceof Error && error.message.includes('404')) {
+                        errors.push(`${skillContext}: Directory does not exist at path "${skillRef.path}"`);
+                    } else {
+                        errors.push(`${skillContext}: Failed to access directory - ${error}`);
+                    }
+                    continue;
+                }
+                
+                // Check if manifest file exists
+                const manifestUrl = `${apiBase}/repos/${owner}/${repo}/contents/${skillRef.manifest}`;
+                let manifestFile: GitHubDirectoryContent;
+                
+                try {
+                    manifestFile = await this.makeGitHubRequest(manifestUrl);
+                } catch (error) {
+                    if (error instanceof Error && error.message.includes('404')) {
+                        errors.push(`${skillContext}: Manifest file does not exist at path "${skillRef.manifest}"`);
+                    } else {
+                        errors.push(`${skillContext}: Failed to access manifest - ${error}`);
+                    }
+                    continue;
+                }
+                
+                // Parse and validate manifest
+                let manifest: LocalOlafSkillManifest;
+                try {
+                    manifest = await this.parseLocalSkillManifest(manifestFile);
+                } catch (manifestError) {
+                    errors.push(`${skillContext}: Invalid manifest file - ${manifestError}`);
+                    continue;
+                }
+                
+                // Get list of files in skill directory
+                const files = skillContents
+                    .filter(item => item.type === 'file')
+                    .map(item => item.name);
+                
+                // Create SkillInfo object
+                const skillInfo: SkillInfo = {
+                    id: `${skillRef.name.toLowerCase().replace(/\s+/g, '-')}`,
+                    folderName: skillRef.path.split('/').pop() || skillRef.name,
+                    path: skillRef.path,
+                    manifest: manifest as SkillManifest,
+                    files,
+                };
+                
+                validatedSkills.push(skillInfo);
+                this.logger.debug(`[OlafAdapter] Validated ${skillContext}: ${files.length} files, ${manifest.entry_points?.length || 0} entry points`);
+                
+            } catch (error) {
+                const errorMsg = `${skillContext}: Unexpected validation error - ${error}`;
+                errors.push(errorMsg);
+                this.logger.error(`[OlafAdapter] ${errorMsg}`);
+            }
+        }
+        
+        if (errors.length > 0) {
+            const errorSummary = `Skill validation failed for bundle "${bundleDefinition.metadata.name}": ${errors.length} error(s):\n${errors.map(e => `  - ${e}`).join('\n')}`;
+            throw new Error(errorSummary);
+        }
+        
+        if (validatedSkills.length === 0) {
+            throw new Error(`No valid skills found in bundle "${bundleDefinition.metadata.name}"`);
+        }
+        
+        return validatedSkills;
+    }
+
+    /**
+     * Parse skill manifest from GitHub and validate entry_points field
+     */
+    private async parseLocalSkillManifest(manifestFile: GitHubDirectoryContent): Promise<LocalOlafSkillManifest> {
+        if (!manifestFile.download_url) {
+            throw new Error('No download URL for manifest file');
+        }
+        
+        const content = await this.downloadFileContent(manifestFile.download_url);
+        const data = JSON.parse(content.toString('utf-8'));
+        
+        // Handle different manifest structures
+        let name: string;
+        let entryPoints: any[];
+        let description: string | undefined;
+        let version: string | undefined;
+        let author: string | undefined;
+        
+        // Check if this is the new structure with metadata and bom
+        if (data.metadata && data.bom) {
+            if (!data.metadata.name || typeof data.metadata.name !== 'string') {
+                throw new Error('Missing or invalid metadata.name field');
+            }
+            
+            if (!data.bom.entry_points || !Array.isArray(data.bom.entry_points)) {
+                throw new Error('Missing or invalid bom.entry_points array');
+            }
+            
+            name = data.metadata.name;
+            entryPoints = data.bom.entry_points;
+            description = data.metadata.description || data.metadata.shortDescription;
+            version = data.metadata.version;
+            author = data.metadata.author;
+        } else {
+            // Legacy structure: direct name and entry_points
+            if (!data.name || typeof data.name !== 'string') {
+                throw new Error('Missing or invalid name field');
+            }
+            
+            if (!data.entry_points || !Array.isArray(data.entry_points)) {
+                throw new Error('Missing or invalid entry_points array');
+            }
+            
+            name = data.name;
+            entryPoints = data.entry_points;
+            description = data.description;
+            version = data.version;
+            author = data.author;
+        }
+        
+        if (entryPoints.length === 0) {
+            throw new Error('No entry points defined in manifest');
+        }
+        
+        // Validate each entry point
+        for (let i = 0; i < entryPoints.length; i++) {
+            const entryPoint = entryPoints[i];
+            const entryContext = `entry point ${i + 1}`;
+            
+            if (!entryPoint.protocol || typeof entryPoint.protocol !== 'string') {
+                throw new Error(`Missing or invalid protocol field for ${entryContext}`);
+            }
+            if (!entryPoint.path || typeof entryPoint.path !== 'string') {
+                throw new Error(`Missing or invalid path field for ${entryContext}`);
+            }
+            if (!entryPoint.patterns || !Array.isArray(entryPoint.patterns)) {
+                throw new Error(`Missing or invalid patterns array for ${entryContext}`);
+            }
+            if (entryPoint.patterns.length === 0) {
+                throw new Error(`Empty patterns array for ${entryContext}`);
+            }
+        }
+        
+        return {
+            name,
+            description,
+            version,
+            author,
+            entry_points: entryPoints,
+        };
     }
 
     /**
@@ -544,40 +947,173 @@ export class OlafAdapter extends RepositoryAdapter {
     }
 
     /**
-     * Download a bundle (skill) from the OLAF repository
-     * Creates ZIP from individual skill folder using GitHub API
-     * Ensures OLAF runtime is installed before skill installation
+     * Download a bundle from the OLAF repository
+     * Downloads all skills defined in the bundle from bundles/ and skills/ directories
+     * Creates ZIP from bundle definition using GitHub API
+     * Ensures OLAF runtime is installed before bundle installation
      */
     async downloadBundle(bundle: Bundle): Promise<Buffer> {
         const { owner, repo } = this.parseGitHubUrl();
         
-        // Extract skill name from bundle ID (format: olaf-{owner}-{repo}-{skillName})
-        const skillName = bundle.id.replace(`olaf-${owner}-${repo}-`, '');
+        // Extract bundle file name from bundle ID (format: olaf-{owner}-{repo}-{bundleFileName})
+        const bundleFileName = bundle.id.replace(`olaf-${owner}-${repo}-`, '');
         
-        this.logger.info(`[OlafAdapter] Downloading skill bundle: ${skillName}`);
+        this.logger.info(`[OlafAdapter] Downloading bundle: ${bundleFileName}`);
         
         try {
-            // Ensure OLAF runtime is installed before skill installation
+            // Ensure OLAF runtime is installed before bundle installation
             await this.ensureRuntimeInstalled();
             
-            // Directly fetch the specific skill instead of scanning all skills
-            const skillPath = `.olaf/core/skills/${skillName}`;
-            const skill = await this.fetchSingleSkill(skillName, skillPath, owner, repo);
+            // Find the bundle definition info for this bundle
+            const bundleDefinitions = await this.scanBundleDefinitions();
+            const bundleInfo = bundleDefinitions.find(info => info.id === bundle.id);
             
-            if (!skill) {
-                throw new Error(`Skill not found: ${skillName}`);
+            if (!bundleInfo) {
+                throw new Error(`Bundle definition not found: ${bundle.id}`);
             }
             
-            // Package skill as ZIP bundle
-            const zipBuffer = await this.packageSkillAsBundle(skill);
+            this.logger.info(`[OlafAdapter] Found bundle definition: ${bundleInfo.fileName} with ${bundleInfo.validatedSkills.length} skill(s)`);
             
-            this.logger.info(`[OlafAdapter] Successfully packaged skill ${skillName} (${zipBuffer.length} bytes)`);
+            // Package bundle as ZIP with all skills
+            const zipBuffer = await this.packageBundleAsZip(bundleInfo);
+            
+            this.logger.info(`[OlafAdapter] Successfully packaged bundle ${bundleFileName} (${zipBuffer.length} bytes)`);
             return zipBuffer;
             
         } catch (error) {
-            this.logger.error(`[OlafAdapter] Failed to download skill bundle ${skillName}: ${error}`);
-            throw new Error(`Failed to download OLAF skill ${skillName}: ${error}`);
+            this.logger.error(`[OlafAdapter] Failed to download bundle ${bundleFileName}: ${error}`);
+            throw new Error(`Failed to download OLAF bundle ${bundleFileName}: ${error}`);
         }
+    }
+
+    /**
+     * Package bundle as ZIP archive from bundle definition
+     * Downloads all skill files while preserving folder structure
+     * Generates deployment manifest with all skills included
+     * Returns Buffer compatible with BundleInstaller.installFromBuffer()
+     */
+    private async packageBundleAsZip(bundleInfo: BundleDefinitionInfo): Promise<Buffer> {
+        const { owner, repo } = this.parseGitHubUrl();
+        const AdmZip = require('adm-zip');
+        
+        this.logger.debug(`[OlafAdapter] Packaging bundle as ZIP: ${bundleInfo.fileName}`);
+        
+        try {
+            // Create new ZIP archive
+            const zip = new AdmZip();
+            
+            // Generate and add deployment manifest with all skills
+            const deploymentManifest = this.generateBundleDeploymentManifest(bundleInfo);
+            const yaml = require('js-yaml');
+            const manifestYaml = yaml.dump(deploymentManifest);
+            zip.addFile('deployment-manifest.yml', Buffer.from(manifestYaml, 'utf8'));
+            
+            // Download and add each skill to the ZIP
+            for (const skill of bundleInfo.validatedSkills) {
+                this.logger.debug(`[OlafAdapter] Adding skill to bundle: ${skill.folderName}`);
+                
+                // Get all files in the skill directory from GitHub
+                const apiBase = 'https://api.github.com';
+                const skillContentsUrl = `${apiBase}/repos/${owner}/${repo}/contents/${skill.path}`;
+                const skillContents: GitHubDirectoryContent[] = await this.makeGitHubRequest(skillContentsUrl);
+                
+                // Download and add each file to the ZIP
+                for (const item of skillContents) {
+                    if (item.type === 'file' && item.download_url) {
+                        try {
+                            const fileContent = await this.downloadFileContent(item.download_url);
+                            const filePath = `${skill.folderName}/${item.name}`;
+                            zip.addFile(filePath, fileContent);
+                            
+                            this.logger.debug(`[OlafAdapter] Added file to ZIP: ${filePath} (${fileContent.length} bytes)`);
+                        } catch (error) {
+                            this.logger.warn(`[OlafAdapter] Failed to download file ${item.name}: ${error}`);
+                            // Continue with other files
+                        }
+                    } else if (item.type === 'dir') {
+                        // Recursively handle subdirectories
+                        await this.addDirectoryToZip(zip, owner, repo, item.path, `${skill.folderName}/${item.name}`);
+                    }
+                }
+            }
+            
+            // Generate ZIP buffer
+            const zipBuffer = zip.toBuffer();
+            
+            this.logger.debug(`[OlafAdapter] Created ZIP bundle for ${bundleInfo.fileName}: ${zipBuffer.length} bytes, ${bundleInfo.validatedSkills.length} skill(s)`);
+            return zipBuffer;
+            
+        } catch (error) {
+            this.logger.error(`[OlafAdapter] Failed to package bundle ${bundleInfo.fileName}: ${error}`);
+            throw new Error(`Failed to package bundle as ZIP: ${error}`);
+        }
+    }
+
+    /**
+     * Generate deployment manifest for a bundle with multiple skills
+     * Includes all skills from bundle definition with entry points for competency index integration
+     * Adds required root-level fields (id, version, name) for BundleInstaller validation
+     */
+    private generateBundleDeploymentManifest(bundleInfo: BundleDefinitionInfo): any {
+        const { owner, repo } = this.parseGitHubUrl();
+        const { definition, validatedSkills } = bundleInfo;
+        
+        // Create deployment manifest structure with required root-level fields
+        const deploymentManifest = {
+            // Required root-level fields for BundleInstaller validation
+            id: bundleInfo.id,
+            version: definition.metadata.version || '1.0.0',
+            name: definition.metadata.name,
+            
+            metadata: {
+                manifest_version: "1.0",
+                description: `OLAF Bundle: ${definition.metadata.name}`,
+                author: definition.metadata.author || owner,
+                last_updated: new Date().toISOString(),
+                repository: {
+                    type: "git",
+                    url: this.source.url,
+                    directory: "bundles"
+                },
+                license: 'Unknown',
+                keywords: [
+                    ...(definition.metadata.tags || []),
+                    'olaf',
+                    'bundle',
+                    'skills'
+                ]
+            },
+            
+            common: {
+                directories: validatedSkills.map(skill => skill.folderName),
+                files: [],
+                include_patterns: ["**/*"],
+                exclude_patterns: []
+            },
+            
+            bundle_settings: {
+                include_common_in_environment_bundles: true,
+                create_common_bundle: true,
+                compression: "zip" as any,
+                naming: {
+                    common_bundle: bundleInfo.fileName
+                }
+            },
+            
+            // Include all skills with their entry points for competency index integration
+            prompts: validatedSkills.map(skill => ({
+                id: skill.id,
+                name: skill.manifest.name,
+                description: skill.manifest.description || 'OLAF Skill',
+                file: `${skill.folderName}/manifest.json`,
+                type: "agent" as any,
+                tags: skill.manifest.tags || ['olaf', 'skill'],
+                entry_points: (skill.manifest as LocalOlafSkillManifest).entry_points || []
+            }))
+        };
+        
+        this.logger.debug(`[OlafAdapter] Generated deployment manifest for bundle: ${bundleInfo.id} with ${validatedSkills.length} skill(s)`);
+        return deploymentManifest;
     }
 
     /**
@@ -781,13 +1317,19 @@ export class OlafAdapter extends RepositoryAdapter {
     async fetchMetadata(): Promise<SourceMetadata> {
         try {
             const githubMetadata = await this.githubAdapter.fetchMetadata();
-            const skills = await this.scanSkillsDirectory();
+            const bundleDefinitions = await this.scanBundleDefinitions();
+            
+            // Count total skills across all bundles
+            let totalSkills = 0;
+            for (const bundleInfo of bundleDefinitions) {
+                totalSkills += bundleInfo.validatedSkills.length;
+            }
             
             return {
                 ...githubMetadata,
-                name: `${githubMetadata.name} (OLAF Skills)`,
-                description: `OLAF repository with ${skills.length} AI skills`,
-                bundleCount: skills.length,
+                name: `${githubMetadata.name} (OLAF Bundles)`,
+                description: `OLAF repository with ${bundleDefinitions.length} bundle(s) containing ${totalSkills} skill(s)`,
+                bundleCount: bundleDefinitions.length,
             };
         } catch (error) {
             throw new Error(`Failed to fetch OLAF metadata: ${error}`);
@@ -795,36 +1337,36 @@ export class OlafAdapter extends RepositoryAdapter {
     }
 
     /**
-     * Get manifest URL for a skill bundle
-     * OLAF skills don't have separate manifest URLs - they're embedded in the skill
+     * Get manifest URL for a bundle
+     * Points to the bundle definition JSON file in bundles/ directory
      */
     getManifestUrl(bundleId: string, version?: string): string {
         const { owner, repo } = this.parseGitHubUrl();
-        // Extract skill name from bundle ID (format: olaf-{owner}-{repo}-{skillName})
-        const skillName = bundleId.replace(`olaf-${owner}-${repo}-`, '');
-        return `https://api.github.com/repos/${owner}/${repo}/contents/.olaf/core/skills/${skillName}/skill-manifest.json`;
+        // Extract bundle file name from bundle ID (format: olaf-{owner}-{repo}-{bundleFileName})
+        const bundleFileName = bundleId.replace(`olaf-${owner}-${repo}-`, '');
+        return `https://api.github.com/repos/${owner}/${repo}/contents/bundles/${bundleFileName}.json`;
     }
 
     /**
-     * Get download URL for a skill bundle
-     * OLAF skills are packaged dynamically from the skill folder
+     * Get download URL for a bundle
+     * Points to the bundle definition file which contains skill references
      */
     getDownloadUrl(bundleId: string, version?: string): string {
         const { owner, repo } = this.parseGitHubUrl();
-        // Extract skill name from bundle ID (format: olaf-{owner}-{repo}-{skillName})
-        const skillName = bundleId.replace(`olaf-${owner}-${repo}-`, '');
-        return `https://api.github.com/repos/${owner}/${repo}/contents/.olaf/core/skills/${skillName}`;
+        // Extract bundle file name from bundle ID (format: olaf-{owner}-{repo}-{bundleFileName})
+        const bundleFileName = bundleId.replace(`olaf-${owner}-${repo}-`, '');
+        return `https://api.github.com/repos/${owner}/${repo}/contents/bundles/${bundleFileName}.json`;
     }
 
     /**
-     * Post-installation hook for OLAF skills
-     * Registers the skill in the competency index after successful installation
+     * Post-installation hook for OLAF bundles
+     * Registers all skills in the bundle in the competency index after successful installation
      */
     async postInstall(bundleId: string, installPath: string): Promise<void> {
-        this.logger.info(`[OlafAdapter] Running post-installation for skill: ${bundleId}`);
+        this.logger.info(`[OlafAdapter] Running post-installation for bundle: ${bundleId}`);
         
         try {
-            await this.registerSkillInCompetencyIndex(bundleId, installPath);
+            await this.registerBundleInCompetencyIndex(bundleId, installPath);
             this.logger.info(`[OlafAdapter] Post-installation completed successfully`);
         } catch (error) {
             this.logger.error(`[OlafAdapter] Post-installation failed: ${error}`);
@@ -833,14 +1375,14 @@ export class OlafAdapter extends RepositoryAdapter {
     }
 
     /**
-     * Post-uninstallation hook for OLAF skills
-     * Removes the skill from the competency index after successful uninstallation
+     * Post-uninstallation hook for OLAF bundles
+     * Removes all skills in the bundle from the competency index after successful uninstallation
      */
     async postUninstall(bundleId: string, installPath: string): Promise<void> {
-        this.logger.info(`[OlafAdapter] Running post-uninstallation for skill: ${bundleId}`);
+        this.logger.info(`[OlafAdapter] Running post-uninstallation for bundle: ${bundleId}`);
         
         try {
-            await this.unregisterSkillFromCompetencyIndex(bundleId, installPath);
+            await this.unregisterBundleFromCompetencyIndex(bundleId, installPath);
             this.logger.info(`[OlafAdapter] Post-uninstallation completed successfully`);
         } catch (error) {
             this.logger.error(`[OlafAdapter] Post-uninstallation failed: ${error}`);
@@ -849,11 +1391,11 @@ export class OlafAdapter extends RepositoryAdapter {
     }
 
     /**
-     * Register OLAF skill in competency index
-     * Updates .olaf/olaf-core/reference/competency-index.json with skill information
+     * Register OLAF bundle skills in competency index
+     * Updates .olaf/olaf-core/reference/competency-index.json with all skill information
      */
-    private async registerSkillInCompetencyIndex(bundleId: string, installPath: string): Promise<void> {
-        this.logger.info(`[OlafAdapter] Registering skill in competency index: ${bundleId}`);
+    private async registerBundleInCompetencyIndex(bundleId: string, installPath: string): Promise<void> {
+        this.logger.info(`[OlafAdapter] Registering bundle skills in competency index: ${bundleId}`);
         this.logger.info(`[OlafAdapter] Install path: ${installPath}`);
         
         try {
@@ -908,76 +1450,27 @@ export class OlafAdapter extends RepositoryAdapter {
                 this.logger.info(`[OlafAdapter] Competency index does not exist, will create new one`);
             }
             
-            // Read skill manifest from installation path
-            const skillManifestPath = path.join(installPath, 'skill-manifest.json');
-            this.logger.info(`[OlafAdapter] Looking for skill manifest at: ${skillManifestPath}`);
+            // Find the bundle definition to get skill information
+            const bundleDefinitions = await this.scanBundleDefinitions();
+            const bundleInfo = bundleDefinitions.find(info => info.id === bundleId);
             
-            if (!fs.existsSync(skillManifestPath)) {
-                this.logger.error(`[OlafAdapter] Skill manifest not found at ${skillManifestPath}`);
-                
-                // List files in install path for debugging
-                try {
-                    const files = fs.readdirSync(installPath);
-                    this.logger.info(`[OlafAdapter] Files in install path: ${files.join(', ')}`);
-                } catch (listError) {
-                    this.logger.error(`[OlafAdapter] Could not list files in install path: ${listError}`);
-                }
-                
-                this.logger.warn(`[OlafAdapter] Skipping competency index registration due to missing manifest`);
+            if (!bundleInfo) {
+                this.logger.warn(`[OlafAdapter] Bundle definition not found for ${bundleId}, skipping competency index registration`);
                 return;
             }
             
-            this.logger.info(`[OlafAdapter] Reading skill manifest`);
-            const skillManifestContent = fs.readFileSync(skillManifestPath, 'utf-8');
-            const skillManifest = JSON.parse(skillManifestContent);
-            this.logger.info(`[OlafAdapter] Skill manifest: ${JSON.stringify(skillManifest, null, 2)}`);
+            // Get the actual source name instead of extracting from install path
+            const sourceName = this.getSourceName();
+            this.logger.info(`[OlafAdapter] Using source name: ${sourceName}`);
             
-            // Extract skill name from install path (last directory component)
-            const skillName = path.basename(installPath);
-            
-            // Extract source name from install path (parent directory of skill)
-            const sourceName = path.basename(path.dirname(installPath));
-            
-            this.logger.info(`[OlafAdapter] Skill name: ${skillName}, Source name: ${sourceName}`);
-            
-            // Extract metadata from skill manifest
-            const metadata = skillManifest.metadata || {};
-            const patterns = metadata.aliases || [];
-            const protocol = metadata.protocol || 'Act';
-            
-            // Construct the file path for the main prompt
-            // Format: external-skills/{source}/{skill}/prompts/{skill}.md
-            const promptFilePath = `external-skills/${sourceName}/${skillName}/prompts/${skillName}.md`;
-            
-            this.logger.info(`[OlafAdapter] Extracted metadata - patterns: ${JSON.stringify(patterns)}, protocol: ${protocol}`);
-            this.logger.info(`[OlafAdapter] Prompt file path: ${promptFilePath}`);
-            
-            // Create skill entry for competency index in the correct format
-            const skillEntry = {
-                patterns: patterns,
-                file: promptFilePath,
-                protocol: protocol
-            };
-            
-            this.logger.info(`[OlafAdapter] Skill entry: ${JSON.stringify(skillEntry, null, 2)}`);
-            
-            // Check if skill already exists in index (match by file path)
-            const existingIndex = competencyIndex.findIndex((s: any) => s.file === skillEntry.file);
-            
-            if (existingIndex >= 0) {
-                // Update existing entry
-                this.logger.info(`[OlafAdapter] Updating existing skill entry in competency index: ${skillEntry.file}`);
-                competencyIndex[existingIndex] = skillEntry;
-            } else {
-                // Add new entry
-                this.logger.info(`[OlafAdapter] Adding new skill entry to competency index: ${skillEntry.file}`);
-                competencyIndex.push(skillEntry);
+            // Process each skill in the bundle
+            for (const skill of bundleInfo.validatedSkills) {
+                await this.registerSkillEntryPoints(skill, sourceName, competencyIndex);
             }
             
             // Write updated competency index
             this.logger.info(`[OlafAdapter] Writing updated competency index with ${competencyIndex.length} skills`);
             const competencyIndexContent = JSON.stringify(competencyIndex, null, 2);
-            this.logger.info(`[OlafAdapter] Competency index content to write: ${competencyIndexContent}`);
             
             fs.writeFileSync(competencyIndexPath, competencyIndexContent, 'utf-8');
             this.logger.info(`[OlafAdapter] File write completed`);
@@ -987,32 +1480,19 @@ export class OlafAdapter extends RepositoryAdapter {
                 const verifyContent = fs.readFileSync(competencyIndexPath, 'utf-8');
                 const verifyIndex = JSON.parse(verifyContent);
                 
-                // Handle both array format and legacy object format for verification
-                let verifyArray: any[] = [];
                 if (Array.isArray(verifyIndex)) {
-                    verifyArray = verifyIndex;
-                } else if (verifyIndex.skills && Array.isArray(verifyIndex.skills)) {
-                    verifyArray = verifyIndex.skills;
-                }
-                
-                this.logger.info(`[OlafAdapter] Verification: File exists and contains ${verifyArray.length} skills`);
-                
-                // Check if our skill is in the verified content
-                const ourSkill = verifyArray.find((s: any) => s.file === skillEntry.file);
-                if (ourSkill) {
-                    this.logger.info(`[OlafAdapter] Verification: Our skill '${skillEntry.file}' is present in the file`);
+                    this.logger.info(`[OlafAdapter] Competency index verification successful: ${verifyIndex.length} total skills`);
                 } else {
-                    this.logger.error(`[OlafAdapter] Verification: Our skill '${skillEntry.file}' is NOT found in the file!`);
-                    this.logger.error(`[OlafAdapter] Verification: Skills in file: ${verifyArray.map((s: any) => s.file).join(', ')}`);
+                    this.logger.error(`[OlafAdapter] Competency index verification failed: invalid format`);
                 }
             } else {
-                this.logger.error(`[OlafAdapter] Verification: File does not exist after write!`);
+                this.logger.error(`[OlafAdapter] Competency index file does not exist after write`);
             }
             
-            this.logger.info(`[OlafAdapter] Successfully registered skill in competency index: ${skillEntry.file}`);
+            this.logger.info(`[OlafAdapter] Successfully registered ${bundleInfo.validatedSkills.length} skills in competency index`);
             
         } catch (error) {
-            this.logger.error(`[OlafAdapter] Failed to register skill in competency index: ${error}`);
+            this.logger.error(`[OlafAdapter] Failed to register bundle in competency index: ${error}`);
             if (error instanceof Error) {
                 this.logger.error(`[OlafAdapter] Error stack: ${error.stack}`);
             }
@@ -1021,11 +1501,68 @@ export class OlafAdapter extends RepositoryAdapter {
     }
 
     /**
-     * Unregister OLAF skill from competency index
-     * Removes skill entry from .olaf/olaf-core/reference/competency-index.json
+     * Get source name for competency index paths
+     * Uses source.name with fallback to source.id
      */
-    private async unregisterSkillFromCompetencyIndex(bundleId: string, installPath: string): Promise<void> {
-        this.logger.info(`[OlafAdapter] Unregistering skill from competency index: ${bundleId}`);
+    private getSourceName(): string {
+        return this.source.name || this.source.id;
+    }
+
+    /**
+     * Register a single skill's entry points in the competency index
+     */
+    private async registerSkillEntryPoints(skill: SkillInfo, sourceName: string, competencyIndex: any[]): Promise<void> {
+        try {
+            // Extract entry points from skill manifest
+            const manifest = skill.manifest as LocalOlafSkillManifest;
+            const entryPoints = manifest.entry_points || [];
+            
+            if (entryPoints.length === 0) {
+                this.logger.warn(`[OlafAdapter] Skill ${skill.id} has no entry points, skipping competency index registration`);
+                return;
+            }
+            
+            // Process each entry point
+            for (const entryPoint of entryPoints) {
+                // Construct the file path for the competency index
+                // Format: external-skills/{sourceName}/{skillName}{entryPoint.path}
+                const promptFilePath = `external-skills/${sourceName}/${skill.folderName}${entryPoint.path}`;
+                
+                this.logger.info(`[OlafAdapter] Processing entry point for skill ${skill.id}: ${promptFilePath}`);
+                
+                // Create skill entry for competency index in the correct format
+                const skillEntry = {
+                    patterns: entryPoint.patterns || [],
+                    file: promptFilePath,
+                    protocol: entryPoint.protocol || 'Propose-Act'
+                };
+                
+                // Check if skill already exists in index (match by file path)
+                const existingIndex = competencyIndex.findIndex((s: any) => s.file === skillEntry.file);
+                
+                if (existingIndex >= 0) {
+                    // Update existing entry
+                    this.logger.info(`[OlafAdapter] Updating existing skill entry in competency index: ${skillEntry.file}`);
+                    competencyIndex[existingIndex] = skillEntry;
+                } else {
+                    // Add new entry
+                    this.logger.info(`[OlafAdapter] Adding new skill entry to competency index: ${skillEntry.file}`);
+                    competencyIndex.push(skillEntry);
+                }
+            }
+            
+        } catch (error) {
+            this.logger.error(`[OlafAdapter] Failed to register skill ${skill.id} entry points: ${error}`);
+            throw error;
+        }
+    }
+
+    /**
+     * Unregister OLAF bundle from competency index
+     * Removes all skill entries from .olaf/olaf-core/reference/competency-index.json
+     */
+    private async unregisterBundleFromCompetencyIndex(bundleId: string, installPath: string): Promise<void> {
+        this.logger.info(`[OlafAdapter] Unregistering bundle from competency index: ${bundleId}`);
         this.logger.info(`[OlafAdapter] Install path: ${installPath}`);
         
         try {
@@ -1070,25 +1607,45 @@ export class OlafAdapter extends RepositoryAdapter {
                 return;
             }
             
-            // Extract skill name from install path (last directory component)
-            const skillName = path.basename(installPath);
+            // Get the actual source name instead of extracting from install path
+            const sourceName = this.getSourceName();
+            this.logger.info(`[OlafAdapter] Using source name: ${sourceName}`);
             
-            // Extract source name from install path (parent directory of skill)
-            const sourceName = path.basename(path.dirname(installPath));
+            // Find the bundle definition to get skill information
+            // Note: We need to try to get the bundle info, but it may not be available during uninstall
+            let bundleInfo: BundleDefinitionInfo | undefined;
+            try {
+                const bundleDefinitions = await this.scanBundleDefinitions();
+                bundleInfo = bundleDefinitions.find(info => info.id === bundleId);
+            } catch (error) {
+                this.logger.warn(`[OlafAdapter] Could not scan bundle definitions during uninstall: ${error}`);
+            }
             
-            // Construct the file path that should be removed
-            const promptFilePath = `external-skills/${sourceName}/${skillName}/prompts/${skillName}.md`;
-            
-            this.logger.info(`[OlafAdapter] Looking for skill to remove: ${promptFilePath}`);
-            
-            // Find and remove the skill entry
             const initialLength = competencyIndex.length;
-            competencyIndex = competencyIndex.filter((s: any) => s.file !== promptFilePath);
+            
+            if (bundleInfo) {
+                // Remove entries for each skill in the bundle
+                for (const skill of bundleInfo.validatedSkills) {
+                    const manifest = skill.manifest as LocalOlafSkillManifest;
+                    const entryPoints = manifest.entry_points || [];
+                    
+                    for (const entryPoint of entryPoints) {
+                        const promptFilePath = `external-skills/${sourceName}/${skill.folderName}${entryPoint.path}`;
+                        competencyIndex = competencyIndex.filter((s: any) => s.file !== promptFilePath);
+                        this.logger.info(`[OlafAdapter] Removed entry: ${promptFilePath}`);
+                    }
+                }
+            } else {
+                // Fallback: Remove all entries that match the source name pattern
+                const pattern = `external-skills/${sourceName}/`;
+                competencyIndex = competencyIndex.filter((s: any) => !s.file.startsWith(pattern));
+                this.logger.info(`[OlafAdapter] Removed all entries matching pattern: ${pattern}`);
+            }
+            
             const finalLength = competencyIndex.length;
             
             if (initialLength > finalLength) {
-                this.logger.info(`[OlafAdapter] Removed skill from competency index: ${promptFilePath}`);
-                this.logger.info(`[OlafAdapter] Competency index now has ${finalLength} skills (was ${initialLength})`);
+                this.logger.info(`[OlafAdapter] Removed ${initialLength - finalLength} skill(s) from competency index`);
                 
                 // Write updated competency index
                 const competencyIndexContent = JSON.stringify(competencyIndex, null, 2);
@@ -1102,36 +1659,20 @@ export class OlafAdapter extends RepositoryAdapter {
                     const verifyContent = fs.readFileSync(competencyIndexPath, 'utf-8');
                     const verifyIndex = JSON.parse(verifyContent);
                     
-                    // Handle both array format and legacy object format for verification
-                    let verifyArray: any[] = [];
                     if (Array.isArray(verifyIndex)) {
-                        verifyArray = verifyIndex;
-                    } else if (verifyIndex.skills && Array.isArray(verifyIndex.skills)) {
-                        verifyArray = verifyIndex.skills;
-                    }
-                    
-                    this.logger.info(`[OlafAdapter] Verification: File exists and contains ${verifyArray.length} skills`);
-                    
-                    // Check if our skill was actually removed
-                    const stillExists = verifyArray.find((s: any) => s.file === promptFilePath);
-                    if (!stillExists) {
-                        this.logger.info(`[OlafAdapter] Verification: Skill '${promptFilePath}' was successfully removed`);
-                    } else {
-                        this.logger.error(`[OlafAdapter] Verification: Skill '${promptFilePath}' is still present in the file!`);
+                        this.logger.info(`[OlafAdapter] Verification: File exists and contains ${verifyIndex.length} skills`);
                     }
                 } else {
                     this.logger.error(`[OlafAdapter] Verification: File does not exist after write!`);
                 }
-                
             } else {
-                this.logger.info(`[OlafAdapter] Skill not found in competency index: ${promptFilePath}`);
-                this.logger.info(`[OlafAdapter] Available skills: ${competencyIndex.map((s: any) => s.file).join(', ')}`);
+                this.logger.info(`[OlafAdapter] No skills found to remove from competency index`);
             }
             
-            this.logger.info(`[OlafAdapter] Successfully processed skill unregistration: ${promptFilePath}`);
+            this.logger.info(`[OlafAdapter] Successfully processed bundle unregistration`);
             
         } catch (error) {
-            this.logger.error(`[OlafAdapter] Failed to unregister skill from competency index: ${error}`);
+            this.logger.error(`[OlafAdapter] Failed to unregister bundle from competency index: ${error}`);
             if (error instanceof Error) {
                 this.logger.error(`[OlafAdapter] Error stack: ${error.stack}`);
             }

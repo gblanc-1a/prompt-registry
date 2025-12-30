@@ -298,8 +298,8 @@ suite('LocalOlafAdapter', () => {
                 assert.strictEqual(indexContent.length, 1, 'Should have one entry');
                 
                 const entry = indexContent[0];
-                assert.strictEqual(entry.file, 'external-skills/olaf-local/test-skill/prompts/test.md', 
-                    'Should use "olaf-local" in path during installation');
+                assert.strictEqual(entry.file, 'external-skills/Test Local OLAF/test-skill/prompts/test.md', 
+                    'Should use actual source name in path during installation');
                 
                 // Test uninstallation - should remove entry using same "olaf-local" path
                 await adapter.postUninstall('local-olaf-test', '/mock/install/path');

@@ -10,6 +10,7 @@ import { promisify } from 'util';
 import { RepositoryAdapter } from './RepositoryAdapter';
 import { Bundle, SourceMetadata, ValidationResult, RegistrySource } from '../types/registry';
 import { Logger } from '../utils/logger';
+import { generateGitHubBundleId, formatByteSize } from '../utils/bundleNameUtils';
 
 const execAsync = promisify(exec);
 
@@ -522,8 +523,16 @@ export class GitHubAdapter extends RepositoryAdapter {
                 // Create bundle metadata
                 // Use manifest data if available, otherwise fall back to release data
                 // Use API URL instead of browser_download_url for proper authentication
+                // Bundle ID uses canonical generation function for consistency
+                const bundleId = generateGitHubBundleId(
+                    owner,
+                    repo,
+                    release.tag_name,
+                    manifest?.id,
+                    manifest?.version
+                );
                 const bundle: Bundle = {
-                    id: `${owner}-${repo}-${release.tag_name}`,
+                    id: bundleId,
                     name: manifest?.name || release.name || `${repo} ${release.tag_name}`,
                     version: manifest?.version || release.tag_name.replace(/^v/, ''),
                     description: manifest?.description || this.extractDescription(release.body),
@@ -532,13 +541,18 @@ export class GitHubAdapter extends RepositoryAdapter {
                     environments: manifest?.environments || this.extractEnvironments(release.body),
                     tags: manifest?.tags || this.extractTags(release.body),
                     lastUpdated: release.published_at,
-                    size: this.formatSize(bundleAsset.size),
+                    size: formatByteSize(bundleAsset.size),
                     dependencies: manifest?.dependencies || [],
                     license: manifest?.license || 'Unknown',
                     manifestUrl: manifestAsset.url,
                     downloadUrl: bundleAsset.url,
                     repository: this.source.url,
                 };
+
+                // Attach prompts array from manifest for content breakdown display
+                if (manifest?.prompts && Array.isArray(manifest.prompts)) {
+                    (bundle as any).prompts = manifest.prompts;
+                }
 
                 bundles.push(bundle);
             }
@@ -731,18 +745,5 @@ export class GitHubAdapter extends RepositoryAdapter {
         }
         
         return tags;
-    }
-
-    /**
-     * Format byte size to human readable
-     */
-    private formatSize(bytes: number): string {
-        if (bytes < 1024) {
-            return `${bytes} B`;
-        }
-        if (bytes < 1024 * 1024) {
-            return `${(bytes / 1024).toFixed(1)} KB`;
-        }
-        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
     }
 }

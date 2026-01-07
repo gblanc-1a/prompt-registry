@@ -2,6 +2,20 @@
 
 These are short, actionable notes to help an AI coding assistant be productive in this repository.
 
+**🚨 FIRST STEP: Read Folder-Specific Guidance 🚨**
+
+Before working in any folder, **MUST READ** the corresponding AGENTS.md file:
+- Working with tests? → Read `test/AGENTS.md` first
+- Writing E2E tests? → Read `test/e2e/AGENTS.md` first  
+- Creating adapters? → Read `src/adapters/AGENTS.md` first
+- Building services? → Read `src/services/AGENTS.md` first
+
+**Failure to read these guides will result in:**
+- Broken tests due to incorrect VS Code mocking
+- Duplicated utilities that already exist
+- Missing critical debugging strategies
+- Wasted time on solved problems
+
 ---
 
 ## Development Methodology

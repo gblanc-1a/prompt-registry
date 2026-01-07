@@ -5,7 +5,7 @@ import * as os from 'os';
 import { TemplateEngine, TemplateContext } from '../../src/services/TemplateEngine';
 
 suite('TemplateEngine', () => {
-    const templateRoot = path.join(process.cwd(), 'templates/scaffolds/awesome-copilot');
+    const templateRoot = path.join(process.cwd(), 'templates/scaffolds/github');
     let templateEngine: TemplateEngine;
 
     setup(() => {
@@ -21,9 +21,8 @@ suite('TemplateEngine', () => {
         });
 
         test('should throw error if manifest not found', async () => {
-            const badEngine = new TemplateEngine('/nonexistent/path');
             await assert.rejects(
-                () => badEngine.loadManifest(),
+                () => new TemplateEngine('/nonexistent/path').loadManifest(),
                 /Template manifest not found/
             );
         });
@@ -174,7 +173,7 @@ suite('TemplateEngine', () => {
             assert.ok(fs.existsSync(path.join(tempDir, 'collections/example.collection.yml')), 'Should create example collection');
             assert.ok(fs.existsSync(path.join(tempDir, 'README.md')), 'Should create README');
             assert.ok(fs.existsSync(path.join(tempDir, 'package.json')), 'Should create package.json');
-            assert.ok(fs.existsSync(path.join(tempDir, '.github/workflows/validate-collections.yml')), 'Should create workflow');
+            assert.ok(fs.existsSync(path.join(tempDir, '.github/workflows/publish.yml')), 'Should create publish workflow');
             assert.ok(fs.existsSync(path.join(tempDir, 'scripts/validate-collections.js')), 'Should create validation script');
 
             // Cleanup

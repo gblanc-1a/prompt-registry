@@ -78,7 +78,17 @@ module.exports = {
     withProgress: async (options, task) => {
       const progress = { report: () => undefined };
       return await task(progress);
-    }
+    },
+    createTerminal: (options) => ({
+      show: () => undefined,
+      sendText: () => undefined,
+      dispose: () => undefined,
+      name: options?.name || 'terminal',
+      processId: Promise.resolve(12345),
+      creationOptions: options || {},
+      exitStatus: undefined,
+      state: { isInteractedWith: false }
+    })
   },
   // Add missing TreeView related mocks
   TreeItem: class {

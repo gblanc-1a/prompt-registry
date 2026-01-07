@@ -28,6 +28,7 @@
  */
 
 import * as path from 'path';
+import { generateSanitizedId } from '../utils/bundleNameUtils';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as yaml from 'js-yaml';
@@ -259,7 +260,7 @@ export class LocalApmAdapter extends RepositoryAdapter {
         const context = {
             sourceId: this.source.id,
             owner: 'local',
-            repo: packageName.toLowerCase().replace(/\s+/g, '-'),
+            repo: generateSanitizedId(packageName),
             path: relativePath,
         };
         

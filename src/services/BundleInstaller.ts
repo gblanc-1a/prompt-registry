@@ -17,6 +17,7 @@ import { promisify } from 'util';
 import * as yaml from 'js-yaml';
 import AdmZip = require('adm-zip');
 import { Logger } from '../utils/logger';
+import { isManifestIdMatch } from '../utils/bundleNameUtils';
 import { Bundle, InstallOptions, InstalledBundle, DeploymentManifest } from '../types/registry';
 import { CopilotSyncService } from './CopilotSyncService';
 import { McpServerManager } from './McpServerManager';
@@ -331,7 +332,11 @@ export class BundleInstaller {
         }
 
         // Verify ID matches
-        if (manifest.id !== bundle.id) {
+        // For GitHub bundles, the manifest may contain just the collection ID (e.g., "test2")
+        // while bundle.id is the full computed ID (e.g., "owner-repo-test2-v1.0.0" or "owner-repo-test2-1.0.0")
+        // Accept both exact match and suffix match for backward compatibility
+        // Handle both with and without 'v' prefix in version
+        if (!isManifestIdMatch(manifest.id, manifest.version, bundle.id)) {
             throw new Error(`Bundle ID mismatch: expected ${bundle.id}, got ${manifest.id}`);
         }
 

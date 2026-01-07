@@ -141,7 +141,8 @@ suite('GitHubAdapter', () => {
             const bundles = await adapter.fetchBundles();
 
             assert.strictEqual(bundles.length, 1);
-            assert.strictEqual(bundles[0].id, 'test-owner-test-repo-v1.0.0');
+            // Bundle ID now uses manifest.id when available: owner-repo-manifestId-version
+            assert.strictEqual(bundles[0].id, 'test-owner-test-repo-test-bundle-1.0.0');
             assert.strictEqual(bundles[0].version, '1.0.0');
             assert.strictEqual(bundles[0].sourceId, 'test-source');
         });

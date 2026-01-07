@@ -13,8 +13,7 @@ import { getEnabledDefaultHubs } from './config/defaultHubs';
 import { HubStorage } from './storage/HubStorage';
 import { SchemaValidator } from './services/SchemaValidator';
 import { SettingsCommands } from './commands/SettingsCommands';
-import { ScaffoldCommand, ScaffoldType } from './commands/ScaffoldCommand';
-import { SkillWizard } from './commands/SkillWizard';
+import { ScaffoldCommand } from './commands/ScaffoldCommand';
 import { AddResourceCommand } from './commands/AddResourceCommand';
 import { ValidateCollectionsCommand } from './commands/ValidateCollectionsCommand';
 import { ValidateApmCommand } from './commands/ValidateApmCommand';
@@ -302,193 +301,7 @@ export class PromptRegistryExtension {
             vscode.commands.registerCommand('promptRegistry.listInstalled', () => this.bundleCommands!.listInstalled()),
             
             // Scaffold Command - Create project structure
-            vscode.commands.registerCommand('promptRegistry.scaffoldProject', async () => {
-                const scaffoldTypeChoice = await vscode.window.showQuickPick(
-                    [
-                        {
-                            label: 'Awesome Copilot Project',
-                            description: 'Standard prompt library structure',
-                            value: ScaffoldType.AwesomeCopilot
-                        },
-                        {
-                            label: 'APM Package',
-                            description: 'Distributable prompt package (apm.yml)',
-                            value: ScaffoldType.Apm
-                        },
-                        {
-                            label: 'Agent Skill',
-                            description: 'Create a new Agent Skill with SKILL.md',
-                            value: ScaffoldType.Skill
-                        }
-                    ],
-                    {
-                        placeHolder: 'Select project type',
-                        title: 'Scaffold Project',
-                        ignoreFocusOut: true
-                    }
-                );
-
-                if (!scaffoldTypeChoice) {
-                    return;
-                }
-
-                // Special handling for Agent Skill within existing awesome-copilot project
-                if (scaffoldTypeChoice.value === ScaffoldType.Skill) {
-                    const workspaceFolders = vscode.workspace.workspaceFolders;
-                    if (workspaceFolders && workspaceFolders.length > 0) {
-                        const workspaceRoot = workspaceFolders[0].uri.fsPath;
-                        const skillWizard = new SkillWizard();
-                        
-                        if (skillWizard.isAwesomeCopilotProject(workspaceRoot)) {
-                            // Use the wizard for creating skills within the existing project
-                            await skillWizard.execute(workspaceRoot);
-                            return;
-                        }
-                    }
-                    // Fall through to standard scaffold flow if not in an awesome-copilot project
-                }
-
-                const targetPath = await vscode.window.showOpenDialog({
-                    canSelectFiles: false,
-                    canSelectFolders: true,
-                    canSelectMany: false,
-                    title: `Select Target Directory for ${scaffoldTypeChoice.label}`
-                });
-
-                if (targetPath && targetPath[0]) {
-                    const projectName = await vscode.window.showInputBox({
-                        prompt: 'Enter project name (optional)',
-                        placeHolder: 'example',
-                        value: 'example',
-                        ignoreFocusOut: true
-                    });
-
-                    const runnerChoice = await vscode.window.showQuickPick(
-                        [
-                            {
-                                label: 'GitHub-hosted (ubuntu-latest)',
-                                description: 'Free GitHub-hosted runner',
-                                value: 'ubuntu-latest'
-                            },
-                            {
-                                label: 'Self-hosted',
-                                description: 'Use self-hosted runner',
-                                value: 'self-hosted'
-                            },
-                            {
-                                label: 'Custom',
-                                description: 'Specify custom runner label',
-                                value: 'custom'
-                            }
-                        ],
-                        {
-                            placeHolder: 'Select GitHub Actions runner type',
-                            title: 'GitHub Actions Runner',
-                            ignoreFocusOut: true
-                        }
-                    );
-
-                    let githubRunner = 'ubuntu-latest';
-                    if (runnerChoice?.value === 'self-hosted') {
-                        githubRunner = 'self-hosted';
-                    } else if (runnerChoice?.value === 'custom') {
-                        const customRunner = await vscode.window.showInputBox({
-                            prompt: 'Enter custom runner label',
-                            placeHolder: 'my-runner or [self-hosted, linux, x64]',
-                            validateInput: (value) => {
-                                if (!value || value.trim().length === 0) {
-                                    return 'Runner label cannot be empty';
-                                }
-                                return undefined;
-                            },
-                            ignoreFocusOut: true
-                        });
-                        githubRunner = customRunner || 'ubuntu-latest';
-                    }
-
-                    // Collect additional info for APM projects
-                    let description: string | undefined;
-                    let author: string | undefined;
-                    let tags: string[] | undefined;
-
-                    if (scaffoldTypeChoice.value === ScaffoldType.Apm) {
-                        description = await vscode.window.showInputBox({
-                            prompt: 'Enter package description',
-                            placeHolder: 'A short description of your package',
-                            ignoreFocusOut: true
-                        });
-
-                        author = await vscode.window.showInputBox({
-                            prompt: 'Enter author name',
-                            placeHolder: 'Your Name <email@example.com>',
-                            value: process.env.USER || 'user',
-                            ignoreFocusOut: true
-                        });
-
-                        const tagsInput = await vscode.window.showInputBox({
-                            prompt: 'Enter tags (comma separated)',
-                            placeHolder: 'ai, prompts, coding',
-                            value: 'apm, prompts',
-                            ignoreFocusOut: true
-                        });
-
-                        if (tagsInput) {
-                            tags = tagsInput.split(',').map(t => t.trim()).filter(t => t.length > 0);
-                        }
-                    }
-
-                    // Collect additional info for Skill projects
-                    if (scaffoldTypeChoice.value === ScaffoldType.Skill) {
-                        description = await vscode.window.showInputBox({
-                            prompt: 'Enter skill description',
-                            placeHolder: 'A short description of what this skill does',
-                            ignoreFocusOut: true
-                        });
-
-                        author = await vscode.window.showInputBox({
-                            prompt: 'Enter author name',
-                            placeHolder: 'Your Name <email@example.com>',
-                            value: process.env.USER || 'user',
-                            ignoreFocusOut: true
-                        });
-                    }
-
-                    try {
-                        await vscode.window.withProgress(
-                            {
-                                location: vscode.ProgressLocation.Notification,
-                                title: `Scaffolding ${scaffoldTypeChoice.label}...`,
-                                cancellable: false
-                            },
-                            async () => {
-                                const cmd = new ScaffoldCommand(this.context.extensionPath, scaffoldTypeChoice.value);
-                                await cmd.execute(targetPath[0], {
-                                    projectName,
-                                    githubRunner,
-                                    description,
-                                    author,
-                                    tags
-                                });
-                            }
-                        );
-
-                        const action = await vscode.window.showInformationMessage(
-                            `${scaffoldTypeChoice.label} scaffolded successfully!`,
-                            'Open Folder',
-                            'View README'
-                        );
-
-                        if (action === 'Open Folder') {
-                            await vscode.commands.executeCommand('vscode.openFolder', targetPath[0]);
-                        } else if (action === 'View README') {
-                            const readmePath = vscode.Uri.joinPath(targetPath[0], 'README.md');
-                            await vscode.commands.executeCommand('vscode.open', readmePath);
-                        }
-                    } catch (error) {
-                        vscode.window.showErrorMessage(`Scaffold failed: ${(error as Error).message}`);
-                    }
-                }
-            }),
+            vscode.commands.registerCommand('promptRegistry.scaffoldProject', () => ScaffoldCommand.runWithUI()),
             
             
             // Add Resource Command - Add individual resources
@@ -499,10 +312,6 @@ export class PromptRegistryExtension {
             // Collection Management Commands
             vscode.commands.registerCommand('promptRegistry.validateCollections', async (options?) => {
                 await this.validateCollectionsCommand!.execute(options);
-            }),
-            
-            vscode.commands.registerCommand('promptRegistry.validateCollectionsWithRefs', async () => {
-                await this.validateCollectionsCommand!.execute({ checkRefs: true });
             }),
 
             vscode.commands.registerCommand('promptRegistry.listCollections', async () => {
@@ -1037,7 +846,7 @@ export class PromptRegistryExtension {
             },
             {
                 label: '$(folder-library) Scaffold Project',
-                description: 'Create new prompt project (Awesome-Copilot or APM)',
+                description: 'Create new prompt project (GitHub or APM)',
                 command: 'promptRegistry.scaffoldProject'
             }
         );

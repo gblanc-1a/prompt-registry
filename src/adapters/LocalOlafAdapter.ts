@@ -13,6 +13,7 @@ import { RepositoryAdapter } from './RepositoryAdapter';
 import { Bundle, SourceMetadata, ValidationResult, RegistrySource } from '../types/registry';
 import { BundleDefinition, BundleDefinitionInfo, LocalOlafSkillManifest, SkillInfo, SkillReference } from '../types/olaf';
 import { Logger } from '../utils/logger';
+import { generateSanitizedId } from '../utils/bundleNameUtils';
 import { OlafRuntimeManager } from '../services/OlafRuntimeManager';
 
 // Promisified fs functions
@@ -516,7 +517,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
                 
                 // Create SkillInfo object
                 const skillInfo: SkillInfo = {
-                    id: `${skillRef.name.toLowerCase().replace(/\s+/g, '-')}`,
+                    id: generateSanitizedId(skillRef.name),
                     folderName: path.basename(skillPath),
                     path: skillRef.path,
                     manifest,

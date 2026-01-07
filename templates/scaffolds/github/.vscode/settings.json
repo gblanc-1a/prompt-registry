@@ -1,0 +1,20 @@
+{
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "files.exclude": {
+        "**/node_modules": true,
+        "**/dist": true
+    },
+    "yaml.schemas": {
+        "./schemas/collection.schema.json": "collections/*.collection.yml"
+    },
+    "json.schemas": [
+        {
+            "fileMatch": ["collections/*.collection.yml"],
+            "url": "./schemas/collection.schema.json"
+        }
+    ],
+    "files.associations": {
+        "*.collection.yml": "yaml"
+    }
+}

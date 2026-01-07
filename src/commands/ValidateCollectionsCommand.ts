@@ -46,7 +46,7 @@ export class ValidateCollectionsCommand {
         this.schemaValidator = new SchemaValidator(context.extensionPath);
     }
 
-    async execute(options?: { checkRefs?: boolean; listOnly?: boolean }): Promise<void> {
+    async execute(options?: { listOnly?: boolean }): Promise<void> {
         const workspaceFolders = vscode.workspace.workspaceFolders;
         
         if (!workspaceFolders || workspaceFolders.length === 0) {
@@ -86,10 +86,32 @@ export class ValidateCollectionsCommand {
         let validCollections = 0;
 
         const diagnostics: vscode.Diagnostic[] = [];
+        
+        // Track IDs and names for duplicate detection
+        const seenIds = new Map<string, string>();
+        const seenNames = new Map<string, string>();
 
         for (const file of files) {
             const filePath = path.join(collectionsDir, file);
-            const result = await this.validateCollection(filePath, workspaceRoot, options?.checkRefs || false);
+            // Always check file references
+            const result = await this.validateCollection(filePath, workspaceRoot, true);
+            
+            // Check for duplicate IDs and names
+            if (result.collection) {
+                const { id, name } = result.collection;
+                
+                if (id && seenIds.has(id)) {
+                    result.errors.push(`Duplicate collection ID '${id}' (also in ${seenIds.get(id)})`);
+                } else if (id) {
+                    seenIds.set(id, file);
+                }
+
+                if (name && seenNames.has(name)) {
+                    result.errors.push(`Duplicate collection name '${name}' (also in ${seenNames.get(name)})`);
+                } else if (name) {
+                    seenNames.set(name, file);
+                }
+            }
             
             if (options?.listOnly && result.collection) {
                 this.log(`📦 ${result.collection.name} (id: ${result.collection.id})`);
@@ -167,7 +189,7 @@ export class ValidateCollectionsCommand {
     private async validateCollection(
         filePath: string,
         workspaceRoot: string,
-        checkRefs: boolean
+        _checkRefs: boolean = true
     ): Promise<ValidationResult> {
         const errors: string[] = [];
         const warnings: string[] = [];
@@ -182,11 +204,11 @@ export class ValidateCollectionsCommand {
                 return { errors, warnings, collection: null };
             }
 
-            // Use SchemaValidator for validation
+            // Use SchemaValidator for validation - always check file references
             const validationResult = await this.schemaValidator.validateCollection(
                 collection,
                 {
-                    checkFileReferences: checkRefs,
+                    checkFileReferences: true,
                     workspaceRoot: workspaceRoot
                 }
             );

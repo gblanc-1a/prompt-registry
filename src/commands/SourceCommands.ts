@@ -7,6 +7,7 @@ import * as vscode from 'vscode';
 import { RegistryManager } from '../services/RegistryManager';
 import { RegistrySource, SourceType } from '../types/registry';
 import { Logger } from '../utils/logger';
+import { generateSanitizedId } from '../utils/bundleNameUtils';
 
 /**
  * Source Commands Handler
@@ -755,7 +756,7 @@ export class SourceCommands {
      * Generate source ID from name
      */
     private generateSourceId(name: string): string {
-        return name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        return generateSanitizedId(name);
     }
 
     /**

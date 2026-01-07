@@ -1,0 +1,45 @@
+{
+  "name": "{{packageName}}",
+  "version": "1.0.0",
+  "description": "Prompt collection for GitHub Copilot",
+  "scripts": {
+    "test": "node --test",
+    "validate": "node scripts/validate-collections.js",
+    "validate:verbose": "node scripts/validate-collections.js --verbose",
+    "generate-manifest": "node scripts/generate-manifest.js",
+    "list-collections": "node scripts/list-collections.js",
+    "resolve-collection-files": "node scripts/resolve-collection-files.js",
+    "detect-affected-collections": "node scripts/detect-affected-collections.js",
+    "compute-collection-version": "node scripts/compute-collection-version.js",
+    "build-collection-bundle": "node scripts/build-collection-bundle.js",
+    "publish-collections": "node scripts/publish-collections.js",
+    "publish-collections:dry-run": "node scripts/publish-collections.js --dry-run",
+    "install-hooks": "git config core.hooksPath .githooks"
+  },
+  "keywords": [
+    "copilot",
+    "prompts",
+    "ai",
+    "github-copilot",
+    "prompt-bundle"
+  ],
+  "author": "",
+  "license": "MIT",
+  "files": [
+    "agents",
+    "collections",
+    "instructions",
+    "prompts",
+    "deployment-manifest.yml",
+    "*.zip"
+  ],
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "js-yaml": "^4.1.0",
+    "semver": "^7.6.3",
+    "yauzl": "^3.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

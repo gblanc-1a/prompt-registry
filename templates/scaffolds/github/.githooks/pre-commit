@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Validate only affected collections based on staged file paths.
+CHANGED=$(git diff --cached --name-only | tr '\\' '/' | sed '/^$/d')
+
+if [ -z "$CHANGED" ]; then
+  exit 0
+fi
+
+ARGS=()
+while IFS= read -r p; do
+  ARGS+=("--changed-path" "$p")
+done <<< "$CHANGED"
+
+AFFECTED_JSON=$(node scripts/detect-affected-collections.js "${ARGS[@]}")
+
+# Extract collection files using dedicated script (avoids inline JS in bash)
+FILES=$(printf '%s' "$AFFECTED_JSON" | node scripts/extract-affected-files.js | sed '/^$/d')
+
+if [ -z "$FILES" ]; then
+  exit 0
+fi
+
+HAS_ERRORS=0
+while IFS= read -r f; do
+  echo "Validating $f"
+  if ! node scripts/validate-collections.js --collection-file "$f"; then
+    HAS_ERRORS=1
+  fi
+  echo
+
+done <<< "$FILES"
+
+exit $HAS_ERRORS

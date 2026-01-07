@@ -1,8 +1,8 @@
-import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import { Logger } from '../utils/logger';
 import { replaceVariables } from '../utils/regexUtils';
+import { toKebabCase } from '../utils/bundleNameUtils';
 
 export interface TemplateContext {
     projectName: string;
@@ -29,10 +29,29 @@ export interface TemplateManifest {
  * Service for loading and rendering scaffold templates
  */
 export class TemplateEngine {
+    private static instances = new Map<string, TemplateEngine>();
     private readonly logger = Logger.getInstance();
     private manifestCache?: TemplateManifest;
 
-    constructor(private readonly templateRoot: string) {}
+    private constructor(private readonly templateRoot: string) {}
+    
+    static getInstance(templateRoot: string): TemplateEngine {
+        const key = path.resolve(templateRoot);
+        let instance = TemplateEngine.instances.get(key);
+        if (!instance) {
+            instance = new TemplateEngine(key);
+            TemplateEngine.instances.set(key, instance);
+        }
+        return instance;
+    }
+    
+    /**
+     * Reset singleton instances (for testing only)
+     * @internal
+     */
+    static resetInstance(): void {
+        TemplateEngine.instances.clear();
+    }
 
     /**
      * Load template manifest
@@ -42,12 +61,15 @@ export class TemplateEngine {
             return this.manifestCache;
         }
 
-        const manifestPath = path.join(this.templateRoot, 'manifest.json');
-        if (!fs.existsSync(manifestPath)) {
-            throw new Error(`Template manifest not found at: ${manifestPath}`);
+        const manifestUri = vscode.Uri.file(path.join(this.templateRoot, 'manifest.json'));
+        try {
+            await vscode.workspace.fs.stat(manifestUri);
+        } catch {
+            throw new Error(`Template manifest not found at: ${manifestUri.fsPath}`);
         }
 
-        const content = fs.readFileSync(manifestPath, 'utf8');
+        const contentBytes = await vscode.workspace.fs.readFile(manifestUri);
+        const content = Buffer.from(contentBytes).toString('utf8');
         this.manifestCache = JSON.parse(content);
         
         this.logger.debug(`Loaded template manifest v${this.manifestCache!.version}`);
@@ -65,12 +87,15 @@ export class TemplateEngine {
             throw new Error(`Template '${name}' not found`);
         }
 
-        const templatePath = path.join(this.templateRoot, template.path);
-        if (!fs.existsSync(templatePath)) {
-            throw new Error(`Template file not found: ${templatePath}`);
+        const templateUri = vscode.Uri.file(path.join(this.templateRoot, template.path));
+        try {
+            await vscode.workspace.fs.stat(templateUri);
+        } catch {
+            throw new Error(`Template file not found: ${templateUri.fsPath}`);
         }
 
-        let content = fs.readFileSync(templatePath, 'utf8');
+        const contentBytes = await vscode.workspace.fs.readFile(templateUri);
+        let content = Buffer.from(contentBytes).toString('utf8');
         
         // Enhance context with computed values
         const enhancedContext = this.enhanceContext(context);
@@ -149,10 +174,15 @@ export class TemplateEngine {
         else if (templatePath === 'package.template.json') {
             relativePath = 'package.json';
         }
-        // Generic template extension stripping
+        // Handle .gitignore.template -> .gitignore
+        else if (templatePath === '.gitignore.template') {
+            relativePath = '.gitignore';
+        }
+        // Generic template extension stripping (e.g., file.template -> file)
         else if (templatePath.endsWith('.template')) {
             relativePath = templatePath.slice(0, -9);
         }
+        // Handle .template. in the middle (e.g., file.template.yml -> file.yml)
         else if (templatePath.includes('.template.')) {
             relativePath = templatePath.replace('.template.', '.');
         }
@@ -161,6 +191,12 @@ export class TemplateEngine {
         if (relativePath.startsWith('workflows/')) {
             const filename = path.basename(relativePath);
             return path.join('.github', 'workflows', filename);
+        }
+        
+        // Handle actions -> .github/actions
+        if (relativePath.startsWith('actions/')) {
+            // Preserve the full path under actions (e.g., actions/publish-common/action.yml)
+            return path.join('.github', relativePath);
         }
         
         // Handle validation script -> scripts/ (Legacy support for Awesome Copilot)
@@ -180,7 +216,7 @@ export class TemplateEngine {
         
         // Compute packageName from projectName (kebab-case)
         if (context.projectName) {
-            enhanced.packageName = context.projectName.toLowerCase().replace(/\s+/g, '-');
+            enhanced.packageName = toKebabCase(context.projectName);
             // Also map to 'name' if not present
             if (!enhanced.name) {
                 enhanced.name = enhanced.packageName;

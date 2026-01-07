@@ -1,15 +1,108 @@
 /**
  * Bundle Name Utilities
- * Shared utilities for resolving bundle display names
+ * Shared utilities for resolving bundle display names, generating bundle IDs,
+ * and string sanitization for identifiers.
  */
 
 import { Logger } from './logger';
+
+/**
+ * Convert a string to kebab-case (lowercase with hyphens)
+ * Replaces spaces and special characters with hyphens
+ * 
+ * @param input - String to convert
+ * @returns Kebab-case string
+ */
+export function toKebabCase(input: string): string {
+    return input.toLowerCase().replace(/\s+/g, '-');
+}
+
+/**
+ * Generate a sanitized identifier from a name
+ * Removes all non-alphanumeric characters except hyphens
+ * 
+ * @param name - Name to sanitize
+ * @returns Sanitized identifier suitable for IDs
+ */
+export function generateSanitizedId(name: string): string {
+    return name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+}
+
+/**
+ * Format byte size to human readable string
+ * 
+ * @param bytes - Size in bytes
+ * @returns Formatted string (e.g., "1.5 MB")
+ */
+export function formatByteSize(bytes: number): string {
+    if (bytes < 1024) {
+        return `${bytes} B`;
+    }
+    if (bytes < 1024 * 1024) {
+        return `${(bytes / 1024).toFixed(1)} KB`;
+    }
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 /**
  * Interface for bundle details resolution
  */
 export interface BundleDetailsResolver {
     getBundleDetails(bundleId: string): Promise<{ name: string }>;
+}
+
+/**
+ * Generate a canonical bundle ID for GitHub repositories
+ * This ensures consistent ID generation across runtime and build scripts
+ * 
+ * @param owner - Repository owner
+ * @param repo - Repository name  
+ * @param tagName - Git tag name (e.g., 'v1.0.0')
+ * @param manifestId - Optional manifest ID for multi-collection repos
+ * @param manifestVersion - Optional manifest version
+ * @returns Canonical bundle ID
+ */
+export function generateGitHubBundleId(
+    owner: string,
+    repo: string,
+    tagName: string,
+    manifestId?: string,
+    manifestVersion?: string
+): string {
+    // Clean version by removing 'v' prefix if present
+    const cleanVersion = manifestVersion || tagName.replace(/^v/, '');
+    
+    if (manifestId) {
+        // Multi-collection format: owner-repo-manifestId-version
+        return `${owner}-${repo}-${manifestId}-${cleanVersion}`;
+    } else {
+        // Legacy format: owner-repo-tagName
+        return `${owner}-${repo}-${tagName}`;
+    }
+}
+
+/**
+ * Generate bundle ID for build scripts (maintains backward compatibility)
+ * 
+ * IMPORTANT: This logic MUST stay in sync with the scaffold template implementation in:
+ * templates/scaffolds/github/scripts/lib/bundle-id.js
+ * 
+ * The bundle ID format is: {owner}-{repo}-{collectionId}-v{version}
+ * Any changes here should be mirrored in bundle-id.js and vice versa.
+ * 
+ * @param repoSlug - Repository slug in format 'owner/repo' or 'owner-repo'
+ * @param collectionId - Collection identifier
+ * @param version - Version string
+ * @returns Bundle ID for build scripts
+ */
+export function generateBuildScriptBundleId(
+    repoSlug: string,
+    collectionId: string,
+    version: string
+): string {
+    // Normalize repo slug to use hyphens
+    const normalizedSlug = repoSlug.replace('/', '-');
+    return `${normalizedSlug}-${collectionId}-v${version}`;
 }
 
 /**

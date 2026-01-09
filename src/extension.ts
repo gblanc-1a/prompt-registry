@@ -14,6 +14,7 @@ import { HubStorage } from './storage/HubStorage';
 import { SchemaValidator } from './services/SchemaValidator';
 import { SettingsCommands } from './commands/SettingsCommands';
 import { ScaffoldCommand, ScaffoldType } from './commands/ScaffoldCommand';
+import { SkillWizard } from './commands/SkillWizard';
 import { AddResourceCommand } from './commands/AddResourceCommand';
 import { ValidateCollectionsCommand } from './commands/ValidateCollectionsCommand';
 import { ValidateApmCommand } from './commands/ValidateApmCommand';
@@ -228,7 +229,7 @@ export class PromptRegistryExtension {
         this.hubIntegrationCommands = new HubIntegrationCommands(this.hubManager, this.context);
         this.hubProfileCommands = new HubProfileCommands(this.context);
         // Note: scaffoldCommand is registered inline in command handler
-        const addResourceCommand = new AddResourceCommand();
+        const addResourceCommand = new AddResourceCommand(this.context.extensionPath);
         const githubAuthCommand = new GitHubAuthCommand(this.registryManager);
         this.validateCollectionsCommand = new ValidateCollectionsCommand(this.context);
         this.validateApmCommand = new ValidateApmCommand(this.context);
@@ -313,6 +314,11 @@ export class PromptRegistryExtension {
                             label: 'APM Package',
                             description: 'Distributable prompt package (apm.yml)',
                             value: ScaffoldType.Apm
+                        },
+                        {
+                            label: 'Agent Skill',
+                            description: 'Create a new Agent Skill with SKILL.md',
+                            value: ScaffoldType.Skill
                         }
                     ],
                     {
@@ -324,6 +330,22 @@ export class PromptRegistryExtension {
 
                 if (!scaffoldTypeChoice) {
                     return;
+                }
+
+                // Special handling for Agent Skill within existing awesome-copilot project
+                if (scaffoldTypeChoice.value === ScaffoldType.Skill) {
+                    const workspaceFolders = vscode.workspace.workspaceFolders;
+                    if (workspaceFolders && workspaceFolders.length > 0) {
+                        const workspaceRoot = workspaceFolders[0].uri.fsPath;
+                        const skillWizard = new SkillWizard();
+                        
+                        if (skillWizard.isAwesomeCopilotProject(workspaceRoot)) {
+                            // Use the wizard for creating skills within the existing project
+                            await skillWizard.execute(workspaceRoot);
+                            return;
+                        }
+                    }
+                    // Fall through to standard scaffold flow if not in an awesome-copilot project
                 }
 
                 const targetPath = await vscode.window.showOpenDialog({
@@ -415,6 +437,22 @@ export class PromptRegistryExtension {
                         }
                     }
 
+                    // Collect additional info for Skill projects
+                    if (scaffoldTypeChoice.value === ScaffoldType.Skill) {
+                        description = await vscode.window.showInputBox({
+                            prompt: 'Enter skill description',
+                            placeHolder: 'A short description of what this skill does',
+                            ignoreFocusOut: true
+                        });
+
+                        author = await vscode.window.showInputBox({
+                            prompt: 'Enter author name',
+                            placeHolder: 'Your Name <email@example.com>',
+                            value: process.env.USER || 'user',
+                            ignoreFocusOut: true
+                        });
+                    }
+
                     try {
                         await vscode.window.withProgress(
                             {
@@ -423,7 +461,7 @@ export class PromptRegistryExtension {
                                 cancellable: false
                             },
                             async () => {
-                                const cmd = new ScaffoldCommand(undefined, scaffoldTypeChoice.value);
+                                const cmd = new ScaffoldCommand(this.context.extensionPath, scaffoldTypeChoice.value);
                                 await cmd.execute(targetPath[0], {
                                     projectName,
                                     githubRunner,

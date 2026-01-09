@@ -55,7 +55,7 @@ interface CollectionManifest {
 
 interface CollectionItem {
     path: string;
-    kind: 'prompt' | 'instruction' | 'chat-mode' | 'agent';
+    kind: 'prompt' | 'instruction' | 'chat-mode' | 'agent' | 'skill';
 }
 
 /**
@@ -415,9 +415,18 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
                     for (const item of collection.items) {
                         const itemUrl = this.buildRawUrl(item.path);
                         const content = await this.fetchUrl(itemUrl);
-                        const filename = item.path.split('/').pop() || 'unknown';
-                        archive.append(content, { name: `prompts/${filename}` });
-                        this.logger.debug(`Added ${filename} (${content.length} bytes)`);
+                        
+                        // For skills, preserve directory structure
+                        if (item.kind === 'skill') {
+                            // item.path is like skills/my-skill/SKILL.md
+                            archive.append(content, { name: item.path });
+                            this.logger.debug(`Added ${item.path} (${content.length} bytes)`);
+                        } else {
+                            // For other types, put in prompts/ folder
+                            const filename = item.path.split('/').pop() || 'unknown';
+                            archive.append(content, { name: `prompts/${filename}` });
+                            this.logger.debug(`Added ${filename} (${content.length} bytes)`);
+                        }
                     }
 
                     // Finalize the archive (this triggers 'finish' event when complete)
@@ -437,7 +446,26 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
      */
     private createDeploymentManifest(collection: CollectionManifest): any {
         const prompts = collection.items.map(item => {
-            const filename = item.path.split('/').pop() || 'unknown';
+            const itemKind = item.kind;
+            const itemPath = item.path;
+            
+            // For skills, preserve the full path (skills/skill-name/SKILL.md)
+            if (itemKind === 'skill') {
+                // Extract skill name from path like skills/my-skill/SKILL.md
+                const skillMatch = itemPath.match(/skills\/([^/]+)\/SKILL\.md/);
+                const skillName = skillMatch ? skillMatch[1] : 'unknown-skill';
+                return {
+                    id: skillName,
+                    name: this.titleCase(skillName.replace(/-/g, ' ')),
+                    description: `Skill from ${collection.name}`,
+                    file: itemPath,  // Preserve full path for skills
+                    type: 'skill' as const,
+                    tags: collection.tags || []
+                };
+            }
+            
+            // For other types, use prompts/ folder
+            const filename = itemPath.split('/').pop() || 'unknown';
             const id = filename.replace(/\.(prompt|instructions|chatmode|agent)\.md$/, '');
 
             return {
@@ -445,7 +473,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
                 name: this.titleCase(id.replace(/-/g, ' ')),
                 description: `From ${collection.name}`,
                 file: `prompts/${filename}`,
-                type: this.mapKindToType(item.kind),
+                type: this.mapKindToType(itemKind),
                 tags: collection.tags || []
             };
         });
@@ -470,12 +498,13 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
     /**
      * Map collection kind to Prompt Registry type
      */
-    private mapKindToType(kind: string): 'prompt' | 'instructions' | 'chatmode' | 'agent' {
-        const kindMap: Record<string, 'prompt' | 'instructions' | 'chatmode' | 'agent'> = {
+    private mapKindToType(kind: string): 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill' {
+        const kindMap: Record<string, 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill'> = {
             'prompt': 'prompt',
             'instruction': 'instructions',
             'chat-mode': 'chatmode',
-            'agent': 'agent'
+            'agent': 'agent',
+            'skill': 'skill'
         };
         return kindMap[kind] || 'prompt';
     }
@@ -488,7 +517,8 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
             prompts: 0,
             instructions: 0,
             chatmodes: 0,
-            agents: 0
+            agents: 0,
+            skills: 0
         };
 
         for (const item of items) {
@@ -504,6 +534,9 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
                     break;
                 case 'agent':
                     breakdown.agents++;
+                    break;
+                case 'skill':
+                    breakdown.skills++;
                     break;
             }
         }

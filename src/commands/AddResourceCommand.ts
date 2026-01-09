@@ -7,8 +7,8 @@ import { TemplateEngine } from '../services/TemplateEngine';
 export enum ResourceType {
     Prompt = 'prompt',
     Instruction = 'instruction',
-    ChatMode = 'chatmode',
-    Agent = 'agent'
+    Agent = 'agent',
+    Skill = 'skill'
 }
 
 interface ResourceTypeInfo {
@@ -24,8 +24,19 @@ export class AddResourceCommand {
     private templateEngine: TemplateEngine;
     private readonly resourceTypes: Map<ResourceType, ResourceTypeInfo>;
 
-    constructor(templateRoot?: string) {
-        const templatesPath = templateRoot || path.join(__dirname, '../templates/resources');
+    constructor(extensionPathOrTemplateRoot?: string) {
+        // If path includes 'templates/resources', use it directly (for tests)
+        // Otherwise treat as extensionPath and append templates/resources path
+        let templatesPath: string;
+        if (extensionPathOrTemplateRoot) {
+            if (extensionPathOrTemplateRoot.includes('templates/resources') || extensionPathOrTemplateRoot.includes('templates\\resources')) {
+                templatesPath = extensionPathOrTemplateRoot;
+            } else {
+                templatesPath = path.join(extensionPathOrTemplateRoot, 'templates/resources');
+            }
+        } else {
+            templatesPath = path.join(__dirname, '../templates/resources');
+        }
         this.templateEngine = new TemplateEngine(templatesPath);
         
         this.resourceTypes = new Map([
@@ -45,14 +56,7 @@ export class AddResourceCommand {
                 extension: '.instructions.md',
                 template: 'instruction.template.md'
             }],
-            [ResourceType.ChatMode, {
-                label: '$(comment-discussion) Chat Mode',
-                description: 'Conversation behavior configuration',
-                icon: '$(comment-discussion)',
-                folder: 'chatmodes',
-                extension: '.chatmode.md',
-                template: 'chatmode.template.md'
-            }],
+            
             [ResourceType.Agent, {
                 label: '$(robot) Agent',
                 description: 'Autonomous AI agent configuration',
@@ -60,6 +64,14 @@ export class AddResourceCommand {
                 folder: 'agents',
                 extension: '.agent.md',
                 template: 'agent.template.md'
+            }],
+            [ResourceType.Skill, {
+                label: '$(lightbulb) Skill',
+                description: 'Agent skill with domain expertise',
+                icon: '$(lightbulb)',
+                folder: 'skills',
+                extension: '.skill.md',
+                template: 'skill.template.md'
             }]
         ]);
     }

@@ -29,6 +29,8 @@ const stat = promisify(fs.stat);
 const lstat = promisify(fs.lstat);
 const unlink = promisify(fs.unlink);
 const rmdir = promisify(fs.rmdir);
+const symlink = promisify(fs.symlink);
+const readlink = promisify(fs.readlink);
 
 /**
  * Bundle Installer
@@ -141,21 +143,55 @@ export class BundleInstaller {
             const manifest = await this.validateBundle(extractDir, bundle);
             this.logger.debug('Bundle validation passed');
 
-            // Step 5: Get installation directory
-            const installDir = this.getInstallDirectory(bundle.id, options.scope, sourceType, sourceName, bundle.name);
-            await this.ensureDirectory(installDir);
-            this.logger.debug(`Installation directory: ${installDir}`);
-
-            // Step 6: Copy files to installation directory
-            // For OLAF bundles, copy all skill folders directly (skip deployment-manifest.yml)
-            const isOlafBundle = sourceType === 'olaf' || sourceType === 'local-olaf' || bundle.id.startsWith('olaf-');
-            if (isOlafBundle) {
-                // Copy all directories (skill folders) from the extracted bundle
-                // Skip deployment-manifest.yml as it's only needed for validation
-                this.logger.debug(`[BundleInstaller] OLAF bundle detected, copying skill folders to: ${installDir}`);
-                await this.copyOlafSkillFolders(extractDir, installDir);
+            // Check if this is a skills bundle (installs directly to ~/.copilot/skills/)
+            const isSkillsBundle = sourceType === 'skills' || sourceType === 'local-skills';
+            
+            let installDir: string;
+            
+            if (isSkillsBundle) {
+                // Skills bundles install directly to ~/.copilot/skills/{skill-name}
+                // Extract skill name from the bundle - look in skills/ directory
+                const skillName = await this.extractSkillNameFromBundle(extractDir);
+                installDir = this.copilotSync.getCopilotSkillsDirectory('user');
+                await this.ensureDirectory(installDir);
+                installDir = path.join(installDir, skillName);
+                
+                this.logger.debug(`[BundleInstaller] Skills bundle detected, installing to: ${installDir}`);
+                
+                // Copy skill files directly to ~/.copilot/skills/{skill-name}
+                const skillSourceDir = path.join(extractDir, 'skills', skillName);
+                if (fs.existsSync(skillSourceDir)) {
+                    // Check for existing skill and warn user
+                    if (fs.existsSync(installDir)) {
+                        const existingIsSymlink = await this.isSymlink(installDir);
+                        const shouldOverwrite = await this.promptOverwriteSkill(skillName, installDir, existingIsSymlink);
+                        if (!shouldOverwrite) {
+                            await this.cleanupTempDir(tempDir);
+                            throw new Error(`Installation cancelled: skill '${skillName}' already exists`);
+                        }
+                        await this.removeDirectory(installDir);
+                    }
+                    await this.copyDirectory(skillSourceDir, installDir);
+                } else {
+                    throw new Error(`Skill directory not found in bundle: skills/${skillName}`);
+                }
             } else {
-                await this.copyBundleFiles(extractDir, installDir);
+                // Step 5: Get installation directory (standard bundles)
+                installDir = this.getInstallDirectory(bundle.id, options.scope, sourceType, sourceName, bundle.name);
+                await this.ensureDirectory(installDir);
+                this.logger.debug(`Installation directory: ${installDir}`);
+
+                // Step 6: Copy files to installation directory
+                // For OLAF bundles, copy all skill folders directly (skip deployment-manifest.yml)
+                const isOlafBundle = sourceType === 'olaf' || sourceType === 'local-olaf' || bundle.id.startsWith('olaf-');
+                if (isOlafBundle) {
+                    // Copy all directories (skill folders) from the extracted bundle
+                    // Skip deployment-manifest.yml as it's only needed for validation
+                    this.logger.debug(`[BundleInstaller] OLAF bundle detected, copying skill folders to: ${installDir}`);
+                    await this.copyOlafSkillFolders(extractDir, installDir);
+                } else {
+                    await this.copyBundleFiles(extractDir, installDir);
+                }
             }
             this.logger.debug('Files copied to installation directory');
 
@@ -176,13 +212,17 @@ export class BundleInstaller {
                 sourceType: undefined,  // Will be set by RegistryManager
             };
 
-            // Step 9: Install MCP servers if defined
-            await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope);
-            this.logger.debug('MCP servers installation completed');
-            
-            // Step 10: Sync to GitHub Copilot native directory
-            await this.copilotSync.syncBundle(bundle.id, installDir);
-            this.logger.debug('Synced to GitHub Copilot');
+            // Step 9: Install MCP servers if defined (skip for skills bundles)
+            if (!isSkillsBundle) {
+                await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope);
+                this.logger.debug('MCP servers installation completed');
+                
+                // Step 10: Sync to GitHub Copilot native directory (skip for skills - already installed there)
+                await this.copilotSync.syncBundle(bundle.id, installDir);
+                this.logger.debug('Synced to GitHub Copilot');
+            } else {
+                this.logger.debug('Skills bundle - skipping MCP servers and Copilot sync (already installed to ~/.copilot/skills/)');
+            }
 
             this.logger.info(`Bundle installed successfully from buffer: ${bundle.name}`);
             return installed;
@@ -476,6 +516,49 @@ export class BundleInstaller {
     }
 
     /**
+     * Extract skill name from a skills bundle
+     * Looks for the first directory under skills/ in the extracted bundle
+     */
+    private async extractSkillNameFromBundle(extractDir: string): Promise<string> {
+        const skillsDir = path.join(extractDir, 'skills');
+        
+        if (!fs.existsSync(skillsDir)) {
+            throw new Error('Skills directory not found in bundle');
+        }
+        
+        const entries = await readdir(skillsDir, { withFileTypes: true });
+        const skillDirs = entries.filter(e => e.isDirectory());
+        
+        if (skillDirs.length === 0) {
+            throw new Error('No skill directories found in bundle');
+        }
+        
+        // Return the first skill directory name
+        return skillDirs[0].name;
+    }
+
+    /**
+     * Copy directory recursively
+     */
+    private async copyDirectory(sourceDir: string, targetDir: string): Promise<void> {
+        await this.ensureDirectory(targetDir);
+        
+        const entries = await readdir(sourceDir, { withFileTypes: true });
+        
+        for (const entry of entries) {
+            const sourcePath = path.join(sourceDir, entry.name);
+            const targetPath = path.join(targetDir, entry.name);
+            
+            if (entry.isDirectory()) {
+                await this.copyDirectory(sourcePath, targetPath);
+            } else if (entry.isFile()) {
+                const content = await readFile(sourcePath);
+                await writeFile(targetPath, content);
+            }
+        }
+    }
+
+    /**
      * Clean up temporary directory
      */
     private async cleanupTempDir(tempDir: string): Promise<void> {
@@ -552,6 +635,169 @@ export class BundleInstaller {
         } catch (error) {
             this.logger.error(`Failed to uninstall MCP servers for bundle ${bundleId}`, error as Error);
             // Don't fail the entire bundle uninstallation if MCP uninstallation fails
+        }
+    }
+
+    /**
+     * Check if a path is a symbolic link
+     */
+    private async isSymlink(targetPath: string): Promise<boolean> {
+        try {
+            const stats = await lstat(targetPath);
+            return stats.isSymbolicLink();
+        } catch {
+            return false;
+        }
+    }
+
+    /**
+     * Prompt user to confirm overwriting an existing skill
+     * @param skillName Name of the skill
+     * @param existingPath Path to the existing skill
+     * @param isSymlink Whether the existing skill is a symlink
+     * @returns True if user confirms overwrite, false otherwise
+     */
+    private async promptOverwriteSkill(skillName: string, existingPath: string, isSymlink: boolean): Promise<boolean> {
+        const symlinkInfo = isSymlink ? ' (symlink)' : '';
+        const message = `A skill named '${skillName}' already exists${symlinkInfo}. Do you want to overwrite it?`;
+        
+        const result = await vscode.window.showWarningMessage(
+            message,
+            { modal: true },
+            'Overwrite',
+            'Cancel'
+        );
+        
+        return result === 'Overwrite';
+    }
+
+    /**
+     * Install a local skill using a symlink instead of copying
+     * This is used for local-skills sources to maintain a live link to the source directory
+     * @param skillName Name of the skill
+     * @param sourcePath Path to the source skill directory
+     * @param options Installation options
+     * @returns The installed bundle record
+     */
+    async installLocalSkillAsSymlink(
+        bundle: Bundle,
+        skillName: string,
+        sourcePath: string,
+        options: InstallOptions
+    ): Promise<InstalledBundle> {
+        this.logger.info(`Installing local skill as symlink: ${skillName}`);
+
+        try {
+            // Get the skills directory
+            const skillsDir = this.copilotSync.getCopilotSkillsDirectory('user');
+            await this.ensureDirectory(skillsDir);
+            
+            const installDir = path.join(skillsDir, skillName);
+            
+            // Check for existing skill and warn user
+            if (fs.existsSync(installDir)) {
+                const existingIsSymlink = await this.isSymlink(installDir);
+                const shouldOverwrite = await this.promptOverwriteSkill(skillName, installDir, existingIsSymlink);
+                if (!shouldOverwrite) {
+                    throw new Error(`Installation cancelled: skill '${skillName}' already exists`);
+                }
+                
+                // Remove existing (symlink or directory)
+                if (existingIsSymlink) {
+                    await unlink(installDir);
+                    this.logger.debug(`Removed existing symlink: ${installDir}`);
+                } else {
+                    await this.removeDirectory(installDir);
+                    this.logger.debug(`Removed existing directory: ${installDir}`);
+                }
+            }
+            
+            // Create symlink to the source directory
+            try {
+                await symlink(sourcePath, installDir, 'dir');
+                this.logger.info(`Created symlink: ${installDir} -> ${sourcePath}`);
+            } catch (symlinkError) {
+                // Symlink failed (maybe Windows or permissions), fall back to copy
+                this.logger.warn(`Symlink creation failed, falling back to copy: ${symlinkError}`);
+                await this.copyDirectory(sourcePath, installDir);
+                this.logger.info(`Copied directory: ${sourcePath} -> ${installDir}`);
+            }
+            
+            // Create a minimal manifest for the installation record
+            const manifest: DeploymentManifest = {
+                common: {
+                    directories: [`skills/${skillName}`],
+                    files: [],
+                    include_patterns: ['**/*'],
+                    exclude_patterns: []
+                },
+                bundle_settings: {
+                    include_common_in_environment_bundles: true,
+                    create_common_bundle: true,
+                    compression: 'none' as any,
+                    naming: {
+                        environment_bundle: bundle.id
+                    }
+                },
+                metadata: {
+                    manifest_version: '1.0',
+                    description: bundle.description || bundle.name || bundle.id,
+                    author: 'local-skills',
+                    last_updated: new Date().toISOString()
+                }
+            };
+            
+            // Create installation record
+            const installed: InstalledBundle = {
+                bundleId: bundle.id,
+                version: bundle.version,
+                installedAt: new Date().toISOString(),
+                scope: options.scope,
+                profileId: options.profileId,
+                installPath: installDir,
+                manifest: manifest,
+                sourceId: bundle.sourceId,
+                sourceType: 'local-skills',
+            };
+            
+            this.logger.info(`Local skill installed successfully as symlink: ${skillName}`);
+            return installed;
+            
+        } catch (error) {
+            this.logger.error(`Failed to install local skill as symlink: ${skillName}`, error as Error);
+            throw error;
+        }
+    }
+
+    /**
+     * Uninstall a skill that was installed as a symlink
+     * Only removes the symlink, not the original source directory
+     * @param installed The installed bundle record
+     */
+    async uninstallSkillSymlink(installed: InstalledBundle): Promise<void> {
+        this.logger.info(`Uninstalling skill symlink: ${installed.bundleId}`);
+
+        try {
+            if (!installed.installPath || !fs.existsSync(installed.installPath)) {
+                this.logger.debug(`Skill path does not exist: ${installed.installPath}`);
+                return;
+            }
+
+            const isLink = await this.isSymlink(installed.installPath);
+            
+            if (isLink) {
+                // Remove only the symlink, not the target
+                await unlink(installed.installPath);
+                this.logger.info(`Removed symlink: ${installed.installPath}`);
+            } else {
+                // It's a regular directory (fallback from failed symlink), remove it
+                await this.removeDirectory(installed.installPath);
+                this.logger.info(`Removed directory: ${installed.installPath}`);
+            }
+            
+        } catch (error) {
+            this.logger.error(`Failed to uninstall skill symlink: ${installed.bundleId}`, error as Error);
+            throw error;
         }
     }
 }

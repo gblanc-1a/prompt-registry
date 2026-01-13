@@ -6,7 +6,7 @@ import { McpServersManifest } from './mcp';
 /**
  * Registry source types
  */
-export type SourceType = 'github' | 'gitlab' | 'http' | 'local' | 'awesome-copilot' | 'local-awesome-copilot' | 'apm' | 'local-apm' | 'olaf' | 'local-olaf';
+export type SourceType = 'github' | 'gitlab' | 'http' | 'local' | 'awesome-copilot' | 'local-awesome-copilot' | 'apm' | 'local-apm' | 'olaf' | 'local-olaf' | 'skills' | 'local-skills';
 
 /**
  * Installation scope

@@ -17,6 +17,8 @@ import { LocalApmAdapter } from '../adapters/LocalApmAdapter';
 import { ApmAdapter } from '../adapters/ApmAdapter';
 import { OlafAdapter } from '../adapters/OlafAdapter';
 import { LocalOlafAdapter } from '../adapters/LocalOlafAdapter';
+import { SkillsAdapter } from '../adapters/SkillsAdapter';
+import { LocalSkillsAdapter } from '../adapters/LocalSkillsAdapter';
 import { VersionConsolidator } from './VersionConsolidator';
 import { VersionManager } from '../utils/versionManager';
 import { BundleIdentityMatcher } from '../utils/bundleIdentityMatcher';
@@ -119,6 +121,8 @@ export class RegistryManager {
         RepositoryAdapterFactory.register('apm', ApmAdapter);
         RepositoryAdapterFactory.register('olaf', OlafAdapter);
         RepositoryAdapterFactory.register('local-olaf', LocalOlafAdapter);
+        RepositoryAdapterFactory.register('skills', SkillsAdapter);
+        RepositoryAdapterFactory.register('local-skills', LocalSkillsAdapter);
     }
 
 	/**
@@ -975,6 +979,37 @@ export class RegistryManager {
     ): Promise<InstalledBundle> {
         const adapter = this.getAdapter(source);
         
+        // For local-skills, use symlink installation instead of copying
+        if (source.type === 'local-skills') {
+            this.logger.debug(`Installing local skill as symlink from ${source.type} adapter`);
+            const localSkillsAdapter = adapter as any;
+            
+            if (typeof localSkillsAdapter.getSkillSourcePath === 'function' && 
+                typeof localSkillsAdapter.getSkillName === 'function') {
+                const skillSourcePath = localSkillsAdapter.getSkillSourcePath(bundle);
+                const skillName = localSkillsAdapter.getSkillName(bundle);
+                
+                const installation = await this.installer.installLocalSkillAsSymlink(
+                    bundle,
+                    skillName,
+                    skillSourcePath,
+                    options
+                );
+                
+                // Ensure sourceId and sourceType are set
+                installation.sourceId = bundle.sourceId;
+                installation.sourceType = source.type;
+                
+                if (options.profileId) {
+                    installation.profileId = options.profileId;
+                }
+                
+                return installation;
+            }
+            // Fall through to standard installation if methods not available
+            this.logger.warn(`LocalSkillsAdapter missing symlink methods, falling back to standard installation`);
+        }
+        
         // Unified download path: all adapters use downloadBundle()
         this.logger.debug(`Downloading bundle from ${source.type} adapter`);
         const bundleBuffer = await adapter.downloadBundle(bundle);
@@ -1034,8 +1069,14 @@ export class RegistryManager {
             source = sources.find(s => s.id === installed.sourceId);
         }
         
-        // Uninstall using BundleInstaller
-        await this.installer.uninstall(installed);
+        // For local-skills, use symlink uninstallation (removes symlink, not source directory)
+        if (installed.sourceType === 'local-skills' || source?.type === 'local-skills') {
+            this.logger.debug(`Uninstalling local skill symlink: ${bundleId}`);
+            await this.installer.uninstallSkillSymlink(installed);
+        } else {
+            // Uninstall using BundleInstaller
+            await this.installer.uninstall(installed);
+        }
 
         // Call adapter post-uninstallation hook if available (for OLAF skills)
         if ((source?.type === 'olaf' || source?.type === 'local-olaf') && installed.installPath) {

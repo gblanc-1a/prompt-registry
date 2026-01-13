@@ -35,6 +35,7 @@ import {
     SourceType,
     SourceSyncedEvent,
     AutoUpdatePreferenceChangedEvent,
+    InstallationScope,
 } from '../types/registry';
 import { ExportedSettings, ExportFormat, ImportStrategy } from '../types/settings';
 import { Logger } from '../utils/logger';
@@ -775,9 +776,14 @@ export class RegistryManager {
      * This handles downgrades and version changes by removing previous installation records
      *
      * @param bundle The newly installed bundle
-     * @param scope The installation scope (user or workspace)
+     * @param scope The installation scope (user, workspace, or repository)
      */
-    private async cleanupOldVersions(bundle: Bundle, scope: 'user' | 'workspace'): Promise<void> {
+    private async cleanupOldVersions(bundle: Bundle, scope: InstallationScope): Promise<void> {
+        // Repository scope cleanup will be implemented in Phase 5
+        if (scope === 'repository') {
+            this.logger.debug('Repository scope cleanup not yet implemented, skipping');
+            return;
+        }
         try {
             // Get source information to determine sourceType
             const source = await this.getSourceForBundle(bundle);
@@ -1017,7 +1023,11 @@ export class RegistryManager {
     /**
      * Uninstall a bundle
      */
-    async uninstallBundle(bundleId: string, scope: 'user' | 'workspace' = 'user', silent: boolean = false): Promise<void> {
+    async uninstallBundle(bundleId: string, scope: InstallationScope = 'user', silent: boolean = false): Promise<void> {
+        // Repository scope uninstall will be implemented in Phase 5
+        if (scope === 'repository') {
+            throw new Error('Repository scope uninstallation is not yet implemented. Use "user" or "workspace" scope.');
+        }
         this.logger.info(`Uninstalling bundle: ${bundleId}`);
         
         // Get installation record
@@ -1076,7 +1086,11 @@ export class RegistryManager {
     /**
      * Uninstall multiple bundles in parallel
      */
-    async uninstallBundles(bundleIds: string[], scope: 'user' | 'workspace' = 'user'): Promise<void> {
+    async uninstallBundles(bundleIds: string[], scope: InstallationScope = 'user'): Promise<void> {
+        // Repository scope uninstall will be implemented in Phase 5
+        if (scope === 'repository') {
+            throw new Error('Repository scope uninstallation is not yet implemented. Use "user" or "workspace" scope.');
+        }
         const uninstalled: string[] = [];
         const CONCURRENCY_LIMIT = CONCURRENCY_CONSTANTS.REGISTRY_BATCH_LIMIT;
 
@@ -1203,8 +1217,11 @@ export class RegistryManager {
     /**
      * List installed bundles
      */
-    async listInstalledBundles(scope?: 'user' | 'workspace'): Promise<InstalledBundle[]> {
-        return await this.storage.getInstalledBundles(scope);
+    async listInstalledBundles(scope?: InstallationScope): Promise<InstalledBundle[]> {
+        // Repository scope listing will be implemented in Phase 5
+        // For now, filter out 'repository' scope if passed
+        const effectiveScope = scope === 'repository' ? undefined : scope;
+        return await this.storage.getInstalledBundles(effectiveScope);
     }
 
     /**

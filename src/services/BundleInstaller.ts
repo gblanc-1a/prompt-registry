@@ -18,8 +18,8 @@ import * as yaml from 'js-yaml';
 import AdmZip = require('adm-zip');
 import { Logger } from '../utils/logger';
 import { isManifestIdMatch } from '../utils/bundleNameUtils';
-import { Bundle, InstallOptions, InstalledBundle, DeploymentManifest } from '../types/registry';
-import { CopilotSyncService } from './CopilotSyncService';
+import { Bundle, InstallOptions, InstalledBundle, DeploymentManifest, InstallationScope } from '../types/registry';
+import { UserScopeService } from './UserScopeService';
 import { McpServerManager } from './McpServerManager';
 const mkdir = promisify(fs.mkdir);
 const writeFile = promisify(fs.writeFile);
@@ -35,12 +35,12 @@ const rmdir = promisify(fs.rmdir);
  */
 export class BundleInstaller {
     private logger: Logger;
-    private copilotSync: CopilotSyncService;
+    private copilotSync: UserScopeService;
     private mcpManager: McpServerManager;
 
     constructor(private context: vscode.ExtensionContext) {
         this.logger = Logger.getInstance();
-        this.copilotSync = new CopilotSyncService(context);
+        this.copilotSync = new UserScopeService(context);
         this.mcpManager = new McpServerManager();
     }
 
@@ -354,7 +354,11 @@ export class BundleInstaller {
      * Get installation directory for bundle
      * OLAF bundles are installed in .olaf/external-skills/<source-name>/<skill-name> in the workspace
      */
-    private getInstallDirectory(bundleId: string, scope: 'user' | 'workspace', sourceType?: string, sourceName?: string, bundleName?: string): string {
+    private getInstallDirectory(bundleId: string, scope: InstallationScope, sourceType?: string, sourceName?: string, bundleName?: string): string {
+        // Repository scope will be implemented in Phase 5 (Task 13)
+        if (scope === 'repository') {
+            throw new Error('Repository scope installation is not yet implemented. Use "user" or "workspace" scope.');
+        }
         // Check if this is an OLAF bundle
         const isOlafBundle = sourceType === 'olaf' || sourceType === 'local-olaf' || bundleId.startsWith('olaf-');
         
@@ -495,8 +499,13 @@ export class BundleInstaller {
         bundleVersion: string,
         installPath: string,
         manifest: DeploymentManifest,
-        scope: 'user' | 'workspace'
+        scope: InstallationScope
     ): Promise<void> {
+        // Repository scope MCP server installation will be implemented in Phase 5
+        if (scope === 'repository') {
+            this.logger.debug(`Repository scope MCP server installation not yet implemented for bundle ${bundleId}`);
+            return;
+        }
         if (!manifest.mcpServers || Object.keys(manifest.mcpServers).length === 0) {
             this.logger.debug(`No MCP servers to install for bundle ${bundleId}`);
             return;
@@ -536,7 +545,12 @@ export class BundleInstaller {
     /**
      * Uninstall MCP servers for a bundle
      */
-    private async uninstallMcpServers(bundleId: string, scope: 'user' | 'workspace'): Promise<void> {
+    private async uninstallMcpServers(bundleId: string, scope: InstallationScope): Promise<void> {
+        // Repository scope MCP server uninstallation will be implemented in Phase 5
+        if (scope === 'repository') {
+            this.logger.debug(`Repository scope MCP server uninstallation not yet implemented for bundle ${bundleId}`);
+            return;
+        }
         this.logger.info(`Uninstalling MCP servers for bundle ${bundleId}`);
 
         try {

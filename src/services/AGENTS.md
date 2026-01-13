@@ -10,7 +10,7 @@ Services contain business logic, separated from UI and commands.
 |---------|----------------|
 | `RegistryManager` | Orchestrates sources, bundles, installations |
 | `BundleInstaller` | Extraction, validation, installation |
-| `CopilotSyncService` | Syncs to Copilot directories |
+| `UserScopeService` | Syncs to Copilot directories (user scope) |
 | `HubManager` | Hub configurations and profiles |
 | `McpServerManager` | MCP server lifecycle |
 | `UpdateChecker` | Detects bundle updates |

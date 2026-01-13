@@ -14,6 +14,7 @@ import {
     InstalledBundle,
     Bundle,
     RegistrySettings,
+    InstallationScope,
 } from '../types/registry';
 
 const readFile = promisify(fs.readFile);
@@ -397,7 +398,11 @@ export class RegistryStorage {
     /**
      * Remove installation record
      */
-    async removeInstallation(bundleId: string, scope: 'user' | 'workspace'): Promise<void> {
+    async removeInstallation(bundleId: string, scope: InstallationScope): Promise<void> {
+        // Repository scope will be implemented in Phase 5
+        if (scope === 'repository') {
+            return;
+        }
         const scopePath = scope === 'user' ? this.paths.userInstalled : this.paths.installed;
         const sanitizedId = this.sanitizeFilename(bundleId);
         const filepath = path.join(scopePath, `${sanitizedId}.json`);
@@ -410,10 +415,16 @@ export class RegistryStorage {
     /**
      * Get all installed bundles
      */
-    async getInstalledBundles(scope?: 'user' | 'workspace'): Promise<InstalledBundle[]> {
+    async getInstalledBundles(scope?: InstallationScope): Promise<InstalledBundle[]> {
         const bundles: InstalledBundle[] = [];
         
-        const scopes = scope ? [scope] : ['user', 'workspace'];
+        // Repository scope will be implemented in Phase 5
+        // For now, only support 'user' and 'workspace' scopes
+        const scopes: Array<'user' | 'workspace'> = scope === 'repository' 
+            ? [] 
+            : scope 
+                ? [scope as 'user' | 'workspace'] 
+                : ['user', 'workspace'];
         
         for (const s of scopes) {
             const scopePath = s === 'user' ? this.paths.userInstalled : this.paths.installed;
@@ -443,7 +454,11 @@ export class RegistryStorage {
     /**
      * Get installed bundle metadata
      */
-    async getInstalledBundle(bundleId: string, scope: 'user' | 'workspace'): Promise<InstalledBundle | undefined> {
+    async getInstalledBundle(bundleId: string, scope: InstallationScope): Promise<InstalledBundle | undefined> {
+        // Repository scope will be implemented in Phase 5
+        if (scope === 'repository') {
+            return undefined;
+        }
         try {
             const scopePath = scope === 'user' ? this.paths.userInstalled : this.paths.installed;
             const sanitizedId = this.sanitizeFilename(bundleId);

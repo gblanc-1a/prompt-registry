@@ -5,7 +5,7 @@ These are short, actionable notes to help an AI coding assistant be productive i
 - Big picture: This is a VS Code extension (Prompt Registry) that provides a marketplace and registry for Copilot prompt bundles.
   - UI surface: `src/ui/*` (Marketplace and `RegistryTreeProvider`).
   - Orchestration: `src/services/RegistryManager.ts` (singleton) coordinates adapters, storage and the installer.
-  - Installation flow: adapters in `src/adapters/*` produce bundle metadata and download URLs → `BundleInstaller` (`src/services/BundleInstaller.ts`) downloads/extracts/validates `deployment-manifest.yml` and copies into extension storage → `CopilotSyncService` syncs to Copilot native folders.
+  - Installation flow: adapters in `src/adapters/*` produce bundle metadata and download URLs → `BundleInstaller` (`src/services/BundleInstaller.ts`) downloads/extracts/validates `deployment-manifest.yml` and copies into extension storage → `UserScopeService` syncs to Copilot native folders.
 
 - Key files to consult for behavior examples:
   - `src/services/RegistryManager.ts` — main entrypoint and event emitters (install/uninstall/profile events).
@@ -50,7 +50,7 @@ These are short, actionable notes to help an AI coding assistant be productive i
   - To inspect installed bundles at runtime: open the extension global storage path (see `RegistryStorage.getPaths().installed`) or enable `promptregistry.enableLogging` and view Output → Prompt Registry.
 
 - What to avoid / non-discoverable assumptions
-  - Do not assume OS-specific Copilot paths; the extension computes install/sync paths via `CopilotSyncService` and `platformDetector.ts`.
+  - Do not assume OS-specific Copilot paths; the extension computes install/sync paths via `UserScopeService` and `platformDetector.ts`.
   - Don't change activation events without updating `package.json.contributes.activationEvents` and tests.
 
 If anything above is unclear or you'd like me to expand a section (for example, sample unit test scaffolding, the Extension activation flow in `src/extension.ts`, or a short list of representative tests in `test/`), tell me which part and I'll iterate.

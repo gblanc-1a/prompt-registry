@@ -5,10 +5,15 @@ These are short, actionable notes to help an AI coding assistant be productive i
 **🚨 FIRST STEP: Read Folder-Specific Guidance 🚨**
 
 Before working in any folder, **MUST READ** the corresponding AGENTS.md file:
-- Working with tests? → Read `test/AGENTS.md` first
-- Writing E2E tests? → Read `test/e2e/AGENTS.md` first  
-- Creating adapters? → Read `src/adapters/AGENTS.md` first
-- Building services? → Read `src/services/AGENTS.md` first
+
+| Working in... | Read first |
+|---------------|------------|
+| `.kiro/specs/` | `.kiro/specs/AGENTS.md` — Guidance for specifications, design, and tasks |
+| `docs/` | `docs/AGENTS.md` — Documentation structure and update guidelines |
+| `test/` | `test/AGENTS.md` — Test writing patterns and helpers |
+| `test/e2e/` | `test/e2e/AGENTS.md` — E2E test guidance |
+| `src/adapters/` | `src/adapters/AGENTS.md` — Adapter implementation guide |
+| `src/services/` | `src/services/AGENTS.md` — Service layer patterns |
 
 **Failure to read these guides will result in:**
 - Broken tests due to incorrect VS Code mocking
@@ -97,7 +102,7 @@ src/
 
 - **UI surface**: `src/ui/*` (Marketplace and `RegistryTreeProvider`)
 - **Orchestration**: `src/services/RegistryManager.ts` (singleton) coordinates adapters, storage, and installer
-- **Installation flow**: adapters produce bundle metadata/URLs → `BundleInstaller` downloads/extracts/validates → `CopilotSyncService` syncs to Copilot folders
+- **Installation flow**: adapters produce bundle metadata/URLs → `BundleInstaller` downloads/extracts/validates → `UserScopeService` syncs to Copilot folders
 
 ### Key Files
 
@@ -185,28 +190,57 @@ Open extension global storage path (see `RegistryStorage.getPaths().installed`) 
 
 ## What to Avoid
 
-- Don't assume OS-specific Copilot paths—use `CopilotSyncService` and `platformDetector.ts`
+- Don't assume OS-specific Copilot paths—use `UserScopeService` and `platformDetector.ts`
 - Don't change activation events without updating `package.json` and tests
 - Don't duplicate utilities—check `src/utils/` and `test/helpers/` first
 - Don't over-engineer—solve the immediate problem only
 
 ---
 
-## Documentation Updates
+## **MANDATORY** Documentation Updates
 
-After implementing features or fixing bugs:
-1. **Check if documentation needs updating** — New commands, settings, or user-facing changes require doc updates
-2. **Keep documentation concise** — One clear sentence beats three vague ones
-3. **Update the right file** — See [docs/AGENTS.md](docs/AGENTS.md) for file placement guidance
+**After implementing features or fixing bugs, you MUST update documentation.** Consult [`docs/README.md`](docs/README.md) to identify which files need updates.
+
+| Change type | Update these docs |
+|-------------|-------------------|
+| New command | `docs/reference/commands.md` |
+| New setting | `docs/reference/settings.md` |
+| New adapter | `docs/contributor-guide/architecture/adapters.md`, `docs/reference/adapter-api.md` |
+| Installation/update flow changes | `docs/contributor-guide/architecture/installation-flow.md`, `docs/contributor-guide/architecture/update-system.md` |
+| UI changes | `docs/contributor-guide/architecture/ui-components.md` |
+| User-facing behavior | Relevant file in `docs/user-guide/` |
+| Schema changes | `docs/author-guide/collection-schema.md` or `docs/reference/hub-schema.md` |
+
+**Documentation standards:**
+1. **Keep it concise** — One clear sentence beats three vague ones
+2. **Update the right file** — See [docs/AGENTS.md](docs/AGENTS.md) for file placement guidance
+3. **Verify accuracy** — Ensure docs match the implemented behavior
+
+---
+
+## **MANDATORY** Documentation Discovery
+
+**Before planning or implementing features**, consult the documentation index at [`docs/README.md`](docs/README.md) to understand existing designs and user-facing behavior.
+
+| Working on... | Read first |
+|---------------|------------|
+| Installation/update flows | `docs/contributor-guide/architecture/installation-flow.md`, `docs/contributor-guide/architecture/update-system.md` |
+| Adapters (GitHub, GitLab, etc.) | `docs/contributor-guide/architecture/adapters.md`, `docs/reference/adapter-api.md` |
+| Authentication | `docs/contributor-guide/architecture/authentication.md` |
+| UI (Marketplace, TreeView) | `docs/contributor-guide/architecture/ui-components.md` |
+| Validation logic | `docs/contributor-guide/architecture/validation.md` |
+| MCP integration | `docs/contributor-guide/architecture/mcp-integration.md` |
+| Commands or settings | `docs/reference/commands.md`, `docs/reference/settings.md` |
+| Bundle/collection schemas | `docs/author-guide/collection-schema.md`, `docs/reference/hub-schema.md` |
+| Testing strategy | `docs/contributor-guide/testing.md` |
+
+**Why this matters:**
+- Prevents reimplementing existing documented behavior
+- Ensures new code aligns with documented architecture
+- Avoids breaking user-facing contracts described in user guides
 
 ---
 
 ## **MANDATORY** Folder-Specific Guidance
 
-**MANDATORY** When you plan to work in one of those folders you **MUST** read the related AGENTS.md files exist in:
-- `.kiro/spec/AGENTS.md` — Guidance for creation of specifications design and tasks
-- `docs/AGENTS.md` — Documentation structure and update guidelines
-- `test/AGENTS.md` — Test writing patterns and helpers
-- `test/e2e/AGENTS.md` — Guidance for writing e2e tests
-- `src/adapters/AGENTS.md` — Adapter implementation guide
-- `src/services/AGENTS.md` — Service layer patterns
+See the [FIRST STEP table at the top of this file](#-first-step-read-folder-specific-guidance-) for the complete list of folder-specific AGENTS.md files you **MUST** read before working in those areas.

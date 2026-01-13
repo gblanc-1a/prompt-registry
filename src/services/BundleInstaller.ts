@@ -18,9 +18,18 @@ import * as yaml from 'js-yaml';
 import AdmZip = require('adm-zip');
 import { Logger } from '../utils/logger';
 import { isManifestIdMatch } from '../utils/bundleNameUtils';
-import { Bundle, InstallOptions, InstalledBundle, DeploymentManifest, InstallationScope } from '../types/registry';
+import { Bundle, InstallOptions, InstalledBundle, DeploymentManifest, InstallationScope, RepositoryCommitMode } from '../types/registry';
 import { UserScopeService } from './UserScopeService';
+import { RepositoryScopeService } from './RepositoryScopeService';
 import { McpServerManager } from './McpServerManager';
+import { ScopeServiceFactory } from './ScopeServiceFactory';
+import { LockfileManager } from './LockfileManager';
+import { IScopeService } from './IScopeService';
+import { RegistryStorage } from '../storage/RegistryStorage';
+import { LockfileFileEntry, LockfileSourceEntry } from '../types/lockfile';
+import { calculateFileChecksum, ensureDirectory } from '../utils/fileIntegrityService';
+import { getWorkspaceRoot } from '../utils/scopeSelectionUI';
+
 const mkdir = promisify(fs.mkdir);
 const writeFile = promisify(fs.writeFile);
 const readFile = promisify(fs.readFile);
@@ -37,11 +46,78 @@ export class BundleInstaller {
     private logger: Logger;
     private copilotSync: UserScopeService;
     private mcpManager: McpServerManager;
+    private storage: RegistryStorage;
 
     constructor(private context: vscode.ExtensionContext) {
         this.logger = Logger.getInstance();
         this.copilotSync = new UserScopeService(context);
         this.mcpManager = new McpServerManager();
+        this.storage = new RegistryStorage(context);
+    }
+
+    /**
+     * Get the UserScopeService instance
+     * Used by BundleScopeCommands for scope migration
+     */
+    getUserScopeService(): UserScopeService {
+        return this.copilotSync;
+    }
+
+    /**
+     * Create a RepositoryScopeService for the current workspace
+     * Used by BundleScopeCommands for scope migration
+     * @returns RepositoryScopeService or undefined if no workspace is open
+     */
+    createRepositoryScopeService(): RepositoryScopeService | undefined {
+        const workspaceRoot = getWorkspaceRoot();
+        if (!workspaceRoot) {
+            return undefined;
+        }
+        return new RepositoryScopeService(workspaceRoot, this.storage);
+    }
+
+    /**
+     * Get the appropriate scope service for the given scope
+     */
+    private getScopeService(scope: InstallationScope): IScopeService {
+        if (scope === 'repository') {
+            const workspaceRoot = getWorkspaceRoot();
+            if (!workspaceRoot) {
+                throw new Error('Repository scope requires an open workspace. Please open a workspace and try again.');
+            }
+            return ScopeServiceFactory.create(scope, this.context, workspaceRoot, this.storage);
+        }
+        return ScopeServiceFactory.create(scope, this.context);
+    }
+
+    /**
+     * Collect file entries with checksums for lockfile
+     */
+    private async collectFileEntries(installDir: string, workspaceRoot: string): Promise<LockfileFileEntry[]> {
+        const entries: LockfileFileEntry[] = [];
+        
+        const collectFromDir = async (dir: string): Promise<void> => {
+            if (!fs.existsSync(dir)) {
+                return;
+            }
+            
+            const files = await readdir(dir);
+            for (const file of files) {
+                const filePath = path.join(dir, file);
+                const stats = await stat(filePath);
+                
+                if (stats.isDirectory()) {
+                    await collectFromDir(filePath);
+                } else {
+                    const relativePath = path.relative(workspaceRoot, filePath);
+                    const checksum = await calculateFileChecksum(filePath);
+                    entries.push({ path: relativePath, checksum });
+                }
+            }
+        };
+        
+        await collectFromDir(installDir);
+        return entries;
     }
 
     /**
@@ -73,7 +149,7 @@ export class BundleInstaller {
 
             // Get installation directory (pass undefined for sourceType since it's not available in install method)
             const installDir = this.getInstallDirectory(bundle.id, options.scope, undefined, undefined, bundle.name);
-            await this.ensureDirectory(installDir);
+            await ensureDirectory(installDir);
             this.logger.debug(`Installation directory: ${installDir}`);
 
             // Copy files to installation directory
@@ -91,15 +167,22 @@ export class BundleInstaller {
                 manifest: manifest,
                 sourceId: bundle.sourceId,
                 sourceType: undefined,  // Will be set by RegistryManager
+                commitMode: options.scope === 'repository' ? (options.commitMode ?? 'commit') : undefined,
             };
 
             // Install MCP servers if defined
             await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope);
             this.logger.debug('MCP servers installation completed');
             
-            // Sync to GitHub Copilot native directory
-            await this.copilotSync.syncBundle(bundle.id, installDir);
-            this.logger.debug('Synced to GitHub Copilot');
+            // Sync to appropriate scope directory
+            const scopeService = this.getScopeService(options.scope);
+            await scopeService.syncBundle(bundle.id, installDir);
+            this.logger.debug(`Synced to ${options.scope} scope`);
+
+            // Update lockfile for repository scope
+            if (options.scope === 'repository') {
+                await this.updateLockfileOnInstall(bundle, installed, options);
+            }
 
             this.logger.info(`Bundle installed successfully: ${bundle.name}`);
             return installed;
@@ -143,7 +226,7 @@ export class BundleInstaller {
 
             // Step 5: Get installation directory
             const installDir = this.getInstallDirectory(bundle.id, options.scope, sourceType, sourceName, bundle.name);
-            await this.ensureDirectory(installDir);
+            await ensureDirectory(installDir);
             this.logger.debug(`Installation directory: ${installDir}`);
 
             // Step 6: Copy files to installation directory
@@ -173,16 +256,23 @@ export class BundleInstaller {
                 installPath: installDir,
                 manifest: manifest,
                 sourceId: bundle.sourceId,
-                sourceType: undefined,  // Will be set by RegistryManager
+                sourceType: sourceType,
+                commitMode: options.scope === 'repository' ? (options.commitMode ?? 'commit') : undefined,
             };
 
             // Step 9: Install MCP servers if defined
             await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope);
             this.logger.debug('MCP servers installation completed');
             
-            // Step 10: Sync to GitHub Copilot native directory
-            await this.copilotSync.syncBundle(bundle.id, installDir);
-            this.logger.debug('Synced to GitHub Copilot');
+            // Step 10: Sync to appropriate scope directory
+            const scopeService = this.getScopeService(options.scope);
+            await scopeService.syncBundle(bundle.id, installDir);
+            this.logger.debug(`Synced to ${options.scope} scope`);
+
+            // Step 11: Update lockfile for repository scope
+            if (options.scope === 'repository') {
+                await this.updateLockfileOnInstall(bundle, installed, options, sourceType);
+            }
 
             this.logger.info(`Bundle installed successfully from buffer: ${bundle.name}`);
             return installed;
@@ -200,12 +290,19 @@ export class BundleInstaller {
         this.logger.info(`Uninstalling bundle: ${installed.bundleId}`);
 
         try {
-            // Remove from GitHub Copilot native directory
             // Uninstall MCP servers
             await this.uninstallMcpServers(installed.bundleId, installed.scope);
             this.logger.debug('MCP servers uninstalled');
-            await this.copilotSync.unsyncBundle(installed.bundleId);
-            this.logger.debug('Removed from GitHub Copilot');
+
+            // Unsync from appropriate scope directory
+            const scopeService = this.getScopeService(installed.scope);
+            await scopeService.unsyncBundle(installed.bundleId);
+            this.logger.debug(`Removed from ${installed.scope} scope`);
+
+            // Remove from lockfile for repository scope
+            if (installed.scope === 'repository') {
+                await this.updateLockfileOnUninstall(installed.bundleId);
+            }
 
             // Remove installation directory
             if (installed.installPath && fs.existsSync(installed.installPath)) {
@@ -240,7 +337,8 @@ export class BundleInstaller {
             // Install new version using the unified architecture
             const newInstalled = await this.installFromBuffer(bundle, bundleBuffer, {
                 scope: installed.scope,
-                version: bundle.version
+                version: bundle.version,
+                commitMode: installed.commitMode,
             });
 
             this.logger.info('Bundle updated successfully');
@@ -252,6 +350,70 @@ export class BundleInstaller {
         }
     }
 
+    /**
+     * Update lockfile when installing a bundle at repository scope
+     */
+    private async updateLockfileOnInstall(
+        bundle: Bundle,
+        installed: InstalledBundle,
+        options: InstallOptions,
+        sourceType?: string
+    ): Promise<void> {
+        const workspaceRoot = getWorkspaceRoot();
+        if (!workspaceRoot) {
+            this.logger.warn('Cannot update lockfile: no workspace root');
+            return;
+        }
+
+        try {
+            const lockfileManager = LockfileManager.getInstance(workspaceRoot);
+            
+            // Collect file entries with checksums
+            const files = await this.collectFileEntries(installed.installPath, workspaceRoot);
+            
+            // Create source entry
+            const source: LockfileSourceEntry = {
+                type: sourceType || installed.sourceType || 'unknown',
+                url: bundle.downloadUrl || bundle.manifestUrl || '',
+            };
+
+            await lockfileManager.createOrUpdate({
+                bundleId: bundle.id,
+                version: bundle.version,
+                sourceId: bundle.sourceId,
+                sourceType: sourceType || installed.sourceType || 'unknown',
+                commitMode: options.commitMode ?? 'commit',
+                files,
+                source,
+            });
+
+            this.logger.debug(`Updated lockfile for bundle ${bundle.id}`);
+        } catch (error) {
+            this.logger.error('Failed to update lockfile on install', error as Error);
+            // Don't fail the installation if lockfile update fails
+        }
+    }
+
+    /**
+     * Update lockfile when uninstalling a bundle at repository scope
+     */
+    private async updateLockfileOnUninstall(bundleId: string): Promise<void> {
+        const workspaceRoot = getWorkspaceRoot();
+        if (!workspaceRoot) {
+            this.logger.warn('Cannot update lockfile: no workspace root');
+            return;
+        }
+
+        try {
+            const lockfileManager = LockfileManager.getInstance(workspaceRoot);
+            await lockfileManager.remove(bundleId);
+            this.logger.debug(`Removed bundle ${bundleId} from lockfile`);
+        } catch (error) {
+            this.logger.error('Failed to update lockfile on uninstall', error as Error);
+            // Don't fail the uninstallation if lockfile update fails
+        }
+    }
+
     // ===== Helper Methods =====
 
     /**
@@ -259,7 +421,7 @@ export class BundleInstaller {
      */
     private async createTempDir(): Promise<string> {
         const tempBase = path.join(this.context.globalStorageUri.fsPath, 'temp');
-        await this.ensureDirectory(tempBase);
+        await ensureDirectory(tempBase);
 
         const tempDir = path.join(tempBase, `bundle-${Date.now()}`);
         await mkdir(tempDir, { recursive: true });
@@ -273,7 +435,7 @@ export class BundleInstaller {
      * Extract bundle archive
      */
     private async extractBundle(bundleFile: string, extractDir: string): Promise<void> {
-        await this.ensureDirectory(extractDir);
+        await ensureDirectory(extractDir);
 
         try {
             // Use adm-zip for extraction
@@ -353,18 +515,15 @@ export class BundleInstaller {
     /**
      * Get installation directory for bundle
      * OLAF bundles are installed in .olaf/external-skills/<source-name>/<skill-name> in the workspace
+     * Repository scope bundles are installed in the workspace's bundle storage
      */
     private getInstallDirectory(bundleId: string, scope: InstallationScope, sourceType?: string, sourceName?: string, bundleName?: string): string {
-        // Repository scope will be implemented in Phase 5 (Task 13)
-        if (scope === 'repository') {
-            throw new Error('Repository scope installation is not yet implemented. Use "user" or "workspace" scope.');
-        }
         // Check if this is an OLAF bundle
         const isOlafBundle = sourceType === 'olaf' || sourceType === 'local-olaf' || bundleId.startsWith('olaf-');
         
         if (isOlafBundle) {
             // OLAF bundles must be installed in workspace .olaf/external-skills directory
-            const workspaceFolders = require('vscode').workspace.workspaceFolders;
+            const workspaceFolders = vscode.workspace.workspaceFolders;
             if (!workspaceFolders || workspaceFolders.length === 0) {
                 throw new Error('OLAF skills require an open workspace. Please open a workspace and try again.');
             }
@@ -379,6 +538,18 @@ export class BundleInstaller {
             // Result: .olaf/external-skills/<source-name>/skill1/, .olaf/external-skills/<source-name>/skill2/
             this.logger.info(`[BundleInstaller] Installing OLAF bundle to .olaf/external-skills/${sourceDir}`);
             return path.join(workspacePath, '.olaf', 'external-skills', sourceDir);
+        }
+        
+        // Repository scope: install in workspace .prompt-registry/bundles directory
+        if (scope === 'repository') {
+            const workspaceFolders = vscode.workspace.workspaceFolders;
+            if (!workspaceFolders || workspaceFolders.length === 0) {
+                throw new Error('Repository scope requires an open workspace. Please open a workspace and try again.');
+            }
+            
+            const workspacePath = workspaceFolders[0].uri.fsPath;
+            this.logger.info(`[BundleInstaller] Installing repository scope bundle to .prompt-registry/bundles/${bundleId}`);
+            return path.join(workspacePath, '.prompt-registry', 'bundles', bundleId);
         }
         
         // Standard bundle installation
@@ -408,7 +579,7 @@ export class BundleInstaller {
             const stats = await stat(sourcePath);
 
             if (stats.isDirectory()) {
-                await this.ensureDirectory(targetPath);
+                await ensureDirectory(targetPath);
                 await this.copyBundleFiles(sourcePath, targetPath);
             } else {
                 const content = await readFile(sourcePath);
@@ -433,20 +604,11 @@ export class BundleInstaller {
             if (stats.isDirectory()) {
                 const targetPath = path.join(targetDir, file);
                 this.logger.debug(`[BundleInstaller] Copying skill folder: ${file} -> ${targetPath}`);
-                await this.ensureDirectory(targetPath);
+                await ensureDirectory(targetPath);
                 await this.copyBundleFiles(sourcePath, targetPath);
             } else {
                 this.logger.debug(`[BundleInstaller] Skipping file (not a skill folder): ${file}`);
             }
-        }
-    }
-
-    /**
-     * Ensure directory exists
-     */
-    private async ensureDirectory(dir: string): Promise<void> {
-        if (!fs.existsSync(dir)) {
-            await mkdir(dir, { recursive: true });
         }
     }
 

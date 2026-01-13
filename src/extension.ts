@@ -5,6 +5,7 @@ import { MarketplaceViewProvider } from './ui/MarketplaceViewProvider';
 import { ProfileCommands } from './commands/ProfileCommands';
 import { SourceCommands } from './commands/SourceCommands';
 import { BundleCommands } from './commands/BundleCommands';
+import { BundleScopeCommands } from './commands/BundleScopeCommands';
 import { HubCommands } from './commands/HubCommands';
 import { HubProfileCommands } from './commands/HubProfileCommands';
 import { HubIntegrationCommands } from './commands/HubIntegrationCommands';
@@ -29,6 +30,9 @@ import { UpdateChecker } from './services/UpdateChecker';
 import { NotificationManager } from './services/NotificationManager';
 import { AutoUpdateService } from './services/AutoUpdateService';
 import { BundleUpdateNotifications } from './notifications/BundleUpdateNotifications';
+import { LockfileManager } from './services/LockfileManager';
+import { RepositoryActivationService } from './services/RepositoryActivationService';
+import { ScopeConflictResolver } from './services/ScopeConflictResolver';
 
 import {
     getValidUpdateCheckFrequency,
@@ -62,6 +66,7 @@ export class PromptRegistryExtension {
     private profileCommands: ProfileCommands | undefined;
     private sourceCommands: SourceCommands | undefined;
     private bundleCommands: BundleCommands | undefined;
+    private bundleScopeCommands: BundleScopeCommands | undefined;
     private settingsCommands: SettingsCommands | undefined;
     private hubCommands: HubCommands | undefined;
     private hubIntegrationCommands: HubIntegrationCommands | undefined;
@@ -77,6 +82,10 @@ export class PromptRegistryExtension {
     private updateChecker: UpdateChecker | undefined;
     private notificationManager: NotificationManager | undefined;
     private autoUpdateService: AutoUpdateService | undefined;
+
+    // Repository-level installation services
+    private lockfileManager: LockfileManager | undefined;
+    private repositoryActivationService: RepositoryActivationService | undefined;
 
     // Legacy (to be removed)
     private readonly installationManager: InstallationManager;
@@ -142,6 +151,12 @@ export class PromptRegistryExtension {
 
             // Initialize update notification system
             await this.initializeUpdateSystem();
+
+            // Initialize repository-level installation services
+            await this.initializeRepositoryServices();
+
+            // Register workspace folder change listener
+            this.registerWorkspaceFolderListener();
 
             // Check for automatic updates if enabled
             await this.checkForAutomaticUpdates();
@@ -218,7 +233,7 @@ export class PromptRegistryExtension {
         const hubStorage = new HubStorage(hubStoragePath);
         const hubValidator = new SchemaValidator(this.context.extensionPath);
         // Pass BundleInstaller from RegistryManager to enable bundle installation during profile activation
-        const bundleInstaller = (this.registryManager as any).installer;
+        const bundleInstaller = this.registryManager.getBundleInstaller();
         this.hubManager = new HubManager(hubStorage, hubValidator, this.context.extensionPath, bundleInstaller, this.registryManager);
 		
 		// Connect HubManager to RegistryManager for profile integration
@@ -641,6 +656,82 @@ export class PromptRegistryExtension {
                 }
             });
         }
+    }
+
+    /**
+     * Initialize repository-level installation services
+     * Sets up LockfileManager and RepositoryActivationService
+     */
+    private async initializeRepositoryServices(): Promise<void> {
+        try {
+            this.logger.info('Initializing repository-level installation services...');
+
+            // Check if workspace is open
+            const workspaceFolders = vscode.workspace.workspaceFolders;
+            if (!workspaceFolders || workspaceFolders.length === 0) {
+                this.logger.debug('No workspace open, skipping repository services initialization');
+                return;
+            }
+
+            // Get repository path from first workspace folder
+            const repositoryPath = workspaceFolders[0].uri.fsPath;
+
+            // Initialize LockfileManager
+            this.lockfileManager = LockfileManager.getInstance(repositoryPath);
+
+            // Initialize RepositoryActivationService
+            const registryStorage = this.registryManager.getStorage();
+            this.repositoryActivationService = RepositoryActivationService.getInstance(
+                this.lockfileManager,
+                this.hubManager!,
+                registryStorage
+            );
+
+            // Check for lockfile and prompt activation
+            await this.repositoryActivationService.checkAndPromptActivation();
+
+            // Register BundleScopeCommands (requires scope services from RegistryManager)
+            const bundleInstaller = this.registryManager.getBundleInstaller();
+            const userScopeService = bundleInstaller.getUserScopeService();
+            const repositoryScopeService = bundleInstaller.createRepositoryScopeService();
+            
+            if (repositoryScopeService) {
+                // Create ScopeConflictResolver with storage
+                const scopeConflictResolver = new ScopeConflictResolver(registryStorage);
+                
+                this.bundleScopeCommands = new BundleScopeCommands(
+                    this.registryManager,
+                    scopeConflictResolver,
+                    repositoryScopeService,
+                    userScopeService
+                );
+                this.logger.debug('BundleScopeCommands registered successfully');
+            } else {
+                this.logger.debug('BundleScopeCommands not registered: no workspace open');
+            }
+
+            this.logger.info('Repository-level installation services initialized successfully');
+        } catch (error) {
+            this.logger.warn('Failed to initialize repository-level installation services', error as Error);
+            // Don't fail extension activation if repository services fail
+        }
+    }
+
+    /**
+     * Register workspace folder change listener
+     * Re-initializes repository services when workspace folders change
+     */
+    private registerWorkspaceFolderListener(): void {
+        const workspaceListener = vscode.workspace.onDidChangeWorkspaceFolders(async (event) => {
+            // If folders were added, re-initialize repository services
+            if (event.added.length > 0) {
+                this.logger.info('Workspace folders added, re-initializing repository services');
+                await this.initializeRepositoryServices();
+            }
+        });
+
+        this.disposables.push(workspaceListener);
+        this.context.subscriptions.push(workspaceListener);
     }
 
     /**

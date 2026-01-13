@@ -12,7 +12,7 @@ import * as fc from 'fast-check';
 import { BundleInstallationCommands } from '../../src/commands/BundleInstallationCommands';
 import { RegistryManager } from '../../src/services/RegistryManager';
 import { RegistryStorage } from '../../src/storage/RegistryStorage';
-import { Bundle, InstallOptions } from '../../src/types/registry';
+import { Bundle, InstallOptions, InstallationScope, RepositoryCommitMode } from '../../src/types/registry';
 import { BundleGenerators, PropertyTestConfig } from '../helpers/propertyTestHelpers';
 
 suite('BundleInstallationCommands - Property Tests', () => {
@@ -24,6 +24,7 @@ suite('BundleInstallationCommands - Property Tests', () => {
     let mockShowQuickPick: sinon.SinonStub;
     let mockWithProgress: sinon.SinonStub;
     let mockShowInformationMessage: sinon.SinonStub;
+    let originalWorkspaceFolders: typeof vscode.workspace.workspaceFolders;
 
     // ===== Test Utilities =====
     
@@ -54,11 +55,32 @@ suite('BundleInstallationCommands - Property Tests', () => {
         isCurated: false
     });
 
-    const createScopeQuickPickItem = (scope: 'user' | 'workspace') => ({
-        label: scope === 'user' ? '$(account) User' : '$(folder) Workspace',
-        description: scope === 'user' ? 'Install for current user (all workspaces)' : 'Install for current workspace only',
-        value: scope
-    });
+    /**
+     * Create a scope selection QuickPick item that matches the new dialog format
+     */
+    const createScopeQuickPickItem = (scope: InstallationScope, commitMode?: RepositoryCommitMode) => {
+        const labels: Record<string, string> = {
+            'repository-commit': '$(repo) Repository - Commit to Git (Recommended)',
+            'repository-local-only': '$(eye-closed) Repository - Local Only',
+            'user': '$(account) User Profile'
+        };
+        
+        const descriptions: Record<string, string> = {
+            'repository-commit': 'Install in .github/, tracked in version control',
+            'repository-local-only': 'Install in .github/, excluded via .git/info/exclude',
+            'user': 'Install in user config, available everywhere'
+        };
+
+        const key = scope === 'repository' ? `repository-${commitMode}` : scope;
+        
+        return {
+            label: labels[key],
+            description: descriptions[key],
+            _scope: scope,
+            _commitMode: commitMode,
+            _disabled: false
+        };
+    };
 
     const createAutoUpdateQuickPickItem = (enabled: boolean) => ({
         label: enabled ? '$(sync) Enable auto-update' : '$(circle-slash) Manual updates only',
@@ -68,15 +90,15 @@ suite('BundleInstallationCommands - Property Tests', () => {
     });
 
     // Mock Setup Helpers
-    const setupSuccessfulInstallation = (bundleId: string, bundle: Bundle, scope: 'user' | 'workspace', autoUpdate: boolean): void => {
+    const setupSuccessfulInstallation = (bundleId: string, bundle: Bundle, scope: InstallationScope, autoUpdate: boolean, commitMode?: RepositoryCommitMode): void => {
         mockRegistryManager.getBundleDetails.withArgs(bundleId).resolves(bundle);
         mockRegistryManager.installBundle.resolves();
         mockStorage.setUpdatePreference.resolves();
         mockRegistryManager.getStorage.returns(mockStorage as any);
 
-        // Mock the quick pick dialogs
+        // Mock the quick pick dialogs - now using new scope selection format
         mockShowQuickPick
-            .onFirstCall().resolves(createScopeQuickPickItem(scope))
+            .onFirstCall().resolves(createScopeQuickPickItem(scope, commitMode))
             .onSecondCall().resolves(createAutoUpdateQuickPickItem(autoUpdate));
 
         // Mock progress dialog
@@ -109,6 +131,16 @@ suite('BundleInstallationCommands - Property Tests', () => {
         mockShowInformationMessage.reset();
     };
 
+    const setWorkspaceOpen = (isOpen: boolean): void => {
+        if (isOpen) {
+            (vscode.workspace as any).workspaceFolders = [
+                { uri: { fsPath: '/mock/workspace' }, name: 'workspace', index: 0 }
+            ];
+        } else {
+            (vscode.workspace as any).workspaceFolders = undefined;
+        }
+    };
+
     // ===== Test Lifecycle =====
     setup(() => {
         sandbox = sinon.createSandbox();
@@ -122,12 +154,18 @@ suite('BundleInstallationCommands - Property Tests', () => {
         mockWithProgress = sandbox.stub(vscode.window, 'withProgress');
         mockShowInformationMessage = sandbox.stub(vscode.window, 'showInformationMessage');
         
+        // Save original workspace folders and set workspace as open
+        originalWorkspaceFolders = vscode.workspace.workspaceFolders;
+        setWorkspaceOpen(true);
+        
         // Create commands instance
         commands = new BundleInstallationCommands(mockRegistryManager as any);
     });
 
     teardown(() => {
         sandbox.restore();
+        // Restore original workspace folders
+        (vscode.workspace as any).workspaceFolders = originalWorkspaceFolders;
     });
 
     // ===== Property Tests =====
@@ -146,13 +184,14 @@ suite('BundleInstallationCommands - Property Tests', () => {
                 fc.asyncProperty(
                     bundleIdArb,
                     versionArb,
-                    fc.constantFrom('user' as const, 'workspace' as const),
+                    fc.constantFrom('user' as const, 'repository' as const),
                     fc.boolean(),
                     async (bundleId, version, scope, autoUpdateChoice) => {
                         resetAllMocks();
 
                         const bundle = createMockBundle(bundleId, version);
-                        setupSuccessfulInstallation(bundleId, bundle, scope, autoUpdateChoice);
+                        const commitMode = scope === 'repository' ? 'commit' as const : undefined;
+                        setupSuccessfulInstallation(bundleId, bundle, scope, autoUpdateChoice, commitMode);
 
                         // Execute: Install bundle
                         await commands.installBundle(bundleId);
@@ -260,7 +299,7 @@ suite('BundleInstallationCommands - Property Tests', () => {
                 fc.asyncProperty(
                     bundleIdArb,
                     versionArb,
-                    fc.constantFrom('user' as const, 'workspace' as const),
+                    fc.constantFrom('user' as const, 'repository' as const),
                     fc.boolean(),
                     fc.string({ minLength: 1, maxLength: 50 }),
                     async (bundleId, version, scope, autoUpdateChoice, errorMessage) => {
@@ -273,9 +312,10 @@ suite('BundleInstallationCommands - Property Tests', () => {
                         // Setup installation failure
                         mockRegistryManager.installBundle.rejects(new Error(errorMessage));
 
-                        // Mock the quick pick dialogs
+                        // Mock the quick pick dialogs - using new scope selection format
+                        const commitMode = scope === 'repository' ? 'commit' as const : undefined;
                         mockShowQuickPick
-                            .onFirstCall().resolves(createScopeQuickPickItem(scope))
+                            .onFirstCall().resolves(createScopeQuickPickItem(scope, commitMode))
                             .onSecondCall().resolves(createAutoUpdateQuickPickItem(autoUpdateChoice));
 
                         // Mock progress dialog

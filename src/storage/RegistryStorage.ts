@@ -91,6 +91,13 @@ export class RegistryStorage {
     }
 
     /**
+     * Get the extension context
+     */
+    getContext(): vscode.ExtensionContext {
+        return this.context;
+    }
+
+    /**
      * Initialize storage directories
      */
     async initialize(): Promise<void> {
@@ -418,13 +425,8 @@ export class RegistryStorage {
     async getInstalledBundles(scope?: InstallationScope): Promise<InstalledBundle[]> {
         const bundles: InstalledBundle[] = [];
         
-        // Repository scope will be implemented in Phase 5
-        // For now, only support 'user' and 'workspace' scopes
-        const scopes: Array<'user' | 'workspace'> = scope === 'repository' 
-            ? [] 
-            : scope 
-                ? [scope as 'user' | 'workspace'] 
-                : ['user', 'workspace'];
+        // Get the list of scopes to query
+        const scopes = this.getSupportedScopes(scope);
         
         for (const s of scopes) {
             const scopePath = s === 'user' ? this.paths.userInstalled : this.paths.installed;
@@ -449,6 +451,25 @@ export class RegistryStorage {
         }
         
         return bundles;
+    }
+
+    /**
+     * Get the list of supported scopes for querying installed bundles.
+     * Repository scope is not yet implemented, so it returns an empty array.
+     * 
+     * @param scope - Optional scope to filter by
+     * @returns Array of supported scopes to query
+     */
+    private getSupportedScopes(scope?: InstallationScope): Array<'user' | 'workspace'> {
+        // Repository scope will be implemented in Phase 5
+        if (scope === 'repository') {
+            return [];
+        }
+        if (scope === 'user' || scope === 'workspace') {
+            return [scope];
+        }
+        // No scope specified - return all supported scopes
+        return ['user', 'workspace'];
     }
 
     /**

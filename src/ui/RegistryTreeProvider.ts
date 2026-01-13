@@ -413,6 +413,21 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
     }
 
     /**
+     * Get context value with scope information for menu actions
+     * Includes scope and commit mode to enable appropriate context menu items
+     */
+    private getContextValueWithScope(baseContextValue: string, scope: string, commitMode?: string): string {
+        // For repository scope, include commit mode in context value
+        if (scope === 'repository') {
+            const modeStr = commitMode === 'local-only' ? '_local_only' : '_commit';
+            return `${baseContextValue}_repository${modeStr}`;
+        }
+        
+        // For user/workspace scope, just append the scope
+        return `${baseContextValue}_${scope}`;
+    }
+
+    /**
      * Get tree item
      */
     getTreeItem(element: RegistryTreeItem): vscode.TreeItem {
@@ -909,7 +924,8 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
                     this.setVersionDisplay(treeItem, bundle.bundleId, bundle.version);
 
                     // Set context value to enable/disable update menu option and auto-update toggle
-                    treeItem.contextValue = contextValue;
+                    // Include scope information in context value for menu actions
+                    treeItem.contextValue = this.getContextValueWithScope(contextValue, bundle.scope, bundle.commitMode);
 
                     items.push(treeItem);
                 } catch (error) {
@@ -935,7 +951,8 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
                     // Set version display with update information
                     this.setVersionDisplay(treeItem, bundle.bundleId, bundle.version);
 
-                    treeItem.contextValue = contextValue;
+                    // Set context value with scope information
+                    treeItem.contextValue = this.getContextValueWithScope(contextValue, bundle.scope, bundle.commitMode);
 
                     items.push(treeItem);
                 }

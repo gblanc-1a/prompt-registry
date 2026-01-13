@@ -126,7 +126,8 @@ module.exports = {
     machineId: 'mock-machine-id',
     sessionId: 'mock-session-id',
     remoteName: undefined,
-    shell: '/bin/bash'
+    shell: '/bin/bash',
+    openExternal: () => Promise.resolve(true)
   },
   authentication: {
     getSession: () => Promise.resolve(undefined)

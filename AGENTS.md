@@ -2,7 +2,7 @@
 
 These are short, actionable notes to help an AI coding assistant be productive in this repository.
 
-**🚨 FIRST STEP: Read Folder-Specific Guidance 🚨**
+**🚨 MANDATORY FIRST STEP: Read Folder-Specific Guidance BEFORE Writing Code 🚨**
 
 Before working in any folder, **MUST READ** the corresponding AGENTS.md file:
 
@@ -15,11 +15,25 @@ Before working in any folder, **MUST READ** the corresponding AGENTS.md file:
 | `src/adapters/` | `src/adapters/AGENTS.md` — Adapter implementation guide |
 | `src/services/` | `src/services/AGENTS.md` — Service layer patterns |
 
+**Before writing or modifying ANY file, you MUST:**
+1. **Identify which folder** the file is in (e.g., `test/services/NewService.test.ts` → folder is `test/`)
+2. **Read the corresponding AGENTS.md file FIRST** (e.g., `test/AGENTS.md`)
+3. **Apply the guidance** from that file to your changes
+
+**Concrete Examples:**
+- Creating `test/services/NewService.test.ts` → **MUST read `test/AGENTS.md` BEFORE writing any test code**
+- Modifying `src/adapters/GitHubAdapter.ts` → **MUST read `src/adapters/AGENTS.md` BEFORE making changes**
+- Writing `.kiro/specs/new-feature/design.md` → **MUST read `.kiro/specs/AGENTS.md` BEFORE creating the spec**
+- Updating `docs/user-guide/getting-started.md` → **MUST read `docs/AGENTS.md` BEFORE editing documentation**
+- Creating `src/services/NewManager.ts` → **MUST read `src/services/AGENTS.md` BEFORE implementing the service**
+- Adding `test/e2e/new-workflow.test.ts` → **MUST read `test/e2e/AGENTS.md` BEFORE writing E2E tests**
+
 **Failure to read these guides will result in:**
 - Broken tests due to incorrect VS Code mocking
 - Duplicated utilities that already exist
 - Missing critical debugging strategies
 - Wasted time on solved problems
+- Code that doesn't follow established patterns
 
 ---
 
@@ -56,6 +70,30 @@ Use TDD when it makes sense (most new functionality):
 1. Write a failing test for the expected behavior
 2. Write the minimum code to make it pass
 3. Refactor if needed, keeping tests green
+
+### Test Completion Criteria
+
+**CRITICAL**: Before marking any test-related task as complete, verify ALL of the following:
+
+1. **Compilation**: All test files must compile without TypeScript errors
+2. **Mock Setup**: All mocks must be properly configured (no "Property 'X' is private" errors, no type mismatches)
+3. **Execution**: Tests must be runnable (even if they fail assertions - that's expected in RED phase)
+4. **RED Phase**: For TDD tasks, tests should fail for the RIGHT reason (missing implementation), not wrong reasons (broken mocks, syntax errors, import errors)
+
+**If tests won't run due to setup issues YOU introduced, the task is incomplete.**
+
+**What counts as YOUR responsibility:**
+- Mock setup issues caused by your code changes
+- Type errors introduced by your implementation
+- Compilation failures from your new code
+- Import errors from files you created
+
+**What does NOT count:**
+- Pre-existing test failures
+- Flaky tests that were already flaky
+- Infrastructure issues (network, file system)
+
+**Before stopping work on a task**: Run the tests to verify they compile and mocks are properly set up. If you introduced compilation errors or mock issues, fix them first.
 
 ### Minimal Code Principle
 
@@ -142,6 +180,7 @@ npm run package:vsix           # Create .vsix package
 - Minimize context pollution: pipe long output through `tee <name>.log | tail -20`
 - Analyze existing logs with `grep` before re-running tests
 - When a command fails, summarize from tail output, refer to stored log for details
+- **For checkpoint tasks**: If full test suite passes, analyze the log - do NOT re-run individual tests
 
 ---
 

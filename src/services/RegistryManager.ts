@@ -207,6 +207,14 @@ export class RegistryManager {
     }
 
     /**
+     * Get the bundle installer instance
+     * Used by extension.ts to access scope services for BundleScopeCommands
+     */
+    getBundleInstaller(): BundleInstaller {
+        return this.installer;
+    }
+
+    /**
      * Enrich source with global token if applicable
      * Applies global GitHub token to GitHub sources that don't have their own token
      */

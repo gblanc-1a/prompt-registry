@@ -1,0 +1,186 @@
+{
+    "version": "1.0.0",
+    "description": "GitHub Workflow Bundle Scaffold",
+    "templates": {
+        "package-json": {
+            "path": "package.template.json",
+            "description": "Node.js package config with collection management scripts",
+            "required": true,
+            "variables": ["projectName"]
+        },
+        "readme": {
+            "path": "README.template.md",
+            "description": "Project documentation with setup and usage instructions",
+            "required": true,
+            "variables": ["projectName"]
+        },
+        "gitignore": {
+            "path": ".gitignore.template",
+            "description": "Git ignore file for Node.js projects",
+            "required": true,
+            "variables": []
+        },
+        "publish-workflow": {
+            "path": "workflows/publish.template.yml",
+            "description": "GitHub Actions workflow for publishing collections",
+            "required": true,
+            "variables": ["githubRunner"]
+        },
+        "publish-common-action": {
+            "path": "actions/publish-common/action.yml",
+            "description": "Composite action for common publish setup",
+            "required": true,
+            "variables": []
+        },
+        "pr-comment-action": {
+            "path": "actions/pr-comment/action.yml",
+            "description": "Composite action to create or update PR comments",
+            "required": true,
+            "variables": []
+        },
+        "validate-collections": {
+            "path": "scripts/validate-collections.js",
+            "description": "Collection validation script",
+            "required": true,
+            "variables": []
+        },
+        "detect-affected-collections": {
+            "path": "scripts/detect-affected-collections.js",
+            "description": "Script to detect affected collections based on file changes",
+            "required": true,
+            "variables": []
+        },
+        "compute-collection-version": {
+            "path": "scripts/compute-collection-version.js",
+            "description": "Script to compute collection versions",
+            "required": true,
+            "variables": []
+        },
+        "build-collection-bundle": {
+            "path": "scripts/build-collection-bundle.js",
+            "description": "Script to build collection bundles",
+            "required": true,
+            "variables": []
+        },
+        "publish-collections": {
+            "path": "scripts/publish-collections.js",
+            "description": "Script to publish collections as GitHub releases",
+            "required": true,
+            "variables": []
+        },
+        "generate-manifest": {
+            "path": "scripts/generate-manifest.js",
+            "description": "Script to generate deployment manifests",
+            "required": true,
+            "variables": []
+        },
+        "list-collections": {
+            "path": "scripts/list-collections.js",
+            "description": "Script to list all collections",
+            "required": true,
+            "variables": []
+        },
+        "resolve-collection-files": {
+            "path": "scripts/resolve-collection-files.js",
+            "description": "Script to resolve collection file paths",
+            "required": true,
+            "variables": []
+        },
+        "extract-affected-files": {
+            "path": "scripts/extract-affected-files.js",
+            "description": "Script to extract affected files from JSON",
+            "required": true,
+            "variables": []
+        },
+        "collections-lib": {
+            "path": "scripts/lib/collections.js",
+            "description": "Collection file utilities library",
+            "required": true,
+            "variables": []
+        },
+        "validate-lib": {
+            "path": "scripts/lib/validate.js",
+            "description": "Validation utilities library",
+            "required": true,
+            "variables": []
+        },
+        "cli-lib": {
+            "path": "scripts/lib/cli.js",
+            "description": "CLI argument parsing utilities",
+            "required": true,
+            "variables": []
+        },
+        "bundle-id-lib": {
+            "path": "scripts/lib/bundle-id.js",
+            "description": "Bundle ID generation utilities",
+            "required": true,
+            "variables": []
+        },
+        "example-collection": {
+            "path": "collections/example.collection.template.yml",
+            "description": "Example collection file",
+            "required": true,
+            "variables": ["collectionId", "projectName"]
+        },
+        "example-prompt": {
+            "path": "prompts/example.prompt.template.md",
+            "description": "Example prompt file",
+            "required": true,
+            "variables": ["projectName"]
+        },
+        "example-instruction": {
+            "path": "instructions/example.instructions.template.md",
+            "description": "Example instruction file",
+            "required": true,
+            "variables": []
+        },
+        "example-agent": {
+            "path": "agents/example.agent.template.md",
+            "description": "Example agent file",
+            "required": true,
+            "variables": ["projectName"]
+        },
+        "example-skill": {
+            "path": "skills/example-skill/SKILL.md",
+            "description": "Example agent skill following Agent Skills specification",
+            "required": true,
+            "variables": []
+        },
+        "skill-validation-script": {
+            "path": "scripts/validate-skills.js",
+            "description": "Skill validation script following Agent Skills specification",
+            "required": true,
+            "variables": []
+        },
+        "skill-creation-script": {
+            "path": "scripts/create-skill.js",
+            "description": "Interactive skill creation wizard",
+            "required": true,
+            "variables": []
+        },
+        "vscode-settings": {
+            "path": ".vscode/settings.json",
+            "description": "VS Code workspace settings",
+            "required": true,
+            "variables": []
+        },
+        "vscode-extensions": {
+            "path": ".vscode/extensions.json",
+            "description": "VS Code recommended extensions",
+            "required": true,
+            "variables": []
+        },
+        "collection-schema": {
+            "path": "schemas/collection.schema.json",
+            "description": "JSON schema for collection validation",
+            "required": true,
+            "variables": []
+        },
+        "pre-commit-hook": {
+            "path": ".githooks/pre-commit",
+            "description": "Pre-commit hook for validation",
+            "required": true,
+            "variables": []
+        }
+    }
+}

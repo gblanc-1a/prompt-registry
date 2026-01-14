@@ -75,7 +75,7 @@ interface Collection {
  * - Tags (optional, max 10, each max 30 chars)
  */
 export class CollectionValidator {
-    private readonly VALID_KINDS = ['prompt', 'instruction', 'chat-mode', 'agent'];
+    private readonly VALID_KINDS = ['prompt', 'instruction', 'chat-mode', 'agent', 'skill'];
     private readonly MAX_DESCRIPTION_LENGTH = 500;
     private readonly MAX_TAGS = 10;
     private readonly MAX_TAG_LENGTH = 30;

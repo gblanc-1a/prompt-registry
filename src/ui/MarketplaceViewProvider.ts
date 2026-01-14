@@ -368,7 +368,18 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             return this.countPromptsByType(bundleData.prompts);
         }
 
-        // Third: For local OLAF bundles, show skills separately
+        // Third: Use pre-calculated breakdown from adapters (AwesomeCopilot, LocalAwesomeCopilot)
+        if (bundleData.breakdown) {
+            return {
+                prompts: bundleData.breakdown.prompts || 0,
+                instructions: bundleData.breakdown.instructions || 0,
+                chatmodes: bundleData.breakdown.chatmodes || 0,
+                agents: bundleData.breakdown.agents || 0,
+                skills: bundleData.breakdown.skills || 0
+            };
+        }
+
+        // Fourth: For local OLAF bundles, show skills separately
         if (bundleData.skills && Array.isArray(bundleData.skills)) {
             return {
                 prompts: 0,
@@ -1094,17 +1105,12 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                 <div class="breakdown-label">Instructions</div>
             </div>
             <div class="breakdown-item">
-                <div class="breakdown-icon">🎭</div>
-                <div class="breakdown-count">${breakdown.chatmodes}</div>
-                <div class="breakdown-label">Chat Modes</div>
-            </div>
-            <div class="breakdown-item">
                 <div class="breakdown-icon">🤖</div>
                 <div class="breakdown-count">${breakdown.agents}</div>
                 <div class="breakdown-label">Agents</div>
             </div>
             <div class="breakdown-item">
-                <div class="breakdown-icon">💡</div>
+                <div class="breakdown-icon">🛠️</div>
                 <div class="breakdown-count">${breakdown.skills}</div>
                 <div class="breakdown-label">Skills</div>
             </div>
@@ -2326,9 +2332,8 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                     <div class="content-breakdown">
                         \${renderContentItem('💬', 'Prompts', bundle.contentBreakdown?.prompts || 0)}
                         \${renderContentItem('📋', 'Instructions', bundle.contentBreakdown?.instructions || 0)}
-                        \${renderContentItem('🎭', 'Chat Modes', bundle.contentBreakdown?.chatmodes || 0)}
                         \${renderContentItem('🤖', 'Agents', bundle.contentBreakdown?.agents || 0)}
-                        \${renderContentItem('💡', 'Skills', bundle.contentBreakdown?.skills || 0)}
+                        \${renderContentItem('🛠️', 'Skills', bundle.contentBreakdown?.skills || 0)}
                     </div>
 
                     <div class="bundle-tags">

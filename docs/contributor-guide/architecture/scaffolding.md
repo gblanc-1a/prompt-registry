@@ -23,7 +23,7 @@ export enum ScaffoldType {
 **Awesome Copilot Template:**
 ```mermaid
 graph TD
-    A["templates/scaffolds/awesome-copilot/"]
+    A["templates/scaffolds/github/"]
     B["manifest.json<br/># Template metadata"]
     C["package.template.json<br/># Project package (with variables)"]
     D["README.template.md"]

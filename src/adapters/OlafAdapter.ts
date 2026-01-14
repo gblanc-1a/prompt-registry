@@ -8,6 +8,7 @@ import { GitHubAdapter } from './GitHubAdapter';
 import { Bundle, ValidationResult, RegistrySource, SourceMetadata, BundleDependency } from '../types/registry';
 import { SkillManifest, SkillInfo, OlafRepositoryInfo, BundleDefinition, BundleDefinitionInfo, LocalOlafSkillManifest, SkillReference } from '../types/olaf';
 import { Logger } from '../utils/logger';
+import { generateSanitizedId } from '../utils/bundleNameUtils';
 import { OlafRuntimeManager } from '../services/OlafRuntimeManager';
 import * as vscode from 'vscode';
 
@@ -467,7 +468,7 @@ export class OlafAdapter extends RepositoryAdapter {
                 
                 // Create SkillInfo object
                 const skillInfo: SkillInfo = {
-                    id: `${skillRef.name.toLowerCase().replace(/\s+/g, '-')}`,
+                    id: generateSanitizedId(skillRef.name),
                     folderName: skillRef.path.split('/').pop() || skillRef.name,
                     path: skillRef.path,
                     manifest: manifest as SkillManifest,

@@ -106,11 +106,6 @@
         "category": "Prompt Registry"
       },
       {
-        "command": "promptRegistry.validateCollectionsWithRefs",
-        "title": "Validate Collections (Check File References)",
-        "category": "Prompt Registry"
-      },
-      {
         "command": "promptRegistry.listCollections",
         "title": "List All Collections",
         "category": "Prompt Registry"
@@ -712,7 +707,7 @@
     "lint": "eslint src --ext ts",
     "test": "npm run test:all",
     "test:one": "node scripts/run-single-test.js",
-    "test:unit": "npx mocha --ui tdd --require ./test/mocha.setup.js --require ./test/unit.setup.js 'test-dist/test/{adapters,commands,services,utils}/**/*.test.js' --timeout 5000",
+    "test:unit": "npx mocha --ui tdd --require ./test/mocha.setup.js --require ./test/unit.setup.js 'test-dist/test/{adapters,commands,services,utils,scripts}/**/*.test.js' --timeout 5000",
     "test:integration": "npm run compile-tests && node ./test/runExtensionTests.js",
     "test:all": "npm run compile-tests && npm run test:unit && npm run test:integration",
     "test:coverage": "npm run compile-tests && c8 npm run test:all",

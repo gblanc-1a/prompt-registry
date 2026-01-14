@@ -4,12 +4,12 @@
  */
 
 import * as vscode from 'vscode';
-import * as path from 'path';
 import * as fs from 'fs';
 import { promisify } from 'util';
 import { RegistryManager } from '../services/RegistryManager';
 import { Profile, ProfileBundle } from '../types/registry';
 import { Logger } from '../utils/logger';
+import { generateSanitizedId } from '../utils/bundleNameUtils';
 
 const readFile = promisify(fs.readFile);
 const writeFile = promisify(fs.writeFile);
@@ -583,7 +583,7 @@ export class ProfileCommands {
 
             // Ask where to save
             const uri = await vscode.window.showSaveDialog({
-                defaultUri: vscode.Uri.file(`${profile.name.toLowerCase().replace(/\s+/g, '-')}.json`),
+                defaultUri: vscode.Uri.file(`${generateSanitizedId(profile.name)}.json`),
                 filters: {
                     'JSON Files': ['json'],
                     'All Files': ['*']
@@ -810,7 +810,7 @@ export class ProfileCommands {
      * Generate profile ID from name
      */
     private generateProfileId(name: string): string {
-        return name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+        return generateSanitizedId(name);
     }
 
     /**

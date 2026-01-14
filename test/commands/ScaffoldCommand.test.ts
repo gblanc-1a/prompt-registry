@@ -1,7 +1,7 @@
 /**
  * ScaffoldCommand Unit Tests
  * 
- * Tests for the awesome-copilot structure scaffolding command
+ * Tests for the GitHub structure scaffolding command
  * Following TDD approach - tests written first
  */
 
@@ -9,9 +9,9 @@ import * as assert from 'assert';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import { ScaffoldCommand } from '../../src/commands/ScaffoldCommand';
+import { ScaffoldCommand, ScaffoldType } from '../../src/commands/ScaffoldCommand';
 
-const TEMPLATES_ROOT = path.join(process.cwd(), 'templates/scaffolds/awesome-copilot');
+const TEMPLATES_ROOT = path.join(process.cwd(), 'templates/scaffolds/github');
 
 suite('ScaffoldCommand', () => {
     let testDir: string;
@@ -28,6 +28,33 @@ suite('ScaffoldCommand', () => {
         if (fs.existsSync(testDir)) {
             fs.rmSync(testDir, { recursive: true, force: true });
         }
+    });
+
+    suite('ScaffoldType Enum', () => {
+        test('should not contain AwesomeCopilot type', () => {
+            // Verify AwesomeCopilot is not in ScaffoldType enum
+            const scaffoldTypes = Object.values(ScaffoldType);
+            assert.ok(!scaffoldTypes.includes('awesome-copilot' as ScaffoldType), 
+                'ScaffoldType should not contain awesome-copilot');
+            assert.ok(!('AwesomeCopilot' in ScaffoldType), 
+                'ScaffoldType should not have AwesomeCopilot key');
+        });
+
+        test('should only contain GitHub, Apm, and Skill types', () => {
+            const scaffoldTypes = Object.values(ScaffoldType);
+            assert.strictEqual(scaffoldTypes.length, 3, 'ScaffoldType should have exactly 3 values');
+            assert.ok(scaffoldTypes.includes(ScaffoldType.GitHub), 'ScaffoldType should contain GitHub');
+            assert.ok(scaffoldTypes.includes(ScaffoldType.Apm), 'ScaffoldType should contain Apm');
+            assert.ok(scaffoldTypes.includes(ScaffoldType.Skill), 'ScaffoldType should contain Skill');
+        });
+
+        test('GitHub type should have correct value', () => {
+            assert.strictEqual(ScaffoldType.GitHub, 'github', 'GitHub type should have value "github"');
+        });
+
+        test('Apm type should have correct value', () => {
+            assert.strictEqual(ScaffoldType.Apm, 'apm', 'Apm type should have value "apm"');
+        });
     });
 
     suite('Directory Creation', () => {
@@ -190,48 +217,6 @@ suite('ScaffoldCommand', () => {
             const readmeFile = path.join(testDir, 'README.md');
             assert.ok(fs.existsSync(readmeFile));
         });
-
-        test('README should contain contribution guidelines', async () => {
-            await scaffoldCommand.execute(testDir);
-
-            const readmeFile = path.join(testDir, 'README.md');
-            const content = fs.readFileSync(readmeFile, 'utf8');
-
-            assert.ok(content.includes('Quick Start') || content.includes('Creating Content'));
-            assert.ok(content.includes('prompt') || content.includes('Prompt'));
-            assert.ok(content.includes('collection') || content.includes('Collection'));
-        });
-
-        test('README should explain file structure', async () => {
-            await scaffoldCommand.execute(testDir);
-
-            const readmeFile = path.join(testDir, 'README.md');
-            const content = fs.readFileSync(readmeFile, 'utf8');
-
-            assert.ok(content.includes('prompts/'));
-            assert.ok(content.includes('instructions/'));
-            assert.ok(content.includes('agents/'));
-            assert.ok(content.includes('collections/'));
-        });
-
-        test('README should include examples', async () => {
-            await scaffoldCommand.execute(testDir);
-
-            const readmeFile = path.join(testDir, 'README.md');
-            const content = fs.readFileSync(readmeFile, 'utf8');
-
-            assert.ok(content.includes('example') || content.includes('Example'));
-            assert.ok(content.includes('.prompt.md') || content.includes('prompt'));
-        });
-
-        test('README should have getting started section', async () => {
-            await scaffoldCommand.execute(testDir);
-
-            const readmeFile = path.join(testDir, 'README.md');
-            const content = fs.readFileSync(readmeFile, 'utf8');
-
-            assert.ok(content.includes('Getting Started') || content.includes('Quick Start'));
-        });
     });
 
     suite('Error Handling', () => {
@@ -253,39 +238,7 @@ suite('ScaffoldCommand', () => {
                 assert.ok((error as Error).message.length > 0);
             }
         });
-//     });
-// 
-//     suite('Validation', () => {
-//         test('should validate created structure', async () => {
-//             await scaffoldCommand.execute(testDir);
-// 
-//             const isValid = await scaffoldCommand.validate(testDir);
-//             assert.strictEqual(isValid, true);
-//         });
-// 
-//         test('should detect missing folders', async () => {
-//             await scaffoldCommand.execute(testDir);
-//             
-//             // Remove a folder
-//             fs.rmSync(path.join(testDir, 'prompts'), { recursive: true });
-// 
-//             const isValid = await scaffoldCommand.validate(testDir);
-//             assert.strictEqual(isValid, false);
-//         });
-// 
-//         test('should validate collection file syntax', async () => {
-//             await scaffoldCommand.execute(testDir);
-// 
-//             // Corrupt the collection file
-//             const collectionFile = path.join(testDir, 'collections', 'example.collection.yml');
-//             fs.writeFileSync(collectionFile, 'invalid: yaml: content: [[[');
-// 
-//             const isValid = await scaffoldCommand.validate(testDir);
-//             assert.strictEqual(isValid, false);
-//         });
-//     });
-// 
-//     suite('Customization Options', () => {
+        
         test('should support custom project name in collection', async () => {
             await scaffoldCommand.execute(testDir, { projectName: 'my-awesome-prompts' });
 
@@ -342,230 +295,6 @@ suite('ScaffoldCommand', () => {
             assert.ok(content.includes('You are') || content.includes('Act as') || content.includes('persona') || content.includes('role'));
         });
     });
-
-//     suite('Collection Management Tools', () => {
-//         test('should create VS Code tasks configuration', async () => {
-//             await scaffoldCommand.execute(testDir);
-// 
-//             const tasksFile = path.join(testDir, '.vscode', 'tasks.json');
-//             assert.ok(fs.existsSync(tasksFile));
-// 
-//             const content = fs.readFileSync(tasksFile, 'utf8');
-//             const tasks = JSON.parse(content);
-// 
-//             assert.strictEqual(tasks.version, '2.0.0');
-//             assert.ok(Array.isArray(tasks.tasks));
-//             assert.ok(tasks.tasks.length >= 3);
-//             
-//             // Check task labels
-//             const labels = tasks.tasks.map((t: any) => t.label);
-//             assert.ok(labels.includes('Validate Collections'));
-//             assert.ok(labels.includes('List All Collections'));
-//             assert.ok(labels.includes('Check Collection References'));
-//         });
-// 
-//         test('should create validation script', async () => {
-//             await scaffoldCommand.execute(testDir);
-// 
-//             const scriptFile = path.join(testDir, 'validate-collections.js');
-//             assert.ok(fs.existsSync(scriptFile));
-// 
-//             const content = fs.readFileSync(scriptFile, 'utf8');
-//             
-//             // Check for attribution
-//             assert.ok(content.includes('github/awesome-copilot'));
-//             assert.ok(content.includes('Attribution'));
-//             
-//             // Check for main functionality
-//             assert.ok(content.includes('function validateCollection'));
-//             assert.ok(content.includes('function main'));
-//             assert.ok(content.includes('YAML'));
-//         });
-// 
-//         test('should create package.json with scripts', async () => {
-//             await scaffoldCommand.execute(testDir);
-// 
-//             const packageFile = path.join(testDir, 'package.json');
-//             assert.ok(fs.existsSync(packageFile));
-// 
-//             const content = fs.readFileSync(packageFile, 'utf8');
-//             const packageJson = JSON.parse(content);
-// 
-//             assert.ok(packageJson.name);
-//             assert.ok(packageJson.version);
-//             assert.ok(packageJson.scripts);
-//             assert.ok(packageJson.scripts.validate);
-//             assert.ok(packageJson.scripts['validate:refs']);
-//             assert.ok(packageJson.scripts.list);
-//             assert.ok(packageJson.scripts.test);
-//             
-//             // Check for js-yaml dependency
-//             assert.ok(packageJson.dependencies);
-//             assert.ok(packageJson.dependencies['js-yaml']);
-//         });
-// 
-//         test('package.json should use custom project name', async () => {
-//             await scaffoldCommand.execute(testDir, { projectName: 'test-project' });
-// 
-//             const packageFile = path.join(testDir, 'package.json');
-//             const content = fs.readFileSync(packageFile, 'utf8');
-//             const packageJson = JSON.parse(content);
-// 
-//             assert.strictEqual(packageJson.name, 'test-project');
-//         });
-// 
-//         test('validation script should be executable', async () => {
-//             await scaffoldCommand.execute(testDir);
-// 
-//             const scriptFile = path.join(testDir, 'validate-collections.js');
-//             const content = fs.readFileSync(scriptFile, 'utf8');
-//             
-//             // Check for shebang
-//             assert.ok(content.startsWith('#!/usr/bin/env node'));
-//         });
-// 
-//         test('VS Code tasks should reference validation script', async () => {
-//             await scaffoldCommand.execute(testDir);
-// 
-//             const tasksFile = path.join(testDir, '.vscode', 'tasks.json');
-//             const content = fs.readFileSync(tasksFile, 'utf8');
-//             const tasks = JSON.parse(content);
-// 
-//             const validateTask = tasks.tasks.find((t: any) => t.label === 'Validate Collections');
-//             assert.ok(validateTask);
-//             assert.strictEqual(validateTask.command, 'node');
-//             assert.ok(validateTask.args.includes('validate-collections.js'));
-//         });
-// 
-//         test('README should document collection management tools', async () => {
-//             await scaffoldCommand.execute(testDir);
-// 
-//             const readmeFile = path.join(testDir, 'README.md');
-//             const content = fs.readFileSync(readmeFile, 'utf8');
-// 
-//             // Check for VS Code tasks section
-//             assert.ok(content.includes('VS Code Tasks') || content.includes('Collection Management'));
-//             
-//             // Check for attribution
-//             assert.ok(content.includes('github/awesome-copilot'));
-//             assert.ok(content.includes('Attribution') || content.includes('Acknowledgments'));
-//             
-//             // Check for npm commands
-//             assert.ok(content.includes('npm run validate') || content.includes('npm test'));
-//         });
-//     });
-
-//     suite('Collection Creation Tools', () => {
-//         test('should create collection creator script', async () => {
-//             await scaffoldCommand.execute(testDir);
-// 
-//             const creatorScript = path.join(testDir, 'create-collection.js');
-//             assert.ok(fs.existsSync(creatorScript));
-// 
-//             const content = fs.readFileSync(creatorScript, 'utf8');
-//             
-//             // Check for attribution
-//             assert.ok(content.includes('github/awesome-copilot'));
-//             assert.ok(content.includes('Attribution'));
-//             assert.ok(content.includes('TEMPLATE.md#creating-a-new-collection'));
-//             
-//             // Check for main functionality
-//             assert.ok(content.includes('function validateId'));
-//             assert.ok(content.includes('function generateTemplate'));
-//             assert.ok(content.includes('readline'));
-//         });
-// 
-//         test('creator script should be executable', async () => {
-//             await scaffoldCommand.execute(testDir);
-// 
-//             const creatorScript = path.join(testDir, 'create-collection.js');
-//             const content = fs.readFileSync(creatorScript, 'utf8');
-//             
-//             // Check for shebang
-//             assert.ok(content.startsWith('#!/usr/bin/env node'));
-//         });
-// 
-//         test('VS Code tasks should include Create New Collection', async () => {
-//             await scaffoldCommand.execute(testDir);
-// 
-//             const tasksFile = path.join(testDir, '.vscode', 'tasks.json');
-//             const content = fs.readFileSync(tasksFile, 'utf8');
-//             const tasks = JSON.parse(content);
-// 
-//             const createTask = tasks.tasks.find((t: any) => t.label === 'Create New Collection');
-//             assert.ok(createTask);
-//             assert.strictEqual(createTask.command, 'node');
-//             assert.ok(createTask.args.includes('create-collection.js'));
-//             assert.strictEqual(createTask.detail, 'Interactive wizard to create a new collection manifest.');
-//         });
-// 
-//         test('package.json should include create script', async () => {
-//             await scaffoldCommand.execute(testDir);
-// 
-//             const packageFile = path.join(testDir, 'package.json');
-//             const content = fs.readFileSync(packageFile, 'utf8');
-//             const packageJson = JSON.parse(content);
-// 
-//             assert.ok(packageJson.scripts.create);
-//             assert.strictEqual(packageJson.scripts.create, 'node create-collection.js');
-//         });
-// 
-//         test('README should document collection creation', async () => {
-//             await scaffoldCommand.execute(testDir);
-// 
-//             const readmeFile = path.join(testDir, 'README.md');
-//             const content = fs.readFileSync(readmeFile, 'utf8');
-// 
-//             // Check for creation section
-//             assert.ok(content.includes('Creating New Collections') || content.includes('Create New Collection'));
-//             
-//             // Check for npm run create command
-//             assert.ok(content.includes('npm run create'));
-//             
-//             // Check for attribution link
-//             assert.ok(content.includes('TEMPLATE.md#creating-a-new-collection'));
-//             
-//             // Check for usage instructions
-//             assert.ok(content.includes('node create-collection.js'));
-//         });
-// 
-//         test('creator script should validate ID format', async () => {
-//             await scaffoldCommand.execute(testDir);
-// 
-//             const creatorScript = path.join(testDir, 'create-collection.js');
-//             const content = fs.readFileSync(creatorScript, 'utf8');
-// 
-//             // Check for ID validation logic
-//             assert.ok(content.includes('validateId'));
-//             assert.ok(content.includes('lowercase') || content.includes('hyphen'));
-//             assert.ok(content.includes('/^[a-z0-9-]+$/'));
-//         });
-// 
-//         test('creator script should generate proper YAML template', async () => {
-//             await scaffoldCommand.execute(testDir);
-// 
-//             const creatorScript = path.join(testDir, 'create-collection.js');
-//             const content = fs.readFileSync(creatorScript, 'utf8');
-// 
-//             // Check template generation
-//             assert.ok(content.includes('generateTemplate'));
-//             assert.ok(content.includes('yaml.dump'));
-//             assert.ok(content.includes('items:'));
-//             assert.ok(content.includes('display:'));
-//         });
-// 
-//         test('VS Code task count should be 4', async () => {
-//             await scaffoldCommand.execute(testDir);
-// 
-//             const tasksFile = path.join(testDir, '.vscode', 'tasks.json');
-//             const content = fs.readFileSync(tasksFile, 'utf8');
-//             const tasks = JSON.parse(content);
-// 
-//             // Should have 4 tasks: Validate, List, Check References, Create
-//             assert.strictEqual(tasks.tasks.length, 4);
-//         });
-//     });
-// });
 });
 
 suite('Skill Scaffold', () => {

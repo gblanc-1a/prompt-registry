@@ -161,6 +161,64 @@ suite('BundleInstaller', () => {
             // Test ID validation
             assert.ok(manifest);
         });
+
+        // Bundle ID validation tests - testing actual validation behavior
+        test('should validate bundle with short manifest ID matching suffix pattern', async () => {
+            // This tests the backward compatibility for GitHub bundles
+            // where manifest.id is just the collection ID (e.g., "test2")
+            // but bundle.id is the full computed ID (e.g., "owner-repo-test2-v1.0.2")
+            
+            // The validation should pass when:
+            // - bundleId ends with `-${manifestId}-v${manifestVersion}`
+            // - bundleId ends with `-${manifestId}-${manifestVersion}`
+            // - manifestId === bundleId (exact match)
+            
+            const testCases = [
+                {
+                    manifestId: 'test2',
+                    manifestVersion: '1.0.2',
+                    bundleId: 'owner-repo-test2-v1.0.2',
+                    shouldMatch: true,
+                    description: 'suffix pattern with v prefix'
+                },
+                {
+                    manifestId: 'test2',
+                    manifestVersion: '1.0.2',
+                    bundleId: 'owner-repo-test2-1.0.2',
+                    shouldMatch: true,
+                    description: 'suffix pattern without v prefix'
+                },
+                {
+                    manifestId: 'owner-repo-collection-v1.0.0',
+                    manifestVersion: '1.0.0',
+                    bundleId: 'owner-repo-collection-v1.0.0',
+                    shouldMatch: true,
+                    description: 'exact match'
+                },
+                {
+                    manifestId: 'completely-different',
+                    manifestVersion: '1.0.0',
+                    bundleId: 'owner-repo-test2-v1.0.0',
+                    shouldMatch: false,
+                    description: 'mismatched IDs'
+                },
+                {
+                    manifestId: 'test2',
+                    manifestVersion: '1.0.2',
+                    bundleId: 'amadeus-airlines-solutions-genai.spec-driven-agents-test2-1.0.2',
+                    shouldMatch: true,
+                    description: 'repo name with dot'
+                }
+            ];
+
+            for (const tc of testCases) {
+                // Import the validation function
+                const { isManifestIdMatch } = await import('../../src/utils/bundleNameUtils');
+                const result = isManifestIdMatch(tc.manifestId, tc.manifestVersion, tc.bundleId);
+                assert.strictEqual(result, tc.shouldMatch, 
+                    `${tc.description}: manifestId="${tc.manifestId}" bundleId="${tc.bundleId}" should ${tc.shouldMatch ? 'match' : 'not match'}`);
+            }
+        });
     });
 
     suite('File Operations', () => {

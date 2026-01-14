@@ -48,12 +48,14 @@ flowchart TD
     C --> D[SchemaValidator.validateCollection]
     D --> E[1. Schema validation AJV]
     D --> F[2. Format errors to user-friendly messages]
-    D --> G[3. Check file references optional]
+    D --> G[3. Check file references]
     D --> H[4. Generate best practice warnings]
-    E --> I[Display in Output Channel + VS Code Diagnostics]
-    F --> I
-    G --> I
-    H --> I
+    D --> I[5. Detect duplicate IDs/names]
+    E --> J[Display in Output Channel + VS Code Diagnostics]
+    F --> J
+    G --> J
+    H --> J
+    I --> J
 ```
 
 ## Error Formatting
@@ -62,16 +64,18 @@ flowchart TD
 |------------|---------|
 | Required field | `Missing required field: description` |
 | Pattern mismatch | `/id: must match pattern ^[a-z0-9-]+$` |
-| Enum violation | `kind: must be one of: prompt, instruction, chat-mode, agent` |
+| Enum violation | `kind: must be one of: prompt, instruction, agent, skill` |
 | Type mismatch | `/version: must be string` |
 | Length violation | `description: must be at most 500 characters` |
 | Additional property | `/: has unexpected property 'foo'` |
+| Duplicate ID | `Duplicate collection ID 'my-id' (also in other.collection.yml)` |
+| Duplicate name | `Duplicate collection name 'My Name' (also in other.collection.yml)` |
 
 ## Performance
 
 - **Schema Caching**: Compiled schemas cached in Map
 - **Lazy Loading**: Schemas loaded on first use
-- **Efficient File Checking**: Only when `checkFileReferences` enabled
+- **File Reference Checking**: Always enabled for complete validation
 
 ## Validation Schemas
 
@@ -95,7 +99,7 @@ The extension provides JSON Schema validation for all major configuration file t
 - `mcp` — Model Context Protocol server configurations
 - `display` — UI display preferences (color, icon, ordering)
 
-**Item types supported:** `prompt`, `instruction`, `chat-mode`, `agent`
+**Item types supported:** `prompt`, `instruction`, `agent`, `skill`
 
 **Validation features:**
 - File reference checking (when `checkFileReferences` enabled)

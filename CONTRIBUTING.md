@@ -117,6 +117,10 @@ prompt-registry/
 │   ├── types/             # TypeScript type definitions
 │   ├── utils/             # Utility functions
 │   └── extension.ts       # Extension entry point
+├── templates/
+│   └── scaffolds/         # Project scaffolding templates
+│       ├── github/        # GitHub scaffold with CI/CD publishing
+│       └── apm/           # APM package template
 ├── test/
 │   ├── adapters/          # Adapter unit tests
 │   ├── services/          # Service unit tests
@@ -132,8 +136,29 @@ prompt-registry/
 
 - **`src/extension.ts`**: Extension activation and setup
 - **`src/types/registry.ts`**: Core type definitions
+- **`src/commands/ScaffoldCommand.ts`**: Project scaffolding command
 - **[Architecture](docs/contributor-guide/architecture.md)**: Detailed architecture documentation
 - **[Core Flows](docs/contributor-guide/core-flows.md)**: Key system flows and processes
+
+### Scaffolding System
+
+The extension includes a scaffolding system for creating new prompt projects:
+
+| Scaffold Type | Description | Template Location |
+|--------------|-------------|-------------------|
+| **GitHub** | Full-featured template with GitHub Releases CI for automated collection publishing | `templates/scaffolds/github/` |
+| **APM** | APM package template | `templates/scaffolds/apm/` |
+
+**GitHub Scaffold Features:**
+- GitHub Actions workflows for automated publishing
+- Collection validation scripts
+- Example prompts, instructions, and agents
+- Pre-commit hooks for validation
+
+When contributing to scaffolding:
+- Templates use `{{variable}}` syntax for substitution
+- Test changes with `npm run test:unit` (scaffold tests in `test/commands/`)
+- Ensure all generated files are valid and functional
 
 ---
 

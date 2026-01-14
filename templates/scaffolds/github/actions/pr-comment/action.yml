@@ -1,0 +1,50 @@
+name: Create or Update PR Comment
+description: Create or update a comment on a pull request
+
+inputs:
+  issue-number:
+    description: PR/Issue number to comment on
+    required: true
+  body-path:
+    description: Path to file containing comment body
+    required: true
+  comment-tag:
+    description: Hidden tag to identify comment for updates
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Create or update comment
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        ISSUE_NUMBER: ${{ inputs.issue-number }}
+        BODY_PATH: ${{ inputs.body-path }}
+        COMMENT_TAG: ${{ inputs.comment-tag }}
+      run: |
+        # Read comment body and append hidden tag
+        BODY=$(cat "$BODY_PATH")
+        BODY="$BODY"$'\n\n'"<!-- $COMMENT_TAG -->"
+        
+        # Find existing comment with tag
+        COMMENT_ID=$(gh api \
+          "repos/${{ github.repository }}/issues/$ISSUE_NUMBER/comments" \
+          --jq ".[] | select(.body | contains(\"<!-- $COMMENT_TAG -->\")) | .id" \
+          2>/dev/null | head -1)
+        
+        if [ -n "$COMMENT_ID" ]; then
+          # Update existing comment
+          gh api \
+            --method PATCH \
+            "repos/${{ github.repository }}/issues/comments/$COMMENT_ID" \
+            -f body="$BODY"
+          echo "Updated comment $COMMENT_ID"
+        else
+          # Create new comment
+          gh api \
+            --method POST \
+            "repos/${{ github.repository }}/issues/$ISSUE_NUMBER/comments" \
+            -f body="$BODY"
+          echo "Created new comment"
+        fi

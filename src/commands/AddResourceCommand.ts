@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import * as fs from 'fs';
 import * as yaml from 'js-yaml';
+import { execSync } from 'child_process';
 import { TemplateEngine } from '../services/TemplateEngine';
+import { generateSanitizedId } from '../utils/bundleNameUtils';
 
 export enum ResourceType {
     Prompt = 'prompt',
@@ -108,11 +109,21 @@ export class AddResourceCommand {
 
             // Create resource file
             const resourceInfo = this.resourceTypes.get(resourceType)!;
-            const fileName = this.sanitizeFileName(resourceName) + resourceInfo.extension;
-            const resourcePath = path.join(workspaceFolder, resourceInfo.folder, fileName);
+            const fileName = generateSanitizedId(resourceName) + resourceInfo.extension;
+            const dirPath = path.join(workspaceFolder, resourceInfo.folder);
+            const resourcePath = path.join(dirPath, fileName);
 
             // Check if file already exists
-            if (fs.existsSync(resourcePath)) {
+            const resourceUri = vscode.Uri.file(resourcePath);
+            let fileExists = false;
+            try {
+                await vscode.workspace.fs.stat(resourceUri);
+                fileExists = true;
+            } catch {
+                fileExists = false;
+            }
+            
+            if (fileExists) {
                 const overwrite = await vscode.window.showWarningMessage(
                     `File ${fileName} already exists. Overwrite?`,
                     'Yes', 'No'
@@ -123,15 +134,17 @@ export class AddResourceCommand {
             }
 
             // Ensure directory exists
-            const dirPath = path.dirname(resourcePath);
-            if (!fs.existsSync(dirPath)) {
-                fs.mkdirSync(dirPath, { recursive: true });
+            const dirUri = vscode.Uri.file(dirPath);
+            try {
+                await vscode.workspace.fs.createDirectory(dirUri);
+            } catch {
+                // Directory may already exist, ignore error
             }
 
             // Prepare template context
             const context: any = {
                 projectName: resourceName,
-                collectionId: this.sanitizeFileName(resourceName),
+                collectionId: generateSanitizedId(resourceName),
                 RESOURCE_NAME: resourceName,
                 RESOURCE_DESCRIPTION: resourceDescription,
                 AUTHOR: author,
@@ -143,7 +156,7 @@ export class AddResourceCommand {
             const content = await this.templateEngine.renderTemplate(resourceInfo.template, context);
 
             // Write file
-            fs.writeFileSync(resourcePath, content, 'utf-8');
+            await vscode.workspace.fs.writeFile(resourceUri, Buffer.from(content, 'utf-8'));
 
             // Show success message
             const openFile = await vscode.window.showInformationMessage(
@@ -260,31 +273,30 @@ export class AddResourceCommand {
 
     private async getGitUserName(): Promise<string> {
         try {
-            const { execSync } = require('child_process');
             return execSync('git config user.name', { encoding: 'utf-8' }).trim();
         } catch {
             return '';
         }
     }
 
-    private sanitizeFileName(name: string): string {
-        return name
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/^-+|-+$/g, '');
-    }
-
     private async addToCollection(workspaceRoot: string, resourcePath: string, resourceType: ResourceType): Promise<void> {
         try {
             const collectionsDir = path.join(workspaceRoot, 'collections');
-            if (!fs.existsSync(collectionsDir)) {
+            const collectionsDirUri = vscode.Uri.file(collectionsDir);
+            
+            // Check if collections directory exists
+            try {
+                await vscode.workspace.fs.stat(collectionsDirUri);
+            } catch {
                 vscode.window.showWarningMessage('No collections directory found');
                 return;
             }
 
             // Find collection files
-            const collectionFiles = fs.readdirSync(collectionsDir)
-                .filter(f => f.endsWith('.collection.yml'));
+            const entries = await vscode.workspace.fs.readDirectory(collectionsDirUri);
+            const collectionFiles = entries
+                .filter(([name, type]) => type === vscode.FileType.File && name.endsWith('.collection.yml'))
+                .map(([name]) => name);
 
             if (collectionFiles.length === 0) {
                 vscode.window.showWarningMessage('No collection files found');
@@ -304,8 +316,9 @@ export class AddResourceCommand {
                 return;
             }
 
-            const collectionPath = path.join(collectionsDir, selected.label);
-            const collectionContent = fs.readFileSync(collectionPath, 'utf-8');
+            const collectionUri = vscode.Uri.file(path.join(collectionsDir, selected.label));
+            const collectionContentBytes = await vscode.workspace.fs.readFile(collectionUri);
+            const collectionContent = Buffer.from(collectionContentBytes).toString('utf-8');
             const collection: any = yaml.load(collectionContent);
 
             // Add resource to collection
@@ -330,7 +343,7 @@ export class AddResourceCommand {
 
             // Write back
             const updatedContent = yaml.dump(collection);
-            fs.writeFileSync(collectionPath, updatedContent, 'utf-8');
+            await vscode.workspace.fs.writeFile(collectionUri, Buffer.from(updatedContent, 'utf-8'));
 
             vscode.window.showInformationMessage(`✓ Added resource to ${selected.label}`);
 

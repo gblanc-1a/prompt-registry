@@ -28,7 +28,7 @@
         },
         "workflow": {
             "path": "workflows/validate-apm.yml",
-            "description": "GitHub Actions workflow",
+            "description": "GitHub Actions workflow for validation",
             "required": true,
             "variables": ["githubRunner"]
         },

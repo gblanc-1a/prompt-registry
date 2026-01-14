@@ -1,0 +1,40 @@
+{
+  "name": "{{packageName}}",
+  "version": "1.0.0",
+  "description": "Prompt collection for GitHub Copilot",
+  "scripts": {
+    "validate": "node scripts/validate-collections.js",
+    "validate:verbose": "node scripts/validate-collections.js --verbose",
+    "install-hooks": "git config core.hooksPath .githooks",
+    "skill:validate": "node scripts/validate-skills.js",
+    "skill:create": "node scripts/create-skill.js"
+  },
+  "keywords": [
+    "copilot",
+    "instructions",
+    "agents",
+    "skills",
+    "ai",
+    "github-copilot",
+    "prompt-bundle"
+  ],
+  "author": "",
+  "license": "MIT",
+  "files": [
+    "agents",
+    "collections",
+    "instructions",
+    "prompts",
+    "deployment-manifest.yml",
+    "*.zip"
+  ],
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "js-yaml": "^4.1.0",
+    "semver": "^7.6.3",
+    "yauzl": "^3.2.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

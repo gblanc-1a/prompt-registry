@@ -85,8 +85,7 @@ This document lists all VS Code commands provided by the Prompt Registry extensi
 | Command | Title | Description |
 |---------|-------|-------------|
 | `promptRegistry.createCollection` | Create New Collection | Create a new prompt collection |
-| `promptRegistry.validateCollections` | Validate Collections | Validate collection YAML files |
-| `promptRegistry.validateCollectionsWithRefs` | Validate Collections (Check File References) | Validate collections including file references |
+| `promptRegistry.validateCollections` | Validate Collections | Validate collection YAML files including file references and duplicate detection |
 | `promptRegistry.validateApm` | Validate APM Package | Validate an APM package |
 | `promptRegistry.listCollections` | List All Collections | Display all collections |
 

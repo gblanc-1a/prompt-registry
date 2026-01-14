@@ -132,8 +132,8 @@ This is an example prompt for testing.
             const projectDir = path.join(testContext.tempStoragePath, 'scaffold-test');
             fs.mkdirSync(projectDir, { recursive: true });
             
-            const templateRoot = path.join(process.cwd(), 'templates/scaffolds/awesome-copilot');
-            const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.AwesomeCopilot);
+            const templateRoot = path.join(process.cwd(), 'templates/scaffolds/github');
+            const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.GitHub);
             
             await scaffoldCommand.execute(projectDir, { projectName: 'test-skills-project' });
             
@@ -160,8 +160,8 @@ This is an example prompt for testing.
             const projectDir = path.join(testContext.tempStoragePath, 'scaffold-validation-test');
             fs.mkdirSync(projectDir, { recursive: true });
             
-            const templateRoot = path.join(process.cwd(), 'templates/scaffolds/awesome-copilot');
-            const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.AwesomeCopilot);
+            const templateRoot = path.join(process.cwd(), 'templates/scaffolds/github');
+            const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.GitHub);
             
             await scaffoldCommand.execute(projectDir, { projectName: 'test-validation' });
             
@@ -183,8 +183,8 @@ This is an example prompt for testing.
             const projectDir = path.join(testContext.tempStoragePath, 'scaffold-wizard-test');
             fs.mkdirSync(projectDir, { recursive: true });
             
-            const templateRoot = path.join(process.cwd(), 'templates/scaffolds/awesome-copilot');
-            const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.AwesomeCopilot);
+            const templateRoot = path.join(process.cwd(), 'templates/scaffolds/github');
+            const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.GitHub);
             
             await scaffoldCommand.execute(projectDir, { projectName: 'test-wizard' });
             
@@ -199,8 +199,8 @@ This is an example prompt for testing.
             const projectDir = path.join(testContext.tempStoragePath, 'scaffold-package-test');
             fs.mkdirSync(projectDir, { recursive: true });
             
-            const templateRoot = path.join(process.cwd(), 'templates/scaffolds/awesome-copilot');
-            const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.AwesomeCopilot);
+            const templateRoot = path.join(process.cwd(), 'templates/scaffolds/github');
+            const scaffoldCommand = new ScaffoldCommand(templateRoot, ScaffoldType.GitHub);
             
             await scaffoldCommand.execute(projectDir, { projectName: 'test-package' });
             

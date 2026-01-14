@@ -77,6 +77,16 @@ export class SourceCommands {
                         description: 'Local filesystem directory with OLAF skills organized in bundle-based structure',
                         value: 'local-olaf' as SourceType
                     },
+                    {
+                        label: '$(sparkle) Skills Repository',
+                        description: 'GitHub repository with skills in skills/ folder (Anthropic-style SKILL.md files)',
+                        value: 'skills' as SourceType
+                    },
+                    {
+                        label: '$(folder-library) Local Skills',
+                        description: 'Local filesystem directory with skills in skills/ folder (SKILL.md files)',
+                        value: 'local-skills' as SourceType
+                    },
                 ],
                 {
                     placeHolder: 'Select source type',
@@ -741,6 +751,32 @@ export class SourceCommands {
                     canSelectFiles: false,
                     canSelectMany: false,
                     title: 'Select local OLAF skills directory',
+                    openLabel: 'Select Directory'
+                });
+                
+                return uris && uris.length > 0 ? uris[0].fsPath : undefined;
+            }
+
+            case 'skills':
+                return await vscode.window.showInputBox({
+                    prompt: 'Enter GitHub repository URL containing skills (e.g., anthropics/skills)',
+                    placeHolder: 'https://github.com/anthropics/skills',
+                    value: 'https://github.com/anthropics/skills',
+                    validateInput: (value) => {
+                        if (!value || !value.match(/github\.com/)) {
+                            return 'Please enter a valid GitHub URL';
+                        }
+                        return undefined;
+                    },
+                    ignoreFocusOut: true
+                });
+
+            case 'local-skills': {
+                const uris = await vscode.window.showOpenDialog({
+                    canSelectFolders: true,
+                    canSelectFiles: false,
+                    canSelectMany: false,
+                    title: 'Select local skills directory (must contain skills/ folder)',
                     openLabel: 'Select Directory'
                 });
                 

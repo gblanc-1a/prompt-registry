@@ -1,13 +1,14 @@
+import { GitHubRelease, BundleInfo } from '../types/github';
+import { Platform, InstallationScope } from '../types/platform';
+import { Logger } from '../utils/logger';
+
 import { GitHubService } from './githubService';
 import { InstallationManager, InstallationResult } from './installationManager';
 import { PlatformDetector } from './platformDetector';
-import { Platform, InstallationScope } from '../types/platform';
-import { GitHubRelease, BundleInfo } from '../types/github';
-import { Logger } from '../utils/logger';
 
 /**
  * Update check result for EXTENSION updates
- * 
+ *
  * NOTE: This is different from bundle UpdateCheckResult in UpdateCache.ts
  * This interface is for extension/platform updates, not bundle updates.
  */
@@ -31,7 +32,7 @@ export interface UpdateOptions {
 
 /**
  * Service for managing Prompt Registry EXTENSION updates
- * 
+ *
  * NOTE: This is for updating the Prompt Registry extension/platform installation itself,
  * NOT for updating prompt bundles. For bundle updates, see:
  * - UpdateChecker (src/services/UpdateChecker.ts)
@@ -68,7 +69,7 @@ export class ExtensionUpdateManager {
 
             // Get all installed scopes
             const installedScopes = await this.installationManager.getInstalledScopes();
-            
+
             if (installedScopes.length === 0) {
                 this.logger.info('No Prompt Registry installations found');
                 return [];
@@ -83,7 +84,10 @@ export class ExtensionUpdateManager {
             // Get latest release
             const latestRelease = await this.githubService.getLatestRelease();
             const platform = await this.platformDetector.detectPlatform();
-            const bundleInfo = this.githubService.findPlatformBundle(latestRelease, platform.platform);
+            const bundleInfo = this.githubService.findPlatformBundle(
+                latestRelease,
+                platform.platform
+            );
 
             if (!bundleInfo) {
                 throw new Error(`No bundle found for platform: ${platform.platform}`);
@@ -99,15 +103,16 @@ export class ExtensionUpdateManager {
                     bundleInfo,
                     options
                 );
-                
+
                 if (updateResult) {
                     results.push(updateResult);
                 }
             }
 
-            this.logger.info(`Update check completed. Found ${results.filter(r => r.hasUpdate).length} updates available`);
+            this.logger.info(
+                `Update check completed. Found ${results.filter((r) => r.hasUpdate).length} updates available`
+            );
             return results;
-
         } catch (error) {
             this.logger.error('Failed to check for updates', error as Error);
             throw error;
@@ -127,7 +132,7 @@ export class ExtensionUpdateManager {
 
             // Check if update is available
             const updateCheck = await this.checkForUpdates({ scope, ...options });
-            const scopeUpdate = updateCheck.find(u => u.scope === scope);
+            const scopeUpdate = updateCheck.find((u) => u.scope === scope);
 
             if (!scopeUpdate || (!scopeUpdate.hasUpdate && !options.force)) {
                 throw new Error(`No update available for scope: ${scope}`);
@@ -144,7 +149,7 @@ export class ExtensionUpdateManager {
                 scopeUpdate.bundleInfo,
                 (downloadProgress) => {
                     // Map download progress to 10-70% of total progress
-                    const mappedProgress = 10 + (downloadProgress * 0.6);
+                    const mappedProgress = 10 + downloadProgress * 0.6;
                     onProgress?.(mappedProgress, `Downloading... ${downloadProgress.toFixed(1)}%`);
                 }
             );
@@ -164,7 +169,7 @@ export class ExtensionUpdateManager {
                     scope,
                     (installProgress, message) => {
                         // Map install progress to 75-100% of total progress
-                        const mappedProgress = 75 + (installProgress * 0.25);
+                        const mappedProgress = 75 + installProgress * 0.25;
                         onProgress?.(mappedProgress, message);
                     }
                 );
@@ -174,13 +179,12 @@ export class ExtensionUpdateManager {
                     if (backupPath) {
                         await this.cleanupBackup(backupPath);
                     }
-                    
+
                     this.logger.info(`Update completed successfully for scope: ${scope}`);
                     return installResult;
                 } else {
                     throw new Error(installResult.error || 'Installation failed');
                 }
-
             } catch (error) {
                 // Restore backup on failure
                 if (backupPath) {
@@ -188,7 +192,6 @@ export class ExtensionUpdateManager {
                 }
                 throw error;
             }
-
         } catch (error) {
             this.logger.error(`Update failed for scope: ${scope}`, error as Error);
             throw error;
@@ -206,7 +209,7 @@ export class ExtensionUpdateManager {
             this.logger.info('Starting update for all scopes...');
 
             const updateChecks = await this.checkForUpdates(options);
-            const scopesToUpdate = updateChecks.filter(u => u.hasUpdate || options.force);
+            const scopesToUpdate = updateChecks.filter((u) => u.hasUpdate || options.force);
 
             if (scopesToUpdate.length === 0) {
                 this.logger.info('No updates available');
@@ -216,9 +219,10 @@ export class ExtensionUpdateManager {
             const results: InstallationResult[] = [];
             const totalScopes = scopesToUpdate.length;
 
-            for (let i = 0; i < scopesToUpdate.length; i++) {
-                const scopeUpdate = scopesToUpdate[i];
-                if (!scopeUpdate.scope) {continue;}
+            for (const [i, scopeUpdate] of scopesToUpdate.entries()) {
+                if (!scopeUpdate || !scopeUpdate.scope) {
+                    continue;
+                }
 
                 const baseProgress = (i / totalScopes) * 100;
                 const scopeProgressRange = 100 / totalScopes;
@@ -228,16 +232,19 @@ export class ExtensionUpdateManager {
                         scopeUpdate.scope,
                         options,
                         (scopeProgress, message) => {
-                            const totalProgress = baseProgress + (scopeProgress / 100) * scopeProgressRange;
+                            const totalProgress =
+                                baseProgress + (scopeProgress / 100) * scopeProgressRange;
                             onProgress?.(totalProgress, message, scopeUpdate.scope);
                         }
                     );
 
                     results.push(result);
-
                 } catch (error) {
-                    this.logger.error(`Failed to update scope: ${scopeUpdate.scope}`, error as Error);
-                    
+                    this.logger.error(
+                        `Failed to update scope: ${scopeUpdate.scope}`,
+                        error as Error
+                    );
+
                     // Continue with other scopes even if one fails
                     results.push({
                         success: false,
@@ -246,14 +253,15 @@ export class ExtensionUpdateManager {
                         version: scopeUpdate.latestVersion || '',
                         scope: scopeUpdate.scope,
                         platform: Platform.UNKNOWN,
-                        error: (error as Error).message
+                        error: (error as Error).message,
                     });
                 }
             }
 
-            this.logger.info(`Update all completed. ${results.filter(r => r.success).length}/${results.length} successful`);
+            this.logger.info(
+                `Update all completed. ${results.filter((r) => r.success).length}/${results.length} successful`
+            );
             return results;
-
         } catch (error) {
             this.logger.error('Update all failed', error as Error);
             throw error;
@@ -264,14 +272,17 @@ export class ExtensionUpdateManager {
      * Get update notification message
      */
     public getUpdateNotificationMessage(updateResults: UpdateCheckResult[]): string {
-        const updatesAvailable = updateResults.filter(r => r.hasUpdate);
-        
+        const updatesAvailable = updateResults.filter((r) => r.hasUpdate);
+
         if (updatesAvailable.length === 0) {
             return 'Prompt Registry is up to date';
         }
 
         if (updatesAvailable.length === 1) {
             const update = updatesAvailable[0];
+            if (!update) {
+                return 'Prompt Registry is up to date';
+            }
             return `Prompt Registry update available: ${update.currentVersion} → ${update.latestVersion} (${update.scope})`;
         }
 
@@ -287,7 +298,7 @@ export class ExtensionUpdateManager {
         try {
             // Get current installation info
             const installationInfo = await this.installationManager.getInstallationInfo(scope);
-            
+
             if (!installationInfo) {
                 this.logger.debug(`No installation found for scope: ${scope}`);
                 return null;
@@ -301,7 +312,9 @@ export class ExtensionUpdateManager {
             const latestVersionInfo = this.githubService.parseVersion(latestVersion);
 
             if (!currentVersionInfo || !latestVersionInfo) {
-                this.logger.warn(`Invalid version format. Current: ${currentVersion}, Latest: ${latestVersion}`);
+                this.logger.warn(
+                    `Invalid version format. Current: ${currentVersion}, Latest: ${latestVersion}`
+                );
                 return null;
             }
 
@@ -320,9 +333,8 @@ export class ExtensionUpdateManager {
                 latestVersion,
                 releaseInfo: latestRelease,
                 bundleInfo,
-                scope
+                scope,
             };
-
         } catch (error) {
             this.logger.error(`Failed to check update for scope: ${scope}`, error as Error);
             return null;

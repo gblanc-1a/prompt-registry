@@ -5,6 +5,7 @@
 
 import { HubManager } from '../services/HubManager';
 import { ProfileChanges, ConflictResolutionDialog } from '../types/hub';
+
 import { HubSyncHistory } from './HubSyncHistory';
 
 /**
@@ -57,7 +58,7 @@ export class HubSyncCommands {
             'promptRegistry.hub.viewChanges',
             'promptRegistry.hub.syncProfile',
             'promptRegistry.hub.reviewAndSync',
-            'promptRegistry.hub.checkAllForUpdates'
+            'promptRegistry.hub.checkAllForUpdates',
         ];
     }
 
@@ -66,25 +67,25 @@ export class HubSyncCommands {
      */
     async checkForUpdates(hubId: string, profileId: string): Promise<UpdateCheckResult> {
         const state = await this.hubManager.getActiveProfile(hubId);
-        
+
         if (!state || state.profileId !== profileId) {
             return {
                 hasUpdates: false,
-                message: 'Profile is not active'
+                message: 'Profile is not active',
             };
         }
 
         const hasChanges = await this.hubManager.hasProfileChanges(hubId, profileId);
-        
+
         if (!hasChanges) {
             return { hasUpdates: false };
         }
 
         const changes = await this.hubManager.getProfileChanges(hubId, profileId);
-        
+
         return {
             hasUpdates: true,
-            changes: changes || undefined
+            changes: changes || undefined,
         };
     }
 
@@ -93,26 +94,27 @@ export class HubSyncCommands {
      */
     async viewChanges(hubId: string, profileId: string): Promise<ViewChangesResult | null> {
         const changes = await this.hubManager.getProfileChanges(hubId, profileId);
-        
+
         if (!changes) {
             return null;
         }
 
-        const hasAnyChanges = 
+        const hasAnyChanges =
             (changes.bundlesAdded !== undefined && changes.bundlesAdded.length > 0) ||
             (changes.bundlesRemoved !== undefined && changes.bundlesRemoved.length > 0) ||
             (changes.bundlesUpdated !== undefined && changes.bundlesUpdated.length > 0) ||
-            (changes.metadataChanged !== undefined && Object.keys(changes.metadataChanged).length > 0);
+            (changes.metadataChanged !== undefined &&
+                Object.keys(changes.metadataChanged).length > 0);
 
         if (!hasAnyChanges) {
             return null;
         }
 
         const summary = this.hubManager.formatChangeSummary(changes);
-        
+
         return {
             summary,
-            changes
+            changes,
         };
     }
 
@@ -121,7 +123,7 @@ export class HubSyncCommands {
      */
     async syncProfile(hubId: string, profileId: string): Promise<void> {
         const state = await this.hubManager.getActiveProfile(hubId);
-        
+
         if (!state || state.profileId !== profileId) {
             throw new Error(`Profile ${profileId} in hub ${hubId} is not active`);
         }
@@ -130,25 +132,25 @@ export class HubSyncCommands {
         const changes = await this.hubManager.getProfileChanges(hubId, profileId);
         const previousState = {
             bundles: [], // Simplified - actual bundles tracked in state
-            activatedAt: state.activatedAt
+            activatedAt: state.activatedAt,
         };
 
         try {
             await this.hubManager.syncProfile(hubId, profileId);
-            
+
             // Record successful sync to history
             if (this.syncHistory && changes) {
                 const syncChanges = {
                     added: changes.bundlesAdded || [],
-                    updated: (changes.bundlesUpdated || []).map(u => ({
+                    updated: (changes.bundlesUpdated || []).map((u) => ({
                         id: u.id,
                         oldVersion: u.oldVersion,
-                        newVersion: u.newVersion
+                        newVersion: u.newVersion,
                     })),
                     removed: changes.bundlesRemoved || [],
-                    metadataChanged: !!(changes.metadataChanged)
+                    metadataChanged: !!changes.metadataChanged,
                 };
-                
+
                 await this.syncHistory.recordSync(
                     hubId,
                     profileId,
@@ -178,26 +180,27 @@ export class HubSyncCommands {
      */
     async reviewAndSync(hubId: string, profileId: string): Promise<ReviewSyncResult | null> {
         const changes = await this.hubManager.getProfileChanges(hubId, profileId);
-        
+
         if (!changes) {
             return null;
         }
 
-        const hasAnyChanges = 
+        const hasAnyChanges =
             (changes.bundlesAdded !== undefined && changes.bundlesAdded.length > 0) ||
             (changes.bundlesRemoved !== undefined && changes.bundlesRemoved.length > 0) ||
             (changes.bundlesUpdated !== undefined && changes.bundlesUpdated.length > 0) ||
-            (changes.metadataChanged !== undefined && Object.keys(changes.metadataChanged).length > 0);
+            (changes.metadataChanged !== undefined &&
+                Object.keys(changes.metadataChanged).length > 0);
 
         if (!hasAnyChanges) {
             return null;
         }
 
         const dialog = this.hubManager.createConflictResolutionDialog(changes);
-        
+
         return {
             dialog,
-            changes
+            changes,
         };
     }
 
@@ -209,13 +212,19 @@ export class HubSyncCommands {
         const results: HubUpdateSummary[] = [];
 
         for (const profile of activeProfiles) {
-            const hasUpdates = await this.hubManager.hasProfileChanges(profile.hubId, profile.profileId);
-            
+            const hasUpdates = await this.hubManager.hasProfileChanges(
+                profile.hubId,
+                profile.profileId
+            );
+
             let changeCount: number | undefined;
             if (hasUpdates) {
-                const changes = await this.hubManager.getProfileChanges(profile.hubId, profile.profileId);
+                const changes = await this.hubManager.getProfileChanges(
+                    profile.hubId,
+                    profile.profileId
+                );
                 if (changes) {
-                    changeCount = 
+                    changeCount =
                         (changes.bundlesAdded?.length || 0) +
                         (changes.bundlesRemoved?.length || 0) +
                         (changes.bundlesUpdated?.length || 0) +
@@ -227,7 +236,7 @@ export class HubSyncCommands {
                 hubId: profile.hubId,
                 profileId: profile.profileId,
                 hasUpdates,
-                changeCount
+                changeCount,
             });
         }
 

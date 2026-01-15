@@ -2,14 +2,15 @@
  * LocalAdapter Unit Tests
  */
 
-import * as assert from 'assert';
-import * as path from 'path';
+import * as assert from 'node:assert';
+import * as path from 'node:path';
+
 import { LocalAdapter } from '../../src/adapters/LocalAdapter';
 import { RegistrySource } from '../../src/types/registry';
 
 suite('LocalAdapter', () => {
     const fixturesPath = path.join(__dirname, '../fixtures/local-library');
-    
+
     const mockSource: RegistrySource = {
         id: 'test-local',
         name: 'Test Local',
@@ -61,10 +62,7 @@ suite('LocalAdapter', () => {
             const source = { ...mockSource, url: '/non/existent/path' };
             const adapter = new LocalAdapter(source);
 
-            await assert.rejects(
-                () => adapter.fetchMetadata(),
-                /Directory does not exist/
-            );
+            await assert.rejects(() => adapter.fetchMetadata(), /Directory does not exist/);
         });
     });
 
@@ -77,7 +75,7 @@ suite('LocalAdapter', () => {
             assert.strictEqual(bundles.length, 9);
 
             // Check bundle IDs
-            const bundleIds = bundles.map(b => b.id).sort();
+            const bundleIds = bundles.map((b) => b.id).sort();
             assert.deepStrictEqual(bundleIds, [
                 'accessibility-bundle',
                 'backend-bundle',
@@ -87,7 +85,7 @@ suite('LocalAdapter', () => {
                 'security-bundle',
                 'testing-bundle',
                 'testing-bundle',
-                'web-dev-bundle'
+                'web-dev-bundle',
             ]);
         });
 
@@ -95,7 +93,7 @@ suite('LocalAdapter', () => {
             const adapter = new LocalAdapter(mockSource);
             const bundles = await adapter.fetchBundles();
 
-            const exampleBundle = bundles.find(b => b.id === 'example-bundle');
+            const exampleBundle = bundles.find((b) => b.id === 'example-bundle');
             assert.ok(exampleBundle);
             assert.strictEqual(exampleBundle.name, 'Example Prompt Bundle');
             assert.strictEqual(exampleBundle.version, '1.0.0');
@@ -139,7 +137,7 @@ suite('LocalAdapter', () => {
 
             // Only bundles with deployment-manifest.yml should be included
             // README.md and other files should be ignored
-            assert.ok(bundles.every(b => b.id));
+            assert.ok(bundles.every((b) => b.id));
         });
     });
 
@@ -187,7 +185,7 @@ suite('LocalAdapter', () => {
     suite('Diagnostics', () => {
         test('should log directory scanning details', async () => {
             const adapter = new LocalAdapter(mockSource);
-            
+
             // Capture console output
             const logs: string[] = [];
             const originalLog = console.log;
@@ -198,11 +196,21 @@ suite('LocalAdapter', () => {
 
             try {
                 await adapter.fetchBundles();
-                
+
                 // Check diagnostic logs were generated
-                assert.ok(logs.some(log => log.includes('[LocalAdapter] Scanning directory')));
-                assert.ok(logs.some(log => log.includes('[LocalAdapter] Found') && log.includes('entries')));
-                assert.ok(logs.some(log => log.includes('[LocalAdapter] Discovered') && log.includes('valid bundles')));
+                assert.ok(logs.some((log) => log.includes('[LocalAdapter] Scanning directory')));
+                assert.ok(
+                    logs.some(
+                        (log) => log.includes('[LocalAdapter] Found') && log.includes('entries')
+                    )
+                );
+                assert.ok(
+                    logs.some(
+                        (log) =>
+                            log.includes('[LocalAdapter] Discovered') &&
+                            log.includes('valid bundles')
+                    )
+                );
             } finally {
                 console.log = originalLog;
             }
@@ -213,26 +221,26 @@ suite('LocalAdapter', () => {
         test('should read a valid local file and return correct Buffer', async () => {
             const adapter = new LocalAdapter(mockSource);
             const bundles = await adapter.fetchBundles();
-            
+
             // Get the first bundle
             const bundle = bundles[0];
             assert.ok(bundle, 'Should have at least one bundle');
-            
+
             // Download the bundle
             const buffer = await adapter.downloadBundle(bundle);
-            
+
             // Verify buffer is not empty
             assert.ok(buffer.length > 0, 'Buffer should not be empty');
-            
+
             // Verify it's a valid ZIP file by checking magic number
             // ZIP files start with 'PK' (0x50 0x4B)
             assert.strictEqual(buffer[0], 0x50, 'First byte should be 0x50 (P)');
-            assert.strictEqual(buffer[1], 0x4B, 'Second byte should be 0x4B (K)');
+            assert.strictEqual(buffer[1], 0x4b, 'Second byte should be 0x4B (K)');
         });
 
         test('should throw error for file not found', async () => {
             const adapter = new LocalAdapter(mockSource);
-            
+
             // Create a bundle with non-existent path
             const nonExistentBundle = {
                 id: 'non-existent',
@@ -250,7 +258,7 @@ suite('LocalAdapter', () => {
                 downloadUrl: 'file:///non/existent/path',
                 manifestUrl: 'file:///non/existent/path/deployment-manifest.yml',
             };
-            
+
             await assert.rejects(
                 () => adapter.downloadBundle(nonExistentBundle),
                 /Bundle directory not found/,
@@ -258,7 +266,7 @@ suite('LocalAdapter', () => {
             );
         });
 
-        test('should throw error for permission denied', async function() {
+        test('should throw error for permission denied', async function () {
             // Skip this test on Windows as permission handling is different
             if (process.platform === 'win32') {
                 this.skip();
@@ -266,7 +274,7 @@ suite('LocalAdapter', () => {
             }
 
             const adapter = new LocalAdapter(mockSource);
-            
+
             // Create a bundle pointing to a restricted directory
             // /root is typically not accessible to regular users on Unix systems
             const restrictedBundle = {
@@ -285,7 +293,7 @@ suite('LocalAdapter', () => {
                 downloadUrl: 'file:///root/restricted',
                 manifestUrl: 'file:///root/restricted/deployment-manifest.yml',
             };
-            
+
             await assert.rejects(
                 () => adapter.downloadBundle(restrictedBundle),
                 /Permission denied|Bundle directory not found/,
@@ -296,40 +304,45 @@ suite('LocalAdapter', () => {
         test('should handle binary file handling (ZIP files)', async () => {
             const adapter = new LocalAdapter(mockSource);
             const bundles = await adapter.fetchBundles();
-            
+
             // Get a bundle
-            const bundle = bundles.find(b => b.id === 'example-bundle');
+            const bundle = bundles.find((b) => b.id === 'example-bundle');
             assert.ok(bundle, 'Should find example-bundle');
-            
+
             // Download the bundle
             const buffer = await adapter.downloadBundle(bundle);
-            
+
             // Verify it's a valid ZIP file
             assert.ok(buffer.length > 0, 'Buffer should not be empty');
             assert.strictEqual(buffer[0], 0x50, 'Should start with ZIP magic number (P)');
-            assert.strictEqual(buffer[1], 0x4B, 'Should start with ZIP magic number (K)');
-            
+            assert.strictEqual(buffer[1], 0x4b, 'Should start with ZIP magic number (K)');
+
             // Verify we can extract it using adm-zip
             const AdmZip = require('adm-zip');
             const zip = new AdmZip(buffer);
             const entries = zip.getEntries();
-            
+
             // Should have at least the deployment-manifest.yml
             assert.ok(entries.length > 0, 'ZIP should contain files');
-            
+
             // Check for deployment-manifest.yml
-            const manifestEntry = entries.find((e: any) => e.entryName === 'deployment-manifest.yml');
+            const manifestEntry = entries.find(
+                (e: any) => e.entryName === 'deployment-manifest.yml'
+            );
             assert.ok(manifestEntry, 'ZIP should contain deployment-manifest.yml');
         });
 
         test('should handle file:// URL format', async () => {
             const adapter = new LocalAdapter(mockSource);
             const bundles = await adapter.fetchBundles();
-            
+
             // Get a bundle (should have file:// URL)
             const bundle = bundles[0];
-            assert.ok(bundle.downloadUrl.startsWith('file://'), 'Bundle URL should start with file://');
-            
+            assert.ok(
+                bundle.downloadUrl.startsWith('file://'),
+                'Bundle URL should start with file://'
+            );
+
             // Download should work with file:// URL
             const buffer = await adapter.downloadBundle(bundle);
             assert.ok(buffer.length > 0, 'Should successfully download from file:// URL');
@@ -338,13 +351,13 @@ suite('LocalAdapter', () => {
         test('should preserve binary data integrity', async () => {
             const adapter = new LocalAdapter(mockSource);
             const bundles = await adapter.fetchBundles();
-            
+
             const bundle = bundles[0];
-            
+
             // Download twice
             const buffer1 = await adapter.downloadBundle(bundle);
             const buffer2 = await adapter.downloadBundle(bundle);
-            
+
             // Both downloads should produce identical buffers
             assert.strictEqual(buffer1.length, buffer2.length, 'Buffer lengths should match');
             assert.ok(buffer1.equals(buffer2), 'Buffers should be byte-for-byte identical');

@@ -2,9 +2,10 @@
  * BundleInstaller Unit Tests
  */
 
-import * as assert from 'assert';
-import * as path from 'path';
-import * as fs from 'fs';
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import { BundleInstaller } from '../../src/services/BundleInstaller';
 import { Bundle, InstallOptions } from '../../src/types/registry';
 
@@ -32,7 +33,7 @@ suite('BundleInstaller', () => {
 
     setup(() => {
         tempDir = path.join(__dirname, '..', '..', '..', 'test-temp');
-        
+
         mockContext = {
             globalStorageUri: { fsPath: path.join(tempDir, 'global') },
             storageUri: { fsPath: path.join(tempDir, 'workspace') },
@@ -40,9 +41,9 @@ suite('BundleInstaller', () => {
             extension: {
                 packageJSON: {
                     publisher: 'test-publisher',
-                    name: 'test-extension'
-                }
-            }
+                    name: 'test-extension',
+                },
+            },
         } as any;
 
         // Create temp directories
@@ -150,7 +151,7 @@ suite('BundleInstaller', () => {
 
         test('should reject manifest with wrong bundle ID', async () => {
             const manifest = {
-                id: 'wrong-id',  // doesn't match bundle.id
+                id: 'wrong-id', // doesn't match bundle.id
                 version: '1.0.0',
                 name: 'Test',
                 description: 'Test',
@@ -167,56 +168,59 @@ suite('BundleInstaller', () => {
             // This tests the backward compatibility for GitHub bundles
             // where manifest.id is just the collection ID (e.g., "test2")
             // but bundle.id is the full computed ID (e.g., "owner-repo-test2-v1.0.2")
-            
+
             // The validation should pass when:
             // - bundleId ends with `-${manifestId}-v${manifestVersion}`
             // - bundleId ends with `-${manifestId}-${manifestVersion}`
             // - manifestId === bundleId (exact match)
-            
+
             const testCases = [
                 {
                     manifestId: 'test2',
                     manifestVersion: '1.0.2',
                     bundleId: 'owner-repo-test2-v1.0.2',
                     shouldMatch: true,
-                    description: 'suffix pattern with v prefix'
+                    description: 'suffix pattern with v prefix',
                 },
                 {
                     manifestId: 'test2',
                     manifestVersion: '1.0.2',
                     bundleId: 'owner-repo-test2-1.0.2',
                     shouldMatch: true,
-                    description: 'suffix pattern without v prefix'
+                    description: 'suffix pattern without v prefix',
                 },
                 {
                     manifestId: 'owner-repo-collection-v1.0.0',
                     manifestVersion: '1.0.0',
                     bundleId: 'owner-repo-collection-v1.0.0',
                     shouldMatch: true,
-                    description: 'exact match'
+                    description: 'exact match',
                 },
                 {
                     manifestId: 'completely-different',
                     manifestVersion: '1.0.0',
                     bundleId: 'owner-repo-test2-v1.0.0',
                     shouldMatch: false,
-                    description: 'mismatched IDs'
+                    description: 'mismatched IDs',
                 },
                 {
                     manifestId: 'test2',
                     manifestVersion: '1.0.2',
                     bundleId: 'amadeus-airlines-solutions-genai.spec-driven-agents-test2-1.0.2',
                     shouldMatch: true,
-                    description: 'repo name with dot'
-                }
+                    description: 'repo name with dot',
+                },
             ];
 
             for (const tc of testCases) {
                 // Import the validation function
                 const { isManifestIdMatch } = await import('../../src/utils/bundleNameUtils');
                 const result = isManifestIdMatch(tc.manifestId, tc.manifestVersion, tc.bundleId);
-                assert.strictEqual(result, tc.shouldMatch, 
-                    `${tc.description}: manifestId="${tc.manifestId}" bundleId="${tc.bundleId}" should ${tc.shouldMatch ? 'match' : 'not match'}`);
+                assert.strictEqual(
+                    result,
+                    tc.shouldMatch,
+                    `${tc.description}: manifestId="${tc.manifestId}" bundleId="${tc.bundleId}" should ${tc.shouldMatch ? 'match' : 'not match'}`
+                );
             }
         });
     });
@@ -249,10 +253,15 @@ suite('BundleInstaller', () => {
                 scope: 'user',
                 force: false,
             };
-            
+
             // install() should reject remote URLs
             await assert.rejects(
-                () => installer.install(mockBundle, 'https://invalid.example.com/bundle.zip', options),
+                () =>
+                    installer.install(
+                        mockBundle,
+                        'https://invalid.example.com/bundle.zip',
+                        options
+                    ),
                 /install\(\) method is only for local file:\/\/ URLs/
             );
         });
@@ -303,7 +312,10 @@ suite('BundleInstaller', () => {
             // Create a source skill directory
             const sourceSkillDir = path.join(tempDir, 'source-skills', 'test-skill');
             fs.mkdirSync(sourceSkillDir, { recursive: true });
-            fs.writeFileSync(path.join(sourceSkillDir, 'SKILL.md'), '---\nname: test-skill\ndescription: Test\n---\n# Test');
+            fs.writeFileSync(
+                path.join(sourceSkillDir, 'SKILL.md'),
+                '---\nname: test-skill\ndescription: Test\n---\n# Test'
+            );
 
             const options: InstallOptions = {
                 scope: 'user',

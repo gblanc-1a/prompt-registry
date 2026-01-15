@@ -2,14 +2,23 @@
   "root": true,
   "parser": "@typescript-eslint/parser",
   "parserOptions": {
-    "ecmaVersion": 6,
-    "sourceType": "module"
+    "ecmaVersion": 2020,
+    "sourceType": "module",
+    "project": ["./tsconfig.json", "./tsconfig.test.json"]
   },
   "plugins": [
-    "@typescript-eslint"
+    "@typescript-eslint",
+    "import",
+    "unused-imports"
   ],
   "extends": [
-    "eslint:recommended"
+    "eslint:recommended",
+    "plugin:@typescript-eslint/recommended",
+    "plugin:@typescript-eslint/recommended-requiring-type-checking",
+    "plugin:import/recommended",
+    "plugin:import/typescript",
+    "plugin:unicorn/recommended",
+    "prettier"
   ],
   "env": {
     "node": true,
@@ -19,7 +28,6 @@
   "globals": {
     "Buffer": "readonly",
     "NodeJS": "readonly",
-    "console": "readonly",
     "process": "readonly",
     "setTimeout": "readonly",
     "URL": "readonly"
@@ -34,15 +42,92 @@
       }
     ],
     "@typescript-eslint/semi": "warn",
+    "@typescript-eslint/no-explicit-any": "error",
+    "@typescript-eslint/no-floating-promises": "warn",
+    "@typescript-eslint/no-unused-vars": "off",
+    "unused-imports/no-unused-imports": "error",
+    "unused-imports/no-unused-vars": [
+      "error",
+      { "vars": "all", "varsIgnorePattern": "^_", "args": "after-used", "argsIgnorePattern": "^_" }
+    ],
+    "no-console": "error",
     "curly": "warn",
     "eqeqeq": "warn",
     "no-throw-literal": "warn",
-    "semi": "off"
+    "semi": "off",
+    "import/order": [
+      "error",
+      {
+        "groups": ["builtin", "external", "internal", "parent", "sibling", "index"],
+        "newlines-between": "always",
+        "alphabetize": {
+          "order": "asc"
+        }
+      }
+    ],
+    "unicorn/prefer-node-protocol": "error",
+    "unicorn/prefer-module": "off",
+    "unicorn/no-array-for-each": "off",
+    "unicorn/prefer-array-find": "error",
+    "unicorn/prefer-includes": "error",
+    "unicorn/filename-case": "off",
+    "unicorn/prevent-abbreviations": "off",
+    "unicorn/prefer-string-slice": "off",
+    "unicorn/prefer-string-replace-all": "off",
+    "unicorn/prefer-set-has": "off",
+    "unicorn/prefer-spread": "off",
+    "unicorn/no-null": "off",
+    "unicorn/text-encoding-identifier-case": "off",
+    "unicorn/import-style": "off",
+    "unicorn/switch-case-braces": "off",
+    "unicorn/prefer-switch": "off",
+    "unicorn/no-negated-condition": "off",
+    "unicorn/consistent-function-scoping": "off",
+    "unicorn/explicit-length-check": "off",
+    "unicorn/prefer-optional-catch-binding": "off",
+    "unicorn/no-lonely-if": "off",
+    "unicorn/prefer-ternary": "off",
+    "unicorn/no-useless-switch-case": "off",
+    "unicorn/prefer-number-properties": "off",
+    "unicorn/no-array-push-push": "off",
+    "unicorn/prefer-default-parameters": "off",
+    "@typescript-eslint/restrict-template-expressions": "off",
+    "@typescript-eslint/no-unsafe-assignment": "off",
+    "@typescript-eslint/no-unsafe-member-access": "off",
+    "@typescript-eslint/no-unsafe-return": "off",
+    "@typescript-eslint/no-unsafe-call": "off",
+    "@typescript-eslint/no-unsafe-argument": "off",
+    "@typescript-eslint/no-var-requires": "off",
+    "@typescript-eslint/require-await": "off",
+    "@typescript-eslint/no-redundant-type-constituents": "off",
+    "@typescript-eslint/no-misused-promises": "off",
+    "import/no-unresolved": ["error", { "ignore": ["^vscode$"] }]
   },
   "ignorePatterns": [
     "out",
     "test-out",
     "dist",
+    "test-dist",
     "**/*.d.ts"
+  ],
+  "overrides": [
+    {
+      "files": ["test/**/*.ts"],
+      "rules": {
+        "@typescript-eslint/no-explicit-any": "off",
+        "no-console": "off",
+        "unicorn/prefer-structured-clone": "off",
+        "@typescript-eslint/ban-types": "off",
+        "unused-imports/no-unused-vars": "warn",
+        "unicorn/prefer-array-some": "off",
+        "unicorn/no-empty-file": "off",
+        "unicorn/prefer-event-target": "off",
+        "unicorn/no-new-array": "off",
+        "unicorn/no-useless-undefined": "off",
+        "no-prototype-builtins": "off",
+        "no-useless-escape": "off",
+        "prefer-const": "warn"
+      }
+    }
   ]
 }

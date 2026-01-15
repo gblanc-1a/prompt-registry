@@ -6,10 +6,12 @@
  * - Remove sources that came from that hub
  */
 
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import * as sinon from 'sinon';
-import * as path from 'path';
-import * as fs from 'fs';
+
 import { HubManager } from '../../src/services/HubManager';
 import { HubStorage } from '../../src/storage/HubStorage';
 import { HubReference } from '../../src/types/hub';
@@ -28,22 +30,30 @@ class MockRegistryManager {
     removedSourceIds: string[] = [];
     deactivatedProfileIds: string[] = [];
 
-    async listSources() { return this.sources; }
-    async addSource(source: any) { this.sources.push(source); }
-    async removeSource(sourceId: string) { 
+    async listSources() {
+        return this.sources;
+    }
+    async addSource(source: any) {
+        this.sources.push(source);
+    }
+    async removeSource(sourceId: string) {
         this.removedSourceIds.push(sourceId);
-        this.sources = this.sources.filter(s => s.id !== sourceId);
+        this.sources = this.sources.filter((s) => s.id !== sourceId);
     }
     async updateSource(sourceId: string, updates: any) {
-        const source = this.sources.find(s => s.id === sourceId);
+        const source = this.sources.find((s) => s.id === sourceId);
         if (source) {
             Object.assign(source, updates);
         }
     }
-    async listProfiles() { return this.profiles; }
-    async createProfile(profile: any) { this.profiles.push(profile); }
+    async listProfiles() {
+        return this.profiles;
+    }
+    async createProfile(profile: any) {
+        this.profiles.push(profile);
+    }
     async updateProfile(profileId: string, updates: any) {
-        const profile = this.profiles.find(p => p.id === profileId);
+        const profile = this.profiles.find((p) => p.id === profileId);
         if (profile) {
             if (updates.active === false) {
                 this.deactivatedProfileIds.push(profileId);
@@ -52,7 +62,7 @@ class MockRegistryManager {
         }
     }
     async deleteProfile(profileId: string) {
-        this.profiles = this.profiles.filter(p => p.id !== profileId);
+        this.profiles = this.profiles.filter((p) => p.id !== profileId);
     }
 }
 
@@ -73,12 +83,12 @@ suite('Hub Cleanup', () => {
         storage = new HubStorage(tempDir);
         const validator = new MockSchemaValidator();
         mockRegistryManager = new MockRegistryManager();
-        
+
         hubManager = new HubManager(
-            storage, 
-            validator as any, 
-            process.cwd(), 
-            undefined, 
+            storage,
+            validator as any,
+            process.cwd(),
+            undefined,
             mockRegistryManager as any
         );
     });
@@ -97,11 +107,17 @@ suite('Hub Cleanup', () => {
                 { id: 'hub-test-hub-source1', name: 'Hub Source 1', hubId: 'test-hub' },
                 { id: 'hub-test-hub-source2', name: 'Hub Source 2', hubId: 'test-hub' },
                 { id: 'local-source', name: 'Local Source', hubId: undefined },
-                { id: 'hub-other-hub-source', name: 'Other Hub Source', hubId: 'other-hub' }
+                { id: 'hub-other-hub-source', name: 'Other Hub Source', hubId: 'other-hub' },
             ];
 
             // Import a hub first
-            const fixturePath = path.join(__dirname, '..', 'fixtures', 'hubs', 'valid-hub-config.yml');
+            const fixturePath = path.join(
+                __dirname,
+                '..',
+                'fixtures',
+                'hubs',
+                'valid-hub-config.yml'
+            );
             const ref: HubReference = { type: 'local', location: fixturePath };
             await hubManager.importHub(ref, 'test-hub');
 
@@ -129,14 +145,20 @@ suite('Hub Cleanup', () => {
 
         test('should remove favorites for deleted hub', async () => {
             // Import hub and add some favorites
-            const fixturePath = path.join(__dirname, '..', 'fixtures', 'hubs', 'valid-hub-config.yml');
+            const fixturePath = path.join(
+                __dirname,
+                '..',
+                'fixtures',
+                'hubs',
+                'valid-hub-config.yml'
+            );
             const ref: HubReference = { type: 'local', location: fixturePath };
             await hubManager.importHub(ref, 'test-hub');
 
             // Add favorites for the hub
             await hubManager.toggleProfileFavorite('test-hub', 'profile1');
             await hubManager.toggleProfileFavorite('test-hub', 'profile2');
-            
+
             // Also add favorites for another hub
             await hubManager.toggleProfileFavorite('other-hub', 'profile-other');
 
@@ -150,7 +172,11 @@ suite('Hub Cleanup', () => {
 
             // Verify favorites for deleted hub are removed
             favorites = await hubManager.getFavoriteProfiles();
-            assert.strictEqual(favorites['test-hub'], undefined, 'test-hub favorites should be removed');
+            assert.strictEqual(
+                favorites['test-hub'],
+                undefined,
+                'test-hub favorites should be removed'
+            );
             assert.ok(favorites['other-hub'], 'other-hub favorites should remain');
         });
 
@@ -160,11 +186,22 @@ suite('Hub Cleanup', () => {
                 { id: 'hub-profile1', name: 'Hub Profile 1', active: true, hubId: 'test-hub' },
                 { id: 'hub-profile2', name: 'Hub Profile 2', active: true, hubId: 'test-hub' },
                 { id: 'local-profile', name: 'Local Profile', active: true, hubId: undefined },
-                { id: 'other-hub-profile', name: 'Other Hub Profile', active: true, hubId: 'other-hub' }
+                {
+                    id: 'other-hub-profile',
+                    name: 'Other Hub Profile',
+                    active: true,
+                    hubId: 'other-hub',
+                },
             ];
 
             // Import hub
-            const fixturePath = path.join(__dirname, '..', 'fixtures', 'hubs', 'valid-hub-config.yml');
+            const fixturePath = path.join(
+                __dirname,
+                '..',
+                'fixtures',
+                'hubs',
+                'valid-hub-config.yml'
+            );
             const ref: HubReference = { type: 'local', location: fixturePath };
             await hubManager.importHub(ref, 'test-hub');
 
@@ -194,7 +231,13 @@ suite('Hub Cleanup', () => {
     suite('orphaned favorites cleanup', () => {
         test('should remove favorites for hubs that no longer exist', async () => {
             // Import a hub
-            const fixturePath = path.join(__dirname, '..', 'fixtures', 'hubs', 'valid-hub-config.yml');
+            const fixturePath = path.join(
+                __dirname,
+                '..',
+                'fixtures',
+                'hubs',
+                'valid-hub-config.yml'
+            );
             const ref: HubReference = { type: 'local', location: fixturePath };
             await hubManager.importHub(ref, 'existing-hub');
 
@@ -206,21 +249,41 @@ suite('Hub Cleanup', () => {
 
             // Verify orphaned favorites exist
             let currentFavorites = await hubManager.getFavoriteProfiles();
-            assert.ok(currentFavorites['non-existent-hub'], 'Non-existent hub favorites should exist before cleanup');
-            assert.ok(currentFavorites['another-ghost-hub'], 'Another ghost hub favorites should exist before cleanup');
+            assert.ok(
+                currentFavorites['non-existent-hub'],
+                'Non-existent hub favorites should exist before cleanup'
+            );
+            assert.ok(
+                currentFavorites['another-ghost-hub'],
+                'Another ghost hub favorites should exist before cleanup'
+            );
 
             // Run cleanup of orphaned favorites
             await hubManager.cleanupOrphanedFavorites();
 
             // Verify orphaned favorites are removed
             currentFavorites = await hubManager.getFavoriteProfiles();
-            assert.strictEqual(currentFavorites['non-existent-hub'], undefined, 'Non-existent hub favorites should be removed');
-            assert.strictEqual(currentFavorites['another-ghost-hub'], undefined, 'Another ghost hub favorites should be removed');
+            assert.strictEqual(
+                currentFavorites['non-existent-hub'],
+                undefined,
+                'Non-existent hub favorites should be removed'
+            );
+            assert.strictEqual(
+                currentFavorites['another-ghost-hub'],
+                undefined,
+                'Another ghost hub favorites should be removed'
+            );
         });
 
         test('should keep favorites for hubs that still exist', async () => {
             // Import a hub
-            const fixturePath = path.join(__dirname, '..', 'fixtures', 'hubs', 'valid-hub-config.yml');
+            const fixturePath = path.join(
+                __dirname,
+                '..',
+                'fixtures',
+                'hubs',
+                'valid-hub-config.yml'
+            );
             const ref: HubReference = { type: 'local', location: fixturePath };
             await hubManager.importHub(ref, 'existing-hub');
 
@@ -238,8 +301,15 @@ suite('Hub Cleanup', () => {
             // Verify existing hub favorites remain, orphaned are removed
             const currentFavorites = await hubManager.getFavoriteProfiles();
             assert.ok(currentFavorites['existing-hub'], 'Existing hub favorites should remain');
-            assert.ok(currentFavorites['existing-hub'].includes('profile1'), 'Profile1 should still be favorited');
-            assert.strictEqual(currentFavorites['ghost-hub'], undefined, 'Ghost hub favorites should be removed');
+            assert.ok(
+                currentFavorites['existing-hub'].includes('profile1'),
+                'Profile1 should still be favorited'
+            );
+            assert.strictEqual(
+                currentFavorites['ghost-hub'],
+                undefined,
+                'Ghost hub favorites should be removed'
+            );
         });
     });
 
@@ -248,17 +318,23 @@ suite('Hub Cleanup', () => {
             // Setup sources from two hubs
             mockRegistryManager.sources = [
                 { id: 'hub-hub1-source1', name: 'Hub1 Source', hubId: 'hub1' },
-                { id: 'hub-hub2-source1', name: 'Hub2 Source', hubId: 'hub2' }
+                { id: 'hub-hub2-source1', name: 'Hub2 Source', hubId: 'hub2' },
             ];
 
             // Setup profiles from two hubs
             mockRegistryManager.profiles = [
                 { id: 'hub1-profile', name: 'Hub1 Profile', active: true, hubId: 'hub1' },
-                { id: 'hub2-profile', name: 'Hub2 Profile', active: false, hubId: 'hub2' }
+                { id: 'hub2-profile', name: 'Hub2 Profile', active: false, hubId: 'hub2' },
             ];
 
             // Import two hubs
-            const fixturePath = path.join(__dirname, '..', 'fixtures', 'hubs', 'valid-hub-config.yml');
+            const fixturePath = path.join(
+                __dirname,
+                '..',
+                'fixtures',
+                'hubs',
+                'valid-hub-config.yml'
+            );
             const ref: HubReference = { type: 'local', location: fixturePath };
             await hubManager.importHub(ref, 'hub1');
             await hubManager.importHub(ref, 'hub2');
@@ -291,10 +367,16 @@ suite('Hub Cleanup', () => {
 
         test('should not cleanup when setting same hub as active', async () => {
             mockRegistryManager.sources = [
-                { id: 'hub-hub1-source1', name: 'Hub1 Source', hubId: 'hub1' }
+                { id: 'hub-hub1-source1', name: 'Hub1 Source', hubId: 'hub1' },
             ];
 
-            const fixturePath = path.join(__dirname, '..', 'fixtures', 'hubs', 'valid-hub-config.yml');
+            const fixturePath = path.join(
+                __dirname,
+                '..',
+                'fixtures',
+                'hubs',
+                'valid-hub-config.yml'
+            );
             const ref: HubReference = { type: 'local', location: fixturePath };
             await hubManager.importHub(ref, 'hub1');
 
@@ -305,21 +387,27 @@ suite('Hub Cleanup', () => {
 
             // Verify no cleanup happened
             assert.strictEqual(
-                mockRegistryManager.removedSourceIds.length, 
-                0, 
+                mockRegistryManager.removedSourceIds.length,
+                0,
                 'No sources should be removed when setting same hub'
             );
         });
 
         test('should cleanup when clearing active hub (setting to null)', async () => {
             mockRegistryManager.sources = [
-                { id: 'hub-hub1-source1', name: 'Hub1 Source', hubId: 'hub1' }
+                { id: 'hub-hub1-source1', name: 'Hub1 Source', hubId: 'hub1' },
             ];
             mockRegistryManager.profiles = [
-                { id: 'hub1-profile', name: 'Hub1 Profile', active: true, hubId: 'hub1' }
+                { id: 'hub1-profile', name: 'Hub1 Profile', active: true, hubId: 'hub1' },
             ];
 
-            const fixturePath = path.join(__dirname, '..', 'fixtures', 'hubs', 'valid-hub-config.yml');
+            const fixturePath = path.join(
+                __dirname,
+                '..',
+                'fixtures',
+                'hubs',
+                'valid-hub-config.yml'
+            );
             const ref: HubReference = { type: 'local', location: fixturePath };
             await hubManager.importHub(ref, 'hub1');
             await hubManager.setActiveHub('hub1');

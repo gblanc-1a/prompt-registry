@@ -3,10 +3,12 @@
  * Tests for hub configuration storage, caching, and file operations
  */
 
-import * as assert from 'assert';
-import * as path from 'path';
-import * as fs from 'fs';
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import * as yaml from 'js-yaml';
+
 import { HubStorage } from '../../src/storage/HubStorage';
 import { HubConfig, HubReference } from '../../src/types/hub';
 
@@ -39,7 +41,7 @@ suite('HubStorage - TDD', () => {
             type: 'github',
             location: 'promptregistry/official-hub',
             ref: 'main',
-            autoSync: true
+            autoSync: true,
         };
     });
 
@@ -54,14 +56,14 @@ suite('HubStorage - TDD', () => {
         test('should create storage directory if it does not exist', () => {
             const newDir = path.join(tempDir, 'new-storage');
             const newStorage = new HubStorage(newDir);
-            
+
             assert.ok(fs.existsSync(newDir), 'Storage directory should be created');
         });
 
         test('should use existing directory if it exists', () => {
             const existingDir = path.join(tempDir, 'existing');
             fs.mkdirSync(existingDir, { recursive: true });
-            
+
             const newStorage = new HubStorage(existingDir);
             assert.ok(fs.existsSync(existingDir));
         });
@@ -77,7 +79,7 @@ suite('HubStorage - TDD', () => {
         test('should save hub config to file', async () => {
             const hubId = 'test-hub';
             await storage.saveHub(hubId, testHubConfig, testHubReference);
-            
+
             const configPath = path.join(tempDir, `${hubId}.yml`);
             assert.ok(fs.existsSync(configPath), 'Hub config file should exist');
         });
@@ -85,11 +87,11 @@ suite('HubStorage - TDD', () => {
         test('should save hub config with correct YAML format', async () => {
             const hubId = 'test-hub-yaml';
             await storage.saveHub(hubId, testHubConfig, testHubReference);
-            
+
             const configPath = path.join(tempDir, `${hubId}.yml`);
             const savedContent = fs.readFileSync(configPath, 'utf-8');
             const parsed = yaml.load(savedContent) as HubConfig;
-            
+
             assert.strictEqual(parsed.version, testHubConfig.version);
             assert.strictEqual(parsed.metadata.name, testHubConfig.metadata.name);
         });
@@ -97,10 +99,10 @@ suite('HubStorage - TDD', () => {
         test('should save reference metadata separately', async () => {
             const hubId = 'test-hub-ref';
             await storage.saveHub(hubId, testHubConfig, testHubReference);
-            
+
             const metaPath = path.join(tempDir, `${hubId}.meta.json`);
             assert.ok(fs.existsSync(metaPath), 'Reference metadata should exist');
-            
+
             const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
             assert.strictEqual(meta.reference.type, testHubReference.type);
             assert.strictEqual(meta.reference.location, testHubReference.location);
@@ -118,14 +120,14 @@ suite('HubStorage - TDD', () => {
             const readOnlyDir = path.join(tempDir, 'readonly');
             fs.mkdirSync(readOnlyDir, { recursive: true });
             fs.chmodSync(readOnlyDir, 0o444);
-            
+
             const readOnlyStorage = new HubStorage(readOnlyDir);
-            
+
             await assert.rejects(
                 async () => await readOnlyStorage.saveHub('test', testHubConfig, testHubReference),
                 /Failed to save hub/
             );
-            
+
             // Restore permissions for cleanup
             fs.chmodSync(readOnlyDir, 0o755);
         });
@@ -133,12 +135,12 @@ suite('HubStorage - TDD', () => {
         test('should overwrite existing hub config', async () => {
             const hubId = 'test-hub-overwrite';
             await storage.saveHub(hubId, testHubConfig, testHubReference);
-            
+
             // Modify and save again
             const modifiedConfig = JSON.parse(JSON.stringify(testHubConfig));
             modifiedConfig.metadata.name = 'Modified Name';
             await storage.saveHub(hubId, modifiedConfig, testHubReference);
-            
+
             const loaded = await storage.loadHub(hubId);
             assert.strictEqual(loaded.config.metadata.name, 'Modified Name');
         });
@@ -148,9 +150,9 @@ suite('HubStorage - TDD', () => {
         test('should load existing hub config', async () => {
             const hubId = 'test-load';
             await storage.saveHub(hubId, testHubConfig, testHubReference);
-            
+
             const result = await storage.loadHub(hubId);
-            
+
             assert.ok(result);
             assert.strictEqual(result.config.version, testHubConfig.version);
             assert.strictEqual(result.config.metadata.name, testHubConfig.metadata.name);
@@ -159,9 +161,9 @@ suite('HubStorage - TDD', () => {
         test('should load reference metadata with config', async () => {
             const hubId = 'test-load-ref';
             await storage.saveHub(hubId, testHubConfig, testHubReference);
-            
+
             const result = await storage.loadHub(hubId);
-            
+
             assert.ok(result.reference);
             assert.strictEqual(result.reference.type, testHubReference.type);
             assert.strictEqual(result.reference.location, testHubReference.location);
@@ -175,21 +177,15 @@ suite('HubStorage - TDD', () => {
         });
 
         test('should validate hub ID before loading', async () => {
-            await assert.rejects(
-                async () => await storage.loadHub('../invalid'),
-                /Invalid hub ID/
-            );
+            await assert.rejects(async () => await storage.loadHub('../invalid'), /Invalid hub ID/);
         });
 
         test('should handle corrupted config files', async () => {
             const hubId = 'corrupted';
             const configPath = path.join(tempDir, `${hubId}.yml`);
             fs.writeFileSync(configPath, 'invalid: yaml: content: [[[');
-            
-            await assert.rejects(
-                async () => await storage.loadHub(hubId),
-                /Failed to load hub/
-            );
+
+            await assert.rejects(async () => await storage.loadHub(hubId), /Failed to load hub/);
         });
     });
 
@@ -197,16 +193,16 @@ suite('HubStorage - TDD', () => {
         test('should cache loaded hub configs', async () => {
             const hubId = 'test-cache';
             await storage.saveHub(hubId, testHubConfig, testHubReference);
-            
+
             // First load
             const result1 = await storage.loadHub(hubId);
-            
+
             // Second load should use cache (modify file to verify)
             const configPath = path.join(tempDir, `${hubId}.yml`);
             fs.writeFileSync(configPath, 'version: "999.0.0"');
-            
+
             const result2 = await storage.loadHub(hubId);
-            
+
             // Should still have original version from cache
             assert.strictEqual(result2.config.version, testHubConfig.version);
         });
@@ -214,34 +210,34 @@ suite('HubStorage - TDD', () => {
         test('should bypass cache when forceReload is true', async () => {
             const hubId = 'test-force-reload';
             await storage.saveHub(hubId, testHubConfig, testHubReference);
-            
+
             // First load
             await storage.loadHub(hubId);
-            
+
             // Modify file
             const modifiedConfig = JSON.parse(JSON.stringify(testHubConfig));
             modifiedConfig.version = '999.0.0';
             await storage.saveHub(hubId, modifiedConfig, testHubReference);
-            
+
             // Force reload
             const result = await storage.loadHub(hubId, true);
-            
+
             assert.strictEqual(result.config.version, '999.0.0');
         });
 
         test('should clear cache for specific hub', async () => {
             const hubId = 'test-clear-cache';
             await storage.saveHub(hubId, testHubConfig, testHubReference);
-            
+
             await storage.loadHub(hubId);
             storage.clearCache(hubId);
-            
+
             // Modify file
             const configPath = path.join(tempDir, `${hubId}.yml`);
             const modifiedConfig = JSON.parse(JSON.stringify(testHubConfig));
             modifiedConfig.version = '999.0.0';
             fs.writeFileSync(configPath, yaml.dump(modifiedConfig));
-            
+
             // Should load modified version
             const result = await storage.loadHub(hubId);
             assert.strictEqual(result.config.version, '999.0.0');
@@ -250,12 +246,12 @@ suite('HubStorage - TDD', () => {
         test('should clear all caches', async () => {
             await storage.saveHub('hub1', testHubConfig, testHubReference);
             await storage.saveHub('hub2', testHubConfig, testHubReference);
-            
+
             await storage.loadHub('hub1');
             await storage.loadHub('hub2');
-            
+
             storage.clearCache();
-            
+
             // Verify cache is empty by checking load behavior
             assert.ok(true, 'Cache cleared successfully');
         });
@@ -266,9 +262,9 @@ suite('HubStorage - TDD', () => {
             await storage.saveHub('hub1', testHubConfig, testHubReference);
             await storage.saveHub('hub2', testHubConfig, testHubReference);
             await storage.saveHub('hub3', testHubConfig, testHubReference);
-            
+
             const hubs = await storage.listHubs();
-            
+
             assert.strictEqual(hubs.length, 3);
             assert.ok(hubs.includes('hub1'));
             assert.ok(hubs.includes('hub2'));
@@ -282,13 +278,13 @@ suite('HubStorage - TDD', () => {
 
         test('should ignore non-hub files', async () => {
             await storage.saveHub('hub1', testHubConfig, testHubReference);
-            
+
             // Create non-hub files
             fs.writeFileSync(path.join(tempDir, 'random.txt'), 'content');
             fs.writeFileSync(path.join(tempDir, 'test.json'), '{}');
-            
+
             const hubs = await storage.listHubs();
-            
+
             assert.strictEqual(hubs.length, 1);
             assert.strictEqual(hubs[0], 'hub1');
         });
@@ -298,12 +294,12 @@ suite('HubStorage - TDD', () => {
         test('should delete hub config and metadata', async () => {
             const hubId = 'test-delete';
             await storage.saveHub(hubId, testHubConfig, testHubReference);
-            
+
             await storage.deleteHub(hubId);
-            
+
             const configPath = path.join(tempDir, `${hubId}.yml`);
             const metaPath = path.join(tempDir, `${hubId}.meta.json`);
-            
+
             assert.ok(!fs.existsSync(configPath), 'Config file should be deleted');
             assert.ok(!fs.existsSync(metaPath), 'Metadata file should be deleted');
         });
@@ -312,13 +308,10 @@ suite('HubStorage - TDD', () => {
             const hubId = 'test-delete-cache';
             await storage.saveHub(hubId, testHubConfig, testHubReference);
             await storage.loadHub(hubId);
-            
+
             await storage.deleteHub(hubId);
-            
-            await assert.rejects(
-                async () => await storage.loadHub(hubId),
-                /Hub not found/
-            );
+
+            await assert.rejects(async () => await storage.loadHub(hubId), /Hub not found/);
         });
 
         test('should throw error when deleting non-existent hub', async () => {
@@ -340,7 +333,7 @@ suite('HubStorage - TDD', () => {
         test('should return true for existing hub', async () => {
             const hubId = 'test-exists';
             await storage.saveHub(hubId, testHubConfig, testHubReference);
-            
+
             const exists = await storage.hubExists(hubId);
             assert.strictEqual(exists, true);
         });
@@ -362,9 +355,9 @@ suite('HubStorage - TDD', () => {
         test('should return hub metadata without loading full config', async () => {
             const hubId = 'test-metadata';
             await storage.saveHub(hubId, testHubConfig, testHubReference);
-            
+
             const metadata = await storage.getHubMetadata(hubId);
-            
+
             assert.ok(metadata);
             assert.strictEqual(metadata.reference.type, testHubReference.type);
             assert.ok(metadata.lastModified);
@@ -382,7 +375,7 @@ suite('HubStorage - TDD', () => {
     suite('Security and Validation', () => {
         test('should reject path traversal in hub IDs', async () => {
             const invalidIds = ['../etc/passwd', '../../hack', 'test/../bad'];
-            
+
             for (const id of invalidIds) {
                 await assert.rejects(
                     async () => await storage.saveHub(id, testHubConfig, testHubReference),
@@ -393,7 +386,7 @@ suite('HubStorage - TDD', () => {
 
         test('should reject special characters in hub IDs', async () => {
             const invalidIds = ['test<script>', 'hub:evil', 'name|pipe', 'test&cmd'];
-            
+
             for (const id of invalidIds) {
                 await assert.rejects(
                     async () => await storage.saveHub(id, testHubConfig, testHubReference),
@@ -417,34 +410,38 @@ suite('HubStorage - TDD', () => {
         test('should set and retrieve active hub ID', async () => {
             const hubId = 'test-active-hub';
             await storage.saveHub(hubId, testHubConfig, testHubReference);
-            
+
             await storage.setActiveHubId(hubId);
             const retrievedHubId = await storage.getActiveHubId();
-            
+
             assert.strictEqual(retrievedHubId, hubId, 'Should return the correct active hub ID');
         });
 
         test('should update active hub ID when changed', async () => {
             const hubId1 = 'test-hub-1';
             const hubId2 = 'test-hub-2';
-            
+
             await storage.saveHub(hubId1, testHubConfig, testHubReference);
             await storage.saveHub(hubId2, testHubConfig, testHubReference);
-            
+
             await storage.setActiveHubId(hubId1);
             assert.strictEqual(await storage.getActiveHubId(), hubId1);
-            
+
             await storage.setActiveHubId(hubId2);
-            assert.strictEqual(await storage.getActiveHubId(), hubId2, 'Should update to new active hub');
+            assert.strictEqual(
+                await storage.getActiveHubId(),
+                hubId2,
+                'Should update to new active hub'
+            );
         });
 
         test('should clear active hub ID when set to null', async () => {
             const hubId = 'test-clear-hub';
             await storage.saveHub(hubId, testHubConfig, testHubReference);
-            
+
             await storage.setActiveHubId(hubId);
             assert.strictEqual(await storage.getActiveHubId(), hubId);
-            
+
             await storage.setActiveHubId(null);
             assert.strictEqual(await storage.getActiveHubId(), null, 'Should clear active hub ID');
         });
@@ -461,49 +458,55 @@ suite('HubStorage - TDD', () => {
             const hubId = 'test-persist-hub';
             await storage.saveHub(hubId, testHubConfig, testHubReference);
             await storage.setActiveHubId(hubId);
-            
+
             // Create new storage instance with same directory
             const newStorage = new HubStorage(tempDir);
             const retrievedHubId = await newStorage.getActiveHubId();
-            
-            assert.strictEqual(retrievedHubId, hubId, 'Active hub ID should persist across instances');
+
+            assert.strictEqual(
+                retrievedHubId,
+                hubId,
+                'Active hub ID should persist across instances'
+            );
         });
 
         test('should store timestamp when setting active hub', async () => {
             const hubId = 'test-timestamp-hub';
             await storage.saveHub(hubId, testHubConfig, testHubReference);
-            
+
             const beforeTime = new Date();
             await storage.setActiveHubId(hubId);
             const afterTime = new Date();
-            
+
             // Read the active hub file directly to verify timestamp
             const activeHubPath = path.join(tempDir, 'activeHubId.json');
             assert.ok(fs.existsSync(activeHubPath), 'activeHubId.json should exist');
-            
+
             const content = JSON.parse(fs.readFileSync(activeHubPath, 'utf-8'));
             assert.ok(content.setAt, 'Should have setAt timestamp');
-            
+
             const setAtTime = new Date(content.setAt);
-            assert.ok(setAtTime >= beforeTime && setAtTime <= afterTime, 'Timestamp should be within test execution time');
+            assert.ok(
+                setAtTime >= beforeTime && setAtTime <= afterTime,
+                'Timestamp should be within test execution time'
+            );
         });
 
         test('should handle concurrent active hub changes', async () => {
             const hubId1 = 'test-concurrent-1';
             const hubId2 = 'test-concurrent-2';
-            
+
             await storage.saveHub(hubId1, testHubConfig, testHubReference);
             await storage.saveHub(hubId2, testHubConfig, testHubReference);
-            
+
             // Simulate concurrent updates
-            await Promise.all([
-                storage.setActiveHubId(hubId1),
-                storage.setActiveHubId(hubId2)
-            ]);
-            
+            await Promise.all([storage.setActiveHubId(hubId1), storage.setActiveHubId(hubId2)]);
+
             const finalHubId = await storage.getActiveHubId();
-            assert.ok(finalHubId === hubId1 || finalHubId === hubId2, 'Should have one of the hub IDs set');
+            assert.ok(
+                finalHubId === hubId1 || finalHubId === hubId2,
+                'Should have one of the hub IDs set'
+            );
         });
     });
-
 });

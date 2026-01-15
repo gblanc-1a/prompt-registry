@@ -3,19 +3,38 @@
  * Handles hub importing, loading, validation, and synchronization
  */
 
-import * as fs from 'fs';
-import * as vscode from 'vscode';
-import * as path from 'path';
+import { exec } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as http from 'node:http';
+import * as https from 'node:https';
+import * as path from 'node:path';
+import { promisify } from 'node:util';
+
 import * as yaml from 'js-yaml';
-import * as https from 'https';
-import * as http from 'http';
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import * as vscode from 'vscode';
+
 import { HubStorage, LoadHubResult } from '../storage/HubStorage';
-import { Logger } from '../utils/logger';
-import { SchemaValidator, ValidationResult } from './SchemaValidator';
+import {
+    HubConfig,
+    HubProfile,
+    HubReference,
+    validateHubConfig,
+    sanitizeHubId,
+    HubSource,
+    HubProfileBundle,
+    ProfileActivationState,
+    ProfileActivationOptions,
+    ProfileActivationResult,
+    ProfileDeactivationResult,
+    ProfileChanges,
+    ChangeQuickPickItem,
+    ConflictResolutionDialog,
+    ProfileWithUpdates,
+} from '../types/hub';
 import { RegistrySource } from '../types/registry';
-import { HubConfig, HubProfile, HubReference, validateHubConfig, sanitizeHubId , HubSource, HubProfileBundle , ProfileActivationState, ProfileActivationOptions, ProfileActivationResult, ProfileDeactivationResult, ProfileChanges, ChangeQuickPickItem, DialogOption, ConflictResolutionDialog, ProfileWithUpdates } from '../types/hub';
+import { Logger } from '../utils/logger';
+
+import { SchemaValidator, ValidationResult } from './SchemaValidator';
 
 const execAsync = promisify(exec);
 
@@ -34,7 +53,6 @@ export interface HubProfileWithMetadata extends HubProfile {
     hubId: string;
     hubName: string;
 }
-
 
 /**
  * Hub information including config, reference, and metadata
@@ -77,7 +95,6 @@ export class HubManager {
     private authToken: string | undefined;
     private authMethod: 'vscode' | 'gh-cli' | 'explicit' | 'none' = 'none';
 
-
     /**
      * Initialize HubManager
      * @param storage HubStorage instance for persistence
@@ -90,10 +107,12 @@ export class HubManager {
     readonly onFavoritesChanged = this._onFavoritesChanged.event;
 
     constructor(
-        storage: HubStorage, 
-        validator: SchemaValidator, 
+        storage: HubStorage,
+        validator: SchemaValidator,
         extensionPath: string,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
         private bundleInstaller?: any,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
         private registryManager?: any
     ) {
         if (!storage) {
@@ -133,9 +152,11 @@ export class HubManager {
         if (!validation.valid) {
             this.logger.error('Hub validation failed:', undefined, {
                 errors: validation.errors,
-                warnings: validation.warnings
+                warnings: validation.warnings,
             });
-            throw new Error(`Hub validation failed: Validation error: ${validation.errors.join(', ')}`);
+            throw new Error(
+                `Hub validation failed: Validation error: ${validation.errors.join(', ')}`
+            );
         }
 
         // Generate hub ID if not provided
@@ -147,17 +168,19 @@ export class HubManager {
         try {
             sanitizeHubId(hubId);
         } catch (error) {
-            throw new Error(`Invalid hub ID: ${error instanceof Error ? error.message : String(error)}`);
+            throw new Error(
+                `Invalid hub ID: ${error instanceof Error ? error.message : String(error)}`
+            );
         }
-        
+
         // Save to storage first
         await this.storage.saveHub(hubId, config, reference);
-        
+
         // Load hub sources into RegistryManager
         if (this.registryManager) {
             await this.loadHubSources(hubId);
         }
-        
+
         this._onHubImported.fire(hubId);
 
         return hubId;
@@ -177,7 +200,7 @@ export class HubManager {
             this.logger.error('Hub validation failed on load:', undefined, {
                 hubId,
                 errors: validation.errors,
-                warnings: validation.warnings
+                warnings: validation.warnings,
             });
             throw new Error(`Hub validation failed: ${validation.errors.join(', ')}`);
         }
@@ -203,14 +226,14 @@ export class HubManager {
             return {
                 valid: false,
                 errors: runtimeResult.errors,
-                warnings: []
+                warnings: [],
             };
         }
 
         return {
             valid: true,
             errors: [],
-            warnings: []
+            warnings: [],
         };
     }
 
@@ -229,10 +252,11 @@ export class HubManager {
                     id,
                     name: result.config.metadata.name,
                     description: result.config.metadata.description,
-                    reference: result.reference
+                    reference: result.reference,
                 });
             } catch (error) {
                 // Skip hubs that fail to load
+                // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
                 console.error(`Failed to load hub ${id}:`, error);
             }
         }
@@ -247,7 +271,7 @@ export class HubManager {
     async deleteHub(hubId: string): Promise<void> {
         // Cleanup resources linked to this hub before deleting
         await this.cleanupHubResources(hubId);
-        
+
         await this.storage.deleteHub(hubId);
         this._onHubDeleted.fire(hubId);
     }
@@ -289,9 +313,14 @@ export class HubManager {
                 if (profile.hubId === hubId && profile.active) {
                     try {
                         await this.registryManager.updateProfile(profile.id, { active: false });
-                        this.logger.info(`Deactivated profile ${profile.id} linked to hub ${hubId}`);
+                        this.logger.info(
+                            `Deactivated profile ${profile.id} linked to hub ${hubId}`
+                        );
                     } catch (error) {
-                        this.logger.warn(`Failed to deactivate profile ${profile.id}`, error as Error);
+                        this.logger.warn(
+                            `Failed to deactivate profile ${profile.id}`,
+                            error as Error
+                        );
                     }
                 }
             }
@@ -314,15 +343,15 @@ export class HubManager {
         if (!validation.valid) {
             throw new Error(`Hub validation failed after sync: ${validation.errors.join(', ')}`);
         }
-    
+
         // Update storage
         await this.storage.saveHub(hubId, config, existing.reference);
-        
+
         // Reload hub sources into RegistryManager
         if (this.registryManager) {
             await this.loadHubSources(hubId);
         }
-        
+
         this._onHubSynced.fire(hubId);
     }
 
@@ -343,8 +372,8 @@ export class HubManager {
                 name: result.config.metadata.name,
                 description: result.config.metadata.description,
                 lastModified: metadata.lastModified,
-                size: metadata.size
-            }
+                size: metadata.size,
+            },
         };
     }
 
@@ -388,7 +417,7 @@ export class HubManager {
         return {
             valid: errors.length === 0,
             errors,
-            warnings: []
+            warnings: [],
         };
     }
 
@@ -421,17 +450,23 @@ export class HubManager {
             // Validate reference format
             const refValidation = await this.validateReference(reference);
             if (!refValidation.valid) {
-                this.logger.debug(`Hub verification failed: invalid reference - ${refValidation.errors.join(', ')}`);
+                this.logger.debug(
+                    `Hub verification failed: invalid reference - ${refValidation.errors.join(', ')}`
+                );
                 return false;
             }
 
             // Try to fetch the hub config
             await this.fetchHubConfig(reference);
-            
-            this.logger.debug(`Hub verification successful: ${reference.type}:${reference.location}`);
+
+            this.logger.debug(
+                `Hub verification successful: ${reference.type}:${reference.location}`
+            );
             return true;
         } catch (error) {
-            this.logger.debug(`Hub verification failed: ${error instanceof Error ? error.message : String(error)}`);
+            this.logger.debug(
+                `Hub verification failed: ${error instanceof Error ? error.message : String(error)}`
+            );
             return false;
         }
     }
@@ -450,7 +485,9 @@ export class HubManager {
             const content = fs.readFileSync(filePath, 'utf-8');
             return yaml.load(content) as HubConfig;
         } catch (error) {
-            throw new Error(`Failed to load hub config from ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+            throw new Error(
+                `Failed to load hub config from ${filePath}: ${error instanceof Error ? error.message : String(error)}`
+            );
         }
     }
 
@@ -472,12 +509,16 @@ export class HubManager {
         // Try VSCode GitHub authentication first
         try {
             this.logger.debug('[HubManager] Trying VSCode GitHub authentication...');
-            const session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: true });
+            const session = await vscode.authentication.getSession('github', ['repo'], {
+                createIfNone: true,
+            });
             if (session) {
                 this.authToken = session.accessToken;
                 this.authMethod = 'vscode';
                 this.logger.info('[HubManager] ✓ Using VSCode GitHub authentication');
-                this.logger.debug(`[HubManager] Token preview: ${this.authToken.substring(0, 8)}...`);
+                this.logger.debug(
+                    `[HubManager] Token preview: ${this.authToken.substring(0, 8)}...`
+                );
                 return this.authToken;
             }
             this.logger.debug('[HubManager] VSCode auth session not found');
@@ -494,7 +535,9 @@ export class HubManager {
                 this.authToken = token;
                 this.authMethod = 'gh-cli';
                 this.logger.info('[HubManager] ✓ Using gh CLI authentication');
-                this.logger.debug(`[HubManager] Token preview: ${this.authToken.substring(0, 8)}...`);
+                this.logger.debug(
+                    `[HubManager] Token preview: ${this.authToken.substring(0, 8)}...`
+                );
                 return this.authToken;
             }
             this.logger.debug('[HubManager] gh CLI returned empty token');
@@ -502,10 +545,11 @@ export class HubManager {
             this.logger.warn(`[HubManager] gh CLI auth failed: ${error}`);
         }
 
-
         // No authentication available
         this.authMethod = 'none';
-        this.logger.warn('[HubManager] ✗ No authentication available - API rate limits will apply and private repos will be inaccessible');
+        this.logger.warn(
+            '[HubManager] ✗ No authentication available - API rate limits will apply and private repos will be inaccessible'
+        );
         return undefined;
     }
 
@@ -515,16 +559,17 @@ export class HubManager {
      * @returns Hub configuration
      */
     private async fetchFromUrl(url: string): Promise<HubConfig> {
-        
         // Prepare headers with authentication for GitHub URLs
         const headers: { [key: string]: string } = {};
 
-         // Get authentication token using fallback chain
+        // Get authentication token using fallback chain
         const token = await this.getAuthenticationToken();
         if (token) {
             // Use Bearer token format for OAuth tokens (recommended)
             headers['Authorization'] = `token ${token}`;
-            this.logger.debug(`[HubManager] Request to ${url} with auth (method: ${this.authMethod})`);
+            this.logger.debug(
+                `[HubManager] Request to ${url} with auth (method: ${this.authMethod})`
+            );
         } else {
             this.logger.debug(`[HubManager] Request to ${url} WITHOUT auth`);
         }
@@ -532,36 +577,51 @@ export class HubManager {
         // Log headers (sanitized)
         const sanitizedHeaders = { ...headers };
         if (sanitizedHeaders['Authorization']) {
-            sanitizedHeaders['Authorization'] = sanitizedHeaders['Authorization'].substring(0, 15) + '...';
+            sanitizedHeaders['Authorization'] =
+                sanitizedHeaders['Authorization'].substring(0, 15) + '...';
         }
         this.logger.debug(`[HubManager] Request headers: ${JSON.stringify(sanitizedHeaders)}`);
 
-        return new Promise( (resolve, reject) => {
+        return new Promise((resolve, reject) => {
             const protocol = url.startsWith('https') ? https : http;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
             const options: any = { headers };
-            protocol.get(url, options, (res) => {
-                if (res.statusCode !== 200) {
-                    this.logger.error(`[HubManager] Failed to fetch hub config: HTTP ${res.statusCode}`, undefined);
-                    reject(new Error(`Failed to fetch hub config: HTTP ${res.statusCode}`));
-                    return;
-                }
-
-                let data = '';
-                res.on('data', (chunk) => data += chunk);
-                res.on('end', () => {
-                    try {
-                        this.logger.debug(`[HubManager] Successfully fetched hub config, ${data.length} bytes`);
-                        const config = yaml.load(data) as HubConfig;
-                        resolve(config);
-                    } catch (error) {
-                        this.logger.error(`[HubManager] Failed to parse hub config`, error as Error);
-                        reject(new Error(`Failed to parse hub config: ${error instanceof Error ? error.message : String(error)}`));
+            protocol
+                .get(url, options, (res) => {
+                    if (res.statusCode !== 200) {
+                        this.logger.error(
+                            `[HubManager] Failed to fetch hub config: HTTP ${res.statusCode}`
+                        );
+                        reject(new Error(`Failed to fetch hub config: HTTP ${res.statusCode}`));
+                        return;
                     }
+
+                    let data = '';
+                    res.on('data', (chunk) => (data += chunk));
+                    res.on('end', () => {
+                        try {
+                            this.logger.debug(
+                                `[HubManager] Successfully fetched hub config, ${data.length} bytes`
+                            );
+                            const config = yaml.load(data) as HubConfig;
+                            resolve(config);
+                        } catch (error) {
+                            this.logger.error(
+                                `[HubManager] Failed to parse hub config`,
+                                error as Error
+                            );
+                            reject(
+                                new Error(
+                                    `Failed to parse hub config: ${error instanceof Error ? error.message : String(error)}`
+                                )
+                            );
+                        }
+                    });
+                })
+                .on('error', (error) => {
+                    this.logger.error(`[HubManager] Network error fetching hub config`, error);
+                    reject(new Error(`Failed to fetch hub config: ${error.message}`));
                 });
-            }).on('error', (error) => {
-                this.logger.error(`[HubManager] Network error fetching hub config`, error);
-                reject(new Error(`Failed to fetch hub config: ${error.message}`));
-            });
         });
     }
 
@@ -610,22 +670,25 @@ export class HubManager {
         if (!hub) {
             throw new Error(`Hub not found: ${hubId}`);
         }
-        
+
         const profiles = hub.config.profiles || [];
-        
+
         // Enrich with activation state
         try {
             const activeState = await this.storage.getActiveProfileForHub(hubId);
             if (activeState) {
-                return profiles.map(profile => ({
+                return profiles.map((profile) => ({
                     ...profile,
-                    active: activeState.profileId === profile.id
+                    active: activeState.profileId === profile.id,
                 }));
             }
         } catch (error) {
-            this.logger.warn(`Failed to check profile activation state for hub ${hubId}`, error as Error);
+            this.logger.warn(
+                `Failed to check profile activation state for hub ${hubId}`,
+                error as Error
+            );
         }
-        
+
         return profiles;
     }
 
@@ -638,17 +701,21 @@ export class HubManager {
     async getHubProfile(hubId: string, profileId: string): Promise<HubProfile> {
         const profiles = await this.listProfilesFromHub(hubId);
         this.logger.info(`Found ${profiles.length} profiles in hub ${hubId}`);
-        
-        const profile = profiles.find(p => p.id === profileId);
-        
+
+        const profile = profiles.find((p) => p.id === profileId);
+
         if (!profile) {
-            this.logger.error(`Profile ${profileId} not found in hub ${hubId}. Available: ${profiles.map(p => p.id).join(', ')}`);
+            this.logger.error(
+                `Profile ${profileId} not found in hub ${hubId}. Available: ${profiles.map((p) => p.id).join(', ')}`
+            );
             throw new Error(`Profile not found: ${profileId} in hub ${hubId}`);
         }
-        
+
         this.logger.info(`Found profile ${profileId}: ${profile.name}`);
-        this.logger.info(`Profile bundles: ${JSON.stringify(profile.bundles?.map(b => ({ id: b.id, version: b.version })) || [])}`);
-        
+        this.logger.info(
+            `Profile bundles: ${JSON.stringify(profile.bundles?.map((b) => ({ id: b.id, version: b.version })) || [])}`
+        );
+
         return profile;
     }
 
@@ -666,7 +733,7 @@ export class HubManager {
                 allProfiles.push({
                     ...profile,
                     hubId: hubItem.id,
-                    hubName: hubItem.name
+                    hubName: hubItem.name,
                 });
             }
         }
@@ -680,7 +747,7 @@ export class HubManager {
      */
     async getActiveHub(): Promise<LoadHubResult | null> {
         const activeHubId = await this.storage.getActiveHubId();
-        
+
         if (!activeHubId) {
             return null;
         }
@@ -701,7 +768,7 @@ export class HubManager {
     async setActiveHub(hubId: string | null): Promise<void> {
         // Get current active hub to check if we're switching
         const currentActiveHubId = await this.storage.getActiveHubId();
-        
+
         // Cleanup previous hub if switching to a different one
         if (currentActiveHubId && currentActiveHubId !== hubId) {
             await this.cleanupHubResources(currentActiveHubId);
@@ -713,7 +780,7 @@ export class HubManager {
             if (!hub) {
                 throw new Error(`Hub not found: ${hubId}`);
             }
-            
+
             // Load hub sources into RegistryManager when activating
             if (this.registryManager) {
                 await this.loadHubSources(hubId);
@@ -741,25 +808,25 @@ export class HubManager {
             if (existing.type !== source.type || existing.url !== source.url) {
                 return false;
             }
-            
+
             // For sources with config, compare relevant fields
             const existingConfig = existing.config || {};
             const sourceConfig = source.config || {};
-            
+
             // Compare branch (for git-based sources)
             const existingBranch = existingConfig.branch || 'main';
             const sourceBranch = sourceConfig.branch || 'main';
             if (existingBranch !== sourceBranch) {
                 return false;
             }
-            
+
             // Compare collectionsPath (for awesome-copilot sources)
             const existingPath = existingConfig.collectionsPath || 'collections';
             const sourcePath = sourceConfig.collectionsPath || 'collections';
             if (existingPath !== sourcePath) {
                 return false;
             }
-            
+
             // If all criteria match, it's a duplicate
             return true;
         });
@@ -778,20 +845,20 @@ export class HubManager {
         }
 
         this.logger.info(`Loading sources from hub: ${hubId}`);
-        
+
         try {
             const hubData = await this.storage.loadHub(hubId);
             const hubSources = hubData.config.sources || [];
-            
+
             this.logger.info(`Found ${hubSources.length} sources in hub ${hubId}`);
-            
+
             // Get existing sources to avoid duplicates
             const existingSources = await this.registryManager.listSources();
-            
+
             let addedCount = 0;
             let skippedCount = 0;
             let updatedCount = 0;
-            
+
             for (const hubSource of hubSources) {
                 // Skip disabled sources
                 if (!hubSource.enabled) {
@@ -799,13 +866,15 @@ export class HubManager {
                     skippedCount++;
                     continue;
                 }
-                
+
                 // Create unique source ID by prefixing with hub ID
                 const sourceId = `hub-${hubId}-${hubSource.id}`;
-                
+
                 // Check if source with same ID already exists (from this hub)
-                const existingSourceById = existingSources.find((s: RegistrySource) => s.id === sourceId);
-                
+                const existingSourceById = existingSources.find(
+                    (s: RegistrySource) => s.id === sourceId
+                );
+
                 if (existingSourceById) {
                     // Update existing source from same hub
                     this.logger.info(`Updating existing hub source: ${sourceId}`);
@@ -819,32 +888,32 @@ export class HubManager {
                         token: hubSource.token,
                         metadata: hubSource.metadata,
                         config: hubSource.config,
-                        hubId: hubId
+                        hubId: hubId,
                     });
                     updatedCount++;
                     continue;
                 }
-                
+
                 // Check if duplicate source already exists (same URL + config)
                 const duplicateSource = this.findDuplicateSource(hubSource, existingSources);
-                
+
                 if (duplicateSource) {
                     this.logger.info(
                         `Skipping duplicate source: ${hubSource.name} ` +
-                        `(already exists as "${duplicateSource.name}" with ID: ${duplicateSource.id})`
+                            `(already exists as "${duplicateSource.name}" with ID: ${duplicateSource.id})`
                     );
                     this.logger.debug(
                         `Duplicate detected - URL: ${hubSource.url}, ` +
-                        `Branch: ${hubSource.config?.branch || 'main'}, ` +
-                        `CollectionsPath: ${hubSource.config?.collectionsPath || 'collections'}`
+                            `Branch: ${hubSource.config?.branch || 'main'}, ` +
+                            `CollectionsPath: ${hubSource.config?.collectionsPath || 'collections'}`
                     );
                     skippedCount++;
                     continue;
                 }
-                
+
                 // Add new source
                 this.logger.info(`Adding new hub source: ${sourceId} (${hubSource.name})`);
-                
+
                 // Convert HubSource to RegistrySource
                 const registrySource: RegistrySource = {
                     id: sourceId,
@@ -857,16 +926,16 @@ export class HubManager {
                     token: hubSource.token,
                     metadata: hubSource.metadata,
                     config: hubSource.config,
-                    hubId: hubId
+                    hubId: hubId,
                 };
-                
+
                 await this.registryManager.addSource(registrySource);
                 addedCount++;
             }
-            
+
             this.logger.info(
                 `Hub source loading complete for ${hubId}: ` +
-                `${addedCount} added, ${updatedCount} updated, ${skippedCount} skipped`
+                    `${addedCount} added, ${updatedCount} updated, ${skippedCount} skipped`
             );
         } catch (error) {
             this.logger.error(`Failed to load sources from hub ${hubId}`, error as Error);
@@ -880,7 +949,7 @@ export class HubManager {
      */
     async listActiveHubProfiles(): Promise<HubProfileWithMetadata[]> {
         const activeHubId = await this.storage.getActiveHubId();
-        
+
         if (!activeHubId) {
             return [];
         }
@@ -891,21 +960,19 @@ export class HubManager {
         }
 
         const profiles = activeHub.config.profiles || [];
-        return profiles.map(profile => ({
+        return profiles.map((profile) => ({
             ...profile,
             hubId: activeHubId,
-            hubName: activeHub.config.metadata.name
+            hubName: activeHub.config.metadata.name,
         }));
     }
-
-
 
     /**
      * Resolve a source by ID from a hub
      */
     async resolveSource(hubId: string, sourceId: string): Promise<HubSource> {
         const hubData = await this.storage.loadHub(hubId);
-        const source = hubData.config.sources.find(s => s.id === sourceId);
+        const source = hubData.config.sources.find((s) => s.id === sourceId);
 
         if (!source) {
             throw new Error(`Source not found: ${sourceId} in hub ${hubId}`);
@@ -923,7 +990,7 @@ export class HubManager {
 
         // Build URL based on source type
         switch (source.type) {
-            case 'github': 
+            case 'github':
                 // GitHub source format: github:owner/repo
                 // Bundle URL: https://github.com/owner/repo/releases/download/v{version}/{bundleId}.zip
                 if (githubMatch) {
@@ -949,24 +1016,23 @@ export class HubManager {
     /**
      * Resolve all bundles in a profile
      */
-    async resolveProfileBundles(
-        hubId: string,
-        profileId: string
-    ): Promise<ResolvedBundle[]> {
+    async resolveProfileBundles(hubId: string, profileId: string): Promise<ResolvedBundle[]> {
         const profile = await this.getHubProfile(hubId, profileId);
         const resolved: ResolvedBundle[] = [];
 
         this.logger.info(`Resolving bundles for profile ${profileId} in hub ${hubId}`);
         this.logger.info(`Profile has ${profile.bundles?.length || 0} bundles`);
-        
+
         if (!profile.bundles || profile.bundles.length === 0) {
             this.logger.warn(`No bundles found in profile ${profileId}`);
             return resolved;
         }
 
         for (const bundle of profile.bundles) {
-            this.logger.info(`Resolving bundle: ${bundle.id} v${bundle.version} from source: ${bundle.source}`);
-            // Note: We don't resolve URLs anymore since registryManager.installBundle() 
+            this.logger.info(
+                `Resolving bundle: ${bundle.id} v${bundle.version} from source: ${bundle.source}`
+            );
+            // Note: We don't resolve URLs anymore since registryManager.installBundle()
             // searches sources by bundle ID and uses the appropriate adapter
             resolved.push({ bundle: bundle, url: '' }); // URL not needed
         }
@@ -974,7 +1040,6 @@ export class HubManager {
         this.logger.info(`Resolved ${resolved.length} bundles total`);
         return resolved;
     }
-
 
     /**
      * Activate a hub profile
@@ -985,10 +1050,12 @@ export class HubManager {
         options: ProfileActivationOptions
     ): Promise<ProfileActivationResult> {
         try {
-            this.logger.info(`[HubManager] activateProfile called: hubId=${hubId}, profileId=${profileId}, installBundles=${options.installBundles}`);
-            
+            this.logger.info(
+                `[HubManager] activateProfile called: hubId=${hubId}, profileId=${profileId}, installBundles=${options.installBundles}`
+            );
+
             // Verify hub and profile exist
-            const profile = await this.getHubProfile(hubId, profileId);
+            const _profile = await this.getHubProfile(hubId, profileId);
 
             // Deactivate ALL active hub profiles across ALL hubs (enforce single active profile globally)
             // This will uninstall bundles from previously active profiles
@@ -996,22 +1063,34 @@ export class HubManager {
             for (const currentHubId of allHubIds) {
                 // Load hub config to check for active profiles in YAML (not activation states)
                 const hubData = await this.storage.loadHub(currentHubId);
-                const activeProfile = hubData.config.profiles.find(p => p.active);
-                
+                const activeProfile = hubData.config.profiles.find((p) => p.active);
+
                 if (activeProfile && activeProfile.id !== profileId) {
-                    this.logger.info(`Deactivating hub profile from hub ${currentHubId}: ${activeProfile.id}`);
-                    
+                    this.logger.info(
+                        `Deactivating hub profile from hub ${currentHubId}: ${activeProfile.id}`
+                    );
+
                     // Use RegistryManager to properly deactivate profile and uninstall its bundles
                     if (this.registryManager) {
                         try {
                             await this.registryManager.deactivateProfile(activeProfile.id);
                         } catch (error) {
-                            this.logger.error(`Failed to deactivate profile ${activeProfile.id}`, error as Error);
+                            this.logger.error(
+                                `Failed to deactivate profile ${activeProfile.id}`,
+                                error as Error
+                            );
                         }
                     } else {
                         // Fallback: just update flags if RegistryManager not available
-                        await this.storage.setProfileActiveFlag(currentHubId, activeProfile.id, false);
-                        await this.storage.deleteProfileActivationState(currentHubId, activeProfile.id);
+                        await this.storage.setProfileActiveFlag(
+                            currentHubId,
+                            activeProfile.id,
+                            false
+                        );
+                        await this.storage.deleteProfileActivationState(
+                            currentHubId,
+                            activeProfile.id
+                        );
                     }
                 }
             }
@@ -1021,16 +1100,16 @@ export class HubManager {
 
             // Create activation state with bundle versions
             const syncedBundleVersions: Record<string, string> = {};
-            resolvedBundles.forEach(rb => {
+            for (const rb of resolvedBundles) {
                 syncedBundleVersions[rb.bundle.id] = rb.bundle.version;
-            });
+            }
 
             const activationState: ProfileActivationState = {
                 hubId,
                 profileId,
                 activatedAt: new Date().toISOString(),
-                syncedBundles: resolvedBundles.map(rb => rb.bundle.id),
-                syncedBundleVersions
+                syncedBundles: resolvedBundles.map((rb) => rb.bundle.id),
+                syncedBundleVersions,
             };
 
             // Save activation state
@@ -1040,22 +1119,25 @@ export class HubManager {
             await this.storage.setProfileActiveFlag(hubId, profileId, true);
 
             // Install bundles if requested and RegistryManager is available
-            const installResults: Array<{ bundleId: string; success: boolean; error?: string }> = [];
+            const _installResults: Array<{ bundleId: string; success: boolean; error?: string }> =
+                [];
             if (options.installBundles && this.registryManager) {
-                this.logger.info(`Installing ${resolvedBundles.length} bundles for profile ${profileId}`);
-                
-                const bundlesToInstall = resolvedBundles.map(rb => ({
+                this.logger.info(
+                    `Installing ${resolvedBundles.length} bundles for profile ${profileId}`
+                );
+
+                const bundlesToInstall = resolvedBundles.map((rb) => ({
                     bundleId: rb.bundle.id,
                     options: {
                         scope: 'user' as const,
                         force: false,
-                        profileId: profileId  // Tag bundle with profile ID for tracking
-                    }
+                        profileId: profileId, // Tag bundle with profile ID for tracking
+                    },
                 }));
 
                 try {
                     await this.registryManager.installBundles(bundlesToInstall);
-                    
+
                     // Assuming success if no error thrown (installBundles handles errors internally but doesn't return individual results easily yet, but logs them)
                     this.logger.info(`Bundle installation complete`);
                 } catch (error) {
@@ -1113,10 +1195,10 @@ export class HubManager {
                 success: true,
                 hubId,
                 profileId,
-                resolvedBundles: resolvedBundles.map(rb => ({
+                resolvedBundles: resolvedBundles.map((rb) => ({
                     bundle: rb.bundle,
-                    url: rb.url
-                }))
+                    url: rb.url,
+                })),
             };
         } catch (error) {
             return {
@@ -1124,7 +1206,7 @@ export class HubManager {
                 hubId,
                 profileId,
                 resolvedBundles: [],
-                error: error instanceof Error ? error.message : 'Unknown error'
+                error: error instanceof Error ? error.message : 'Unknown error',
             };
         }
     }
@@ -1135,7 +1217,7 @@ export class HubManager {
     async deactivateProfile(hubId: string, profileId: string): Promise<ProfileDeactivationResult> {
         try {
             // Verify profile exists
-            const profile = await this.getHubProfile(hubId, profileId);
+            const _profile = await this.getHubProfile(hubId, profileId);
 
             // Get current activation state to track removed bundles
             const currentState = await this.storage.getProfileActivationState(hubId, profileId);
@@ -1151,14 +1233,14 @@ export class HubManager {
                 success: true,
                 hubId: hubId,
                 profileId: profileId,
-                removedBundles: removedBundles
+                removedBundles: removedBundles,
             };
         } catch (error) {
             return {
                 success: false,
                 hubId: hubId,
                 profileId: profileId,
-                error: error instanceof Error ? error.message : String(error)
+                error: error instanceof Error ? error.message : String(error),
             };
         }
     }
@@ -1180,13 +1262,15 @@ export class HubManager {
     /**
      * Get a single hub by ID
      */
-    async getHub(hubId: string): Promise<{ id: string; config: HubConfig; reference: HubReference } | null> {
+    async getHub(
+        hubId: string
+    ): Promise<{ id: string; config: HubConfig; reference: HubReference } | null> {
         try {
             const result = await this.storage.loadHub(hubId);
             return {
                 id: hubId,
                 config: result.config,
-                reference: result.reference
+                reference: result.reference,
             };
         } catch (error) {
             return null;
@@ -1204,7 +1288,8 @@ export class HubManager {
             (changes.bundlesAdded !== undefined && changes.bundlesAdded.length > 0) ||
             (changes.bundlesRemoved !== undefined && changes.bundlesRemoved.length > 0) ||
             (changes.bundlesUpdated !== undefined && changes.bundlesUpdated.length > 0) ||
-            (changes.metadataChanged !== undefined && Object.keys(changes.metadataChanged).length > 0)
+            (changes.metadataChanged !== undefined &&
+                Object.keys(changes.metadataChanged).length > 0)
         );
     }
 
@@ -1220,19 +1305,19 @@ export class HubManager {
 
         // Get current profile from hub
         const currentProfile = await this.getHubProfile(hubId, profileId);
-        
+
         // Get synced bundles from activation state
         const syncedBundles = state.syncedBundles;
 
         // Compare bundles
-        const currentBundleIds = currentProfile.bundles.map(b => b.id);
-        const bundlesAdded = currentProfile.bundles.filter(b => !syncedBundles.includes(b.id));
-        const bundlesRemoved = syncedBundles.filter(id => !currentBundleIds.includes(id));
-        
+        const currentBundleIds = currentProfile.bundles.map((b) => b.id);
+        const bundlesAdded = currentProfile.bundles.filter((b) => !syncedBundles.includes(b.id));
+        const bundlesRemoved = syncedBundles.filter((id) => !currentBundleIds.includes(id));
+
         // Check for version changes using stored bundle versions
         const bundlesUpdated: Array<{ id: string; oldVersion: string; newVersion: string }> = [];
         const profileUpdated = new Date(currentProfile.updatedAt) > new Date(state.activatedAt);
-        
+
         if (state.syncedBundleVersions) {
             // Compare each current bundle version with synced version
             for (const bundle of currentProfile.bundles) {
@@ -1241,7 +1326,7 @@ export class HubManager {
                     bundlesUpdated.push({
                         id: bundle.id,
                         oldVersion: syncedVersion,
-                        newVersion: bundle.version
+                        newVersion: bundle.version,
                     });
                 }
             }
@@ -1308,26 +1393,27 @@ export class HubManager {
         }
 
         const result: ProfileWithUpdates[] = [];
-        
+
         // Check active profile for updates
         const activeState = await this.getActiveProfile(hubId);
         if (activeState) {
             const changes = await this.getProfileChanges(hubId, activeState.profileId);
-            
-            if (changes && (
-                (changes.bundlesAdded && changes.bundlesAdded.length > 0) ||
-                (changes.bundlesRemoved && changes.bundlesRemoved.length > 0) ||
-                (changes.bundlesUpdated && changes.bundlesUpdated.length > 0) ||
-                (changes.metadataChanged && Object.keys(changes.metadataChanged).length > 0)
-            )) {
+
+            if (
+                changes &&
+                ((changes.bundlesAdded && changes.bundlesAdded.length > 0) ||
+                    (changes.bundlesRemoved && changes.bundlesRemoved.length > 0) ||
+                    (changes.bundlesUpdated && changes.bundlesUpdated.length > 0) ||
+                    (changes.metadataChanged && Object.keys(changes.metadataChanged).length > 0))
+            ) {
                 result.push({
                     profileId: activeState.profileId,
                     hasChanges: true,
-                    changes: changes
+                    changes: changes,
                 });
             }
         }
-        
+
         return result;
     }
 
@@ -1357,7 +1443,7 @@ export class HubManager {
     async toggleProfileFavorite(hubId: string, profileId: string): Promise<void> {
         const favorites = await this.getFavoriteProfiles();
         const hubFavorites = favorites[hubId] || [];
-        
+
         const index = hubFavorites.indexOf(profileId);
         if (index === -1) {
             // Add to favorites
@@ -1366,14 +1452,15 @@ export class HubManager {
             // Remove from favorites
             hubFavorites.splice(index, 1);
         }
-        
+
         favorites[hubId] = hubFavorites;
-        
+
         // Clean up empty hubs
-        if (favorites[hubId].length === 0) {
+        const hubFavoritesArray = favorites[hubId];
+        if (hubFavoritesArray && hubFavoritesArray.length === 0) {
             delete favorites[hubId];
         }
-        
+
         await this.storage.saveFavoriteProfiles(favorites);
         this._onFavoritesChanged.fire();
     }
@@ -1385,8 +1472,8 @@ export class HubManager {
     async cleanupOrphanedFavorites(): Promise<void> {
         const favorites = await this.getFavoriteProfiles();
         const existingHubs = await this.listHubs();
-        const existingHubIds = new Set(existingHubs.map(h => h.id));
-        
+        const existingHubIds = new Set(existingHubs.map((h) => h.id));
+
         let changed = false;
         for (const hubId of Object.keys(favorites)) {
             if (!existingHubIds.has(hubId)) {
@@ -1395,7 +1482,7 @@ export class HubManager {
                 changed = true;
             }
         }
-        
+
         if (changed) {
             await this.storage.saveFavoriteProfiles(favorites);
             this._onFavoritesChanged.fire();
@@ -1407,28 +1494,28 @@ export class HubManager {
      */
     formatChangeSummary(changes: ProfileChanges): string {
         const lines: string[] = [];
-        
+
         if (changes.bundlesAdded && changes.bundlesAdded.length > 0) {
             lines.push('Added bundles:');
             for (const bundle of changes.bundlesAdded) {
                 lines.push(`  + ${bundle.id} v${bundle.version}`);
             }
         }
-        
+
         if (changes.bundlesRemoved && changes.bundlesRemoved.length > 0) {
             lines.push('Removed bundles:');
             for (const bundleId of changes.bundlesRemoved) {
                 lines.push(`  - ${bundleId}`);
             }
         }
-        
+
         if (changes.bundlesUpdated && changes.bundlesUpdated.length > 0) {
             lines.push('Updated bundles:');
             for (const update of changes.bundlesUpdated) {
                 lines.push(`  ~ ${update.id}: ${update.oldVersion} → ${update.newVersion}`);
             }
         }
-        
+
         if (changes.metadataChanged && Object.keys(changes.metadataChanged).length > 0) {
             lines.push('Metadata changes:');
             if (changes.metadataChanged.name) {
@@ -1441,7 +1528,7 @@ export class HubManager {
                 lines.push('  ~ icon changed');
             }
         }
-        
+
         return lines.join('\n');
     }
 
@@ -1450,50 +1537,56 @@ export class HubManager {
      */
     createChangeQuickPickItems(changes: ProfileChanges): ChangeQuickPickItem[] {
         const items: ChangeQuickPickItem[] = [];
-        
+
         if (changes.bundlesAdded) {
             for (const bundle of changes.bundlesAdded) {
                 items.push({
                     label: `${bundle.required ? '* ' : ''}${bundle.id}`,
                     description: `Added v${bundle.version}${bundle.required ? ' (required)' : ''}`,
-                    detail: `Source: ${bundle.source}`
+                    detail: `Source: ${bundle.source}`,
                 });
             }
         }
-        
+
         if (changes.bundlesRemoved) {
             for (const bundleId of changes.bundlesRemoved) {
                 items.push({
                     label: bundleId,
                     description: 'Removed',
-                    detail: 'This bundle will be uninstalled'
+                    detail: 'This bundle will be uninstalled',
                 });
             }
         }
-        
+
         if (changes.bundlesUpdated) {
             for (const update of changes.bundlesUpdated) {
                 items.push({
                     label: update.id,
                     description: `Updated ${update.oldVersion} → ${update.newVersion}`,
-                    detail: 'Bundle version changed'
+                    detail: 'Bundle version changed',
                 });
             }
         }
-        
+
         if (changes.metadataChanged && Object.keys(changes.metadataChanged).length > 0) {
             const changedFields: string[] = [];
-            if (changes.metadataChanged.name) {changedFields.push('name');}
-            if (changes.metadataChanged.description) {changedFields.push('description');}
-            if (changes.metadataChanged.icon) {changedFields.push('icon');}
-            
+            if (changes.metadataChanged.name) {
+                changedFields.push('name');
+            }
+            if (changes.metadataChanged.description) {
+                changedFields.push('description');
+            }
+            if (changes.metadataChanged.icon) {
+                changedFields.push('icon');
+            }
+
             items.push({
                 label: 'Profile Metadata',
                 description: 'Changed',
-                detail: `Modified: ${changedFields.join(', ')}`
+                detail: `Modified: ${changedFields.join(', ')}`,
             });
         }
-        
+
         return items;
     }
 
@@ -1501,12 +1594,12 @@ export class HubManager {
      * Create conflict resolution dialog
      */
     createConflictResolutionDialog(changes: ProfileChanges): ConflictResolutionDialog {
-        const changeCount = 
+        const changeCount =
             (changes.bundlesAdded?.length || 0) +
             (changes.bundlesRemoved?.length || 0) +
             (changes.bundlesUpdated?.length || 0) +
             (changes.metadataChanged ? 1 : 0);
-        
+
         return {
             title: 'Profile Updates Available',
             message: `${changeCount} change${changeCount > 1 ? 's' : ''} detected in the profile`,
@@ -1514,19 +1607,19 @@ export class HubManager {
                 {
                     label: 'Sync Now',
                     description: 'Accept all changes and update profile',
-                    action: 'sync'
+                    action: 'sync',
                 },
                 {
                     label: 'Review Changes',
                     description: 'View detailed changes before syncing',
-                    action: 'review'
+                    action: 'review',
                 },
                 {
                     label: 'Cancel',
                     description: 'Keep current profile version',
-                    action: 'cancel'
-                }
-            ]
+                    action: 'cancel',
+                },
+            ],
         };
     }
 
@@ -1547,7 +1640,11 @@ export class HubManager {
     /**
      * Format detailed bundle update info
      */
-    formatBundleUpdateDetail(update: { id: string; oldVersion: string; newVersion: string }): string {
+    formatBundleUpdateDetail(update: {
+        id: string;
+        oldVersion: string;
+        newVersion: string;
+    }): string {
         return `Bundle: ${update.id}\nOld Version: ${update.oldVersion}\nNew Version: ${update.newVersion}`;
     }
 }

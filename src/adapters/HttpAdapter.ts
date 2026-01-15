@@ -3,10 +3,12 @@
  * Fetches bundles from generic HTTP endpoints with index.json
  */
 
-import * as https from 'https';
-import * as http from 'http';
-import { RepositoryAdapter } from './RepositoryAdapter';
+import * as http from 'node:http';
+import * as https from 'node:https';
+
 import { Bundle, SourceMetadata, ValidationResult, RegistrySource } from '../types/registry';
+
+import { RepositoryAdapter } from './RepositoryAdapter';
 
 /**
  * HTTP registry index format
@@ -45,7 +47,7 @@ export class HttpAdapter extends RepositoryAdapter {
 
     constructor(source: RegistrySource) {
         super(source);
-        
+
         if (!this.isValidUrl(source.url)) {
             throw new Error(`Invalid HTTP URL: ${source.url}`);
         }
@@ -54,48 +56,49 @@ export class HttpAdapter extends RepositoryAdapter {
     /**
      * Make HTTP/HTTPS request
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     private async makeRequest(url: string): Promise<any> {
         return new Promise((resolve, reject) => {
             const protocol = url.startsWith('https') ? https : http;
             const headers = this.getHeaders();
-            
+
             // Add auth header if token provided
             if (this.getAuthToken()) {
                 headers['Authorization'] = `Bearer ${this.getAuthToken()}`;
             }
 
-            protocol.get(url, { headers }, (res) => {
-                // Handle redirects
-                if (res.statusCode === 301 || res.statusCode === 302) {
-                    if (res.headers.location) {
-                        this.makeRequest(res.headers.location)
-                            .then(resolve)
-                            .catch(reject);
-                        return;
+            protocol
+                .get(url, { headers }, (res) => {
+                    // Handle redirects
+                    if (res.statusCode === 301 || res.statusCode === 302) {
+                        if (res.headers.location) {
+                            this.makeRequest(res.headers.location).then(resolve).catch(reject);
+                            return;
+                        }
                     }
-                }
 
-                let data = '';
+                    let data = '';
 
-                res.on('data', (chunk) => {
-                    data += chunk;
+                    res.on('data', (chunk) => {
+                        data += chunk;
+                    });
+
+                    res.on('end', () => {
+                        if (res.statusCode !== 200) {
+                            reject(new Error(`HTTP error: ${res.statusCode} - ${data}`));
+                            return;
+                        }
+
+                        try {
+                            resolve(JSON.parse(data));
+                        } catch (error) {
+                            reject(new Error(`Failed to parse JSON response: ${error}`));
+                        }
+                    });
+                })
+                .on('error', (error) => {
+                    reject(new Error(`HTTP request failed: ${error.message}`));
                 });
-
-                res.on('end', () => {
-                    if (res.statusCode !== 200) {
-                        reject(new Error(`HTTP error: ${res.statusCode} - ${data}`));
-                        return;
-                    }
-
-                    try {
-                        resolve(JSON.parse(data));
-                    } catch (error) {
-                        reject(new Error(`Failed to parse JSON response: ${error}`));
-                    }
-                });
-            }).on('error', (error) => {
-                reject(new Error(`HTTP request failed: ${error.message}`));
-            });
         });
     }
 
@@ -106,46 +109,58 @@ export class HttpAdapter extends RepositoryAdapter {
         return new Promise((resolve, reject) => {
             const protocol = url.startsWith('https') ? https : http;
             const headers = this.getHeaders();
-            
+
             if (this.getAuthToken()) {
                 headers['Authorization'] = `Bearer ${this.getAuthToken()}`;
+                // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
                 console.log(`[HttpAdapter] Downloading with authentication: ${url}`);
             } else {
+                // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
                 console.log(`[HttpAdapter] Downloading without authentication: ${url}`);
             }
 
-            protocol.get(url, { headers }, (res) => {
-                // Handle redirects
-                if (res.statusCode === 301 || res.statusCode === 302) {
-                    if (res.headers.location) {
-                        console.log(`[HttpAdapter] Following redirect: ${res.statusCode} -> ${res.headers.location}`);
-                        this.downloadBinary(res.headers.location)
-                            .then(resolve)
-                            .catch(reject);
-                        return;
+            protocol
+                .get(url, { headers }, (res) => {
+                    // Handle redirects
+                    if (res.statusCode === 301 || res.statusCode === 302) {
+                        if (res.headers.location) {
+                            // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
+                            console.log(
+                                `[HttpAdapter] Following redirect: ${res.statusCode} -> ${res.headers.location}`
+                            );
+                            this.downloadBinary(res.headers.location).then(resolve).catch(reject);
+                            return;
+                        }
                     }
-                }
 
-                const chunks: Buffer[] = [];
+                    const chunks: Buffer[] = [];
 
-                res.on('data', (chunk) => {
-                    chunks.push(chunk);
+                    res.on('data', (chunk) => {
+                        chunks.push(chunk);
+                    });
+
+                    res.on('end', () => {
+                        if (res.statusCode !== 200) {
+                            // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
+                            console.error(
+                                `[HttpAdapter] Download failed with status ${res.statusCode}`
+                            );
+                            reject(new Error(`Failed to download: ${res.statusCode}`));
+                            return;
+                        }
+                        const buffer = Buffer.concat(chunks);
+                        // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
+                        console.log(
+                            `[HttpAdapter] Download complete: ${buffer.length} bytes received`
+                        );
+                        resolve(buffer);
+                    });
+                })
+                .on('error', (error) => {
+                    // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
+                    console.error(`[HttpAdapter] Download error: ${error.message}`);
+                    reject(new Error(`Download failed: ${error.message}`));
                 });
-
-                res.on('end', () => {
-                    if (res.statusCode !== 200) {
-                        console.error(`[HttpAdapter] Download failed with status ${res.statusCode}`);
-                        reject(new Error(`Failed to download: ${res.statusCode}`));
-                        return;
-                    }
-                    const buffer = Buffer.concat(chunks);
-                    console.log(`[HttpAdapter] Download complete: ${buffer.length} bytes received`);
-                    resolve(buffer);
-                });
-            }).on('error', (error) => {
-                console.error(`[HttpAdapter] Download error: ${error.message}`);
-                reject(new Error(`Download failed: ${error.message}`));
-            });
         });
     }
 
@@ -154,12 +169,12 @@ export class HttpAdapter extends RepositoryAdapter {
      */
     private getIndexUrl(): string {
         let url = this.source.url.replace(/\/$/, ''); // Remove trailing slash
-        
+
         // Add /index.json if not already present
         if (!url.endsWith('index.json') && !url.endsWith('.json')) {
             url += '/index.json';
         }
-        
+
         return url;
     }
 
@@ -176,7 +191,7 @@ export class HttpAdapter extends RepositoryAdapter {
     async fetchMetadata(): Promise<SourceMetadata> {
         try {
             const indexUrl = this.getIndexUrl();
-            const index = await this.makeRequest(indexUrl) as HttpRegistryIndex;
+            const index = (await this.makeRequest(indexUrl)) as HttpRegistryIndex;
 
             return {
                 name: index.name || 'HTTP Registry',
@@ -196,14 +211,14 @@ export class HttpAdapter extends RepositoryAdapter {
     async fetchBundles(): Promise<Bundle[]> {
         try {
             const indexUrl = this.getIndexUrl();
-            const index = await this.makeRequest(indexUrl) as HttpRegistryIndex;
-            
+            const index = (await this.makeRequest(indexUrl)) as HttpRegistryIndex;
+
             if (!index.bundles || !Array.isArray(index.bundles)) {
                 return [];
             }
 
             // Convert index bundles to Bundle format
-            return index.bundles.map(bundle => ({
+            return index.bundles.map((bundle) => ({
                 id: bundle.id,
                 name: bundle.name,
                 version: bundle.version,
@@ -214,7 +229,7 @@ export class HttpAdapter extends RepositoryAdapter {
                 tags: bundle.tags || [],
                 lastUpdated: bundle.lastUpdated,
                 size: bundle.size,
-                dependencies: (bundle.dependencies || []).map(dep => ({
+                dependencies: (bundle.dependencies || []).map((dep) => ({
                     bundleId: dep.id,
                     versionRange: dep.version,
                     optional: dep.optional || false,
@@ -249,7 +264,7 @@ export class HttpAdapter extends RepositoryAdapter {
         try {
             const indexUrl = this.getIndexUrl();
             await this.makeRequest(indexUrl);
-            
+
             return {
                 valid: true,
                 errors: [],

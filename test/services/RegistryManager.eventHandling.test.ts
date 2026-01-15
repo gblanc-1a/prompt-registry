@@ -1,18 +1,16 @@
 /**
  * RegistryManager Event Handling Tests
- * 
+ *
  * Tests for verifying that bundle events are fired correctly
  * Requirements: 6.1, 6.2, 6.3, 6.4, 6.5
  */
 
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
-import { RegistryManager } from '../../src/services/RegistryManager';
-import { RegistryStorage } from '../../src/storage/RegistryStorage';
-import { BundleInstaller } from '../../src/services/BundleInstaller';
-import { RepositoryAdapterFactory } from '../../src/adapters/RepositoryAdapter';
-import { InstalledBundle, Bundle, RegistrySource, DeploymentManifest } from '../../src/types/registry';
+
+import { InstalledBundle, DeploymentManifest } from '../../src/types/registry';
 
 // Helper to create mock manifest
 function createMockManifest(): DeploymentManifest {
@@ -21,20 +19,20 @@ function createMockManifest(): DeploymentManifest {
             directories: [],
             files: [],
             include_patterns: [],
-            exclude_patterns: []
+            exclude_patterns: [],
         },
         bundle_settings: {
             include_common_in_environment_bundles: true,
             create_common_bundle: true,
             compression: 'zip' as any,
             naming: {
-                environment_bundle: 'bundle'
-            }
+                environment_bundle: 'bundle',
+            },
         },
         metadata: {
             manifest_version: '1.0.0',
-            description: 'Test manifest'
-        }
+            description: 'Test manifest',
+        },
     };
 }
 
@@ -55,7 +53,7 @@ suite('RegistryManager - Event Handling', () => {
 
             // Create a mock event emitter
             const eventEmitter = new vscode.EventEmitter<InstalledBundle>();
-            
+
             const mockInstallation: InstalledBundle = {
                 bundleId: 'test-bundle',
                 version: '1.0.0',
@@ -64,13 +62,13 @@ suite('RegistryManager - Event Handling', () => {
                 scope: 'user',
                 sourceId: 'test-source',
                 sourceType: 'github',
-                manifest: createMockManifest()
+                manifest: createMockManifest(),
             };
 
             // Listen for event
             let eventFired = false;
             let eventData: InstalledBundle | undefined;
-            
+
             eventEmitter.event((installation) => {
                 eventFired = true;
                 eventData = installation;
@@ -82,10 +80,22 @@ suite('RegistryManager - Event Handling', () => {
             // Verify event was fired
             assert.strictEqual(eventFired, true, 'onBundleInstalled event should be fired');
             assert.ok(eventData, 'Event data should be provided');
-            assert.strictEqual(eventData?.bundleId, 'test-bundle', 'Event should contain correct bundle ID');
+            assert.strictEqual(
+                eventData?.bundleId,
+                'test-bundle',
+                'Event should contain correct bundle ID'
+            );
             assert.strictEqual(eventData?.version, '1.0.0', 'Event should contain correct version');
-            assert.strictEqual(eventData?.sourceId, 'test-source', 'Event should contain correct source ID');
-            assert.strictEqual(eventData?.sourceType, 'github', 'Event should contain correct source type');
+            assert.strictEqual(
+                eventData?.sourceId,
+                'test-source',
+                'Event should contain correct source ID'
+            );
+            assert.strictEqual(
+                eventData?.sourceType,
+                'github',
+                'Event should contain correct source type'
+            );
         });
     });
 
@@ -99,7 +109,7 @@ suite('RegistryManager - Event Handling', () => {
             // Listen for event
             let eventFired = false;
             let eventBundleId: string | undefined;
-            
+
             eventEmitter.event((bundleId) => {
                 eventFired = true;
                 eventBundleId = bundleId;
@@ -110,7 +120,11 @@ suite('RegistryManager - Event Handling', () => {
 
             // Verify event was fired
             assert.strictEqual(eventFired, true, 'onBundleUninstalled event should be fired');
-            assert.strictEqual(eventBundleId, 'test-bundle-v1.0.0', 'Event should contain correct bundle ID');
+            assert.strictEqual(
+                eventBundleId,
+                'test-bundle-v1.0.0',
+                'Event should contain correct bundle ID'
+            );
         });
     });
 
@@ -129,13 +143,13 @@ suite('RegistryManager - Event Handling', () => {
                 scope: 'user',
                 sourceId: 'test-source',
                 sourceType: 'github',
-                manifest: createMockManifest()
+                manifest: createMockManifest(),
             };
 
             // Listen for event
             let eventFired = false;
             let eventData: InstalledBundle | undefined;
-            
+
             eventEmitter.event((installation) => {
                 eventFired = true;
                 eventData = installation;
@@ -147,7 +161,11 @@ suite('RegistryManager - Event Handling', () => {
             // Verify event was fired
             assert.strictEqual(eventFired, true, 'onBundleUpdated event should be fired');
             assert.ok(eventData, 'Event data should be provided');
-            assert.strictEqual(eventData?.bundleId, 'test-bundle', 'Event should contain correct bundle ID');
+            assert.strictEqual(
+                eventData?.bundleId,
+                'test-bundle',
+                'Event should contain correct bundle ID'
+            );
             assert.strictEqual(eventData?.version, '1.1.0', 'Event should contain new version');
         });
     });
@@ -166,11 +184,11 @@ suite('RegistryManager - Event Handling', () => {
             updateEmitter.event(() => {
                 eventOrder.push('updated');
             });
-            
+
             uninstallEmitter.event(() => {
                 eventOrder.push('uninstalled');
             });
-            
+
             installEmitter.event(() => {
                 eventOrder.push('installed');
             });
@@ -184,9 +202,9 @@ suite('RegistryManager - Event Handling', () => {
                 scope: 'user',
                 sourceId: 'test-source',
                 sourceType: 'github',
-                manifest: createMockManifest()
+                manifest: createMockManifest(),
             };
-            
+
             updateEmitter.fire(updatedInstallation);
 
             // Verify only update event was fired (not uninstall + install)
@@ -201,12 +219,15 @@ suite('RegistryManager - Event Handling', () => {
             // Requirement 11.1: WHEN a source sync completes THEN the Registry Manager SHALL emit a source synced event
 
             // Create a mock event emitter
-            const eventEmitter = new vscode.EventEmitter<{ sourceId: string; bundleCount: number }>();
+            const eventEmitter = new vscode.EventEmitter<{
+                sourceId: string;
+                bundleCount: number;
+            }>();
 
             // Listen for event
             let eventFired = false;
             let eventData: { sourceId: string; bundleCount: number } | undefined;
-            
+
             eventEmitter.event((data) => {
                 eventFired = true;
                 eventData = data;
@@ -218,20 +239,31 @@ suite('RegistryManager - Event Handling', () => {
             // Verify event was fired
             assert.strictEqual(eventFired, true, 'onSourceSynced event should be fired');
             assert.ok(eventData, 'Event data should be provided');
-            assert.strictEqual(eventData?.sourceId, 'test-source', 'Event should contain correct source ID');
-            assert.strictEqual(eventData?.bundleCount, 42, 'Event should contain correct bundle count');
+            assert.strictEqual(
+                eventData?.sourceId,
+                'test-source',
+                'Event should contain correct source ID'
+            );
+            assert.strictEqual(
+                eventData?.bundleCount,
+                42,
+                'Event should contain correct bundle count'
+            );
         });
 
         test('should fire onSourceSynced event with zero bundle count for empty sources', () => {
             // Edge case: source with no bundles
 
             // Create a mock event emitter
-            const eventEmitter = new vscode.EventEmitter<{ sourceId: string; bundleCount: number }>();
+            const eventEmitter = new vscode.EventEmitter<{
+                sourceId: string;
+                bundleCount: number;
+            }>();
 
             // Listen for event
             let eventFired = false;
             let eventData: { sourceId: string; bundleCount: number } | undefined;
-            
+
             eventEmitter.event((data) => {
                 eventFired = true;
                 eventData = data;
@@ -241,9 +273,17 @@ suite('RegistryManager - Event Handling', () => {
             eventEmitter.fire({ sourceId: 'empty-source', bundleCount: 0 });
 
             // Verify event was fired
-            assert.strictEqual(eventFired, true, 'onSourceSynced event should be fired even for empty sources');
+            assert.strictEqual(
+                eventFired,
+                true,
+                'onSourceSynced event should be fired even for empty sources'
+            );
             assert.ok(eventData, 'Event data should be provided');
-            assert.strictEqual(eventData?.sourceId, 'empty-source', 'Event should contain correct source ID');
+            assert.strictEqual(
+                eventData?.sourceId,
+                'empty-source',
+                'Event should contain correct source ID'
+            );
             assert.strictEqual(eventData?.bundleCount, 0, 'Event should contain zero bundle count');
         });
     });

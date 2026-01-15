@@ -17,7 +17,7 @@ export const CONCURRENCY_CONSTANTS = {
      * - Batch size 3 provides optimal balance of speed and stability
      */
     BATCH_SIZE: 3,
-    
+
     /**
      * Batch size for RegistryManager bulk operations (install/uninstall/profile activation)
      * - Higher than BATCH_SIZE because these are typically internal operations
@@ -25,7 +25,7 @@ export const CONCURRENCY_CONSTANTS = {
      * - Tested with profile activations containing 10-20 bundles
      */
     REGISTRY_BATCH_LIMIT: 5,
-    
+
     /**
      * Maximum number of popular bundles to display in quick pick
      * - Prevents UI overflow in bundle selection dialogs
@@ -43,7 +43,7 @@ export const UPDATE_CONSTANTS = {
      * - 5 minutes to balance freshness with performance
      */
     CACHE_TTL: 5 * 60 * 1000,
-    
+
     /**
      * Default update check interval (in hours)
      * - Daily checks for reasonable update frequency
@@ -69,7 +69,7 @@ export const UPDATE_CONSTANTS = {
     /**
      * Timeout for update check operations (in milliseconds)
      */
-    UPDATE_CHECK_TIMEOUT_MS: 30000,
+    UPDATE_CHECK_TIMEOUT_MS: 30_000,
 } as const;
 
 /**
@@ -80,11 +80,11 @@ export const UI_CONSTANTS = {
      * Maximum length for bundle descriptions in UI
      */
     MAX_DESCRIPTION_LENGTH: 200,
-    
+
     /**
      * Timeout for progress operations (in milliseconds)
      */
-    PROGRESS_TIMEOUT: 30000,
+    PROGRESS_TIMEOUT: 30_000,
 
     /**
      * Debounce delay for reacting to source sync events (in milliseconds)

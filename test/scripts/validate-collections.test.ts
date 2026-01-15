@@ -1,21 +1,19 @@
 /**
  * Validate Collections Tests
- * 
+ *
  * Transposed from workflow-bundle/test/validate-collections.test.js
  * Tests the collection validation functionality.
- * 
+ *
  * Feature: workflow-bundle-scaffolding
  * Requirements: 15.5
  */
 
-import * as assert from 'assert';
-import * as path from 'path';
+import * as assert from 'node:assert';
+import * as path from 'node:path';
+
 import * as yaml from 'js-yaml';
-import {
-    createTestProject,
-    writeFile,
-    TestProject
-} from '../helpers/scriptTestHelpers';
+
+import { createTestProject, writeFile, TestProject } from '../helpers/scriptTestHelpers';
 
 // Import the validation library from templates
 const validateLib = require('../../templates/scaffolds/github/scripts/lib/validate.js');
@@ -29,7 +27,7 @@ suite('Validate Collections Tests', () => {
         }
     });
 
-    test('validateCollectionFile fails when required fields are missing', function() {
+    test('validateCollectionFile fails when required fields are missing', function () {
         project = createTestProject('wf-validate-', { copyScripts: false, initGit: false });
         const { root } = project;
 
@@ -43,8 +41,11 @@ suite('Validate Collections Tests', () => {
             })
         );
 
-        const result = validateLib.validateCollectionFile(root, path.relative(root, collectionPath));
-        
+        const result = validateLib.validateCollectionFile(
+            root,
+            path.relative(root, collectionPath)
+        );
+
         assert.strictEqual(result.ok, false, 'Should fail validation');
         assert.ok(
             result.errors.join('\n').toLowerCase().includes('name'),
@@ -52,7 +53,7 @@ suite('Validate Collections Tests', () => {
         );
     });
 
-    test('validateCollectionFile fails when referenced file is missing', function() {
+    test('validateCollectionFile fails when referenced file is missing', function () {
         project = createTestProject('wf-validate-', { copyScripts: false, initGit: false });
         const { root } = project;
 
@@ -66,8 +67,11 @@ suite('Validate Collections Tests', () => {
             })
         );
 
-        const result = validateLib.validateCollectionFile(root, path.relative(root, collectionPath));
-        
+        const result = validateLib.validateCollectionFile(
+            root,
+            path.relative(root, collectionPath)
+        );
+
         assert.strictEqual(result.ok, false, 'Should fail validation');
         assert.ok(
             result.errors.join('\n').toLowerCase().includes('not found'),
@@ -75,13 +79,13 @@ suite('Validate Collections Tests', () => {
         );
     });
 
-    test('validateCollectionFile passes for minimal valid collection', function() {
+    test('validateCollectionFile passes for minimal valid collection', function () {
         project = createTestProject('wf-validate-', { copyScripts: false, initGit: false });
         const { root } = project;
 
         // Create the referenced file
         writeFile(root, 'prompts/ok.prompt.md', '# OK\n');
-        
+
         const collectionPath = writeFile(
             root,
             'collections/a.collection.yml',
@@ -92,19 +96,22 @@ suite('Validate Collections Tests', () => {
             })
         );
 
-        const result = validateLib.validateCollectionFile(root, path.relative(root, collectionPath));
-        
+        const result = validateLib.validateCollectionFile(
+            root,
+            path.relative(root, collectionPath)
+        );
+
         assert.strictEqual(result.ok, true, 'Should pass validation');
         assert.strictEqual(result.errors.length, 0, 'Should have no errors');
         assert.ok(result.collection, 'Should return parsed collection');
     });
 
-    test('validateCollectionFile fails for invalid item kind', function() {
+    test('validateCollectionFile fails for invalid item kind', function () {
         project = createTestProject('wf-validate-', { copyScripts: false, initGit: false });
         const { root } = project;
 
         writeFile(root, 'prompts/test.md', '# Test\n');
-        
+
         const collectionPath = writeFile(
             root,
             'collections/a.collection.yml',
@@ -115,21 +122,27 @@ suite('Validate Collections Tests', () => {
             })
         );
 
-        const result = validateLib.validateCollectionFile(root, path.relative(root, collectionPath));
-        
+        const result = validateLib.validateCollectionFile(
+            root,
+            path.relative(root, collectionPath)
+        );
+
         assert.strictEqual(result.ok, false, 'Should fail validation');
         assert.ok(
-            result.errors.some((e: string) => e.toLowerCase().includes('invalid') && e.toLowerCase().includes('kind')),
+            result.errors.some(
+                (e: string) =>
+                    e.toLowerCase().includes('invalid') && e.toLowerCase().includes('kind')
+            ),
             `Error should mention invalid kind: ${result.errors.join(', ')}`
         );
     });
 
-    test('validateCollectionFile fails for chatmode kind (deprecated)', function() {
+    test('validateCollectionFile fails for chatmode kind (deprecated)', function () {
         project = createTestProject('wf-validate-', { copyScripts: false, initGit: false });
         const { root } = project;
 
         writeFile(root, 'agents/test.md', '# Test\n');
-        
+
         const collectionPath = writeFile(
             root,
             'collections/a.collection.yml',
@@ -140,8 +153,11 @@ suite('Validate Collections Tests', () => {
             })
         );
 
-        const result = validateLib.validateCollectionFile(root, path.relative(root, collectionPath));
-        
+        const result = validateLib.validateCollectionFile(
+            root,
+            path.relative(root, collectionPath)
+        );
+
         assert.strictEqual(result.ok, false, 'Should fail validation');
         assert.ok(
             result.errors.some((e: string) => e.toLowerCase().includes('deprecated')),
@@ -149,12 +165,12 @@ suite('Validate Collections Tests', () => {
         );
     });
 
-    test('validateCollectionFile fails for invalid collection ID', function() {
+    test('validateCollectionFile fails for invalid collection ID', function () {
         project = createTestProject('wf-validate-', { copyScripts: false, initGit: false });
         const { root } = project;
 
         writeFile(root, 'prompts/test.md', '# Test\n');
-        
+
         const collectionPath = writeFile(
             root,
             'collections/a.collection.yml',
@@ -165,8 +181,11 @@ suite('Validate Collections Tests', () => {
             })
         );
 
-        const result = validateLib.validateCollectionFile(root, path.relative(root, collectionPath));
-        
+        const result = validateLib.validateCollectionFile(
+            root,
+            path.relative(root, collectionPath)
+        );
+
         assert.strictEqual(result.ok, false, 'Should fail validation');
         assert.ok(
             result.errors.some((e: string) => e.toLowerCase().includes('id')),
@@ -174,7 +193,7 @@ suite('Validate Collections Tests', () => {
         );
     });
 
-    test('validateCollectionFile fails for invalid YAML syntax', function() {
+    test('validateCollectionFile fails for invalid YAML syntax', function () {
         project = createTestProject('wf-validate-', { copyScripts: false, initGit: false });
         const { root } = project;
 
@@ -191,23 +210,28 @@ items:
 `
         );
 
-        const result = validateLib.validateCollectionFile(root, path.relative(root, collectionPath));
-        
+        const result = validateLib.validateCollectionFile(
+            root,
+            path.relative(root, collectionPath)
+        );
+
         assert.strictEqual(result.ok, false, 'Should fail validation');
         assert.ok(
-            result.errors.some((e: string) => e.toLowerCase().includes('yaml') || e.toLowerCase().includes('parse')),
+            result.errors.some(
+                (e: string) => e.toLowerCase().includes('yaml') || e.toLowerCase().includes('parse')
+            ),
             `Error should mention YAML parsing issue: ${result.errors.join(', ')}`
         );
     });
 
-    test('validateAllCollections detects duplicate collection IDs', function() {
+    test('validateAllCollections detects duplicate collection IDs', function () {
         project = createTestProject('wf-validate-', { copyScripts: false, initGit: false });
         const { root } = project;
 
         // Create referenced files
         writeFile(root, 'prompts/test1.prompt.md', '# Test 1\n');
         writeFile(root, 'prompts/test2.prompt.md', '# Test 2\n');
-        
+
         // Create two collections with the same ID
         writeFile(
             root,
@@ -218,7 +242,7 @@ items:
                 items: [{ path: 'prompts/test1.prompt.md', kind: 'prompt' }],
             })
         );
-        
+
         writeFile(
             root,
             'collections/b.collection.yml',
@@ -231,24 +255,27 @@ items:
 
         const result = validateLib.validateAllCollections(root, [
             'collections/a.collection.yml',
-            'collections/b.collection.yml'
+            'collections/b.collection.yml',
         ]);
-        
+
         assert.strictEqual(result.ok, false, 'Should fail validation');
         assert.ok(
-            result.errors.some((e: string) => e.toLowerCase().includes('duplicate') && e.toLowerCase().includes('id')),
+            result.errors.some(
+                (e: string) =>
+                    e.toLowerCase().includes('duplicate') && e.toLowerCase().includes('id')
+            ),
             `Error should mention duplicate ID: ${result.errors.join(', ')}`
         );
     });
 
-    test('validateAllCollections detects duplicate collection names', function() {
+    test('validateAllCollections detects duplicate collection names', function () {
         project = createTestProject('wf-validate-', { copyScripts: false, initGit: false });
         const { root } = project;
 
         // Create referenced files
         writeFile(root, 'prompts/test1.prompt.md', '# Test 1\n');
         writeFile(root, 'prompts/test2.prompt.md', '# Test 2\n');
-        
+
         // Create two collections with the same name but different IDs
         writeFile(
             root,
@@ -259,7 +286,7 @@ items:
                 items: [{ path: 'prompts/test1.prompt.md', kind: 'prompt' }],
             })
         );
-        
+
         writeFile(
             root,
             'collections/b.collection.yml',
@@ -272,24 +299,27 @@ items:
 
         const result = validateLib.validateAllCollections(root, [
             'collections/a.collection.yml',
-            'collections/b.collection.yml'
+            'collections/b.collection.yml',
         ]);
-        
+
         assert.strictEqual(result.ok, false, 'Should fail validation');
         assert.ok(
-            result.errors.some((e: string) => e.toLowerCase().includes('duplicate') && e.toLowerCase().includes('name')),
+            result.errors.some(
+                (e: string) =>
+                    e.toLowerCase().includes('duplicate') && e.toLowerCase().includes('name')
+            ),
             `Error should mention duplicate name: ${result.errors.join(', ')}`
         );
     });
 
-    test('validateAllCollections passes for unique IDs and names', function() {
+    test('validateAllCollections passes for unique IDs and names', function () {
         project = createTestProject('wf-validate-', { copyScripts: false, initGit: false });
         const { root } = project;
 
         // Create referenced files
         writeFile(root, 'prompts/test1.prompt.md', '# Test 1\n');
         writeFile(root, 'prompts/test2.prompt.md', '# Test 2\n');
-        
+
         // Create two collections with unique IDs and names
         writeFile(
             root,
@@ -300,7 +330,7 @@ items:
                 items: [{ path: 'prompts/test1.prompt.md', kind: 'prompt' }],
             })
         );
-        
+
         writeFile(
             root,
             'collections/b.collection.yml',
@@ -313,20 +343,20 @@ items:
 
         const result = validateLib.validateAllCollections(root, [
             'collections/a.collection.yml',
-            'collections/b.collection.yml'
+            'collections/b.collection.yml',
         ]);
-        
+
         assert.strictEqual(result.ok, true, 'Should pass validation');
         assert.strictEqual(result.errors.length, 0, 'Should have no errors');
         assert.strictEqual(result.fileResults.length, 2, 'Should have results for both files');
     });
 
-    test('validateCollectionFile returns parsed collection for duplicate detection', function() {
+    test('validateCollectionFile returns parsed collection for duplicate detection', function () {
         project = createTestProject('wf-validate-', { copyScripts: false, initGit: false });
         const { root } = project;
 
         writeFile(root, 'prompts/test.prompt.md', '# Test\n');
-        
+
         writeFile(
             root,
             'collections/a.collection.yml',
@@ -338,21 +368,21 @@ items:
         );
 
         const result = validateLib.validateCollectionFile(root, 'collections/a.collection.yml');
-        
+
         assert.strictEqual(result.ok, true, 'Should pass validation');
         assert.ok(result.collection, 'Should return parsed collection');
         assert.strictEqual(result.collection.id, 'test-collection');
         assert.strictEqual(result.collection.name, 'Test Collection');
     });
 
-    test('validateAllCollections returns structured result for JSON output', function() {
+    test('validateAllCollections returns structured result for JSON output', function () {
         project = createTestProject('wf-validate-', { copyScripts: false, initGit: false });
         const { root } = project;
 
         // Create referenced files
         writeFile(root, 'prompts/test1.prompt.md', '# Test 1\n');
         writeFile(root, 'prompts/test2.prompt.md', '# Test 2\n');
-        
+
         writeFile(
             root,
             'collections/a.collection.yml',
@@ -362,7 +392,7 @@ items:
                 items: [{ path: 'prompts/test1.prompt.md', kind: 'prompt' }],
             })
         );
-        
+
         writeFile(
             root,
             'collections/b.collection.yml',
@@ -375,16 +405,16 @@ items:
 
         const result = validateLib.validateAllCollections(root, [
             'collections/a.collection.yml',
-            'collections/b.collection.yml'
+            'collections/b.collection.yml',
         ]);
-        
+
         // Verify structure needed for markdown generation
         assert.ok('ok' in result, 'Result should have ok property');
         assert.ok('errors' in result, 'Result should have errors property');
         assert.ok('fileResults' in result, 'Result should have fileResults property');
         assert.ok(Array.isArray(result.errors), 'errors should be an array');
         assert.ok(Array.isArray(result.fileResults), 'fileResults should be an array');
-        
+
         // Each fileResult should have file, ok, errors, and collection
         result.fileResults.forEach((fr: any) => {
             assert.ok('file' in fr, 'fileResult should have file property');
@@ -393,33 +423,36 @@ items:
         });
     });
 
-    test('generateMarkdown produces success message for valid collections', function() {
+    test('generateMarkdown produces success message for valid collections', function () {
         const result = {
             ok: true,
             errors: [],
-            fileResults: []
+            fileResults: [],
         };
-        
+
         const markdown = validateLib.generateMarkdown(result, 3);
-        
+
         assert.ok(markdown.includes('Collection Validation Results'), 'Should have title');
         assert.ok(markdown.includes('✅'), 'Should have success emoji');
-        assert.ok(markdown.includes('3 collection(s) validated successfully'), 'Should mention count');
+        assert.ok(
+            markdown.includes('3 collection(s) validated successfully'),
+            'Should mention count'
+        );
         assert.ok(!markdown.includes('❌'), 'Should not have error emoji');
     });
 
-    test('generateMarkdown produces error message with details for invalid collections', function() {
+    test('generateMarkdown produces error message with details for invalid collections', function () {
         const result = {
             ok: false,
             errors: [
                 'collections/a.collection.yml: Missing required field: name',
-                'collections/b.collection.yml: Duplicate collection ID \'test-id\' (also in collections/a.collection.yml)'
+                "collections/b.collection.yml: Duplicate collection ID 'test-id' (also in collections/a.collection.yml)",
             ],
-            fileResults: []
+            fileResults: [],
         };
-        
+
         const markdown = validateLib.generateMarkdown(result, 2);
-        
+
         assert.ok(markdown.includes('Collection Validation Results'), 'Should have title');
         assert.ok(markdown.includes('❌'), 'Should have error emoji');
         assert.ok(markdown.includes('2 error(s)'), 'Should mention error count');
@@ -428,12 +461,12 @@ items:
         assert.ok(markdown.includes('Duplicate collection ID'), 'Should include second error');
     });
 
-    test('validateAllCollections aggregates all errors including duplicates', function() {
+    test('validateAllCollections aggregates all errors including duplicates', function () {
         project = createTestProject('wf-validate-', { copyScripts: false, initGit: false });
         const { root } = project;
 
         writeFile(root, 'prompts/test.prompt.md', '# Test\n');
-        
+
         // Collection with duplicate ID
         writeFile(
             root,
@@ -444,7 +477,7 @@ items:
                 items: [{ path: 'prompts/test.prompt.md', kind: 'prompt' }],
             })
         );
-        
+
         // Another collection with same ID and missing file
         writeFile(
             root,
@@ -458,15 +491,17 @@ items:
 
         const result = validateLib.validateAllCollections(root, [
             'collections/a.collection.yml',
-            'collections/b.collection.yml'
+            'collections/b.collection.yml',
         ]);
-        
+
         assert.strictEqual(result.ok, false, 'Should fail validation');
-        
+
         // Should have both file-level errors and cross-collection errors
         const hasFileNotFound = result.errors.some((e: string) => e.includes('not found'));
-        const hasDuplicateId = result.errors.some((e: string) => e.includes('Duplicate collection ID'));
-        
+        const hasDuplicateId = result.errors.some((e: string) =>
+            e.includes('Duplicate collection ID')
+        );
+
         assert.ok(hasFileNotFound, `Should have file not found error: ${result.errors.join(', ')}`);
         assert.ok(hasDuplicateId, `Should have duplicate ID error: ${result.errors.join(', ')}`);
     });

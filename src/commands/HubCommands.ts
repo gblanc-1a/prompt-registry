@@ -3,13 +3,13 @@
  * Provides user interface for importing, listing, syncing, and deleting hubs
  */
 
-import * as vscode from 'vscode';
-import { Logger } from '../utils/logger';
-import * as path from 'path';
 import * as yaml from 'js-yaml';
+import * as vscode from 'vscode';
+
 import { HubManager } from '../services/HubManager';
 import { RegistryManager } from '../services/RegistryManager';
 import { HubReference } from '../types/hub';
+import { Logger } from '../utils/logger';
 
 /**
  * Hub source type for user selection
@@ -64,16 +64,27 @@ export class HubCommands {
         if (!vscode.commands || !vscode.commands.registerCommand) {
             return;
         }
-        
+
         this.context.subscriptions.push(
             vscode.commands.registerCommand('promptregistry.importHub', () => this.importHub()),
             vscode.commands.registerCommand('promptregistry.listHubs', () => this.listHubs()),
-            vscode.commands.registerCommand('promptregistry.syncHub', (hubId?: string) => this.syncHub(hubId)),
-            vscode.commands.registerCommand('promptregistry.deleteHub', (hubId?: string) => this.deleteHub(hubId)),
+            vscode.commands.registerCommand('promptregistry.syncHub', (hubId?: string) =>
+                this.syncHub(hubId)
+            ),
+            vscode.commands.registerCommand('promptregistry.deleteHub', (hubId?: string) =>
+                this.deleteHub(hubId)
+            ),
             vscode.commands.registerCommand('promptregistry.switchHub', () => this.switchHub()),
-            vscode.commands.registerCommand('promptregistry.exportHubConfig', () => this.exportHubConfig()),
-            vscode.commands.registerCommand('promptregistry.openHubRepository', () => this.openHubRepository()),
-            vscode.commands.registerCommand('promptregistry.openItemRepository', (item: any) => this.openItemRepository(item))
+            vscode.commands.registerCommand('promptregistry.exportHubConfig', () =>
+                this.exportHubConfig()
+            ),
+            vscode.commands.registerCommand('promptregistry.openHubRepository', () =>
+                this.openHubRepository()
+            ),
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
+            vscode.commands.registerCommand('promptregistry.openItemRepository', (item: any) =>
+                this.openItemRepository(item)
+            )
         );
     }
 
@@ -105,15 +116,18 @@ export class HubCommands {
                 {
                     location: vscode.ProgressLocation.Notification,
                     title: 'Importing Hub',
-                    cancellable: false
+                    cancellable: false,
                 },
                 async (progress) => {
                     progress.report({ message: 'Loading hub configuration...' });
 
                     try {
                         // HubManager.importHub() handles source loading via loadHubSources()
-                        const importedHubId = await this.hubManager.importHub(reference, hubId || undefined);
-                        
+                        const importedHubId = await this.hubManager.importHub(
+                            reference,
+                            hubId || undefined
+                        );
+
                         // Note: Hub profiles are NOT copied locally. They are accessed via
                         // HubManager.listProfilesFromHub() and displayed in "Shared Profiles" view.
                         // Local profiles are only created when the user explicitly creates them.
@@ -128,7 +142,7 @@ export class HubCommands {
 
                         // Refresh the tree view to show the new hub
                         vscode.commands.executeCommand('promptregistry.refresh');
-                        
+
                         return importedHubId;
                     } catch (error) {
                         const message = error instanceof Error ? error.message : String(error);
@@ -152,16 +166,18 @@ export class HubCommands {
             const hubs = await this.hubManager.listHubs();
 
             if (hubs.length === 0) {
-                vscode.window.showInformationMessage('No hubs imported yet. Use "Import Hub" to add one.');
+                vscode.window.showInformationMessage(
+                    'No hubs imported yet. Use "Import Hub" to add one.'
+                );
                 return;
             }
 
             // Create quick pick items
-            const items: HubListItem[] = hubs.map(hub => ({
+            const items: HubListItem[] = hubs.map((hub) => ({
                 label: hub.name,
                 description: hub.description,
                 detail: `ID: ${hub.id} | Source: ${hub.reference.type}`,
-                hubId: hub.id
+                hubId: hub.id,
             }));
 
             // Show quick pick
@@ -169,7 +185,7 @@ export class HubCommands {
                 placeHolder: 'Select a hub to view details',
                 matchOnDescription: true,
                 matchOnDetail: true,
-                ignoreFocusOut: true
+                ignoreFocusOut: true,
             });
 
             if (selected) {
@@ -185,6 +201,7 @@ export class HubCommands {
      * Sync a hub from its source
      * @param hubId Optional hub ID to sync (if not provided, user selects)
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     async syncHub(hubId?: string | any): Promise<void> {
         try {
             // Extract hub ID from tree item if object is passed
@@ -211,19 +228,19 @@ export class HubCommands {
                         label: '$(sync) Sync All Hubs',
                         description: 'Synchronize all imported hubs',
                         hubId: '',
-                        action: 'all'
+                        action: 'all',
                     },
-                    ...hubs.map(hub => ({
+                    ...hubs.map((hub) => ({
                         label: hub.name,
                         description: `Sync from ${hub.reference.type}`,
                         detail: `ID: ${hub.id}`,
-                        hubId: hub.id
-                    }))
+                        hubId: hub.id,
+                    })),
                 ];
 
                 const selected = await vscode.window.showQuickPick(items, {
                     placeHolder: 'Select hub to sync',
-                    ignoreFocusOut: true
+                    ignoreFocusOut: true,
                 });
 
                 if (!selected) {
@@ -243,7 +260,7 @@ export class HubCommands {
                 {
                     location: vscode.ProgressLocation.Notification,
                     title: `Syncing hub: ${targetHubId}`,
-                    cancellable: false
+                    cancellable: false,
                 },
                 async () => {
                     await this.hubManager.syncHub(targetHubId!);
@@ -261,6 +278,7 @@ export class HubCommands {
      * Delete a hub
      * @param hubId Optional hub ID to delete (if not provided, user selects)
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     async deleteHub(hubId?: string | any): Promise<void> {
         try {
             // Extract hub ID from tree item if object is passed
@@ -281,16 +299,16 @@ export class HubCommands {
                     return;
                 }
 
-                const items: HubListItem[] = hubs.map(hub => ({
+                const items: HubListItem[] = hubs.map((hub) => ({
                     label: hub.name,
                     description: hub.description,
                     detail: `ID: ${hub.id}`,
-                    hubId: hub.id
+                    hubId: hub.id,
                 }));
 
                 const selected = await vscode.window.showQuickPick(items, {
                     placeHolder: 'Select hub to delete',
-                    ignoreFocusOut: true
+                    ignoreFocusOut: true,
                 });
 
                 if (!selected) {
@@ -314,10 +332,10 @@ export class HubCommands {
 
             // Delete hub
             await this.hubManager.deleteHub(targetHubId);
-            
+
             // Refresh the tree view
             vscode.commands.executeCommand('promptregistry.refresh');
-            
+
             vscode.window.showInformationMessage(`Deleted hub: ${targetHubId}`);
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
@@ -347,25 +365,27 @@ export class HubCommands {
             const currentActiveId = activeHubId?.config.metadata.name;
 
             // Build quick-pick items
-            const items: (vscode.QuickPickItem & { hubId?: string; action?: string })[] = hubs.map(hub => ({
-                label: hub.name,
-                description: hub.id === currentActiveId ? '$(check) Active' : hub.description,
-                detail: `ID: ${hub.id}`,
-                hubId: hub.id
-            }));
+            const items: (vscode.QuickPickItem & { hubId?: string; action?: string })[] = hubs.map(
+                (hub) => ({
+                    label: hub.name,
+                    description: hub.id === currentActiveId ? '$(check) Active' : hub.description,
+                    detail: `ID: ${hub.id}`,
+                    hubId: hub.id,
+                })
+            );
 
             // Add "Import New Hub" option
             items.push({
                 label: '$(cloud-download) Import New Hub...',
                 description: 'Import a hub from GitHub, URL, or local path',
-                action: 'import'
+                action: 'import',
             });
 
             // Show quick-pick
             const selected = await vscode.window.showQuickPick(items, {
                 placeHolder: 'Select a hub to activate',
                 title: 'Switch Active Hub',
-                ignoreFocusOut: true
+                ignoreFocusOut: true,
             });
 
             if (!selected) {
@@ -377,7 +397,9 @@ export class HubCommands {
                 const newHubId = await this.importHub();
                 if (newHubId) {
                     await this.hubManager.setActiveHub(newHubId);
-                    vscode.window.showInformationMessage(`✅ Hub '${newHubId}' imported and activated`);
+                    vscode.window.showInformationMessage(
+                        `✅ Hub '${newHubId}' imported and activated`
+                    );
                     vscode.commands.executeCommand('promptRegistry.refresh');
                 }
                 return;
@@ -389,7 +411,6 @@ export class HubCommands {
                 vscode.window.showInformationMessage(`✅ Switched to hub: ${selected.label}`);
                 vscode.commands.executeCommand('promptRegistry.refresh');
             }
-
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             vscode.window.showErrorMessage(`Failed to switch hub: ${message}`);
@@ -402,59 +423,67 @@ export class HubCommands {
             // Get current profiles and sources
             const profiles = await this.registryManager.listProfiles();
             const sources = await this.registryManager.listSources();
-            const installedBundles = await this.registryManager.listInstalledBundles();
 
             // Prompt for hub metadata
             const hubName = await vscode.window.showInputBox({
                 prompt: 'Enter hub name',
                 placeHolder: 'My Awesome Hub',
-                validateInput: (value) => value.trim() ? null : 'Hub name is required',
-                ignoreFocusOut: true
+                validateInput: (value) => (value.trim() ? null : 'Hub name is required'),
+                ignoreFocusOut: true,
             });
-            if (!hubName) { return; }
+            if (!hubName) {
+                return;
+            }
 
             const hubDescription = await vscode.window.showInputBox({
                 prompt: 'Enter hub description',
                 placeHolder: 'A curated collection of prompts for...',
-                ignoreFocusOut: true
+                ignoreFocusOut: true,
             });
 
             const maintainer = await vscode.window.showInputBox({
                 prompt: 'Enter maintainer name/email',
                 placeHolder: 'Your Name <email@example.com>',
-                ignoreFocusOut: true
+                ignoreFocusOut: true,
             });
 
             // Build hub config
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
             const hubConfig: any = {
                 version: '1.0.0',
                 metadata: {
                     name: hubName,
                     description: hubDescription || 'Exported hub configuration',
                     maintainer: maintainer || 'Unknown',
-                    updatedAt: new Date().toISOString()
+                    updatedAt: new Date().toISOString(),
                 },
-                sources: sources.map(s => ({
+                sources: sources.map((s) => ({
                     id: s.id,
                     name: s.name,
-                    type: s.type,  // Preserve original source type
+                    type: s.type, // Preserve original source type
                     url: s.url,
                     enabled: s.enabled,
                     priority: s.priority,
                     ...(s.metadata && { metadata: s.metadata }),
-                    ...(s.config && { config: s.config })  // Include source config
+                    ...(s.config && { config: s.config }), // Include source config
                 })),
-                profiles: profiles.map(p => ({
+                profiles: profiles.map((p) => ({
                     id: p.id,
                     name: p.name,
                     description: p.description || '',
-                    bundles: (Array.isArray(p.bundles) ? p.bundles : Object.values(p.bundles || {}) as any[]).map((bundle: any) => ({
-                        id: bundle.id,
-                        version: bundle.version,
-                        source: sources[0]?.id || 'unknown',
-                        required: bundle.required
-                    }))
-                }))
+                    bundles: (Array.isArray(p.bundles)
+                        ? p.bundles
+                        : // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
+                          Object.values(p.bundles || {})
+                    )
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
+                        .map((bundle: any) => ({
+                            id: bundle.id,
+                            version: bundle.version,
+                            source: sources[0]?.id || 'unknown',
+                            required: bundle.required,
+                        })),
+                })),
             };
 
             // Convert to YAML using js-yaml library
@@ -462,25 +491,26 @@ export class HubCommands {
                 indent: 2,
                 lineWidth: -1,
                 noRefs: true,
-                sortKeys: false
+                sortKeys: false,
             });
 
             // Show in new editor
             const doc = await vscode.workspace.openTextDocument({
                 content: yamlStr,
-                language: 'yaml'
+                language: 'yaml',
             });
             await vscode.window.showTextDocument(doc);
 
-            vscode.window.showInformationMessage(
-                `✅ Hub config exported! Save as 'hub-config.yml' for local testing.`,
-                'Save As...'
-            ).then(action => {
-                if (action === 'Save As...') {
-                    vscode.commands.executeCommand('workbench.action.files.saveAs');
-                }
-            });
-
+            vscode.window
+                .showInformationMessage(
+                    `✅ Hub config exported! Save as 'hub-config.yml' for local testing.`,
+                    'Save As...'
+                )
+                .then((action) => {
+                    if (action === 'Save As...') {
+                        vscode.commands.executeCommand('workbench.action.files.saveAs');
+                    }
+                });
         } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
             vscode.window.showErrorMessage(`Failed to export hub config: ${message}`);
@@ -494,37 +524,44 @@ export class HubCommands {
     async openHubRepository(): Promise<void> {
         try {
             let activeHub = await this.hubManager.getActiveHub();
-            
+
             // If no active hub, fall back to available hubs
             if (!activeHub) {
                 const hubs = await this.hubManager.listHubs();
-                
+
                 if (hubs.length === 0) {
-                    vscode.window.showInformationMessage('No hubs imported. Use "Import Hub" to add one first.');
+                    vscode.window.showInformationMessage(
+                        'No hubs imported. Use "Import Hub" to add one first.'
+                    );
                     return;
                 }
-                
+
                 if (hubs.length === 1) {
                     // Single hub - use it directly
-                    activeHub = await this.hubManager.loadHub(hubs[0].id);
+                    const firstHub = hubs[0];
+                    if (!firstHub) {
+                        vscode.window.showErrorMessage('Hub data is invalid');
+                        return;
+                    }
+                    activeHub = await this.hubManager.loadHub(firstHub.id);
                 } else {
                     // Multiple hubs - let user select
-                    const items = hubs.map(hub => ({
+                    const items = hubs.map((hub) => ({
                         label: hub.name,
                         description: hub.description,
                         detail: `ID: ${hub.id}`,
-                        hubId: hub.id
+                        hubId: hub.id,
                     }));
-                    
+
                     const selected = await vscode.window.showQuickPick(items, {
                         placeHolder: 'Select a hub to open its repository',
-                        ignoreFocusOut: true
+                        ignoreFocusOut: true,
                     });
-                    
+
                     if (!selected) {
                         return;
                     }
-                    
+
                     activeHub = await this.hubManager.loadHub(selected.hubId);
                 }
             }
@@ -538,21 +575,23 @@ export class HubCommands {
                     // Format: owner/repo
                     repositoryUrl = `https://github.com/${reference.location}`;
                     break;
-                    
+
                 case 'url':
                     // Direct URL - use as is
                     repositoryUrl = reference.location;
                     break;
-                    
+
                 case 'local':
                     vscode.window.showInformationMessage(
                         'This hub is stored locally and does not have a remote repository URL.',
                         'OK'
                     );
                     return;
-                    
+
                 default:
-                    vscode.window.showWarningMessage('Unable to determine repository URL for this hub type.');
+                    vscode.window.showWarningMessage(
+                        'Unable to determine repository URL for this hub type.'
+                    );
                     return;
             }
 
@@ -561,10 +600,11 @@ export class HubCommands {
                 await vscode.env.openExternal(vscode.Uri.parse(repositoryUrl));
                 this.logger.info(`Opened hub repository: ${repositoryUrl}`);
             }
-
         } catch (error) {
             this.logger.error('Failed to open hub repository', error as Error);
-            vscode.window.showErrorMessage(`Failed to open hub repository: ${(error as Error).message}`);
+            vscode.window.showErrorMessage(
+                `Failed to open hub repository: ${(error as Error).message}`
+            );
         }
     }
 
@@ -572,6 +612,7 @@ export class HubCommands {
      * Open repository for a specific item (hub, profile, source, bundle)
      * Called from context menu in Registry Explorer
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     async openItemRepository(item: any): Promise<void> {
         try {
             if (!item || !item.type) {
@@ -619,7 +660,7 @@ export class HubCommands {
                     const sourceId = data?.sourceId;
                     if (sourceId) {
                         const sources = await this.registryManager.listSources();
-                        const source = sources.find(s => s.id === sourceId);
+                        const source = sources.find((s) => s.id === sourceId);
                         if (source) {
                             repositoryUrl = this.sourceToUrl(source);
                         }
@@ -632,7 +673,9 @@ export class HubCommands {
                 }
 
                 default:
-                    vscode.window.showWarningMessage(`Cannot open repository for item type: ${itemType}`);
+                    vscode.window.showWarningMessage(
+                        `Cannot open repository for item type: ${itemType}`
+                    );
                     return;
             }
 
@@ -646,10 +689,11 @@ export class HubCommands {
 
             await vscode.env.openExternal(vscode.Uri.parse(repositoryUrl));
             this.logger.info(`Opened repository: ${repositoryUrl}`);
-
         } catch (error) {
             this.logger.error('Failed to open repository', error as Error);
-            vscode.window.showErrorMessage(`Failed to open repository: ${(error as Error).message}`);
+            vscode.window.showErrorMessage(
+                `Failed to open repository: ${(error as Error).message}`
+            );
         }
     }
 
@@ -672,6 +716,7 @@ export class HubCommands {
     /**
      * Convert a source to a repository URL
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     private sourceToUrl(source: any): string | undefined {
         if (!source) {
             return undefined;
@@ -696,7 +741,7 @@ export class HubCommands {
                     // Remove /tree/branch or /blob/branch suffix if present
                     const cleanUrl = url.replace(/\/(tree|blob)\/[^/]+.*$/, '');
                     return cleanUrl;
-                } else if (url.match(/^[^/]+\/[^/]+$/)) {
+                } else if (/^[^/]+\/[^/]+$/.test(url)) {
                     // Short format: owner/repo
                     return `https://github.com/${url}`;
                 }
@@ -723,6 +768,7 @@ export class HubCommands {
     /**
      * Convert object to YAML format (simple implementation)
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     private objectToYaml(obj: any, indent: number = 0): string {
         const spaces = ' '.repeat(indent);
         let yaml = '';
@@ -743,7 +789,11 @@ export class HubCommands {
                             // Get object keys and format inline for first property
                             const entries = Object.entries(item);
                             if (entries.length > 0) {
-                                const [firstKey, firstValue] = entries[0];
+                                const firstEntry = entries[0];
+                                if (!firstEntry) {
+                                    continue;
+                                }
+                                const [firstKey, firstValue] = firstEntry;
                                 // Check if first value is an object - if so, use recursive formatting
                                 if (typeof firstValue === 'object' && firstValue !== null) {
                                     yaml += `${firstKey}:\n`;
@@ -753,7 +803,11 @@ export class HubCommands {
                                 }
                                 // Add remaining properties with proper indentation
                                 for (let i = 1; i < entries.length; i++) {
-                                    const [k, v] = entries[i];
+                                    const entry = entries[i];
+                                    if (!entry) {
+                                        continue;
+                                    }
+                                    const [k, v] = entry;
                                     if (typeof v === 'object' && v !== null) {
                                         yaml += `${spaces}  ${k}:\n`;
                                         yaml += this.objectToYaml(v, indent + 4);
@@ -781,12 +835,19 @@ export class HubCommands {
     /**
      * Format a value for YAML output
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     private formatYamlValue(value: any): string {
         if (typeof value === 'string') {
             // Quote strings that contain special characters
-            if (value.includes(':') || value.includes('#') || value.includes('\n') || 
-                value.startsWith('*') || value.startsWith('&') || value.startsWith('!')) {
-                return '"'  + value.replace(/"/g, '\\\\"') + '"';
+            if (
+                value.includes(':') ||
+                value.includes('#') ||
+                value.includes('\n') ||
+                value.startsWith('*') ||
+                value.startsWith('&') ||
+                value.startsWith('!')
+            ) {
+                return '"' + value.replace(/"/g, String.raw`\\"`) + '"';
             }
             return value;
         } else if (typeof value === 'boolean') {
@@ -809,7 +870,7 @@ export class HubCommands {
             {
                 label: '$(github) GitHub Repository',
                 description: 'Import from a GitHub repository',
-                value: 'github'
+                value: 'github',
             },
             // {
             //     label: '$(link) HTTPS URL',
@@ -819,13 +880,13 @@ export class HubCommands {
             {
                 label: '$(file) Local File',
                 description: 'Import from a local hub-config.yml file',
-                value: 'local'
-            }
+                value: 'local',
+            },
         ];
 
         const selected = await vscode.window.showQuickPick(options, {
             placeHolder: 'Select hub source type',
-            ignoreFocusOut: true
+            ignoreFocusOut: true,
         });
 
         return selected?.value;
@@ -834,7 +895,9 @@ export class HubCommands {
     /**
      * Get hub reference based on source type
      */
-    private async getHubReference(sourceType: 'github' | 'url' | 'local'): Promise<HubReference | undefined> {
+    private async getHubReference(
+        sourceType: 'github' | 'url' | 'local'
+    ): Promise<HubReference | undefined> {
         switch (sourceType) {
             case 'github': {
                 const location = await vscode.window.showInputBox({
@@ -846,7 +909,7 @@ export class HubCommands {
                         }
                         return null;
                     },
-                    ignoreFocusOut: true
+                    ignoreFocusOut: true,
                 });
 
                 if (!location) {
@@ -856,13 +919,13 @@ export class HubCommands {
                 const ref = await vscode.window.showInputBox({
                     prompt: 'Enter branch, tag, or commit (optional, default: main)',
                     placeHolder: 'main',
-                    ignoreFocusOut: true
+                    ignoreFocusOut: true,
                 });
 
                 return {
                     type: 'github',
                     location,
-                    ref: ref || undefined
+                    ref: ref || undefined,
                 };
             }
 
@@ -876,7 +939,7 @@ export class HubCommands {
                         }
                         return null;
                     },
-                    ignoreFocusOut: true
+                    ignoreFocusOut: true,
                 });
 
                 return location ? { type: 'url', location } : undefined;
@@ -888,18 +951,23 @@ export class HubCommands {
                     canSelectFolders: false,
                     canSelectMany: false,
                     filters: {
-                        'YAML Files': ['yml', 'yaml']
+                        'YAML Files': ['yml', 'yaml'],
                     },
-                    title: 'Select hub-config.yml file'
+                    title: 'Select hub-config.yml file',
                 });
 
                 if (!uris || uris.length === 0) {
                     return undefined;
                 }
 
+                const firstUri = uris[0];
+                if (!firstUri) {
+                    return undefined;
+                }
+
                 return {
                     type: 'local',
-                    location: uris[0].fsPath
+                    location: firstUri.fsPath,
                 };
             }
         }
@@ -921,10 +989,10 @@ export class HubCommands {
                 }
                 return null;
             },
-            ignoreFocusOut: true
+            ignoreFocusOut: true,
         });
 
-        return hubId === undefined ? null : (hubId || '');
+        return hubId === undefined ? null : hubId || '';
     }
 
     /**
@@ -933,21 +1001,6 @@ export class HubCommands {
     private async showHubDetails(hubId: string): Promise<void> {
         try {
             const info = await this.hubManager.getHubInfo(hubId);
-
-            const message = [
-                `**${info.config.metadata.name}**`,
-                '',
-                `**Description:** ${info.config.metadata.description}`,
-                `**Maintainer:** ${info.config.metadata.maintainer}`,
-                `**Version:** ${info.config.version}`,
-                `**Sources:** ${info.config.sources.length}`,
-                `**Profiles:** ${info.config.profiles.length}`,
-                '',
-                `**Hub ID:** ${info.id}`,
-                `**Source Type:** ${info.reference.type}`,
-                `**Last Modified:** ${info.metadata.lastModified.toLocaleString()}`,
-                `**Size:** ${(info.metadata.size / 1024).toFixed(2)} KB`
-            ].join('\n');
 
             // Show in output channel or quick pick with actions
             const action = await vscode.window.showInformationMessage(
@@ -963,8 +1016,8 @@ export class HubCommands {
                 await this.deleteHub(hubId);
             }
         } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            vscode.window.showErrorMessage(`Failed to get hub details: ${message}`);
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            vscode.window.showErrorMessage(`Failed to get hub details: ${errorMessage}`);
         }
     }
 
@@ -978,14 +1031,14 @@ export class HubCommands {
             {
                 location: vscode.ProgressLocation.Notification,
                 title: 'Syncing all hubs',
-                cancellable: false
+                cancellable: false,
             },
             async (progress) => {
                 let completed = 0;
                 for (const hub of hubs) {
                     progress.report({
                         message: `Syncing ${hub.name} (${completed + 1}/${hubs.length})`,
-                        increment: (100 / hubs.length)
+                        increment: 100 / hubs.length,
                     });
 
                     try {

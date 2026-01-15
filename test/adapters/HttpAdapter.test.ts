@@ -2,8 +2,10 @@
  * HttpAdapter Unit Tests
  */
 
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+
 import nock from 'nock';
+
 import { HttpAdapter } from '../../src/adapters/HttpAdapter';
 import { RegistrySource } from '../../src/types/registry';
 
@@ -63,9 +65,7 @@ suite('HttpAdapter', () => {
                 ],
             };
 
-            nock('https://example.com')
-                .get('/bundles/index.json')
-                .reply(200, mockIndex);
+            nock('https://example.com').get('/bundles/index.json').reply(200, mockIndex);
 
             const adapter = new HttpAdapter(mockSource);
             const bundles = await adapter.fetchBundles();
@@ -75,27 +75,17 @@ suite('HttpAdapter', () => {
         });
 
         test('should handle 404 errors gracefully', async () => {
-            nock('https://example.com')
-                .get('/bundles/index.json')
-                .reply(404);
+            nock('https://example.com').get('/bundles/index.json').reply(404);
 
             const adapter = new HttpAdapter(mockSource);
-            await assert.rejects(
-                async () => await adapter.fetchBundles(),
-                /404|Not found/
-            );
+            await assert.rejects(async () => await adapter.fetchBundles(), /404|Not found/);
         });
 
         test('should handle network errors', async () => {
-            nock('https://example.com')
-                .get('/bundles/index.json')
-                .replyWithError('Network error');
+            nock('https://example.com').get('/bundles/index.json').replyWithError('Network error');
 
             const adapter = new HttpAdapter(mockSource);
-            await assert.rejects(
-                async () => await adapter.fetchBundles(),
-                /Network error/
-            );
+            await assert.rejects(async () => await adapter.fetchBundles(), /Network error/);
         });
     });
 
@@ -127,7 +117,7 @@ suite('HttpAdapter', () => {
 
             nock('https://example.com', {
                 reqheaders: {
-                    'Authorization': 'Bearer test-token-123',
+                    Authorization: 'Bearer test-token-123',
                 },
             })
                 .get('/bundles/index.json')
@@ -147,10 +137,7 @@ suite('HttpAdapter', () => {
                 .reply(401, { error: 'Unauthorized' });
 
             const adapter = new HttpAdapter(sourceWithToken);
-            await assert.rejects(
-                async () => await adapter.fetchBundles(),
-                /401|Unauthorized/
-            );
+            await assert.rejects(async () => await adapter.fetchBundles(), /401|Unauthorized/);
         });
     });
 
@@ -161,10 +148,7 @@ suite('HttpAdapter', () => {
                 .reply(429, { error: 'Rate limit exceeded' });
 
             const adapter = new HttpAdapter(mockSource);
-            await assert.rejects(
-                async () => await adapter.fetchBundles(),
-                /429|Rate limit/
-            );
+            await assert.rejects(async () => await adapter.fetchBundles(), /429|Rate limit/);
         });
     });
 });

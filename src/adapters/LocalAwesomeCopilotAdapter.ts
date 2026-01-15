@@ -1,11 +1,11 @@
 /**
  * Local Awesome Copilot Collection Adapter
- * 
+ *
  * Adapter for local awesome-copilot style collection repositories.
  * Discovers .collection.yml files from local filesystem and exposes them as Prompt Registry bundles.
- * 
+ *
  * This adapter is useful for developing and testing collections locally before publishing to GitHub.
- * 
+ *
  * Collection Format (same as AwesomeCopilotAdapter):
  * ```yaml
  * id: azure-cloud-development
@@ -20,7 +20,7 @@
  *   - path: chatmodes/azure-architect.chatmode.md
  *     kind: chat-mode
  * ```
- * 
+ *
  * Usage:
  * ```typescript
  * const source: RegistrySource = {
@@ -35,14 +35,17 @@
  * ```
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import { promisify } from 'util';
-import * as yaml from 'js-yaml';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { promisify } from 'node:util';
+
 import archiver from 'archiver';
-import { RepositoryAdapter } from './RepositoryAdapter';
+import * as yaml from 'js-yaml';
+
 import { Bundle, RegistrySource, ValidationResult, SourceMetadata } from '../types/registry';
 import { Logger } from '../utils/logger';
+
+import { RepositoryAdapter } from './RepositoryAdapter';
 
 // Promisified fs functions
 const readdir = promisify(fs.readdir);
@@ -66,8 +69,10 @@ interface CollectionManifest {
         show_badge?: boolean;
     };
     mcp?: {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
         items?: Record<string, any>;
     };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     mcpServers?: Record<string, any>;
 }
 
@@ -86,16 +91,16 @@ export interface LocalAwesomeCopilotConfig {
 
 /**
  * LocalAwesomeCopilotAdapter
- * 
+ *
  * Fetches bundles from local awesome-copilot style collection repositories.
- * 
+ *
  * Features:
  * - Local filesystem access
  * - Automatic collection discovery
  * - Content type mapping (prompt/instruction/chatmode/agent)
  * - Dynamic bundle archive creation
  * - No network dependencies
- * 
+ *
  * Directory Structure:
  * ```
  * /home/user/my-collections/
@@ -119,11 +124,12 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
     constructor(source: RegistrySource) {
         super(source);
         this.logger = Logger.getInstance();
-        
+
         // Parse config
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
         const userConfig = (source as any).config || {};
         this.config = {
-            collectionsPath: userConfig.collectionsPath || 'collections'
+            collectionsPath: userConfig.collectionsPath || 'collections',
         };
 
         if (!this.isValidUrl(source.url)) {
@@ -138,12 +144,12 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
      */
     private getLocalPath(): string {
         let localPath = this.source.url;
-        
+
         // Handle file:// URL
         if (localPath.startsWith('file://')) {
             localPath = localPath.substring(7);
         }
-        
+
         // Normalize path
         return path.normalize(localPath);
     }
@@ -161,10 +167,12 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
      */
     isValidUrl(url: string): boolean {
         // Accept file:// URLs or absolute paths
-        return url.startsWith('file://') || 
-               path.isAbsolute(url) ||
-               url.startsWith('~/') ||
-               url.startsWith('./');
+        return (
+            url.startsWith('file://') ||
+            path.isAbsolute(url) ||
+            url.startsWith('~/') ||
+            url.startsWith('./')
+        );
     }
 
     /**
@@ -184,7 +192,7 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
      * Fetch list of available bundles from the local filesystem
      * Scans the collections directory for .collection.yml files and creates Bundle objects.
      * Results are cached for 5 minutes to reduce filesystem operations.
-     * 
+     *
      * @returns Promise resolving to array of Bundle objects from collection files
      * @throws Error if directory access fails or collection parsing fails
      */
@@ -203,7 +211,7 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
             // Step 1: List .collection.yml files
             const collectionFiles = await this.listCollectionFiles();
             this.logger.debug(`Found ${collectionFiles.length} collection files`);
-            
+
             // Step 2: Parse each collection
             const bundles: Bundle[] = [];
             for (const file of collectionFiles) {
@@ -219,12 +227,13 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
 
             // Cache results
             this.collectionsCache.set(cacheKey, { bundles, timestamp: Date.now() });
-            
-            return bundles;
 
+            return bundles;
         } catch (error) {
             this.logger.error('Failed to list bundles', error as Error);
-            throw new Error(`Failed to list local awesome-copilot collections: ${(error as Error).message}`);
+            throw new Error(
+                `Failed to list local awesome-copilot collections: ${(error as Error).message}`
+            );
         }
     }
 
@@ -232,7 +241,7 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
      * Download a bundle as a dynamically-created zip archive
      * Fetches all items referenced in the collection from local filesystem and creates a ZIP file.
      * The archive includes prompts, instructions, and a deployment manifest.
-     * 
+     *
      * @param bundle - Bundle object containing collection metadata
      * @returns Promise resolving to Buffer containing the ZIP archive
      * @throws Error if collection fetch fails or archive creation fails
@@ -242,23 +251,25 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
 
         try {
             // Find collection file from bundle metadata
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
             const collectionFile = (bundle as any).collectionFile || `${bundle.id}.collection.yml`;
             this.logger.debug(`Collection file: ${collectionFile}`);
-            
+
             // Parse collection
             const collectionsPath = this.getCollectionsPath();
             const collectionFilePath = path.join(collectionsPath, collectionFile);
             this.logger.debug(`Reading collection from: ${collectionFilePath}`);
-            
+
             const yamlContent = await readFile(collectionFilePath, 'utf-8');
             const collection = yaml.load(yamlContent) as CollectionManifest;
-            this.logger.debug(`Collection loaded: ${collection.name}, items: ${collection.items.length}`);
-            
+            this.logger.debug(
+                `Collection loaded: ${collection.name}, items: ${collection.items.length}`
+            );
+
             // Create zip archive
             const buffer = await this.createBundleArchive(collection, collectionFile);
             this.logger.debug(`Archive created: ${buffer.length} bytes`);
             return buffer;
-
         } catch (error) {
             this.logger.error('Failed to download bundle', error as Error);
             throw new Error(`Failed to download bundle: ${(error as Error).message}`);
@@ -268,7 +279,7 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
     /**
      * Fetch repository metadata
      * Retrieves information about the local collection directory including collection count.
-     * 
+     *
      * @returns Promise resolving to SourceMetadata with directory info
      * @throws Error if directory access fails or collection listing fails
      */
@@ -283,7 +294,7 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
                 description: `Local Awesome Copilot collections from ${localPath}`,
                 bundleCount: collectionFiles.length,
                 lastUpdated: stats.mtime.toISOString(),
-                version: '1.0.0'
+                version: '1.0.0',
             };
         } catch (error) {
             throw new Error(`Failed to fetch metadata: ${(error as Error).message}`);
@@ -293,59 +304,59 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
     /**
      * Get manifest URL for a bundle
      * Returns the file:// URL to the collection YAML file.
-     * 
+     *
      * @param bundleId - Bundle identifier matching the collection filename
      * @param version - Optional version (not used for local collections)
      * @returns file:// URL string pointing to collection .yml file
      */
-    getManifestUrl(bundleId: string, version?: string): string {
+    getManifestUrl(_bundleId: string, _version?: string): string {
         const collectionsPath = this.getCollectionsPath();
-        const collectionFile = `${bundleId}.collection.yml`;
+        const collectionFile = `${_bundleId}.collection.yml`;
         return `file://${path.join(collectionsPath, collectionFile)}`;
     }
 
     /**
      * Get download URL for a bundle
      * Returns the collection YAML file:// URL (bundles are created dynamically, not pre-packaged).
-     * 
+     *
      * @param bundleId - Bundle identifier matching the collection filename
      * @param version - Optional version (not used for local collections)
      * @returns file:// URL string pointing to collection .yml file
      */
-    getDownloadUrl(bundleId: string, version?: string): string {
+    getDownloadUrl(_bundleId: string, _version?: string): string {
         // For local awesome-copilot, download URL is same as manifest URL
         // (we download and package on the fly)
-        return this.getManifestUrl(bundleId, version);
+        return this.getManifestUrl(_bundleId, _version);
     }
 
     /**
      * Validate directory structure
      * Checks if the collections directory exists and contains at least one collection file.
-     * 
+     *
      * @returns Promise resolving to ValidationResult with status and any errors/warnings
      */
     async validate(): Promise<ValidationResult> {
         try {
             const collectionsPath = this.getCollectionsPath();
             const exists = await this.directoryExists(collectionsPath);
-            
+
             if (!exists) {
                 return {
                     valid: false,
                     errors: [`Collections directory does not exist: ${collectionsPath}`],
                     warnings: [],
-                    bundlesFound: 0
+                    bundlesFound: 0,
                 };
             }
 
             const collectionFiles = await this.listCollectionFiles();
-            
+
             if (collectionFiles.length === 0) {
                 return {
                     valid: false,
                     errors: ['No .collection.yml files found in collections directory'],
                     warnings: [],
-                    bundlesFound: 0
+                    bundlesFound: 0,
                 };
             }
 
@@ -353,15 +364,14 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
                 valid: true,
                 errors: [],
                 warnings: [],
-                bundlesFound: collectionFiles.length
+                bundlesFound: collectionFiles.length,
             };
-
         } catch (error) {
             return {
                 valid: false,
                 errors: [`Failed to validate directory: ${(error as Error).message}`],
                 warnings: [],
-                bundlesFound: 0
+                bundlesFound: 0,
             };
         }
     }
@@ -371,7 +381,7 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
      */
     private async listCollectionFiles(): Promise<string[]> {
         const collectionsPath = this.getCollectionsPath();
-        
+
         const exists = await this.directoryExists(collectionsPath);
         if (!exists) {
             throw new Error(`Collections directory does not exist: ${collectionsPath}`);
@@ -379,8 +389,8 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
 
         const entries = await readdir(collectionsPath, { withFileTypes: true });
         return entries
-            .filter(entry => entry.isFile() && entry.name.endsWith('.collection.yml'))
-            .map(entry => entry.name);
+            .filter((entry) => entry.isFile() && entry.name.endsWith('.collection.yml'))
+            .map((entry) => entry.name);
     }
 
     /**
@@ -390,7 +400,7 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
         try {
             const collectionsPath = this.getCollectionsPath();
             const collectionFilePath = path.join(collectionsPath, collectionFile);
-            
+
             const yamlContent = await readFile(collectionFilePath, 'utf-8');
             const collection = yaml.load(yamlContent) as CollectionManifest;
 
@@ -415,15 +425,16 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
                 lastUpdated: stats.mtime.toISOString(),
                 size: `${collection.items.length} items`,
                 dependencies: [],
-                license: 'MIT'
+                license: 'MIT',
             };
 
             // Store collection file name for download
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
             (bundle as any).collectionFile = collectionFile;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
             (bundle as any).breakdown = breakdown;
 
             return bundle;
-
         } catch (error) {
             this.logger.error(`Failed to parse collection ${collectionFile}`, error as Error);
             return null;
@@ -433,27 +444,30 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
     /**
      * Create a zip archive containing collection files
      */
-    private async createBundleArchive(collection: CollectionManifest, collectionFile: string): Promise<Buffer> {
+    private async createBundleArchive(
+        collection: CollectionManifest,
+        _collectionFile: string
+    ): Promise<Buffer> {
         this.logger.debug(`Creating archive for collection: ${collection.name}`);
-        
+
         return new Promise<Buffer>((resolve, reject) => {
             // Use IIFE to handle async operations within Promise executor
             (async () => {
                 try {
                     const archive = archiver('zip', { zlib: { level: 9 } });
                     const chunks: Buffer[] = [];
-                    let totalSize = 0;
 
                     // Collect data chunks
                     archive.on('data', (chunk: Buffer) => {
                         chunks.push(chunk);
-                        totalSize += chunk.length;
                     });
 
                     // Resolve when archive is finalized
                     archive.on('finish', () => {
                         const buffer = Buffer.concat(chunks);
-                        this.logger.debug(`Archive finalized: ${buffer.length} bytes (${chunks.length} chunks)`);
+                        this.logger.debug(
+                            `Archive finalized: ${buffer.length} bytes (${chunks.length} chunks)`
+                        );
                         resolve(buffer);
                     });
 
@@ -473,13 +487,13 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
                     const manifestYaml = yaml.dump(manifest);
                     archive.append(manifestYaml, { name: 'deployment-manifest.yml' });
                     this.logger.debug(`Added manifest (${manifestYaml.length} bytes)`);
-                    
+
                     // Add each item file
                     const localPath = this.getLocalPath();
                     for (const item of collection.items) {
                         const itemPath = path.join(localPath, item.path);
                         const content = await readFile(itemPath, 'utf-8');
-                        
+
                         // For skills, preserve directory structure
                         if (item.kind === 'skill') {
                             // item.path is like skills/my-skill/SKILL.md
@@ -496,7 +510,6 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
                     // Finalize the archive (this triggers 'finish' event when complete)
                     this.logger.debug('Finalizing archive...');
                     archive.finalize();
-
                 } catch (error) {
                     this.logger.error('Failed to create archive', error as Error);
                     reject(error);
@@ -508,43 +521,47 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
     /**
      * Create deployment manifest from collection
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     private createDeploymentManifest(collection: CollectionManifest): any {
-        const prompts = collection.items.map(item => {
+        const prompts = collection.items.map((item) => {
             const itemKind = item.kind;
             const itemPath = item.path;
-            
+
             // For skills, preserve the full path (skills/skill-name/SKILL.md)
             if (itemKind === 'skill') {
                 // Extract skill name from path like skills/my-skill/SKILL.md
                 const skillMatch = itemPath.match(/skills\/([^/]+)\/SKILL\.md/);
-                const skillName = skillMatch ? skillMatch[1] : 'unknown-skill';
+                const skillName = skillMatch?.[1];
+                if (!skillName) {
+                    throw new Error(`Invalid skill path format: ${itemPath}`);
+                }
                 return {
                     id: skillName,
                     name: this.titleCase(skillName.replace(/-/g, ' ')),
                     description: `Skill from ${collection.name}`,
-                    file: itemPath,  // Preserve full path for skills
+                    file: itemPath, // Preserve full path for skills
                     type: 'skill',
-                    tags: collection.tags || []
+                    tags: collection.tags || [],
                 };
             }
-            
+
             // For other types, use prompts/ folder
             const filename = path.basename(itemPath);
             const id = filename.replace(/\.(prompt|instructions|chatmode|agent)\.md$/, '');
-            
+
             return {
                 id,
                 name: this.titleCase(id.replace(/-/g, ' ')),
                 description: `From ${collection.name}`,
                 file: `prompts/${filename}`,
                 type: this.mapKindToType(itemKind),
-                tags: collection.tags || []
+                tags: collection.tags || [],
             };
         });
 
         // Extract MCP servers from either 'mcp.items' or 'mcpServers' field
         const mcpServers = collection.mcpServers || collection.mcp?.items;
-        
+
         return {
             id: collection.id,
             name: collection.name,
@@ -555,21 +572,24 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
             license: 'MIT',
             tags: collection.tags || [],
             prompts,
-            ...(mcpServers && Object.keys(mcpServers).length > 0 ? { mcpServers } : {})
+            ...(mcpServers && Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
         };
     }
 
     /**
      * Map collection kind to Prompt Registry type
      */
-    private mapKindToType(kind: string): 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill' {
-        const kindMap: Record<string, 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill'> = {
-            'prompt': 'prompt',
-            'instruction': 'instructions',
-            'chat-mode': 'chatmode',
-            'agent': 'agent',
-            'skill': 'skill'
-        };
+    private mapKindToType(
+        kind: string
+    ): 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill' {
+        const kindMap: Record<string, 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill'> =
+            {
+                prompt: 'prompt',
+                instruction: 'instructions',
+                'chat-mode': 'chatmode',
+                agent: 'agent',
+                skill: 'skill',
+            };
         return kindMap[kind] || 'prompt';
     }
 
@@ -582,7 +602,7 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
             instructions: 0,
             chatmodes: 0,
             agents: 0,
-            skills: 0
+            skills: 0,
         };
 
         for (const item of items) {
@@ -613,14 +633,14 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
      */
     private inferEnvironments(tags: string[]): string[] {
         const envMap: Record<string, string> = {
-            'azure': 'cloud',
-            'aws': 'cloud',
-            'gcp': 'cloud',
-            'frontend': 'web',
-            'backend': 'server',
-            'database': 'data',
-            'devops': 'infrastructure',
-            'testing': 'testing'
+            azure: 'cloud',
+            aws: 'cloud',
+            gcp: 'cloud',
+            frontend: 'web',
+            backend: 'server',
+            database: 'data',
+            devops: 'infrastructure',
+            testing: 'testing',
         };
 
         const environments = new Set<string>();
@@ -640,7 +660,7 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
     private titleCase(str: string): string {
         return str
             .split(' ')
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+            .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
             .join(' ');
     }
 }

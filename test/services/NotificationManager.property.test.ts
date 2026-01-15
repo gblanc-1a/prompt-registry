@@ -3,10 +3,12 @@
  * Feature: bundle-update-notifications
  */
 
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+
+import * as fc from 'fast-check';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
-import * as fc from 'fast-check';
+
 import { BundleUpdateNotifications } from '../../src/notifications/BundleUpdateNotifications';
 import { Logger } from '../../src/utils/logger';
 
@@ -23,13 +25,13 @@ suite('BundleUpdateNotifications - Property Tests', () => {
         showInformationMessageStub = sandbox.stub(vscode.window, 'showInformationMessage');
         showErrorMessageStub = sandbox.stub(vscode.window, 'showErrorMessage');
         executeCommandStub = sandbox.stub(vscode.commands, 'executeCommand').resolves();
-        
+
         // Create openExternal stub if it doesn't exist
         if (!vscode.env.openExternal) {
             (vscode.env as any).openExternal = () => Promise.resolve(true);
         }
         openExternalStub = sandbox.stub(vscode.env, 'openExternal').resolves(true);
-        
+
         // Mock vscode.Uri.parse if it doesn't exist
         if (!vscode.Uri.parse) {
             (vscode.Uri as any).parse = (uri: string) => ({ toString: () => uri });
@@ -51,9 +53,9 @@ suite('BundleUpdateNotifications - Property Tests', () => {
             currentVersion: fc.string({ minLength: 1, maxLength: 20 }),
             latestVersion: fc.string({ minLength: 1, maxLength: 20 }),
             releaseNotes: fc.option(fc.string(), { nil: undefined }),
-            releaseDate: fc.date().map(d => d.toISOString()),
+            releaseDate: fc.date().map((d) => d.toISOString()),
             downloadUrl: fc.webUrl(),
-            autoUpdateEnabled: fc.boolean()
+            autoUpdateEnabled: fc.boolean(),
         });
 
         await fc.assert(
@@ -67,7 +69,7 @@ suite('BundleUpdateNotifications - Property Tests', () => {
                     const bundleNotifications = new BundleUpdateNotifications();
                     const options = {
                         updates,
-                        notificationPreference: 'all' as const
+                        notificationPreference: 'all' as const,
                     };
 
                     await bundleNotifications.showUpdateNotification(options);
@@ -85,7 +87,7 @@ suite('BundleUpdateNotifications - Property Tests', () => {
                     const message = callArgs[0] as string;
 
                     // Check that at least one bundle ID appears in the message
-                    const containsBundleId = updates.some(u => message.includes(u.bundleId));
+                    const containsBundleId = updates.some((u) => message.includes(u.bundleId));
                     assert.strictEqual(
                         containsBundleId,
                         true,
@@ -108,9 +110,9 @@ suite('BundleUpdateNotifications - Property Tests', () => {
             currentVersion: fc.string({ minLength: 1, maxLength: 20 }),
             latestVersion: fc.string({ minLength: 1, maxLength: 20 }),
             releaseNotes: fc.option(fc.string(), { nil: undefined }),
-            releaseDate: fc.date().map(d => d.toISOString()),
+            releaseDate: fc.date().map((d) => d.toISOString()),
             downloadUrl: fc.webUrl(),
-            autoUpdateEnabled: fc.boolean()
+            autoUpdateEnabled: fc.boolean(),
         });
 
         await fc.assert(
@@ -124,7 +126,7 @@ suite('BundleUpdateNotifications - Property Tests', () => {
                     const bundleNotifications = new BundleUpdateNotifications();
                     const options = {
                         updates,
-                        notificationPreference: 'all' as const
+                        notificationPreference: 'all' as const,
                     };
 
                     await bundleNotifications.showUpdateNotification(options);
@@ -181,9 +183,9 @@ suite('BundleUpdateNotifications - Property Tests', () => {
             currentVersion: fc.string({ minLength: 1, maxLength: 20 }),
             latestVersion: fc.string({ minLength: 1, maxLength: 20 }),
             releaseNotes: fc.option(fc.string(), { nil: undefined }),
-            releaseDate: fc.date().map(d => d.toISOString()),
+            releaseDate: fc.date().map((d) => d.toISOString()),
             downloadUrl: fc.webUrl(),
-            autoUpdateEnabled: fc.boolean()
+            autoUpdateEnabled: fc.boolean(),
         });
 
         await fc.assert(
@@ -197,7 +199,7 @@ suite('BundleUpdateNotifications - Property Tests', () => {
                     const bundleNotifications = new BundleUpdateNotifications();
                     const options = {
                         updates,
-                        notificationPreference: 'all' as const
+                        notificationPreference: 'all' as const,
                     };
 
                     await bundleNotifications.showUpdateNotification(options);
@@ -222,7 +224,7 @@ suite('BundleUpdateNotifications - Property Tests', () => {
 
                     // Verify all bundle IDs are listed in the notification
                     // (or at least the count is mentioned)
-                    const allBundlesListed = updates.every(u => message.includes(u.bundleId));
+                    const allBundlesListed = updates.every((u) => message.includes(u.bundleId));
                     const countMentioned = message.includes(updates.length.toString());
 
                     assert.strictEqual(
@@ -247,56 +249,50 @@ suite('BundleUpdateNotifications - Property Tests', () => {
             currentVersion: fc.string({ minLength: 1, maxLength: 20 }),
             latestVersion: fc.string({ minLength: 1, maxLength: 20 }),
             releaseNotes: fc.option(fc.string(), { nil: undefined }),
-            releaseDate: fc.date().map(d => d.toISOString()),
+            releaseDate: fc.date().map((d) => d.toISOString()),
             downloadUrl: fc.webUrl(),
-            autoUpdateEnabled: fc.boolean()
+            autoUpdateEnabled: fc.boolean(),
         });
 
         await fc.assert(
-            fc.asyncProperty(
-                updateResultArb,
-                async (update) => {
-                    // Reset stubs for each iteration
-                    showInformationMessageStub.reset();
-                    executeCommandStub.reset();
-                    
-                    // Simulate user clicking "Update Now"
-                    showInformationMessageStub.resolves('Update Now');
-                    executeCommandStub.resolves();
+            fc.asyncProperty(updateResultArb, async (update) => {
+                // Reset stubs for each iteration
+                showInformationMessageStub.reset();
+                executeCommandStub.reset();
 
-                    const bundleNotifications = new BundleUpdateNotifications();
-                    const options = {
-                        updates: [update],
-                        notificationPreference: 'all' as const
-                    };
+                // Simulate user clicking "Update Now"
+                showInformationMessageStub.resolves('Update Now');
+                executeCommandStub.resolves();
 
-                    await bundleNotifications.showUpdateNotification(options);
+                const bundleNotifications = new BundleUpdateNotifications();
+                const options = {
+                    updates: [update],
+                    notificationPreference: 'all' as const,
+                };
 
-                    // Property: For any user click on "Update Now" button,
-                    // the Registry Manager should initiate the updateBundle() method
-                    assert.strictEqual(
-                        executeCommandStub.called,
-                        true,
-                        'Update command should be executed when "Update Now" is clicked'
-                    );
+                await bundleNotifications.showUpdateNotification(options);
 
-                    // Verify the correct command was called with the bundle ID
-                    const commandCall = executeCommandStub.getCalls().find(
-                        call => call.args[0] === 'promptRegistry.updateBundle'
-                    );
+                // Property: For any user click on "Update Now" button,
+                // the Registry Manager should initiate the updateBundle() method
+                assert.strictEqual(
+                    executeCommandStub.called,
+                    true,
+                    'Update command should be executed when "Update Now" is clicked'
+                );
 
-                    assert.ok(
-                        commandCall,
-                        'Should execute promptRegistry.updateBundle command'
-                    );
+                // Verify the correct command was called with the bundle ID
+                const commandCall = executeCommandStub
+                    .getCalls()
+                    .find((call) => call.args[0] === 'promptRegistry.updateBundle');
 
-                    assert.strictEqual(
-                        commandCall?.args[1],
-                        update.bundleId,
-                        'Should pass the correct bundle ID to the update command'
-                    );
-                }
-            ),
+                assert.ok(commandCall, 'Should execute promptRegistry.updateBundle command');
+
+                assert.strictEqual(
+                    commandCall?.args[1],
+                    update.bundleId,
+                    'Should pass the correct bundle ID to the update command'
+                );
+            }),
             { verbose: false, numRuns: 100 }
         );
     });
@@ -312,54 +308,48 @@ suite('BundleUpdateNotifications - Property Tests', () => {
             currentVersion: fc.string({ minLength: 1, maxLength: 20 }),
             latestVersion: fc.string({ minLength: 1, maxLength: 20 }),
             releaseNotes: fc.webUrl(), // Always has release notes URL
-            releaseDate: fc.date().map(d => d.toISOString()),
+            releaseDate: fc.date().map((d) => d.toISOString()),
             downloadUrl: fc.webUrl(),
-            autoUpdateEnabled: fc.boolean()
+            autoUpdateEnabled: fc.boolean(),
         });
 
         await fc.assert(
-            fc.asyncProperty(
-                updateResultArb,
-                async (update) => {
-                    // Reset stubs for each iteration
-                    showInformationMessageStub.reset();
-                    openExternalStub.reset();
-                    
-                    // Simulate user clicking "View Changes"
-                    showInformationMessageStub.resolves('View Changes');
-                    openExternalStub.resolves(true);
+            fc.asyncProperty(updateResultArb, async (update) => {
+                // Reset stubs for each iteration
+                showInformationMessageStub.reset();
+                openExternalStub.reset();
 
-                    const bundleNotifications = new BundleUpdateNotifications();
-                    const options = {
-                        updates: [update],
-                        notificationPreference: 'all' as const
-                    };
+                // Simulate user clicking "View Changes"
+                showInformationMessageStub.resolves('View Changes');
+                openExternalStub.resolves(true);
 
-                    await bundleNotifications.showUpdateNotification(options);
+                const bundleNotifications = new BundleUpdateNotifications();
+                const options = {
+                    updates: [update],
+                    notificationPreference: 'all' as const,
+                };
 
-                    // Property: For any user click on "View Changes" button,
-                    // the system should open the release notes URL
-                    assert.strictEqual(
-                        openExternalStub.called,
-                        true,
-                        'Release notes URL should be opened when "View Changes" is clicked'
-                    );
+                await bundleNotifications.showUpdateNotification(options);
 
-                    // Verify the correct URL was opened
-                    const openCall = openExternalStub.firstCall;
-                    assert.ok(
-                        openCall,
-                        'Should call openExternal'
-                    );
+                // Property: For any user click on "View Changes" button,
+                // the system should open the release notes URL
+                assert.strictEqual(
+                    openExternalStub.called,
+                    true,
+                    'Release notes URL should be opened when "View Changes" is clicked'
+                );
 
-                    const uri = openCall.args[0] as vscode.Uri;
-                    assert.strictEqual(
-                        uri.toString(),
-                        update.releaseNotes,
-                        'Should open the correct release notes URL'
-                    );
-                }
-            ),
+                // Verify the correct URL was opened
+                const openCall = openExternalStub.firstCall;
+                assert.ok(openCall, 'Should call openExternal');
+
+                const uri = openCall.args[0] as vscode.Uri;
+                assert.strictEqual(
+                    uri.toString(),
+                    update.releaseNotes,
+                    'Should open the correct release notes URL'
+                );
+            }),
             { verbose: false, numRuns: 100 }
         );
     });
@@ -371,37 +361,39 @@ suite('BundleUpdateNotifications - Property Tests', () => {
     test('Property 40: Notification manager reuses existing utilities', async () => {
         // This property verifies that NotificationManager uses the Logger utility
         // for all notification operations
-        
+
         const loggerInstance = Logger.getInstance();
-        
+
         // Stub logger methods
         const loggerInfoStub = sandbox.stub(loggerInstance, 'info');
         const loggerWarnStub = sandbox.stub(loggerInstance, 'warn');
         const loggerErrorStub = sandbox.stub(loggerInstance, 'error');
-        
+
         showInformationMessageStub.reset();
         showInformationMessageStub.resolves('Dismiss');
         showErrorMessageStub.reset();
         showErrorMessageStub.resolves('Dismiss');
-        
+
         const bundleNotifications = new BundleUpdateNotifications();
-        
+
         // Test that showUpdateNotification uses logger
-        const updates = [{
-            bundleId: 'test-bundle',
-            currentVersion: '1.0.0',
-            latestVersion: '2.0.0',
-            releaseNotes: 'http://example.com',
-            releaseDate: new Date().toISOString(),
-            downloadUrl: 'http://example.com/bundle.zip',
-            autoUpdateEnabled: false
-        }];
-        
+        const updates = [
+            {
+                bundleId: 'test-bundle',
+                currentVersion: '1.0.0',
+                latestVersion: '2.0.0',
+                releaseNotes: 'http://example.com',
+                releaseDate: new Date().toISOString(),
+                downloadUrl: 'http://example.com/bundle.zip',
+                autoUpdateEnabled: false,
+            },
+        ];
+
         await bundleNotifications.showUpdateNotification({
             updates,
-            notificationPreference: 'all'
+            notificationPreference: 'all',
         });
-        
+
         // Property: For any notification display, the NotificationManager should use
         // the existing Logger utility for logging
         assert.strictEqual(
@@ -409,17 +401,17 @@ suite('BundleUpdateNotifications - Property Tests', () => {
             true,
             'NotificationManager should use Logger.info for information notifications'
         );
-        
+
         // Test error notification logging
         loggerErrorStub.reset();
         await bundleNotifications.showUpdateFailure('test-bundle', 'Test error');
-        
+
         assert.strictEqual(
             loggerErrorStub.called,
             true,
             'NotificationManager should use Logger.error for error notifications'
         );
-        
+
         // Restore stubs
         loggerInfoStub.restore();
         loggerWarnStub.restore();

@@ -3,14 +3,17 @@
  * Fetches bundles from GitHub repositories
  */
 
-import * as https from 'https';
+import { exec } from 'node:child_process';
+import * as https from 'node:https';
+import { promisify } from 'node:util';
+
 import * as vscode from 'vscode';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import { RepositoryAdapter } from './RepositoryAdapter';
+
 import { Bundle, SourceMetadata, ValidationResult, RegistrySource } from '../types/registry';
-import { Logger } from '../utils/logger';
 import { generateGitHubBundleId, formatByteSize } from '../utils/bundleNameUtils';
+import { Logger } from '../utils/logger';
+
+import { RepositoryAdapter } from './RepositoryAdapter';
 
 const execAsync = promisify(exec);
 
@@ -30,7 +33,7 @@ interface GitHubRelease {
     published_at: string;
 }
 
-interface GitHubContent {
+interface _GitHubContent {
     name: string;
     path: string;
     download_url: string;
@@ -61,7 +64,7 @@ export class GitHubAdapter extends RepositoryAdapter {
     constructor(source: RegistrySource) {
         super(source);
         this.logger = Logger.getInstance();
-        
+
         if (!this.isValidGitHubUrl(source.url)) {
             throw new Error(`Invalid GitHub URL: ${source.url}`);
         }
@@ -88,8 +91,8 @@ export class GitHubAdapter extends RepositoryAdapter {
     private parseGitHubUrl(): { owner: string; repo: string } {
         const url = this.source.url.replace(/\.git$/, '');
         const match = url.match(/github\.com[/:]([^/]+)\/([^/]+)/);
-        
-        if (!match) {
+
+        if (!match || !match[1] || !match[2]) {
             throw new Error(`Invalid GitHub URL format: ${this.source.url}`);
         }
 
@@ -105,7 +108,7 @@ export class GitHubAdapter extends RepositoryAdapter {
      * 2. VSCode GitHub API (if user is logged in)
      * 3. gh CLI (if installed and authenticated)
      * 4. No authentication
-     * 
+     *
      * Uses promise memoization to prevent race conditions when multiple
      * parallel requests attempt authentication simultaneously.
      */
@@ -124,14 +127,18 @@ export class GitHubAdapter extends RepositoryAdapter {
 
         // Check if we've exceeded max attempts
         if (this.attemptedMethods.size >= this.maxAuthAttempts) {
-            this.logger.error(`[GitHubAdapter] Maximum authentication attempts (${this.maxAuthAttempts}) exceeded`);
-            this.logger.error(`[GitHubAdapter] Attempted methods: ${Array.from(this.attemptedMethods).join(', ')}`);
+            this.logger.error(
+                `[GitHubAdapter] Maximum authentication attempts (${this.maxAuthAttempts}) exceeded`
+            );
+            this.logger.error(
+                `[GitHubAdapter] Attempted methods: ${Array.from(this.attemptedMethods).join(', ')}`
+            );
             return undefined;
         }
 
         // Start new authentication attempt and cache the promise
         this.authPromise = this.performAuthentication();
-        
+
         try {
             const token = await this.authPromise;
             this.authToken = token;
@@ -168,11 +175,15 @@ export class GitHubAdapter extends RepositoryAdapter {
         if (!this.attemptedMethods.has('vscode')) {
             try {
                 this.logger.debug('[GitHubAdapter] Trying VSCode GitHub authentication...');
-                const session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: true });
+                const session = await vscode.authentication.getSession('github', ['repo'], {
+                    createIfNone: true,
+                });
                 if (session) {
                     this.authMethod = 'vscode';
                     this.logger.info('[GitHubAdapter] ✓ Using VSCode GitHub authentication');
-                    this.logger.debug(`[GitHubAdapter] Token preview: ${session.accessToken.substring(0, 8)}...`);
+                    this.logger.debug(
+                        `[GitHubAdapter] Token preview: ${session.accessToken.substring(0, 8)}...`
+                    );
                     return session.accessToken;
                 }
                 this.logger.debug('[GitHubAdapter] VSCode auth session not found');
@@ -207,9 +218,13 @@ export class GitHubAdapter extends RepositoryAdapter {
         this.authMethod = 'none';
         if (this.attemptedMethods.size > 0) {
             this.logger.error('[GitHubAdapter] ✗ All authentication methods exhausted');
-            this.logger.error(`[GitHubAdapter] Attempted methods: ${Array.from(this.attemptedMethods).join(', ')}`);
+            this.logger.error(
+                `[GitHubAdapter] Attempted methods: ${Array.from(this.attemptedMethods).join(', ')}`
+            );
         } else {
-            this.logger.warn('[GitHubAdapter] ✗ No authentication available - API rate limits will apply and private repos will be inaccessible');
+            this.logger.warn(
+                '[GitHubAdapter] ✗ No authentication available - API rate limits will apply and private repos will be inaccessible'
+            );
         }
         return undefined;
     }
@@ -217,19 +232,22 @@ export class GitHubAdapter extends RepositoryAdapter {
     /**
      * Validate response Content-Type and detect HTML error pages
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     private validateResponse(res: any, data: string): { isValid: boolean; error?: string } {
         const contentType = res.headers['content-type'] || '';
-        
+
         // Check if response is HTML (common for authentication errors)
         if (contentType.includes('text/html')) {
-            this.logger.warn(`[GitHubAdapter] Received HTML response instead of JSON (Content-Type: ${contentType})`);
-            
+            this.logger.warn(
+                `[GitHubAdapter] Received HTML response instead of JSON (Content-Type: ${contentType})`
+            );
+
             // Try to extract error information from HTML
             let htmlError = 'HTML error page received';
-            
+
             // Simple HTML parsing to extract text content
             const bodyMatch = data.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-            if (bodyMatch) {
+            if (bodyMatch && bodyMatch[1]) {
                 // Remove HTML tags and get text content
                 const bodyText = bodyMatch[1]
                     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
@@ -237,42 +255,48 @@ export class GitHubAdapter extends RepositoryAdapter {
                     .replace(/<[^>]+>/g, ' ')
                     .replace(/\s+/g, ' ')
                     .trim();
-                
+
                 if (bodyText.length > 0) {
                     htmlError = bodyText.substring(0, 200);
                 }
             }
-            
+
             return {
                 isValid: false,
-                error: `Received HTML error page instead of JSON response. This typically indicates an authentication or access issue. Error: ${htmlError}`
+                error: `Received HTML error page instead of JSON response. This typically indicates an authentication or access issue. Error: ${htmlError}`,
             };
         }
-        
+
         // Check if response is JSON
-        if (!contentType.includes('application/json') && !contentType.includes('application/octet-stream')) {
+        if (
+            !contentType.includes('application/json') &&
+            !contentType.includes('application/octet-stream')
+        ) {
             this.logger.warn(`[GitHubAdapter] Unexpected Content-Type: ${contentType}`);
             return {
                 isValid: false,
-                error: `Unexpected Content-Type: ${contentType}. Expected application/json.`
+                error: `Unexpected Content-Type: ${contentType}. Expected application/json.`,
             };
         }
-        
+
         return { isValid: true };
     }
 
     /**
      * Make HTTP request to GitHub API with authentication and automatic retry on auth failures
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     private async makeRequest(url: string, retryCount: number = 0): Promise<any> {
         const headers = this.getHeaders();
-        
+
         // Get authentication token using fallback chain
         const token = await this.getAuthenticationToken();
         if (token) {
             // Use token format for GitHub API
             headers['Authorization'] = `token ${token}`;
-            this.logger.debug(`[GitHubAdapter] Request to ${url} with auth (method: ${this.authMethod})`);
+            this.logger.debug(
+                `[GitHubAdapter] Request to ${url} with auth (method: ${this.authMethod})`
+            );
         } else {
             this.logger.debug(`[GitHubAdapter] Request to ${url} WITHOUT auth`);
         }
@@ -280,96 +304,114 @@ export class GitHubAdapter extends RepositoryAdapter {
         // Log headers (sanitized)
         const sanitizedHeaders = { ...headers };
         if (sanitizedHeaders['Authorization']) {
-            sanitizedHeaders['Authorization'] = sanitizedHeaders['Authorization'].substring(0, 15) + '...';
+            sanitizedHeaders['Authorization'] =
+                sanitizedHeaders['Authorization'].substring(0, 15) + '...';
         }
         this.logger.debug(`[GitHubAdapter] Request headers: ${JSON.stringify(sanitizedHeaders)}`);
 
         return new Promise((resolve, reject) => {
-            https.get(url, { headers }, (res) => {
-                let data = '';
+            https
+                .get(url, { headers }, (res) => {
+                    let data = '';
 
-                res.on('data', (chunk) => {
-                    data += chunk;
-                });
+                    res.on('data', (chunk) => {
+                        data += chunk;
+                    });
 
-                res.on('end', async () => {
-                    if (res.statusCode && res.statusCode >= 400) {
-                        this.logger.error(`[GitHubAdapter] HTTP ${res.statusCode}: ${res.statusMessage}`);
-                        this.logger.error(`[GitHubAdapter] URL: ${url}`);
-                        this.logger.error(`[GitHubAdapter] Auth method: ${this.authMethod}`);
-                        this.logger.error(`[GitHubAdapter] Response: ${data.substring(0, 500)}`);
-                        
-                        // Validate response format before processing error
+                    res.on('end', async () => {
+                        if (res.statusCode && res.statusCode >= 400) {
+                            this.logger.error(
+                                `[GitHubAdapter] HTTP ${res.statusCode}: ${res.statusMessage}`
+                            );
+                            this.logger.error(`[GitHubAdapter] URL: ${url}`);
+                            this.logger.error(`[GitHubAdapter] Auth method: ${this.authMethod}`);
+                            this.logger.error(
+                                `[GitHubAdapter] Response: ${data.substring(0, 500)}`
+                            );
+
+                            // Validate response format before processing error
+                            const validation = this.validateResponse(res, data);
+                            if (!validation.isValid) {
+                                this.logger.error(`[GitHubAdapter] ${validation.error}`);
+                            }
+
+                            // Check if this is an authentication error that should trigger retry
+                            const isAuthError = res.statusCode === 401 || res.statusCode === 403;
+                            const canRetry =
+                                retryCount < this.maxAuthAttempts &&
+                                this.attemptedMethods.size < this.maxAuthAttempts;
+
+                            if (isAuthError && canRetry) {
+                                // Invalidate cache and retry with next auth method
+                                const reason = `${res.statusCode} ${res.statusMessage}`;
+                                this.logger.warn(
+                                    `[GitHubAdapter] Authentication error detected, invalidating cache and retrying...`
+                                );
+                                this.invalidateAuthCache(reason);
+
+                                try {
+                                    // Retry the request with next authentication method
+                                    const result = await this.makeRequest(url, retryCount + 1);
+                                    resolve(result);
+                                    return;
+                                } catch (retryError) {
+                                    // If retry also fails, fall through to error handling below
+                                    this.logger.error(
+                                        `[GitHubAdapter] Retry failed: ${retryError}`
+                                    );
+                                }
+                            }
+
+                            // Provide helpful error messages
+                            let errorMsg = `GitHub API error: ${res.statusCode} ${res.statusMessage}`;
+
+                            // Include HTML error information if present
+                            if (!validation.isValid && validation.error) {
+                                errorMsg = validation.error;
+                            } else if (res.statusCode === 404) {
+                                errorMsg +=
+                                    ' - Repository not found or not accessible. Check authentication.';
+                            } else if (res.statusCode === 401) {
+                                errorMsg +=
+                                    ' - Authentication failed. Token may be invalid or expired.';
+                                if (this.attemptedMethods.size > 0) {
+                                    errorMsg += ` Attempted methods: ${Array.from(this.attemptedMethods).join(', ')}`;
+                                }
+                            } else if (res.statusCode === 403) {
+                                errorMsg +=
+                                    ' - Access forbidden. Token may lack required scopes (repo).';
+                                if (this.attemptedMethods.size > 0) {
+                                    errorMsg += ` Attempted methods: ${Array.from(this.attemptedMethods).join(', ')}`;
+                                }
+                            }
+                            reject(new Error(errorMsg));
+                            return;
+                        }
+
+                        // Validate response format for successful responses
                         const validation = this.validateResponse(res, data);
                         if (!validation.isValid) {
                             this.logger.error(`[GitHubAdapter] ${validation.error}`);
+                            reject(new Error(validation.error));
+                            return;
                         }
-                        
-                        // Check if this is an authentication error that should trigger retry
-                        const isAuthError = res.statusCode === 401 || res.statusCode === 403;
-                        const canRetry = retryCount < this.maxAuthAttempts && this.attemptedMethods.size < this.maxAuthAttempts;
-                        
-                        if (isAuthError && canRetry) {
-                            // Invalidate cache and retry with next auth method
-                            const reason = `${res.statusCode} ${res.statusMessage}`;
-                            this.logger.warn(`[GitHubAdapter] Authentication error detected, invalidating cache and retrying...`);
-                            this.invalidateAuthCache(reason);
-                            
-                            try {
-                                // Retry the request with next authentication method
-                                const result = await this.makeRequest(url, retryCount + 1);
-                                resolve(result);
-                                return;
-                            } catch (retryError) {
-                                // If retry also fails, fall through to error handling below
-                                this.logger.error(`[GitHubAdapter] Retry failed: ${retryError}`);
-                            }
-                        }
-                        
-                        // Provide helpful error messages
-                        let errorMsg = `GitHub API error: ${res.statusCode} ${res.statusMessage}`;
-                        
-                        // Include HTML error information if present
-                        if (!validation.isValid && validation.error) {
-                            errorMsg = validation.error;
-                        } else if (res.statusCode === 404) {
-                            errorMsg += ' - Repository not found or not accessible. Check authentication.';
-                        } else if (res.statusCode === 401) {
-                            errorMsg += ' - Authentication failed. Token may be invalid or expired.';
-                            if (this.attemptedMethods.size > 0) {
-                                errorMsg += ` Attempted methods: ${Array.from(this.attemptedMethods).join(', ')}`;
-                            }
-                        } else if (res.statusCode === 403) {
-                            errorMsg += ' - Access forbidden. Token may lack required scopes (repo).';
-                            if (this.attemptedMethods.size > 0) {
-                                errorMsg += ` Attempted methods: ${Array.from(this.attemptedMethods).join(', ')}`;
-                            }
-                        }
-                        reject(new Error(errorMsg));
-                        return;
-                    }
 
-                    // Validate response format for successful responses
-                    const validation = this.validateResponse(res, data);
-                    if (!validation.isValid) {
-                        this.logger.error(`[GitHubAdapter] ${validation.error}`);
-                        reject(new Error(validation.error));
-                        return;
-                    }
-
-                    this.logger.debug(`[GitHubAdapter] Response OK (${res.statusCode})`);
-                    try {
-                        resolve(JSON.parse(data));
-                    } catch (error) {
-                        this.logger.error(`[GitHubAdapter] Failed to parse response: ${error}`);
-                        this.logger.error(`[GitHubAdapter] Response preview: ${data.substring(0, 200)}`);
-                        reject(new Error(`Failed to parse GitHub response as JSON: ${error}`));
-                    }
+                        this.logger.debug(`[GitHubAdapter] Response OK (${res.statusCode})`);
+                        try {
+                            resolve(JSON.parse(data));
+                        } catch (error) {
+                            this.logger.error(`[GitHubAdapter] Failed to parse response: ${error}`);
+                            this.logger.error(
+                                `[GitHubAdapter] Response preview: ${data.substring(0, 200)}`
+                            );
+                            reject(new Error(`Failed to parse GitHub response as JSON: ${error}`));
+                        }
+                    });
+                })
+                .on('error', (error) => {
+                    this.logger.error(`[GitHubAdapter] Network error: ${error.message}`);
+                    reject(new Error(`GitHub API request failed: ${error.message}`));
                 });
-            }).on('error', (error) => {
-                this.logger.error(`[GitHubAdapter] Network error: ${error.message}`);
-                reject(new Error(`GitHub API request failed: ${error.message}`));
-            });
         });
     }
 
@@ -392,8 +434,10 @@ export class GitHubAdapter extends RepositoryAdapter {
         const isGitHubDomain = (urlString: string): boolean => {
             try {
                 const urlObj = new URL(urlString);
-                return urlObj.hostname.includes('github.com') || 
-                       urlObj.hostname.includes('githubusercontent.com');
+                return (
+                    urlObj.hostname.includes('github.com') ||
+                    urlObj.hostname.includes('githubusercontent.com')
+                );
             } catch {
                 return false;
             }
@@ -406,60 +450,77 @@ export class GitHubAdapter extends RepositoryAdapter {
 
         // Include authentication for private repos, but only for GitHub domains
         const token = await this.getAuthenticationToken();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
         const headers: any = {
             'User-Agent': 'Prompt-Registry-VSCode-Extension',
         };
-        
+
         // For GitHub API asset downloads, use Accept header to get binary content
         if (isGitHubApiUrl(url)) {
             headers['Accept'] = 'application/octet-stream';
         }
-        
+
         // Only add auth headers for GitHub domains
         if (token && isGitHubDomain(url)) {
             headers['Authorization'] = `token ${token}`;
-            this.logger.debug(`[GitHubAdapter] Downloading ${url} with auth (method: ${this.authMethod})`);
+            this.logger.debug(
+                `[GitHubAdapter] Downloading ${url} with auth (method: ${this.authMethod})`
+            );
         } else if (token && !isGitHubDomain(url)) {
-            this.logger.debug(`[GitHubAdapter] Downloading ${url} WITHOUT auth (non-GitHub domain)`);
+            this.logger.debug(
+                `[GitHubAdapter] Downloading ${url} WITHOUT auth (non-GitHub domain)`
+            );
         } else {
             this.logger.debug(`[GitHubAdapter] Downloading ${url} WITHOUT auth`);
         }
 
         return new Promise((resolve, reject) => {
-            https.get(url, { headers }, (res) => {
-                // Handle redirects (GitHub may redirect downloads)
-                if (res.statusCode === 302 || res.statusCode === 301) {
-                    const redirectUrl = res.headers.location;
-                    if (redirectUrl) {
-                        this.logger.debug(`[GitHubAdapter] Following redirect (depth ${redirectDepth + 1}) to: ${redirectUrl}`);
-                        // Recursive call to follow redirect with incremented depth
-                        this.downloadFile(redirectUrl, redirectDepth + 1).then(resolve).catch(reject);
-                        return;
+            https
+                .get(url, { headers }, (res) => {
+                    // Handle redirects (GitHub may redirect downloads)
+                    if (res.statusCode === 302 || res.statusCode === 301) {
+                        const redirectUrl = res.headers.location;
+                        if (redirectUrl) {
+                            this.logger.debug(
+                                `[GitHubAdapter] Following redirect (depth ${redirectDepth + 1}) to: ${redirectUrl}`
+                            );
+                            // Recursive call to follow redirect with incremented depth
+                            this.downloadFile(redirectUrl, redirectDepth + 1)
+                                .then(resolve)
+                                .catch(reject);
+                            return;
+                        }
                     }
-                }
 
-                const chunks: Buffer[] = [];
+                    const chunks: Buffer[] = [];
 
-                res.on('data', (chunk: Buffer) => {
-                    chunks.push(chunk);
+                    res.on('data', (chunk: Buffer) => {
+                        chunks.push(chunk);
+                    });
+
+                    res.on('end', () => {
+                        if (res.statusCode && res.statusCode >= 400) {
+                            this.logger.error(
+                                `[GitHubAdapter] Download failed: HTTP ${res.statusCode}`
+                            );
+                            this.logger.error(`[GitHubAdapter] URL: ${url}`);
+                            this.logger.error(`[GitHubAdapter] Auth method: ${this.authMethod}`);
+                            reject(
+                                new Error(`Download failed: ${res.statusCode} ${res.statusMessage}`)
+                            );
+                            return;
+                        }
+                        const totalBytes = Buffer.concat(chunks).length;
+                        this.logger.debug(
+                            `[GitHubAdapter] Download complete: ${chunks.length} chunks, ${totalBytes} bytes`
+                        );
+                        resolve(Buffer.concat(chunks));
+                    });
+                })
+                .on('error', (error) => {
+                    this.logger.error(`[GitHubAdapter] Download error: ${error.message}`);
+                    reject(new Error(`Download failed: ${error.message}`));
                 });
-
-                res.on('end', () => {
-                    if (res.statusCode && res.statusCode >= 400) {
-                        this.logger.error(`[GitHubAdapter] Download failed: HTTP ${res.statusCode}`);
-                        this.logger.error(`[GitHubAdapter] URL: ${url}`);
-                        this.logger.error(`[GitHubAdapter] Auth method: ${this.authMethod}`);
-                        reject(new Error(`Download failed: ${res.statusCode} ${res.statusMessage}`));
-                        return;
-                    }
-                    const totalBytes = Buffer.concat(chunks).length;
-                    this.logger.debug(`[GitHubAdapter] Download complete: ${chunks.length} chunks, ${totalBytes} bytes`);
-                    resolve(Buffer.concat(chunks));
-                });
-            }).on('error', (error) => {
-                this.logger.error(`[GitHubAdapter] Download error: ${error.message}`);
-                reject(new Error(`Download failed: ${error.message}`));
-            });
         });
     }
 
@@ -467,7 +528,7 @@ export class GitHubAdapter extends RepositoryAdapter {
      * Fetch bundles from GitHub releases
      * Scans all releases in the repository and creates Bundle objects for those
      * that contain both a deployment manifest and a bundle archive.
-     * 
+     *
      * @returns Promise resolving to array of Bundle objects
      * @throws Error if GitHub API request fails or authentication issues occur
      */
@@ -481,10 +542,11 @@ export class GitHubAdapter extends RepositoryAdapter {
 
             for (const release of releases) {
                 // Look for deployment manifest in release assets
-                const manifestAsset = release.assets.find(a => 
-                    a.name === 'deployment-manifest.yml' || 
-                    a.name === 'deployment-manifest.yaml' ||
-                    a.name === 'deployment-manifest.json'
+                const manifestAsset = release.assets.find(
+                    (a) =>
+                        a.name === 'deployment-manifest.yml' ||
+                        a.name === 'deployment-manifest.yaml' ||
+                        a.name === 'deployment-manifest.json'
                 );
 
                 if (!manifestAsset) {
@@ -492,9 +554,8 @@ export class GitHubAdapter extends RepositoryAdapter {
                 }
 
                 // Find bundle archive (zip file)
-                const bundleAsset = release.assets.find(a => 
-                    a.name.endsWith('.zip') || 
-                    a.name.endsWith('.tar.gz')
+                const bundleAsset = release.assets.find(
+                    (a) => a.name.endsWith('.zip') || a.name.endsWith('.tar.gz')
                 );
 
                 if (!bundleAsset) {
@@ -502,11 +563,12 @@ export class GitHubAdapter extends RepositoryAdapter {
                 }
 
                 // Fetch deployment manifest to get accurate bundle metadata
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
                 let manifest: any = null;
                 try {
                     const manifestContent = await this.downloadFile(manifestAsset.url);
                     const manifestText = manifestContent.toString('utf-8');
-                    
+
                     // Parse YAML or JSON based on file extension
                     if (manifestAsset.name.endsWith('.json')) {
                         manifest = JSON.parse(manifestText);
@@ -516,7 +578,9 @@ export class GitHubAdapter extends RepositoryAdapter {
                         manifest = yaml.load(manifestText);
                     }
                 } catch (manifestError) {
-                    this.logger.warn(`Failed to fetch manifest for ${release.tag_name}: ${manifestError}`);
+                    this.logger.warn(
+                        `Failed to fetch manifest for ${release.tag_name}: ${manifestError}`
+                    );
                     // Continue without manifest data - use fallback values
                 }
 
@@ -551,6 +615,7 @@ export class GitHubAdapter extends RepositoryAdapter {
 
                 // Attach prompts array from manifest for content breakdown display
                 if (manifest?.prompts && Array.isArray(manifest.prompts)) {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
                     (bundle as any).prompts = manifest.prompts;
                 }
 
@@ -565,7 +630,7 @@ export class GitHubAdapter extends RepositoryAdapter {
 
     /**
      * Download a bundle from GitHub release assets
-     * 
+     *
      * @param bundle - Bundle object containing downloadUrl
      * @returns Promise resolving to Buffer containing bundle ZIP file
      * @throws Error if download fails or network issues occur
@@ -581,7 +646,7 @@ export class GitHubAdapter extends RepositoryAdapter {
     /**
      * Fetch repository metadata from GitHub API
      * Retrieves repository information including name, description, and release count.
-     * 
+     *
      * @returns Promise resolving to SourceMetadata object
      * @throws Error if repository not found or API request fails
      */
@@ -590,6 +655,7 @@ export class GitHubAdapter extends RepositoryAdapter {
         const url = `${this.apiBase}/repos/${owner}/${repo}`;
 
         try {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
             const repoData: any = await this.makeRequest(url);
             const releasesUrl = `${this.apiBase}/repos/${owner}/${repo}/releases`;
             const releases: GitHubRelease[] = await this.makeRequest(releasesUrl);
@@ -609,16 +675,16 @@ export class GitHubAdapter extends RepositoryAdapter {
     /**
      * Validate GitHub repository accessibility
      * Checks if the repository exists and is accessible with current authentication.
-     * 
+     *
      * @returns Promise resolving to ValidationResult with status and any errors/warnings
      */
     async validate(): Promise<ValidationResult> {
         try {
             const { owner, repo } = this.parseGitHubUrl();
             const url = `${this.apiBase}/repos/${owner}/${repo}`;
-            
+
             await this.makeRequest(url);
-            
+
             // Try to fetch releases
             const releasesUrl = `${this.apiBase}/repos/${owner}/${repo}/releases`;
             const releases: GitHubRelease[] = await this.makeRequest(releasesUrl);
@@ -642,7 +708,7 @@ export class GitHubAdapter extends RepositoryAdapter {
     /**
      * Get manifest URL for a bundle
      * Constructs the GitHub release asset URL for the deployment manifest.
-     * 
+     *
      * @param bundleId - Bundle identifier (not used, URL based on repo)
      * @param version - Optional version tag (defaults to 'latest')
      * @returns URL string pointing to deployment-manifest.json in release assets
@@ -656,7 +722,7 @@ export class GitHubAdapter extends RepositoryAdapter {
     /**
      * Get download URL for a bundle
      * Constructs the GitHub release asset URL for the bundle ZIP file.
-     * 
+     *
      * @param bundleId - Bundle identifier (not used, URL based on repo)
      * @param version - Optional version tag (defaults to 'latest')
      * @returns URL string pointing to bundle.zip in release assets
@@ -677,12 +743,14 @@ export class GitHubAdapter extends RepositoryAdapter {
     /**
      * Invalidate the cached authentication token
      * This forces the adapter to re-authenticate on the next request
-     * 
+     *
      * @param reason - Optional reason for invalidation (e.g., "401 Unauthorized")
      */
     public invalidateAuthCache(reason?: string): void {
         const previousMethod = this.authMethod;
-        this.logger.info(`[GitHubAdapter] Invalidating authentication cache${reason ? `: ${reason}` : ''}`);
+        this.logger.info(
+            `[GitHubAdapter] Invalidating authentication cache${reason ? `: ${reason}` : ''}`
+        );
         if (previousMethod !== 'none') {
             this.logger.debug(`[GitHubAdapter] Previous auth method: ${previousMethod}`);
             this.attemptedMethods.add(previousMethod);
@@ -698,11 +766,11 @@ export class GitHubAdapter extends RepositoryAdapter {
         if (!body) {
             return '';
         }
-        
+
         // Take first paragraph
         const lines = body.split('\n');
         const descLines = [];
-        
+
         for (const line of lines) {
             if (line.trim() === '' && descLines.length > 0) {
                 break;
@@ -711,7 +779,7 @@ export class GitHubAdapter extends RepositoryAdapter {
                 descLines.push(line.trim());
             }
         }
-        
+
         return descLines.join(' ').substring(0, 200);
     }
 
@@ -722,12 +790,14 @@ export class GitHubAdapter extends RepositoryAdapter {
         const envs = [];
         const envRegex = /(?:environments?|platforms?):\s*([^\n]+)/i;
         const match = body?.match(envRegex);
-        
+
         if (match) {
             const envString = match[1];
-            envs.push(...envString.split(/[,\s]+/).filter(e => e.trim()));
+            if (envString) {
+                envs.push(...envString.split(/[,\s]+/).filter((e) => e.trim()));
+            }
         }
-        
+
         return envs.length > 0 ? envs : ['vscode']; // Default to vscode
     }
 
@@ -738,12 +808,14 @@ export class GitHubAdapter extends RepositoryAdapter {
         const tags = [];
         const tagRegex = /(?:tags?):\s*([^\n]+)/i;
         const match = body?.match(tagRegex);
-        
+
         if (match) {
             const tagString = match[1];
-            tags.push(...tagString.split(/[,\s]+/).filter(t => t.trim()));
+            if (tagString) {
+                tags.push(...tagString.split(/[,\s]+/).filter((t) => t.trim()));
+            }
         }
-        
+
         return tags;
     }
 }

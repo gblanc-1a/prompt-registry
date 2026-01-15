@@ -1,13 +1,13 @@
 import { Bundle, SourceType } from '../types/registry';
-import { VersionManager } from '../utils/versionManager';
 import { Logger } from '../utils/logger';
+import { VersionManager } from '../utils/versionManager';
 
 /**
  * Version metadata for a bundle
  */
 export interface BundleVersion {
     version: string;
-    bundleId: string;  // Original bundle ID (e.g., owner-repo-v1.0.0)
+    bundleId: string; // Original bundle ID (e.g., owner-repo-v1.0.0)
     publishedAt: string;
     downloadUrl: string;
     manifestUrl: string;
@@ -19,8 +19,8 @@ export interface BundleVersion {
  */
 export interface ConsolidatedBundle extends Bundle {
     // All standard Bundle fields represent the latest version
-    availableVersions: BundleVersion[];  // All versions available
-    isConsolidated: boolean;  // True if multiple versions exist
+    availableVersions: BundleVersion[]; // All versions available
+    isConsolidated: boolean; // True if multiple versions exist
 }
 
 /**
@@ -33,7 +33,7 @@ interface CacheEntry {
 
 /**
  * Service for consolidating multiple bundle versions into single entries
- * 
+ *
  * This service groups bundles by their identity (owner/repo for GitHub sources)
  * and selects the latest version based on semantic versioning. It maintains
  * an LRU cache of all available versions for potential future access.
@@ -44,16 +44,16 @@ export class VersionConsolidator {
      * Assuming ~1KB per bundle version metadata = ~1MB total cache size.
      */
     private static readonly DEFAULT_MAX_CACHE_SIZE = 1000;
-    
+
     private versionCache: Map<string, CacheEntry> = new Map();
     private accessOrder: string[] = []; // Track access order for efficient LRU
     private logger = Logger.getInstance();
     private sourceTypeResolver?: (sourceId: string) => SourceType;
     private maxCacheSize: number;
-    
+
     /**
      * Create a new VersionConsolidator
-     * 
+     *
      * @param maxCacheSize - Maximum number of bundle identities to cache (default: 1000)
      * @throws Error if maxCacheSize is not a positive number
      */
@@ -63,94 +63,103 @@ export class VersionConsolidator {
         }
         this.maxCacheSize = maxCacheSize;
     }
-    
+
     /**
      * Set a custom source type resolver function
-     * 
+     *
      * This allows the consolidator to accurately determine source types
      * instead of relying on heuristics.
-     * 
+     *
      * @param resolver - Function that maps sourceId to SourceType
      */
     setSourceTypeResolver(resolver: (sourceId: string) => SourceType): void {
         this.sourceTypeResolver = resolver;
     }
-    
+
     /**
      * Consolidate bundles by grouping versions of the same bundle
-     * 
+     *
      * For GitHub sources, bundles with the same owner/repo are grouped together
      * and only the latest version is returned. For non-GitHub sources, bundles
      * are returned unchanged.
-     * 
+     *
      * @param bundles - Array of bundles from various sources
      * @returns Consolidated bundles with latest version metadata
      */
     consolidateBundles(bundles: Bundle[]): ConsolidatedBundle[] {
         this.logger.debug(`Consolidating ${bundles.length} bundles`);
-        
+
         // Pre-calculate identities to avoid redundant computation
-        const bundlesWithIdentity = bundles.map(bundle => ({
+        const bundlesWithIdentity = bundles.map((bundle) => ({
             bundle,
-            identity: this.getBundleIdentity(bundle)
+            identity: this.getBundleIdentity(bundle),
         }));
-        
+
         // Group bundles by identity (owner/repo for GitHub)
         const grouped = new Map<string, typeof bundlesWithIdentity>();
-        
+
         for (const item of bundlesWithIdentity) {
             if (!grouped.has(item.identity)) {
                 grouped.set(item.identity, []);
             }
             grouped.get(item.identity)!.push(item);
         }
-        
+
         this.logger.debug(`Grouped into ${grouped.size} unique identities`);
-        
+
         // For each group, select latest version
         const consolidated: ConsolidatedBundle[] = [];
-        
+
         for (const [identity, items] of grouped.entries()) {
-            const bundles = items.map(item => item.bundle);
-            
+            const bundles = items.map((item) => item.bundle);
+
             if (bundles.length === 1) {
                 // Single version - no consolidation needed, but still cache for consistency
-                const version = this.toBundleVersion(bundles[0]);
+                const firstBundle = bundles[0];
+                if (!firstBundle) {
+                    continue;
+                }
+                const version = this.toBundleVersion(firstBundle);
                 this.addToCache(identity, [version]);
-                
+
                 consolidated.push({
-                    ...bundles[0],
+                    ...firstBundle,
                     availableVersions: [version],
-                    isConsolidated: false
+                    isConsolidated: false,
                 });
                 continue;
             }
-            
+
             // Multiple versions - find latest using version comparison
             const sortedVersions = this.sortBundlesByVersion(bundles);
             const latest = sortedVersions[0];
-            const allVersions = sortedVersions.map(b => this.toBundleVersion(b));
-            
+            if (!latest) {
+                continue;
+            }
+            const allVersions = sortedVersions.map((b) => this.toBundleVersion(b));
+
             // Cache versions for this identity (with size management)
             this.addToCache(identity, allVersions);
-            
-            this.logger.debug(`Consolidated ${bundles.length} versions for "${identity}", latest: ${latest.version}`);
-            
+
+            this.logger.debug(
+                `Consolidated ${bundles.length} versions for "${identity}", latest: ${latest.version}`
+            );
+
             consolidated.push({
                 ...latest,
                 availableVersions: allVersions,
-                isConsolidated: true
+                isConsolidated: true,
             });
         }
-        
+
         return consolidated;
     }
-    
+
     /**
      * Get all versions for a bundle identity
-     * 
+     *
      * Returns all versions sorted in descending semantic version order.
-     * 
+     *
      * @param identity - Unique identifier for the bundle
      * @returns Array of version metadata sorted by version descending
      */
@@ -163,13 +172,13 @@ export class VersionConsolidator {
         }
         return [];
     }
-    
+
     /**
      * Get a specific version of a bundle
-     * 
+     *
      * This is useful when a user wants to install a specific version
      * instead of the latest version. Updates the access order for LRU tracking.
-     * 
+     *
      * @param bundleIdentity - Unique identifier for the bundle
      * @param version - Specific version to retrieve
      * @returns Bundle version metadata, or undefined if not found
@@ -179,11 +188,11 @@ export class VersionConsolidator {
         if (entry) {
             // Update access order for LRU tracking
             this.updateAccessOrder(bundleIdentity);
-            return entry.versions.find(v => v.version === version);
+            return entry.versions.find((v) => v.version === version);
         }
         return undefined;
     }
-    
+
     /**
      * Clear version cache
      */
@@ -192,31 +201,31 @@ export class VersionConsolidator {
         this.accessOrder = [];
         this.logger.debug('Version cache cleared');
     }
-    
+
     /**
      * Add entry to cache with LRU eviction strategy
-     * 
+     *
      * If cache exceeds maxCacheSize, removes the least recently used entry.
      * This ensures frequently accessed bundles remain in cache.
      * Uses an access order array for O(1) LRU eviction.
-     * 
+     *
      * @param key - Bundle identity key
      * @param versions - Array of bundle versions to cache
      */
     private addToCache(key: string, versions: BundleVersion[]): void {
         const isUpdate = this.versionCache.has(key);
-        
+
         // Check if we need to evict an entry (for new entries only)
         if (!isUpdate && this.versionCache.size >= this.maxCacheSize) {
             this.evictLRU();
         }
-        
+
         // Add or update entry
         this.versionCache.set(key, {
             versions,
-            lastAccess: Date.now()
+            lastAccess: Date.now(),
         });
-        
+
         // Update access order
         this.updateAccessOrder(key);
     }
@@ -231,7 +240,7 @@ export class VersionConsolidator {
         if (index !== -1) {
             this.accessOrder.splice(index, 1);
         }
-        
+
         // Add to end (most recently used)
         this.accessOrder.push(key);
     }
@@ -244,23 +253,23 @@ export class VersionConsolidator {
         if (this.accessOrder.length === 0) {
             return;
         }
-        
+
         // First entry in accessOrder is the least recently used
         const lruKey = this.accessOrder.shift();
-        
+
         if (lruKey) {
             const entry = this.versionCache.get(lruKey);
             this.versionCache.delete(lruKey);
-            
+
             if (entry) {
                 this.logger.debug(
                     `Cache size limit (${this.maxCacheSize}) reached, evicted LRU entry: ${lruKey} ` +
-                    `(last access: ${new Date(entry.lastAccess).toISOString()})`
+                        `(last access: ${new Date(entry.lastAccess).toISOString()})`
                 );
             }
         }
     }
-    
+
     /**
      * Get bundle identity based on source type
      * For GitHub: extract owner-repo from bundle ID
@@ -268,18 +277,18 @@ export class VersionConsolidator {
      */
     private getBundleIdentity(bundle: Bundle): string {
         // Use custom resolver if provided, otherwise fall back to heuristic
-        const sourceType = this.sourceTypeResolver 
+        const sourceType = this.sourceTypeResolver
             ? this.sourceTypeResolver(bundle.sourceId)
             : this.inferSourceType(bundle.sourceId);
         return VersionManager.extractBundleIdentity(bundle.id, sourceType);
     }
-    
+
     /**
      * Infer source type from source ID using heuristics
-     * 
+     *
      * This is a fallback approach when no resolver is provided.
      * Ideally, the actual source configuration should be used.
-     * 
+     *
      * @param sourceId - Source identifier to analyze
      * @returns Inferred source type (defaults to 'local' for unknown types)
      */
@@ -296,10 +305,12 @@ export class VersionConsolidator {
             return 'local';
         }
         // Default to treating as non-consolidatable (safe default)
-        this.logger.debug(`Could not infer source type from "${sourceId}", treating as non-consolidatable`);
+        this.logger.debug(
+            `Could not infer source type from "${sourceId}", treating as non-consolidatable`
+        );
         return 'local';
     }
-    
+
     /**
      * Sort bundles by version in descending order (latest first)
      */
@@ -310,32 +321,36 @@ export class VersionConsolidator {
             } catch (error) {
                 // If version comparison fails, fall back to date comparison
                 const errorMsg = error instanceof Error ? error.message : String(error);
-                this.logger.warn(`Version comparison failed for ${a.id} and ${b.id}: ${errorMsg}. Using dates`);
-                
+                this.logger.warn(
+                    `Version comparison failed for ${a.id} and ${b.id}: ${errorMsg}. Using dates`
+                );
+
                 const dateB = new Date(b.lastUpdated);
                 const dateA = new Date(a.lastUpdated);
-                
+
                 if (isNaN(dateB.getTime()) || isNaN(dateA.getTime())) {
-                    this.logger.error(`Both version and date comparison failed for ${b.id}, ${a.id}. Preserving order.`);
+                    this.logger.error(
+                        `Both version and date comparison failed for ${b.id}, ${a.id}. Preserving order.`
+                    );
                     return 0; // Preserve original order
                 }
-                
+
                 return dateB.getTime() - dateA.getTime();
             }
         });
     }
-    
+
     /**
      * Convert Bundle to BundleVersion metadata
      */
     private toBundleVersion(bundle: Bundle): BundleVersion {
         return {
             version: bundle.version,
-            bundleId: bundle.id,  // Preserve original bundle ID
+            bundleId: bundle.id, // Preserve original bundle ID
             publishedAt: bundle.lastUpdated,
             downloadUrl: bundle.downloadUrl,
             manifestUrl: bundle.manifestUrl,
-            releaseNotes: undefined // Could be extracted from bundle metadata
+            releaseNotes: undefined, // Could be extracted from bundle metadata
         };
     }
 }

@@ -3,8 +3,9 @@
  * Tests local filesystem-based APM package loading
  */
 
-import * as assert from 'assert';
-import * as path from 'path';
+import * as assert from 'node:assert';
+import * as path from 'node:path';
+
 import { LocalApmAdapter } from '../../src/adapters/LocalApmAdapter';
 import { RegistrySource } from '../../src/types/registry';
 
@@ -12,7 +13,7 @@ suite('LocalApmAdapter', () => {
     const fixturesPath = path.join(__dirname, '../fixtures/apm');
     const singlePackagePath = path.join(fixturesPath, 'single-package');
     const monorepoPath = path.join(fixturesPath, 'monorepo');
-    
+
     const mockSource: RegistrySource = {
         id: 'test-local-apm',
         name: 'Test Local APM',
@@ -71,10 +72,7 @@ suite('LocalApmAdapter', () => {
             const source = { ...mockSource, url: '/non/existent/path' };
             const adapter = new LocalApmAdapter(source);
 
-            await assert.rejects(
-                () => adapter.fetchMetadata(),
-                /not found|does not exist/i
-            );
+            await assert.rejects(() => adapter.fetchMetadata(), /not found|does not exist/i);
         });
     });
 
@@ -142,7 +140,7 @@ suite('LocalApmAdapter', () => {
 
         test('should cache results for performance', async () => {
             const adapter = new LocalApmAdapter(mockSource);
-            
+
             const start1 = Date.now();
             const bundles1 = await adapter.fetchBundles();
             const time1 = Date.now() - start1;
@@ -166,15 +164,15 @@ suite('LocalApmAdapter', () => {
             assert.ok(Array.isArray(bundles));
             assert.strictEqual(bundles.length, 2);
 
-            const names = bundles.map(b => b.name).sort();
+            const names = bundles.map((b) => b.name).sort();
             assert.deepStrictEqual(names, ['package-alpha', 'package-beta']);
         });
 
         test('should respect scanSubdirectories config', async () => {
-            const source = { 
-                ...mockSource, 
+            const source = {
+                ...mockSource,
                 url: monorepoPath,
-                config: { scanSubdirectories: false }
+                config: { scanSubdirectories: false },
             };
             const adapter = new LocalApmAdapter(source);
             const bundles = await adapter.fetchBundles();
@@ -241,7 +239,7 @@ suite('LocalApmAdapter', () => {
             const adapter = new LocalApmAdapter(mockSource);
             const bundles = await adapter.fetchBundles();
             const bundle = bundles[0];
-            
+
             assert.ok(bundle);
             const buffer = await adapter.downloadBundle(bundle);
 
@@ -253,7 +251,7 @@ suite('LocalApmAdapter', () => {
             const adapter = new LocalApmAdapter(mockSource);
             const bundles = await adapter.fetchBundles();
             const bundle = bundles[0];
-            
+
             assert.ok(bundle);
             const buffer = await adapter.downloadBundle(bundle);
 
@@ -278,7 +276,7 @@ suite('LocalApmAdapter', () => {
         test('should normalize paths correctly', async () => {
             const source = { ...mockSource, url: singlePackagePath + '//' };
             const adapter = new LocalApmAdapter(source);
-            
+
             // Should still work despite extra slashes
             const bundles = await adapter.fetchBundles();
             assert.ok(bundles.length > 0);
@@ -294,7 +292,11 @@ suite('LocalApmAdapter', () => {
                 await adapter.fetchBundles();
                 assert.fail('Should have thrown an error');
             } catch (error: any) {
-                assert.ok(error.message.includes('APM') || error.message.includes('not found') || error.message.includes('does not exist'));
+                assert.ok(
+                    error.message.includes('APM') ||
+                        error.message.includes('not found') ||
+                        error.message.includes('does not exist')
+                );
             }
         });
 
@@ -315,7 +317,7 @@ suite('LocalApmAdapter', () => {
                 license: 'MIT',
                 downloadUrl: 'file://test',
                 manifestUrl: 'file://test',
-                repository: 'test'
+                repository: 'test',
                 // Note: no localPackagePath
             };
 
@@ -330,7 +332,7 @@ suite('LocalApmAdapter', () => {
         test('should not allow path traversal in URL', () => {
             const source = { ...mockSource, url: '/some/path/../../../etc/passwd' };
             const adapter = new LocalApmAdapter(source);
-            
+
             // Adapter should normalize the path
             assert.ok(adapter);
         });

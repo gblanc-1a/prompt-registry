@@ -2,10 +2,11 @@
  * RegistryStorage Unit Tests
  */
 
-import * as assert from 'assert';
-import * as path from 'path';
-import * as fs from 'fs';
+import * as assert from 'node:assert';
+import * as path from 'node:path';
+
 import * as sinon from 'sinon';
+
 import { RegistryStorage } from '../../src/storage/RegistryStorage';
 
 suite('RegistryStorage', () => {
@@ -53,17 +54,38 @@ suite('RegistryStorage', () => {
     suite('Source Management', () => {
         test('should load sources from storage', () => {
             const mockSources = [
-                { id: 'source-1', name: 'Source 1', type: 'github', url: 'url1', enabled: true, priority: 1 },
-                { id: 'source-2', name: 'Source 2', type: 'gitlab', url: 'url2', enabled: true, priority: 2 },
+                {
+                    id: 'source-1',
+                    name: 'Source 1',
+                    type: 'github',
+                    url: 'url1',
+                    enabled: true,
+                    priority: 1,
+                },
+                {
+                    id: 'source-2',
+                    name: 'Source 2',
+                    type: 'gitlab',
+                    url: 'url2',
+                    enabled: true,
+                    priority: 2,
+                },
             ];
 
             assert.strictEqual(mockSources.length, 2);
-            assert.ok(mockSources.every(s => s.id && s.name && s.type));
+            assert.ok(mockSources.every((s) => s.id && s.name && s.type));
         });
 
         test('should save sources to storage', () => {
             const sources = [
-                { id: 'source-1', name: 'Source 1', type: 'github', url: 'url1', enabled: true, priority: 1 },
+                {
+                    id: 'source-1',
+                    name: 'Source 1',
+                    type: 'github',
+                    url: 'url1',
+                    enabled: true,
+                    priority: 1,
+                },
             ];
 
             const json = JSON.stringify({ sources, version: '1.0.0' }, null, 2);
@@ -158,7 +180,7 @@ suite('RegistryStorage', () => {
         });
 
         test('should remove bundle records on uninstall', () => {
-            let installed: Record<string, any> = {
+            const installed: Record<string, any> = {
                 'bundle-1': { id: 'bundle-1', version: '1.0.0' },
                 'bundle-2': { id: 'bundle-2', version: '2.0.0' },
             };
@@ -179,13 +201,11 @@ suite('RegistryStorage', () => {
             ];
 
             assert.strictEqual(mockProfiles.length, 2);
-            assert.ok(mockProfiles.find(p => p.active));
+            assert.ok(mockProfiles.find((p) => p.active));
         });
 
         test('should save profiles to storage', () => {
-            const profiles = [
-                { id: 'profile-1', name: 'Profile 1', bundles: [], active: false },
-            ];
+            const profiles = [{ id: 'profile-1', name: 'Profile 1', bundles: [], active: false }];
 
             const json = JSON.stringify({ profiles, version: '1.0.0' }, null, 2);
             const parsed = JSON.parse(json);
@@ -200,7 +220,7 @@ suite('RegistryStorage', () => {
             ];
 
             const fixed = profiles.map((p, i) => ({ ...p, active: i === 0 }));
-            const activeCount = fixed.filter(p => p.active).length;
+            const activeCount = fixed.filter((p) => p.active).length;
 
             assert.strictEqual(activeCount, 1);
         });
@@ -212,7 +232,7 @@ suite('RegistryStorage', () => {
                 'source-1': {
                     bundles: [{ id: 'bundle-1', name: 'Bundle 1' }],
                     timestamp: Date.now(),
-                    ttl: 3600000, // 1 hour
+                    ttl: 3_600_000, // 1 hour
                 },
             };
 
@@ -222,8 +242,8 @@ suite('RegistryStorage', () => {
 
         test('should invalidate expired cache', () => {
             const cache = {
-                timestamp: Date.now() - 7200000, // 2 hours ago
-                ttl: 3600000, // 1 hour TTL
+                timestamp: Date.now() - 7_200_000, // 2 hours ago
+                ttl: 3_600_000, // 1 hour TTL
             };
 
             const isExpired = Date.now() - cache.timestamp > cache.ttl;
@@ -287,7 +307,7 @@ suite('RegistryStorage', () => {
 
             const v2Data = {
                 version: '2.0.0',
-                sources: v1Data.sources.map(s => ({
+                sources: v1Data.sources.map((s) => ({
                     ...s,
                     enabled: true,
                     priority: 1,
@@ -325,11 +345,13 @@ suite('RegistryStorage', () => {
             ]);
 
             assert.strictEqual(reads.length, 3);
-            reads.forEach(r => assert.deepStrictEqual(r, data));
+            for (const r of reads) {
+                assert.deepStrictEqual(r, data);
+            }
         });
 
         test('should prevent concurrent write conflicts', async () => {
-            let data = { counter: 0 };
+            const data = { counter: 0 };
 
             // Simulate sequential writes (no conflicts)
             data.counter++;
@@ -350,7 +372,7 @@ suite('RegistryStorage', () => {
 
         test('should detect corrupted storage', () => {
             const corruptedJson = '{"version":"1.0.0","sources":[';
-            
+
             try {
                 JSON.parse(corruptedJson);
                 assert.fail('Should have thrown');

@@ -1,7 +1,9 @@
-import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import * as yaml from 'js-yaml';
+import * as vscode from 'vscode';
+
 import { Logger } from '../utils/logger';
 
 export interface SkillWizardResult {
@@ -30,16 +32,16 @@ export class SkillWizard {
         const skillsDir = path.join(workspaceRoot, 'skills');
         const hasCollections = fs.existsSync(collectionsDir);
         const hasSkills = fs.existsSync(skillsDir);
-        
+
         // Check for collection files
         if (hasCollections) {
             const files = fs.readdirSync(collectionsDir);
-            const hasCollectionFiles = files.some(f => f.endsWith('.collection.yml'));
+            const hasCollectionFiles = files.some((f) => f.endsWith('.collection.yml'));
             if (hasCollectionFiles) {
                 return true;
             }
         }
-        
+
         // Also consider it an awesome-copilot project if it has a skills directory
         return hasSkills;
     }
@@ -52,10 +54,11 @@ export class SkillWizard {
         if (!fs.existsSync(collectionsDir)) {
             return [];
         }
-        
-        return fs.readdirSync(collectionsDir)
-            .filter(f => f.endsWith('.collection.yml'))
-            .map(f => path.join(collectionsDir, f));
+
+        return fs
+            .readdirSync(collectionsDir)
+            .filter((f) => f.endsWith('.collection.yml'))
+            .map((f) => path.join(collectionsDir, f));
     }
 
     /**
@@ -123,15 +126,15 @@ Provide example interactions or use cases.
     async addSkillToCollection(collectionPath: string, skillName: string): Promise<void> {
         const content = fs.readFileSync(collectionPath, 'utf8');
         const collection = yaml.load(content) as { items?: Array<{ path: string; kind: string }> };
-        
+
         if (!collection.items) {
             collection.items = [];
         }
 
         const skillPath = `skills/${skillName}/SKILL.md`;
-        
+
         // Check if skill already exists in collection
-        const exists = collection.items.some(item => item.path === skillPath);
+        const exists = collection.items.some((item) => item.path === skillPath);
         if (exists) {
             this.logger.info(`Skill ${skillName} already exists in collection`);
             return;
@@ -140,17 +143,17 @@ Provide example interactions or use cases.
         // Add skill to items
         collection.items.push({
             path: skillPath,
-            kind: 'skill'
+            kind: 'skill',
         });
 
         // Write back to file
-        const newContent = yaml.dump(collection, { 
+        const newContent = yaml.dump(collection, {
             lineWidth: -1,
             quotingType: '"',
-            forceQuotes: false
+            forceQuotes: false,
         });
         fs.writeFileSync(collectionPath, newContent);
-        
+
         this.logger.info(`Added skill ${skillName} to collection ${path.basename(collectionPath)}`);
     }
 
@@ -176,17 +179,23 @@ Provide example interactions or use cases.
         }
 
         return new Promise((resolve) => {
-            const { exec } = require('child_process');
-            exec(`node "${validateScript}"`, { cwd: workspaceRoot }, (error: Error | null, stdout: string, stderr: string) => {
-                if (error) {
-                    this.logger.error('Skill validation failed', error);
-                    vscode.window.showErrorMessage(`Skill validation failed: ${stderr || error.message}`);
-                    resolve(false);
-                } else {
-                    this.logger.info('Skill validation passed');
-                    resolve(true);
+            const { exec } = require('node:child_process');
+            exec(
+                `node "${validateScript}"`,
+                { cwd: workspaceRoot },
+                (error: Error | null, stdout: string, stderr: string) => {
+                    if (error) {
+                        this.logger.error('Skill validation failed', error);
+                        vscode.window.showErrorMessage(
+                            `Skill validation failed: ${stderr || error.message}`
+                        );
+                        resolve(false);
+                    } else {
+                        this.logger.info('Skill validation passed');
+                        resolve(true);
+                    }
                 }
-            });
+            );
         });
     }
 
@@ -199,7 +208,7 @@ Provide example interactions or use cases.
             prompt: 'Enter skill name (lowercase letters, numbers, hyphens)',
             placeHolder: 'my-skill',
             validateInput: (value) => this.validateSkillName(value),
-            ignoreFocusOut: true
+            ignoreFocusOut: true,
         });
 
         if (!skillName) {
@@ -218,7 +227,7 @@ Provide example interactions or use cases.
             prompt: 'Enter skill description (10-1024 characters)',
             placeHolder: 'A concise description of what this skill enables',
             validateInput: (value) => this.validateDescription(value || ''),
-            ignoreFocusOut: true
+            ignoreFocusOut: true,
         });
 
         if (!description) {
@@ -234,19 +243,19 @@ Provide example interactions or use cases.
                 {
                     label: '$(close) None',
                     description: 'Do not add to any collection',
-                    value: undefined as string | undefined
+                    value: undefined as string | undefined,
                 },
-                ...collections.map(c => ({
+                ...collections.map((c) => ({
                     label: `$(file) ${path.basename(c)}`,
                     description: path.relative(workspaceRoot, c),
-                    value: c
-                }))
+                    value: c,
+                })),
             ];
 
             const choice = await vscode.window.showQuickPick(collectionChoices, {
                 placeHolder: 'Select a collection to add the skill to (optional)',
                 title: 'Add to Collection',
-                ignoreFocusOut: true
+                ignoreFocusOut: true,
             });
 
             if (choice === undefined) {
@@ -262,7 +271,7 @@ Provide example interactions or use cases.
                 {
                     location: vscode.ProgressLocation.Notification,
                     title: 'Creating Agent Skill...',
-                    cancellable: false
+                    cancellable: false,
                 },
                 async (progress) => {
                     // Ensure skills directory exists
@@ -300,27 +309,29 @@ Provide example interactions or use cases.
             );
 
             const skillMdPath = path.join(skillDir, 'SKILL.md');
-            
+
             if (action === 'Open SKILL.md') {
                 await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(skillMdPath));
             } else if (action === 'Open Collection' && selectedCollection) {
-                await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(selectedCollection));
+                await vscode.commands.executeCommand(
+                    'vscode.open',
+                    vscode.Uri.file(selectedCollection)
+                );
             }
 
             return {
                 skillName,
                 skillPath: skillMdPath,
                 collectionPath: selectedCollection,
-                success: true
+                success: true,
             };
-
         } catch (error) {
             this.logger.error('Failed to create skill', error as Error);
             vscode.window.showErrorMessage(`Failed to create skill: ${(error as Error).message}`);
             return {
                 skillName,
                 skillPath: path.join(skillDir, 'SKILL.md'),
-                success: false
+                success: false,
             };
         }
     }

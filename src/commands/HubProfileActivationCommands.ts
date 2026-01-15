@@ -3,33 +3,37 @@
  */
 
 import * as vscode from 'vscode';
+
 import { HubManager } from '../services/HubManager';
 
 /**
  * Command to activate a hub profile
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
 export async function activateHubProfile(hubManager: HubManager, item?: any): Promise<void> {
     try {
         // Get the active hub ID first
         const activeHubId = await hubManager['storage'].getActiveHubId();
-        
+
         if (!activeHubId) {
-            vscode.window.showWarningMessage('No active hub configured. Please configure a hub first.');
+            vscode.window.showWarningMessage(
+                'No active hub configured. Please configure a hub first.'
+            );
             return;
         }
-        
+
         // Get the active hub details
         const activeHubResult = await hubManager.getActiveHub();
         if (!activeHubResult) {
             vscode.window.showWarningMessage('Failed to load active hub configuration.');
             return;
         }
-        
+
         const activeHubName = activeHubResult.config.metadata.name || 'Unknown Hub';
-        
+
         // Extract profile from tree item if provided
         let preSelectedProfileId: string | undefined;
-        
+
         if (item && typeof item === 'object' && item.data) {
             // Check if it's a profile item from the active hub
             if (item.data.profileId && item.data.hubId) {
@@ -37,7 +41,9 @@ export async function activateHubProfile(hubManager: HubManager, item?: any): Pr
                 if (item.data.hubId === activeHubId) {
                     preSelectedProfileId = item.data.profileId;
                 } else {
-                    vscode.window.showWarningMessage('This profile is not from the active hub. Please switch to the correct hub first.');
+                    vscode.window.showWarningMessage(
+                        'This profile is not from the active hub. Please switch to the correct hub first.'
+                    );
                     return;
                 }
             }
@@ -46,7 +52,7 @@ export async function activateHubProfile(hubManager: HubManager, item?: any): Pr
         // Get profiles from the active hub only
         const profiles = await hubManager.listProfilesFromHub(activeHubId);
         const activeProfile = await hubManager.getActiveProfile(activeHubId);
-        
+
         if (profiles.length === 0) {
             vscode.window.showWarningMessage(`No profiles found in active hub: ${activeHubName}`);
             return;
@@ -54,33 +60,33 @@ export async function activateHubProfile(hubManager: HubManager, item?: any): Pr
 
         // Show profile picker (skip if profile pre-selected from tree)
         let selectedProfile: { profileId: string; hubId: string } | undefined;
-        
+
         if (preSelectedProfileId) {
-            const profile = profiles.find(p => p.id === preSelectedProfileId);
+            const profile = profiles.find((p) => p.id === preSelectedProfileId);
             if (profile) {
                 selectedProfile = { profileId: profile.id, hubId: activeHubId };
             }
         }
-        
+
         if (!selectedProfile) {
-            const profileItems = profiles.map(profile => {
+            const profileItems = profiles.map((profile) => {
                 const isActive = activeProfile?.profileId === profile.id;
                 const bundleCount = profile.bundles.length;
-                const requiredCount = profile.bundles.filter(b => b.required).length;
-                
+                const requiredCount = profile.bundles.filter((b) => b.required).length;
+
                 return {
                     label: `${profile.icon || '📦'} ${profile.name}${isActive ? ' ✓' : ''}`,
                     description: isActive ? 'Active' : undefined,
                     detail: `${bundleCount} bundle${bundleCount !== 1 ? 's' : ''}${requiredCount > 0 ? ` (${requiredCount} required)` : ''}`,
                     profileId: profile.id,
-                    hubId: activeHubId
+                    hubId: activeHubId,
                 };
             });
 
             selectedProfile = await vscode.window.showQuickPick(profileItems, {
                 placeHolder: `Select a profile to activate from ${activeHubName}`,
                 title: `Activate Profile - ${activeHubName}`,
-                ignoreFocusOut: true
+                ignoreFocusOut: true,
             });
 
             if (!selectedProfile) {
@@ -95,54 +101,62 @@ export async function activateHubProfile(hubManager: HubManager, item?: any): Pr
 
         // Check if profile is already active
         if (activeProfile?.profileId === selectedProfile.profileId) {
-            vscode.window.showInformationMessage(`Profile "${selectedProfile.profileId}" is already active`);
+            vscode.window.showInformationMessage(
+                `Profile "${selectedProfile.profileId}" is already active`
+            );
             return;
         }
 
         // Activate the profile
-        await hubManager.activateProfile(selectedProfile.hubId, selectedProfile.profileId, { installBundles: true });
-        
+        await hubManager.activateProfile(selectedProfile.hubId, selectedProfile.profileId, {
+            installBundles: true,
+        });
+
         // Refresh tree view
         await vscode.commands.executeCommand('promptRegistry.refresh');
-        
+
         vscode.window.showInformationMessage(`Activated profile: ${selectedProfile.profileId}`);
-        
     } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         vscode.window.showErrorMessage(`Failed to activate profile: ${errorMessage}`);
     }
 }
 
-export async function deactivateHubProfile(hubManager: HubManager, item?: any): Promise<void> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
+export async function deactivateHubProfile(hubManager: HubManager, _item?: any): Promise<void> {
     try {
         // Get the active hub ID first
         const activeHubId = await hubManager['storage'].getActiveHubId();
-        
+
         if (!activeHubId) {
-            vscode.window.showWarningMessage('No active hub configured. Please configure a hub first.');
+            vscode.window.showWarningMessage(
+                'No active hub configured. Please configure a hub first.'
+            );
             return;
         }
-        
+
         // Get the active hub details
         const activeHubResult = await hubManager.getActiveHub();
         if (!activeHubResult) {
             vscode.window.showWarningMessage('Failed to load active hub configuration.');
             return;
         }
-        
+
         const activeHubName = activeHubResult.config.metadata.name || 'Unknown Hub';
-        
+
         // Get active profiles from the active hub only
         const activeProfile = await hubManager.getActiveProfile(activeHubId);
 
         if (!activeProfile) {
-            vscode.window.showWarningMessage(`No active profile in ${activeHubName} to deactivate.`);
+            vscode.window.showWarningMessage(
+                `No active profile in ${activeHubName} to deactivate.`
+            );
             return;
         }
 
         // Get the profile details
         const profile = await hubManager.getHubProfile(activeHubId, activeProfile.profileId);
-        
+
         if (!profile) {
             vscode.window.showErrorMessage('Active profile not found in hub configuration.');
             return;
@@ -154,18 +168,18 @@ export async function deactivateHubProfile(hubManager: HubManager, item?: any): 
                 {
                     label: `$(x) Deactivate ${profile.name}`,
                     description: 'Confirm deactivation',
-                    action: 'confirm'
+                    action: 'confirm',
                 },
                 {
                     label: '$(close) Cancel',
                     description: 'Keep profile active',
-                    action: 'cancel'
-                }
+                    action: 'cancel',
+                },
             ],
             {
                 placeHolder: `Deactivate profile "${profile.name}" from ${activeHubName}?`,
                 title: 'Deactivate Profile',
-                ignoreFocusOut: true
+                ignoreFocusOut: true,
             }
         );
 
@@ -179,7 +193,9 @@ export async function deactivateHubProfile(hubManager: HubManager, item?: any): 
         if (result.success) {
             // Refresh tree view
             await vscode.commands.executeCommand('promptRegistry.refresh');
-            vscode.window.showInformationMessage(`Deactivated profile "${profile.name}" from ${activeHubName}`);
+            vscode.window.showInformationMessage(
+                `Deactivated profile "${profile.name}" from ${activeHubName}`
+            );
         } else {
             vscode.window.showErrorMessage(`Failed to deactivate profile: ${result.error}`);
         }
@@ -194,21 +210,23 @@ export async function showActiveProfiles(hubManager: HubManager): Promise<void> 
     try {
         // Get the active hub ID first
         const activeHubId = await hubManager['storage'].getActiveHubId();
-        
+
         if (!activeHubId) {
-            vscode.window.showWarningMessage('No active hub configured. Please configure a hub first.');
+            vscode.window.showWarningMessage(
+                'No active hub configured. Please configure a hub first.'
+            );
             return;
         }
-        
+
         // Get the active hub details
         const activeHubResult = await hubManager.getActiveHub();
         if (!activeHubResult) {
             vscode.window.showWarningMessage('Failed to load active hub configuration.');
             return;
         }
-        
+
         const activeHubName = activeHubResult.config.metadata.name || 'Unknown Hub';
-        
+
         // Get active profile from the active hub
         const activeProfile = await hubManager.getActiveProfile(activeHubId);
 
@@ -219,7 +237,7 @@ export async function showActiveProfiles(hubManager: HubManager): Promise<void> 
 
         // Get profile details
         const profile = await hubManager.getHubProfile(activeHubId, activeProfile.profileId);
-        
+
         if (!profile) {
             vscode.window.showErrorMessage('Active profile not found in hub configuration.');
             return;
@@ -232,13 +250,13 @@ export async function showActiveProfiles(hubManager: HubManager): Promise<void> 
                     label: `${profile.icon || '📦'} ${profile.name} ✓`,
                     description: activeHubName,
                     detail: `Activated ${new Date(activeProfile.activatedAt).toLocaleString()} • ${activeProfile.syncedBundles.length} bundle${activeProfile.syncedBundles.length !== 1 ? 's' : ''}`,
-                    action: 'deactivate' as const
-                }
+                    action: 'deactivate' as const,
+                },
             ],
             {
                 placeHolder: 'Active profile (select to deactivate)',
                 title: `Active Profile - ${activeHubName}`,
-                ignoreFocusOut: true
+                ignoreFocusOut: true,
             }
         );
 
@@ -253,7 +271,9 @@ export async function showActiveProfiles(hubManager: HubManager): Promise<void> 
             if (result.success) {
                 // Refresh tree view
                 await vscode.commands.executeCommand('promptRegistry.refresh');
-                vscode.window.showInformationMessage(`Deactivated profile "${profile.name}" from ${activeHubName}`);
+                vscode.window.showInformationMessage(
+                    `Deactivated profile "${profile.name}" from ${activeHubName}`
+                );
             } else {
                 vscode.window.showErrorMessage(`Failed to deactivate profile: ${result.error}`);
             }

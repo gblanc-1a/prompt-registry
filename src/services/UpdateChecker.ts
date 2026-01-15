@@ -5,12 +5,14 @@
  */
 
 import * as vscode from 'vscode';
+
+import { RegistryStorage } from '../storage/RegistryStorage';
+import { ErrorHandler } from '../utils/errorHandler';
+import { Logger } from '../utils/logger';
+import { isBundleUpdateArray, isSourceArray } from '../utils/typeGuards';
+
 import { RegistryManager } from './RegistryManager';
 import { UpdateCache, UpdateCheckResult } from './UpdateCache';
-import { RegistryStorage } from '../storage/RegistryStorage';
-import { Logger } from '../utils/logger';
-import { ErrorHandler } from '../utils/errorHandler';
-import { isBundleUpdateArray, isSourceArray } from '../utils/typeGuards';
 
 /**
  * Update checker service
@@ -53,13 +55,13 @@ export class UpdateChecker {
 
         // Query RegistryManager for updates
         const updates = await this.registryManager.checkUpdates();
-        
+
         // Type guard: ensure updates is a valid BundleUpdate array
         if (!isBundleUpdateArray(updates)) {
             this.logger.error('RegistryManager.checkUpdates() returned invalid data structure');
             throw new Error('Invalid update data received from registry manager');
         }
-        
+
         // Enrich with auto-update preferences and additional metadata
         const enrichedResults = await this.enrichUpdateResults(updates);
 
@@ -77,7 +79,7 @@ export class UpdateChecker {
         this.logger.debug(`Checking update for bundle: ${bundleId}`);
 
         const updates = await this.checkForUpdates();
-        return updates.find(u => u.bundleId === bundleId) || null;
+        return updates.find((u) => u.bundleId === bundleId) || null;
     }
 
     /**
@@ -99,7 +101,14 @@ export class UpdateChecker {
      * Enrich update results with auto-update preferences and metadata
      * Handles errors gracefully by categorizing them and skipping problematic bundles
      */
-    private async enrichUpdateResults(updates: Array<{ bundleId: string; currentVersion: string; latestVersion: string; changelog?: string }>): Promise<UpdateCheckResult[]> {
+    private async enrichUpdateResults(
+        updates: Array<{
+            bundleId: string;
+            currentVersion: string;
+            latestVersion: string;
+            changelog?: string;
+        }>
+    ): Promise<UpdateCheckResult[]> {
         const enriched: UpdateCheckResult[] = [];
         const skipped: Array<{ bundleId: string; reason: string }> = [];
 
@@ -116,7 +125,7 @@ export class UpdateChecker {
         if (skipped.length > 0) {
             this.logger.warn(
                 `Skipped ${skipped.length} bundle(s) during update check enrichment: ` +
-                skipped.map(s => `${s.bundleId} (${s.reason})`).join(', ')
+                    skipped.map((s) => `${s.bundleId} (${s.reason})`).join(', ')
             );
         }
 
@@ -127,14 +136,19 @@ export class UpdateChecker {
      * Enrich a single update with metadata and preferences
      * Returns structured result with enriched data or skip reason
      */
-    private async enrichSingleUpdate(update: { bundleId: string; currentVersion: string; latestVersion: string; changelog?: string }): Promise<{
+    private async enrichSingleUpdate(update: {
+        bundleId: string;
+        currentVersion: string;
+        latestVersion: string;
+        changelog?: string;
+    }): Promise<{
         enriched?: UpdateCheckResult;
         skipped?: { bundleId: string; reason: string };
     }> {
         try {
             // Get bundle details for additional metadata
             const bundleDetails = await this.registryManager.getBundleDetails(update.bundleId);
-            
+
             // Get auto-update preference
             const autoUpdateEnabled = await this.storage.getUpdatePreference(update.bundleId);
 
@@ -146,23 +160,31 @@ export class UpdateChecker {
                     releaseNotes: update.changelog,
                     releaseDate: bundleDetails.lastUpdated,
                     downloadUrl: bundleDetails.downloadUrl,
-                    autoUpdateEnabled
-                }
+                    autoUpdateEnabled,
+                },
             };
         } catch (error) {
             const err = error instanceof Error ? error : new Error(String(error));
             const errorType = ErrorHandler.categorize(err);
-            
+
             switch (errorType) {
                 case 'network':
-                    this.logger.debug(`Network error enriching '${update.bundleId}', skipping`, err);
+                    this.logger.debug(
+                        `Network error enriching '${update.bundleId}', skipping`,
+                        err
+                    );
                     return { skipped: { bundleId: update.bundleId, reason: 'network error' } };
                 case 'notfound':
-                    this.logger.debug(`Bundle '${update.bundleId}' not found, may have been removed`, err);
+                    this.logger.debug(
+                        `Bundle '${update.bundleId}' not found, may have been removed`,
+                        err
+                    );
                     return { skipped: { bundleId: update.bundleId, reason: 'not found' } };
                 case 'authentication':
                     this.logger.debug(`Authentication error enriching '${update.bundleId}'`, err);
-                    return { skipped: { bundleId: update.bundleId, reason: 'authentication error' } };
+                    return {
+                        skipped: { bundleId: update.bundleId, reason: 'authentication error' },
+                    };
                 case 'validation':
                 case 'unexpected':
                 default:
@@ -172,8 +194,6 @@ export class UpdateChecker {
             }
         }
     }
-
-
 
     /**
      * Check if cache is valid
@@ -202,22 +222,28 @@ export class UpdateChecker {
         try {
             // Get all sources from RegistryManager
             const allSources = await this.registryManager.listSources();
-            
+
             // Type guard: ensure allSources is a valid source array
             if (!isSourceArray(allSources)) {
                 this.logger.error('RegistryManager.listSources() returned invalid data structure');
                 throw new Error('Invalid source data received from registry manager');
             }
-            
+
             // Filter to ONLY GitHub release sources
-            const githubSources = allSources.filter(source => source.type === 'github');
-            
-            this.logger.info(`Found ${githubSources.length} GitHub release sources to sync (filtered from ${allSources.length} total sources)`);
-            
+            const githubSources = allSources.filter((source) => source.type === 'github');
+
+            this.logger.info(
+                `Found ${githubSources.length} GitHub release sources to sync (filtered from ${allSources.length} total sources)`
+            );
+
             // Log which source types are being excluded
-            const excludedTypes = new Set(allSources.filter(s => s.type !== 'github').map(s => s.type));
+            const excludedTypes = new Set(
+                allSources.filter((s) => s.type !== 'github').map((s) => s.type)
+            );
             if (excludedTypes.size > 0) {
-                this.logger.debug(`Excluding source types: ${Array.from(excludedTypes).join(', ')}`);
+                this.logger.debug(
+                    `Excluding source types: ${Array.from(excludedTypes).join(', ')}`
+                );
             }
 
             // Sync each GitHub source
@@ -233,7 +259,10 @@ export class UpdateChecker {
                 } catch (error) {
                     failureCount++;
                     const err = error instanceof Error ? error : new Error(String(error));
-                    this.logger.warn(`Failed to sync GitHub source '${source.id}': ${err.message}`, err);
+                    this.logger.warn(
+                        `Failed to sync GitHub source '${source.id}': ${err.message}`,
+                        err
+                    );
                     // Continue with other sources - don't fail entire check
                 }
             }
@@ -241,7 +270,7 @@ export class UpdateChecker {
             const duration = Date.now() - startTime;
             this.logger.info(
                 `GitHub source sync completed in ${duration}ms: ` +
-                `${successCount} succeeded, ${failureCount} failed`
+                    `${successCount} succeeded, ${failureCount} failed`
             );
         } catch (error) {
             const err = error instanceof Error ? error : new Error(String(error));

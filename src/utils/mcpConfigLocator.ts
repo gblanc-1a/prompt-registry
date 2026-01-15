@@ -1,6 +1,7 @@
-import * as os from 'os';
-import * as path from 'path';
-import * as fs from 'fs';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+
 import * as vscode from 'vscode';
 
 export class McpConfigLocator {
@@ -13,8 +14,8 @@ export class McpConfigLocator {
     }
 
     private static getVsCodeVariant(): string {
-        const productName = vscode.env?.appName || "Visual Studio Code";
-        
+        const productName = vscode.env?.appName || 'Visual Studio Code';
+
         if (productName.includes('Insiders')) {
             return 'Code - Insiders';
         } else if (productName.includes('Cursor')) {
@@ -55,7 +56,11 @@ export class McpConfigLocator {
         if (!workspaceFolders || workspaceFolders.length === 0) {
             return undefined;
         }
-        return path.join(workspaceFolders[0].uri.fsPath, '.vscode');
+        const firstFolder = workspaceFolders[0];
+        if (!firstFolder) {
+            return undefined;
+        }
+        return path.join(firstFolder.uri.fsPath, '.vscode');
     }
 
     static getUserMcpConfigPath(): string {
@@ -84,19 +89,21 @@ export class McpConfigLocator {
         return path.join(workspaceDir, this.TRACKING_FILENAME);
     }
 
-    static getMcpConfigLocation(scope: 'user' | 'workspace'): { configPath: string; trackingPath: string; exists: boolean } | undefined {
+    static getMcpConfigLocation(
+        scope: 'user' | 'workspace'
+    ): { configPath: string; trackingPath: string; exists: boolean } | undefined {
         if (scope === 'user') {
             const configPath = this.getUserMcpConfigPath();
             const trackingPath = this.getUserTrackingPath();
             return {
                 configPath,
                 trackingPath,
-                exists: fs.existsSync(configPath)
+                exists: fs.existsSync(configPath),
             };
         } else {
             const configPath = this.getWorkspaceMcpConfigPath();
             const trackingPath = this.getWorkspaceTrackingPath();
-            
+
             if (!configPath || !trackingPath) {
                 return undefined;
             }
@@ -104,7 +111,7 @@ export class McpConfigLocator {
             return {
                 configPath,
                 trackingPath,
-                exists: fs.existsSync(configPath)
+                exists: fs.existsSync(configPath),
             };
         }
     }
@@ -112,7 +119,9 @@ export class McpConfigLocator {
     static async ensureConfigDirectory(scope: 'user' | 'workspace'): Promise<void> {
         const location = this.getMcpConfigLocation(scope);
         if (!location) {
-            throw new Error(`Cannot determine ${scope}-level configuration directory. No workspace open?`);
+            throw new Error(
+                `Cannot determine ${scope}-level configuration directory. No workspace open?`
+            );
         }
 
         const configDir = path.dirname(location.configPath);

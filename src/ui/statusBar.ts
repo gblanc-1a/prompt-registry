@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+
 import { Logger } from '../utils/logger';
 
 /**
@@ -12,12 +13,12 @@ export class StatusBar {
 
     private constructor() {
         this.logger = Logger.getInstance();
-        
+
         this.statusBarItem = vscode.window.createStatusBarItem(
             vscode.StatusBarAlignment.Right,
             100
         );
-        
+
         this.statusBarItem.command = 'promptRegistry.showCommandMenu';
         this.statusBarItem.text = '$(extensions) Prompt Registry';
         this.statusBarItem.tooltip = 'Prompt Registry - Click to show all commands';

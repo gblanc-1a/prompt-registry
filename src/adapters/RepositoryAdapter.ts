@@ -78,7 +78,7 @@ export interface IRepositoryAdapter {
  */
 export abstract class RepositoryAdapter implements IRepositoryAdapter {
     abstract readonly type: string;
-    
+
     constructor(public readonly source: RegistrySource) {}
 
     abstract fetchBundles(): Promise<Bundle[]>;
@@ -94,7 +94,7 @@ export abstract class RepositoryAdapter implements IRepositoryAdapter {
      */
     async forceAuthentication(): Promise<void> {
         // Default implementation does nothing
-        return Promise.resolve();
+        return;
     }
 
     /**
@@ -119,7 +119,7 @@ export abstract class RepositoryAdapter implements IRepositoryAdapter {
     protected getHeaders(): Record<string, string> {
         const headers: Record<string, string> = {
             'User-Agent': 'Prompt-Registry-VSCode-Extension/1.0',
-            'Accept': 'application/json',
+            Accept: 'application/json',
         };
 
         const token = this.getAuthToken();
@@ -135,10 +135,11 @@ export abstract class RepositoryAdapter implements IRepositoryAdapter {
      * @param response HTTP response
      * @param context Error context
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     protected async handleHttpError(response: any, context: string): Promise<never> {
         const statusText = response.statusText || 'Unknown';
-        const body = await response.text?.().catch(() => '') || '';
-        
+        const body = (await response.text?.().catch(() => '')) || '';
+
         throw new Error(
             `${context}: HTTP ${response.status} ${statusText}. ${body ? 'Details: ' + body : ''}`
         );
@@ -186,7 +187,7 @@ export class RepositoryAdapterFactory {
      */
     static create(source: RegistrySource): IRepositoryAdapter {
         const AdapterClass = this.adapters.get(source.type);
-        
+
         if (!AdapterClass) {
             throw new Error(`No adapter registered for source type: ${source.type}`);
         }

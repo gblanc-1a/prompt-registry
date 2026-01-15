@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
-import { InstallationManager } from '../services/installationManager';
+
 import { GitHubService } from '../services/githubService';
+import { InstallationManager } from '../services/installationManager';
 import { PlatformDetector } from '../services/platformDetector';
 import { InstallationScope } from '../types/platform';
 import { Logger } from '../utils/logger';
@@ -39,7 +40,8 @@ export class InstallCommand {
             if (isInstalled) {
                 const overwrite = await vscode.window.showWarningMessage(
                     `Prompt Registry is already installed in ${scope} scope. Do you want to overwrite it?`,
-                    'Yes', 'No'
+                    'Yes',
+                    'No'
                 );
 
                 if (overwrite !== 'Yes') {
@@ -52,22 +54,27 @@ export class InstallCommand {
                 {
                     location: vscode.ProgressLocation.Notification,
                     title: 'Installing Prompt Registry',
-                    cancellable: true
+                    cancellable: true,
                 },
                 async (progress, token) => {
                     try {
                         // Check connectivity
-                        progress.report({ increment: 10, message: 'Checking GitHub connectivity...' });
-                        
+                        progress.report({
+                            increment: 10,
+                            message: 'Checking GitHub connectivity...',
+                        });
+
                         const isConnected = await this.githubService.checkConnectivity();
                         if (!isConnected) {
-                            throw new Error('Unable to connect to GitHub. Please check your internet connection.');
+                            throw new Error(
+                                'Unable to connect to GitHub. Please check your internet connection.'
+                            );
                         }
 
                         // Validate access for private repos
                         const config = vscode.workspace.getConfiguration('olaf');
                         const usePrivateRepo = config.get<boolean>('usePrivateRepository');
-                        
+
                         if (usePrivateRepo) {
                             const validation = await this.githubService.validateAccess();
                             if (!validation.valid) {
@@ -76,33 +83,47 @@ export class InstallCommand {
                         }
 
                         // Get release based on default version preference
-                        progress.report({ increment: 15, message: 'Fetching release information...' });
-                        
+                        progress.report({
+                            increment: 15,
+                            message: 'Fetching release information...',
+                        });
+
                         const release = await this.githubService.getReleaseByVersionPreference();
                         const platform = await this.platformDetector.detectPlatform();
-                        
+
                         // Find platform bundle
-                        const bundleInfo = this.githubService.findPlatformBundle(release, platform.platform);
+                        const bundleInfo = this.githubService.findPlatformBundle(
+                            release,
+                            platform.platform
+                        );
                         if (!bundleInfo) {
-                            throw new Error(`No installation bundle found for your platform (${platform.platform})`);
+                            throw new Error(
+                                `No installation bundle found for your platform (${platform.platform})`
+                            );
                         }
 
                         // Download bundle
-                        progress.report({ increment: 25, message: 'Downloading installation bundle...' });
-                        
+                        progress.report({
+                            increment: 25,
+                            message: 'Downloading installation bundle...',
+                        });
+
                         const bundleBuffer = await this.githubService.downloadBundle(
                             bundleInfo,
                             (downloadProgress) => {
                                 progress.report({
                                     increment: 0,
-                                    message: `Downloading... ${downloadProgress.toFixed(1)}%`
+                                    message: `Downloading... ${downloadProgress.toFixed(1)}%`,
                                 });
                             }
                         );
 
                         // Install bundle
-                        progress.report({ increment: 25, message: 'Installing Prompt Registry components...' });
-                        
+                        progress.report({
+                            increment: 25,
+                            message: 'Installing Prompt Registry components...',
+                        });
+
                         const installResult = await this.installationManager.installBundle(
                             bundleBuffer,
                             bundleInfo,
@@ -110,28 +131,34 @@ export class InstallCommand {
                             (installProgress, message) => {
                                 progress.report({
                                     increment: 0,
-                                    message
+                                    message,
                                 });
                             }
                         );
 
                         if (installResult.success) {
                             progress.report({ increment: 25, message: 'Installation completed!' });
-                            
-                            await vscode.window.showInformationMessage(
-                                `Prompt Registry installed successfully!\n\nLocation: ${installResult.installedPath}\nVersion: ${installResult.version}\nScope: ${installResult.scope}`,
-                                'Show in Explorer'
-                            ).then((action) => {
-                                if (action === 'Show in Explorer') {
-                                    vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(installResult.installedPath));
-                                }
-                            });
 
-                            this.logger.info(`Installation completed successfully: ${installResult.installedPath}`);
+                            await vscode.window
+                                .showInformationMessage(
+                                    `Prompt Registry installed successfully!\n\nLocation: ${installResult.installedPath}\nVersion: ${installResult.version}\nScope: ${installResult.scope}`,
+                                    'Show in Explorer'
+                                )
+                                .then((action) => {
+                                    if (action === 'Show in Explorer') {
+                                        vscode.commands.executeCommand(
+                                            'revealFileInOS',
+                                            vscode.Uri.file(installResult.installedPath)
+                                        );
+                                    }
+                                });
+
+                            this.logger.info(
+                                `Installation completed successfully: ${installResult.installedPath}`
+                            );
                         } else {
                             throw new Error(installResult.error || 'Installation failed');
                         }
-
                     } catch (error) {
                         if (token.isCancellationRequested) {
                             this.logger.info('Installation cancelled by user');
@@ -141,18 +168,19 @@ export class InstallCommand {
                     }
                 }
             );
-
         } catch (error) {
             this.logger.error('Installation failed', error as Error);
-            
-            await vscode.window.showErrorMessage(
-                `Failed to install Prompt Registry: ${(error as Error).message}`,
-                'Show Logs'
-            ).then((action) => {
-                if (action === 'Show Logs') {
-                    this.logger.show();
-                }
-            });
+
+            await vscode.window
+                .showErrorMessage(
+                    `Failed to install Prompt Registry: ${(error as Error).message}`,
+                    'Show Logs'
+                )
+                .then((action) => {
+                    if (action === 'Show Logs') {
+                        this.logger.show();
+                    }
+                });
         }
     }
 
@@ -162,24 +190,24 @@ export class InstallCommand {
                 label: '👤 User',
                 description: 'Install for current user across all workspaces',
                 detail: 'Recommended for personal use',
-                picked: true
+                picked: true,
             },
             {
                 label: '📁 Workspace',
                 description: 'Install for current workspace only',
-                detail: 'Shared with team members'
+                detail: 'Shared with team members',
             },
             {
                 label: '📂 Project',
                 description: 'Install for current project only',
-                detail: 'Project-specific configuration'
-            }
+                detail: 'Project-specific configuration',
+            },
         ];
 
         const selectedItem = await vscode.window.showQuickPick(scopeItems, {
             title: 'Select Installation Scope',
             placeHolder: 'Choose where to install Prompt Registry components',
-            ignoreFocusOut: true
+            ignoreFocusOut: true,
         });
 
         if (!selectedItem) {

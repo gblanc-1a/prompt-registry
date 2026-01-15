@@ -2,7 +2,8 @@
  * Update Manager Unit Tests
  */
 
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+
 import * as sinon from 'sinon';
 
 suite('UpdateManager', () => {
@@ -69,18 +70,16 @@ suite('UpdateManager', () => {
                 { id: 'bundle-3', installedVersion: '1.5.0', latestVersion: '2.0.0' },
             ];
 
-            const updatesAvailable = bundles.filter(
-                b => b.latestVersion > b.installedVersion
-            );
+            const updatesAvailable = bundles.filter((b) => b.latestVersion > b.installedVersion);
 
             assert.strictEqual(updatesAvailable.length, 2);
-            assert.ok(updatesAvailable.find(b => b.id === 'bundle-1'));
-            assert.ok(updatesAvailable.find(b => b.id === 'bundle-3'));
+            assert.ok(updatesAvailable.find((b) => b.id === 'bundle-1'));
+            assert.ok(updatesAvailable.find((b) => b.id === 'bundle-3'));
         });
 
         test('should check for updates periodically', async () => {
-            let lastCheck = Date.now() - 7200000; // 2 hours ago
-            const checkInterval = 3600000; // 1 hour
+            let lastCheck = Date.now() - 7_200_000; // 2 hours ago
+            const checkInterval = 3_600_000; // 1 hour
 
             const shouldCheck = Date.now() - lastCheck > checkInterval;
 
@@ -165,10 +164,7 @@ suite('UpdateManager', () => {
         });
 
         test('should cleanup after successful update', async () => {
-            const tempFiles = [
-                '/tmp/bundle-download.zip',
-                '/tmp/bundle-extract/',
-            ];
+            const tempFiles = ['/tmp/bundle-download.zip', '/tmp/bundle-extract/'];
 
             // Simulate cleanup
             tempFiles.length = 0;
@@ -198,9 +194,9 @@ suite('UpdateManager', () => {
             ];
 
             const grouped = {
-                patch: updates.filter(u => u.severity === 'patch'),
-                minor: updates.filter(u => u.severity === 'minor'),
-                major: updates.filter(u => u.severity === 'major'),
+                patch: updates.filter((u) => u.severity === 'patch'),
+                minor: updates.filter((u) => u.severity === 'minor'),
+                major: updates.filter((u) => u.severity === 'major'),
             };
 
             assert.strictEqual(grouped.patch.length, 1);
@@ -228,7 +224,7 @@ suite('UpdateManager', () => {
             const scheduled = new Map<string, Date>();
 
             const bundleId = 'bundle-1';
-            const scheduleTime = new Date(Date.now() + 86400000); // Tomorrow
+            const scheduleTime = new Date(Date.now() + 86_400_000); // Tomorrow
 
             scheduled.set(bundleId, scheduleTime);
 
@@ -271,7 +267,7 @@ suite('UpdateManager', () => {
                 { id: 'bundle-3', needsUpdate: true },
             ];
 
-            const toUpdate = bundles.filter(b => b.needsUpdate);
+            const toUpdate = bundles.filter((b) => b.needsUpdate);
 
             assert.strictEqual(toUpdate.length, 2);
         });
@@ -326,12 +322,10 @@ suite('UpdateManager', () => {
         });
 
         test('should allow reverting to previous version', () => {
-            const history = [
-                { bundleId: 'bundle-1', from: '1.0.0', to: '1.1.0' },
-            ];
+            const history = [{ bundleId: 'bundle-1', from: '1.0.0', to: '1.1.0' }];
 
-            const lastUpdate = history[history.length - 1];
-            const revertToVersion = lastUpdate.from;
+            const lastUpdate = history.at(-1);
+            const revertToVersion = lastUpdate!.from;
 
             assert.strictEqual(revertToVersion, '1.0.0');
         });
@@ -356,7 +350,7 @@ suite('UpdateManager', () => {
             const channel = 'stable';
             const versions = ['1.0.0', '1.1.0', '2.0.0'];
 
-            const stableVersions = versions.filter(v => !v.includes('-'));
+            const stableVersions = versions.filter((v) => !v.includes('-'));
 
             assert.strictEqual(stableVersions.length, 3);
         });
@@ -365,22 +359,16 @@ suite('UpdateManager', () => {
             const channel = 'beta';
             const versions = ['1.0.0-beta.1', '1.0.0-beta.2', '1.0.0'];
 
-            const betaVersions = versions.filter(v => v.includes('-beta'));
+            const betaVersions = versions.filter((v) => v.includes('-beta'));
 
             assert.strictEqual(betaVersions.length, 2);
         });
 
         test('should filter versions by channel', () => {
-            const allVersions = [
-                '1.0.0',
-                '1.0.1-beta.1',
-                '1.1.0',
-                '1.1.1-alpha.1',
-                '2.0.0',
-            ];
+            const allVersions = ['1.0.0', '1.0.1-beta.1', '1.1.0', '1.1.1-alpha.1', '2.0.0'];
 
             const channel = 'stable';
-            const filtered = allVersions.filter(v => !v.includes('-'));
+            const filtered = allVersions.filter((v) => !v.includes('-'));
 
             assert.strictEqual(filtered.length, 3);
         });

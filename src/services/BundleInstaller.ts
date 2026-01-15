@@ -1,7 +1,7 @@
 /**
  * Bundle Installer Service
  * Handles extracting and installing bundle files
- * 
+ *
  * Architecture Note:
  * - Remote bundles use the unified architecture: adapter.downloadBundle() -> installFromBuffer()
  * - Each adapter (GitHub, HTTP, Local, etc.) handles its own download logic and authentication
@@ -10,15 +10,18 @@
  * - The downloadFile() method has been removed as downloads are now handled by adapters
  */
 
-import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
-import { promisify } from 'util';
-import * as yaml from 'js-yaml';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { promisify } from 'node:util';
+
 import AdmZip = require('adm-zip');
-import { Logger } from '../utils/logger';
-import { isManifestIdMatch } from '../utils/bundleNameUtils';
+import * as yaml from 'js-yaml';
+import * as vscode from 'vscode';
+
 import { Bundle, InstallOptions, InstalledBundle, DeploymentManifest } from '../types/registry';
+import { isManifestIdMatch } from '../utils/bundleNameUtils';
+import { Logger } from '../utils/logger';
+
 import { CopilotSyncService } from './CopilotSyncService';
 import { McpServerManager } from './McpServerManager';
 const mkdir = promisify(fs.mkdir);
@@ -30,7 +33,6 @@ const lstat = promisify(fs.lstat);
 const unlink = promisify(fs.unlink);
 const rmdir = promisify(fs.rmdir);
 const symlink = promisify(fs.symlink);
-const readlink = promisify(fs.readlink);
 
 /**
  * Bundle Installer
@@ -62,7 +64,9 @@ export class BundleInstaller {
             // This method is now only used for local file:// URLs
             // Remote bundles use the unified architecture: adapter.downloadBundle() -> installFromBuffer()
             if (!downloadUrl.startsWith('file://')) {
-                throw new Error('install() method is only for local file:// URLs. Use installFromBuffer() for remote bundles.');
+                throw new Error(
+                    'install() method is only for local file:// URLs. Use installFromBuffer() for remote bundles.'
+                );
             }
 
             // Local bundle: use the directory directly
@@ -74,7 +78,13 @@ export class BundleInstaller {
             this.logger.debug('Bundle validation passed');
 
             // Get installation directory (pass undefined for sourceType since it's not available in install method)
-            const installDir = this.getInstallDirectory(bundle.id, options.scope, undefined, undefined, bundle.name);
+            const installDir = this.getInstallDirectory(
+                bundle.id,
+                options.scope,
+                undefined,
+                undefined,
+                bundle.name
+            );
             await this.ensureDirectory(installDir);
             this.logger.debug(`Installation directory: ${installDir}`);
 
@@ -92,20 +102,25 @@ export class BundleInstaller {
                 installPath: installDir,
                 manifest: manifest,
                 sourceId: bundle.sourceId,
-                sourceType: undefined,  // Will be set by RegistryManager
+                sourceType: undefined, // Will be set by RegistryManager
             };
 
             // Install MCP servers if defined
-            await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope);
+            await this.installMcpServers(
+                bundle.id,
+                bundle.version,
+                installDir,
+                manifest,
+                options.scope
+            );
             this.logger.debug('MCP servers installation completed');
-            
+
             // Sync to GitHub Copilot native directory
             await this.copilotSync.syncBundle(bundle.id, installDir);
             this.logger.debug('Synced to GitHub Copilot');
 
             this.logger.info(`Bundle installed successfully: ${bundle.name}`);
             return installed;
-
         } catch (error) {
             this.logger.error('Bundle installation failed', error as Error);
             throw error;
@@ -132,7 +147,9 @@ export class BundleInstaller {
             // Step 2: Write buffer to temp file
             const bundleFile = path.join(tempDir, `${bundle.id}.zip`);
             await writeFile(bundleFile, bundleBuffer);
-            this.logger.debug(`Wrote bundle buffer to: ${bundleFile} (${bundleBuffer.length} bytes)`);
+            this.logger.debug(
+                `Wrote bundle buffer to: ${bundleFile} (${bundleBuffer.length} bytes)`
+            );
 
             // Step 3: Extract bundle
             const extractDir = path.join(tempDir, 'extracted');
@@ -145,9 +162,9 @@ export class BundleInstaller {
 
             // Check if this is a skills bundle (installs directly to ~/.copilot/skills/)
             const isSkillsBundle = sourceType === 'skills' || sourceType === 'local-skills';
-            
+
             let installDir: string;
-            
+
             if (isSkillsBundle) {
                 // Skills bundles install directly to ~/.copilot/skills/{skill-name}
                 // Extract skill name from the bundle - look in skills/ directory
@@ -155,19 +172,27 @@ export class BundleInstaller {
                 installDir = this.copilotSync.getCopilotSkillsDirectory('user');
                 await this.ensureDirectory(installDir);
                 installDir = path.join(installDir, skillName);
-                
-                this.logger.debug(`[BundleInstaller] Skills bundle detected, installing to: ${installDir}`);
-                
+
+                this.logger.debug(
+                    `[BundleInstaller] Skills bundle detected, installing to: ${installDir}`
+                );
+
                 // Copy skill files directly to ~/.copilot/skills/{skill-name}
                 const skillSourceDir = path.join(extractDir, 'skills', skillName);
                 if (fs.existsSync(skillSourceDir)) {
                     // Check for existing skill and warn user
                     if (fs.existsSync(installDir)) {
                         const existingIsSymlink = await this.isSymlink(installDir);
-                        const shouldOverwrite = await this.promptOverwriteSkill(skillName, installDir, existingIsSymlink);
+                        const shouldOverwrite = await this.promptOverwriteSkill(
+                            skillName,
+                            installDir,
+                            existingIsSymlink
+                        );
                         if (!shouldOverwrite) {
                             await this.cleanupTempDir(tempDir);
-                            throw new Error(`Installation cancelled: skill '${skillName}' already exists`);
+                            throw new Error(
+                                `Installation cancelled: skill '${skillName}' already exists`
+                            );
                         }
                         await this.removeDirectory(installDir);
                     }
@@ -177,17 +202,28 @@ export class BundleInstaller {
                 }
             } else {
                 // Step 5: Get installation directory (standard bundles)
-                installDir = this.getInstallDirectory(bundle.id, options.scope, sourceType, sourceName, bundle.name);
+                installDir = this.getInstallDirectory(
+                    bundle.id,
+                    options.scope,
+                    sourceType,
+                    sourceName,
+                    bundle.name
+                );
                 await this.ensureDirectory(installDir);
                 this.logger.debug(`Installation directory: ${installDir}`);
 
                 // Step 6: Copy files to installation directory
                 // For OLAF bundles, copy all skill folders directly (skip deployment-manifest.yml)
-                const isOlafBundle = sourceType === 'olaf' || sourceType === 'local-olaf' || bundle.id.startsWith('olaf-');
+                const isOlafBundle =
+                    sourceType === 'olaf' ||
+                    sourceType === 'local-olaf' ||
+                    bundle.id.startsWith('olaf-');
                 if (isOlafBundle) {
                     // Copy all directories (skill folders) from the extracted bundle
                     // Skip deployment-manifest.yml as it's only needed for validation
-                    this.logger.debug(`[BundleInstaller] OLAF bundle detected, copying skill folders to: ${installDir}`);
+                    this.logger.debug(
+                        `[BundleInstaller] OLAF bundle detected, copying skill folders to: ${installDir}`
+                    );
                     await this.copyOlafSkillFolders(extractDir, installDir);
                 } else {
                     await this.copyBundleFiles(extractDir, installDir);
@@ -209,24 +245,31 @@ export class BundleInstaller {
                 installPath: installDir,
                 manifest: manifest,
                 sourceId: bundle.sourceId,
-                sourceType: undefined,  // Will be set by RegistryManager
+                sourceType: undefined, // Will be set by RegistryManager
             };
 
             // Step 9: Install MCP servers if defined (skip for skills bundles)
             if (!isSkillsBundle) {
-                await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope);
+                await this.installMcpServers(
+                    bundle.id,
+                    bundle.version,
+                    installDir,
+                    manifest,
+                    options.scope
+                );
                 this.logger.debug('MCP servers installation completed');
-                
+
                 // Step 10: Sync to GitHub Copilot native directory (skip for skills - already installed there)
                 await this.copilotSync.syncBundle(bundle.id, installDir);
                 this.logger.debug('Synced to GitHub Copilot');
             } else {
-                this.logger.debug('Skills bundle - skipping MCP servers and Copilot sync (already installed to ~/.copilot/skills/)');
+                this.logger.debug(
+                    'Skills bundle - skipping MCP servers and Copilot sync (already installed to ~/.copilot/skills/)'
+                );
             }
 
             this.logger.info(`Bundle installed successfully from buffer: ${bundle.name}`);
             return installed;
-
         } catch (error) {
             this.logger.error('Bundle installation from buffer failed', error as Error);
             throw error;
@@ -254,7 +297,6 @@ export class BundleInstaller {
             }
 
             this.logger.info('Bundle uninstalled successfully');
-
         } catch (error) {
             this.logger.error('Bundle uninstallation failed', error as Error);
             throw error;
@@ -280,12 +322,11 @@ export class BundleInstaller {
             // Install new version using the unified architecture
             const newInstalled = await this.installFromBuffer(bundle, bundleBuffer, {
                 scope: installed.scope,
-                version: bundle.version
+                version: bundle.version,
             });
 
             this.logger.info('Bundle updated successfully');
             return newInstalled;
-
         } catch (error) {
             this.logger.error('Bundle update failed', error as Error);
             throw error;
@@ -307,8 +348,6 @@ export class BundleInstaller {
         return tempDir;
     }
 
-
-
     /**
      * Extract bundle archive
      */
@@ -319,7 +358,6 @@ export class BundleInstaller {
             // Use adm-zip for extraction
             const zip = new AdmZip(bundleFile);
             zip.extractAllTo(extractDir, true);
-
         } catch (error) {
             throw new Error(`Failed to extract bundle: ${(error as Error).message}`);
         }
@@ -331,32 +369,35 @@ export class BundleInstaller {
     private async validateBundle(extractDir: string, bundle: Bundle): Promise<DeploymentManifest> {
         // Check if deployment-manifest.yml exists
         const manifestPath = path.join(extractDir, 'deployment-manifest.yml');
-        
+
         if (!fs.existsSync(manifestPath)) {
             // For local bundles (like awesome-copilot), deployment-manifest.yml is optional
             // Create a minimal manifest from the bundle info
-            this.logger.info(`No deployment-manifest.yml found for ${bundle.id}, creating minimal manifest`);
+            this.logger.info(
+                `No deployment-manifest.yml found for ${bundle.id}, creating minimal manifest`
+            );
             return {
                 common: {
                     directories: [],
                     files: [],
                     include_patterns: ['**/*'],
-                    exclude_patterns: []
+                    exclude_patterns: [],
                 },
                 bundle_settings: {
                     include_common_in_environment_bundles: true,
                     create_common_bundle: true,
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
                     compression: 'none' as any,
                     naming: {
-                        environment_bundle: bundle.id
-                    }
+                        environment_bundle: bundle.id,
+                    },
                 },
                 metadata: {
                     manifest_version: '1.0',
                     description: bundle.description || bundle.name || bundle.id,
                     author: 'awesome-copilot',
-                    last_updated: new Date().toISOString()
-                }
+                    last_updated: new Date().toISOString(),
+                },
             } as DeploymentManifest;
         }
 
@@ -364,6 +405,7 @@ export class BundleInstaller {
 
         // Validate manifest content (parse YAML)
         const manifestContent = await readFile(manifestPath, 'utf-8');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
         const manifest = yaml.load(manifestContent) as any;
 
         // Basic validation
@@ -382,11 +424,13 @@ export class BundleInstaller {
 
         // Verify version matches (allow "latest" to match any)
         if (bundle.version !== 'latest' && manifest.version !== bundle.version) {
-            throw new Error(`Bundle version mismatch: expected ${bundle.version}, got ${manifest.version}`);
+            throw new Error(
+                `Bundle version mismatch: expected ${bundle.version}, got ${manifest.version}`
+            );
         }
 
         this.logger.debug('Bundle manifest validation passed');
-        
+
         return manifest as DeploymentManifest;
     }
 
@@ -394,29 +438,40 @@ export class BundleInstaller {
      * Get installation directory for bundle
      * OLAF bundles are installed in .olaf/external-skills/<source-name>/<skill-name> in the workspace
      */
-    private getInstallDirectory(bundleId: string, scope: 'user' | 'workspace', sourceType?: string, sourceName?: string, bundleName?: string): string {
+    private getInstallDirectory(
+        bundleId: string,
+        scope: 'user' | 'workspace',
+        sourceType?: string,
+        sourceName?: string,
+        _bundleName?: string
+    ): string {
         // Check if this is an OLAF bundle
-        const isOlafBundle = sourceType === 'olaf' || sourceType === 'local-olaf' || bundleId.startsWith('olaf-');
-        
+        const isOlafBundle =
+            sourceType === 'olaf' || sourceType === 'local-olaf' || bundleId.startsWith('olaf-');
+
         if (isOlafBundle) {
             // OLAF bundles must be installed in workspace .olaf/external-skills directory
             const workspaceFolders = require('vscode').workspace.workspaceFolders;
             if (!workspaceFolders || workspaceFolders.length === 0) {
-                throw new Error('OLAF skills require an open workspace. Please open a workspace and try again.');
+                throw new Error(
+                    'OLAF skills require an open workspace. Please open a workspace and try again.'
+                );
             }
-            
+
             const workspacePath = workspaceFolders[0].uri.fsPath;
-            
+
             // Use source name for directory organization, fallback to 'default' if not provided
             const sourceDir = sourceName || 'default';
-            
+
             // For OLAF bundles with multiple skills, install directly to the source directory
             // The ZIP contains skill folders that will be copied directly here
             // Result: .olaf/external-skills/<source-name>/skill1/, .olaf/external-skills/<source-name>/skill2/
-            this.logger.info(`[BundleInstaller] Installing OLAF bundle to .olaf/external-skills/${sourceDir}`);
+            this.logger.info(
+                `[BundleInstaller] Installing OLAF bundle to .olaf/external-skills/${sourceDir}`
+            );
             return path.join(workspacePath, '.olaf', 'external-skills', sourceDir);
         }
-        
+
         // Standard bundle installation
         if (scope === 'user') {
             // User scope: global storage
@@ -468,7 +523,9 @@ export class BundleInstaller {
             // Only copy directories (skill folders), skip files like deployment-manifest.yml
             if (stats.isDirectory()) {
                 const targetPath = path.join(targetDir, file);
-                this.logger.debug(`[BundleInstaller] Copying skill folder: ${file} -> ${targetPath}`);
+                this.logger.debug(
+                    `[BundleInstaller] Copying skill folder: ${file} -> ${targetPath}`
+                );
                 await this.ensureDirectory(targetPath);
                 await this.copyBundleFiles(sourcePath, targetPath);
             } else {
@@ -521,20 +578,24 @@ export class BundleInstaller {
      */
     private async extractSkillNameFromBundle(extractDir: string): Promise<string> {
         const skillsDir = path.join(extractDir, 'skills');
-        
+
         if (!fs.existsSync(skillsDir)) {
             throw new Error('Skills directory not found in bundle');
         }
-        
+
         const entries = await readdir(skillsDir, { withFileTypes: true });
-        const skillDirs = entries.filter(e => e.isDirectory());
-        
+        const skillDirs = entries.filter((e) => e.isDirectory());
+
         if (skillDirs.length === 0) {
             throw new Error('No skill directories found in bundle');
         }
-        
+
         // Return the first skill directory name
-        return skillDirs[0].name;
+        const firstSkillDir = skillDirs[0];
+        if (!firstSkillDir) {
+            throw new Error('First skill directory is invalid');
+        }
+        return firstSkillDir.name;
     }
 
     /**
@@ -542,13 +603,13 @@ export class BundleInstaller {
      */
     private async copyDirectory(sourceDir: string, targetDir: string): Promise<void> {
         await this.ensureDirectory(targetDir);
-        
+
         const entries = await readdir(sourceDir, { withFileTypes: true });
-        
+
         for (const entry of entries) {
             const sourcePath = path.join(sourceDir, entry.name);
             const targetPath = path.join(targetDir, entry.name);
-            
+
             if (entry.isDirectory()) {
                 await this.copyDirectory(sourcePath, targetPath);
             } else if (entry.isFile()) {
@@ -597,12 +658,14 @@ export class BundleInstaller {
                     scope,
                     overwrite: false,
                     skipOnConflict: false,
-                    createBackup: true
+                    createBackup: true,
                 }
             );
 
             if (!result.success) {
-                this.logger.warn(`MCP server installation had issues: ${result.errors?.join(', ')}`);
+                this.logger.warn(
+                    `MCP server installation had issues: ${result.errors?.join(', ')}`
+                );
             } else {
                 this.logger.info(`Successfully installed ${result.serversInstalled} MCP servers`);
             }
@@ -611,7 +674,10 @@ export class BundleInstaller {
                 this.logger.warn(`MCP installation warnings: ${result.warnings.join(', ')}`);
             }
         } catch (error) {
-            this.logger.error(`Failed to install MCP servers for bundle ${bundleId}`, error as Error);
+            this.logger.error(
+                `Failed to install MCP servers for bundle ${bundleId}`,
+                error as Error
+            );
             // Don't fail the entire bundle installation if MCP installation fails
         }
     }
@@ -619,21 +685,29 @@ export class BundleInstaller {
     /**
      * Uninstall MCP servers for a bundle
      */
-    private async uninstallMcpServers(bundleId: string, scope: 'user' | 'workspace'): Promise<void> {
+    private async uninstallMcpServers(
+        bundleId: string,
+        scope: 'user' | 'workspace'
+    ): Promise<void> {
         this.logger.info(`Uninstalling MCP servers for bundle ${bundleId}`);
 
         try {
             const result = await this.mcpManager.uninstallServers(bundleId, scope);
 
             if (!result.success) {
-                this.logger.warn(`MCP server uninstallation had issues: ${result.errors?.join(', ')}`);
+                this.logger.warn(
+                    `MCP server uninstallation had issues: ${result.errors?.join(', ')}`
+                );
             } else if (result.serversRemoved > 0) {
                 this.logger.info(`Successfully uninstalled ${result.serversRemoved} MCP servers`);
             } else {
                 this.logger.debug(`No MCP servers found for bundle ${bundleId}`);
             }
         } catch (error) {
-            this.logger.error(`Failed to uninstall MCP servers for bundle ${bundleId}`, error as Error);
+            this.logger.error(
+                `Failed to uninstall MCP servers for bundle ${bundleId}`,
+                error as Error
+            );
             // Don't fail the entire bundle uninstallation if MCP uninstallation fails
         }
     }
@@ -657,17 +731,21 @@ export class BundleInstaller {
      * @param isSymlink Whether the existing skill is a symlink
      * @returns True if user confirms overwrite, false otherwise
      */
-    private async promptOverwriteSkill(skillName: string, existingPath: string, isSymlink: boolean): Promise<boolean> {
+    private async promptOverwriteSkill(
+        skillName: string,
+        existingPath: string,
+        isSymlink: boolean
+    ): Promise<boolean> {
         const symlinkInfo = isSymlink ? ' (symlink)' : '';
         const message = `A skill named '${skillName}' already exists${symlinkInfo}. Do you want to overwrite it?`;
-        
+
         const result = await vscode.window.showWarningMessage(
             message,
             { modal: true },
             'Overwrite',
             'Cancel'
         );
-        
+
         return result === 'Overwrite';
     }
 
@@ -691,17 +769,21 @@ export class BundleInstaller {
             // Get the skills directory
             const skillsDir = this.copilotSync.getCopilotSkillsDirectory('user');
             await this.ensureDirectory(skillsDir);
-            
+
             const installDir = path.join(skillsDir, skillName);
-            
+
             // Check for existing skill and warn user
             if (fs.existsSync(installDir)) {
                 const existingIsSymlink = await this.isSymlink(installDir);
-                const shouldOverwrite = await this.promptOverwriteSkill(skillName, installDir, existingIsSymlink);
+                const shouldOverwrite = await this.promptOverwriteSkill(
+                    skillName,
+                    installDir,
+                    existingIsSymlink
+                );
                 if (!shouldOverwrite) {
                     throw new Error(`Installation cancelled: skill '${skillName}' already exists`);
                 }
-                
+
                 // Remove existing (symlink or directory)
                 if (existingIsSymlink) {
                     await unlink(installDir);
@@ -711,7 +793,7 @@ export class BundleInstaller {
                     this.logger.debug(`Removed existing directory: ${installDir}`);
                 }
             }
-            
+
             // Create symlink to the source directory
             try {
                 await symlink(sourcePath, installDir, 'dir');
@@ -722,31 +804,32 @@ export class BundleInstaller {
                 await this.copyDirectory(sourcePath, installDir);
                 this.logger.info(`Copied directory: ${sourcePath} -> ${installDir}`);
             }
-            
+
             // Create a minimal manifest for the installation record
             const manifest: DeploymentManifest = {
                 common: {
                     directories: [`skills/${skillName}`],
                     files: [],
                     include_patterns: ['**/*'],
-                    exclude_patterns: []
+                    exclude_patterns: [],
                 },
                 bundle_settings: {
                     include_common_in_environment_bundles: true,
                     create_common_bundle: true,
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
                     compression: 'none' as any,
                     naming: {
-                        environment_bundle: bundle.id
-                    }
+                        environment_bundle: bundle.id,
+                    },
                 },
                 metadata: {
                     manifest_version: '1.0',
                     description: bundle.description || bundle.name || bundle.id,
                     author: 'local-skills',
-                    last_updated: new Date().toISOString()
-                }
+                    last_updated: new Date().toISOString(),
+                },
             };
-            
+
             // Create installation record
             const installed: InstalledBundle = {
                 bundleId: bundle.id,
@@ -759,12 +842,14 @@ export class BundleInstaller {
                 sourceId: bundle.sourceId,
                 sourceType: 'local-skills',
             };
-            
+
             this.logger.info(`Local skill installed successfully as symlink: ${skillName}`);
             return installed;
-            
         } catch (error) {
-            this.logger.error(`Failed to install local skill as symlink: ${skillName}`, error as Error);
+            this.logger.error(
+                `Failed to install local skill as symlink: ${skillName}`,
+                error as Error
+            );
             throw error;
         }
     }
@@ -784,7 +869,7 @@ export class BundleInstaller {
             }
 
             const isLink = await this.isSymlink(installed.installPath);
-            
+
             if (isLink) {
                 // Remove only the symlink, not the target
                 await unlink(installed.installPath);
@@ -794,9 +879,11 @@ export class BundleInstaller {
                 await this.removeDirectory(installed.installPath);
                 this.logger.info(`Removed directory: ${installed.installPath}`);
             }
-            
         } catch (error) {
-            this.logger.error(`Failed to uninstall skill symlink: ${installed.bundleId}`, error as Error);
+            this.logger.error(
+                `Failed to uninstall skill symlink: ${installed.bundleId}`,
+                error as Error
+            );
             throw error;
         }
     }

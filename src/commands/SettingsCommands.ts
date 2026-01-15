@@ -4,6 +4,7 @@
  */
 
 import * as vscode from 'vscode';
+
 import { RegistryManager } from '../services/RegistryManager';
 import { ExportFormat, ImportStrategy } from '../types/settings';
 import { Logger } from '../utils/logger';
@@ -21,21 +22,21 @@ export class SettingsCommands {
             // Step 1: Choose format
             const formatChoice = await vscode.window.showQuickPick(
                 [
-                    { 
-                        label: 'JSON', 
+                    {
+                        label: 'JSON',
                         description: 'JavaScript Object Notation (widely supported)',
-                        value: 'json' as ExportFormat 
+                        value: 'json' as ExportFormat,
                     },
-                    { 
-                        label: 'YAML', 
-                        description: 'YAML Ain\'t Markup Language (human-readable)',
-                        value: 'yaml' as ExportFormat 
+                    {
+                        label: 'YAML',
+                        description: "YAML Ain't Markup Language (human-readable)",
+                        value: 'yaml' as ExportFormat,
                     },
                 ],
-                { 
+                {
                     placeHolder: 'Select export format',
                     title: 'Export Registry Settings',
-                    ignoreFocusOut: true
+                    ignoreFocusOut: true,
                 }
             );
 
@@ -50,28 +51,29 @@ export class SettingsCommands {
             // Step 3: Save to file
             const timestamp = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
             const defaultFilename = `prompt-registry-settings-${timestamp}.${formatChoice.value}`;
-            
+
             const uri = await vscode.window.showSaveDialog({
                 defaultUri: vscode.Uri.file(defaultFilename),
                 filters: {
                     [formatChoice.label]: [formatChoice.value],
                 },
-                title: 'Save Registry Settings'
+                title: 'Save Registry Settings',
             });
 
             if (uri) {
                 await vscode.workspace.fs.writeFile(uri, Buffer.from(data, 'utf-8'));
                 this.logger.info(`Settings exported to ${uri.fsPath}`);
-                
+
                 const result = await vscode.window.showInformationMessage(
                     `Settings exported successfully to ${uri.fsPath}`,
                     'Open File'
                 );
-                
+
                 if (result === 'Open File') {
                     await vscode.commands.executeCommand('vscode.open', uri);
                 }
             }
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
         } catch (error: any) {
             this.logger.error(`Failed to export settings: ${error.message}`);
             vscode.window.showErrorMessage(`Failed to export settings: ${error.message}`);
@@ -88,9 +90,9 @@ export class SettingsCommands {
                 canSelectFiles: true,
                 canSelectMany: false,
                 filters: {
-                    'Settings': ['json', 'yaml', 'yml'],
+                    Settings: ['json', 'yaml', 'yml'],
                 },
-                title: 'Import Registry Settings'
+                title: 'Import Registry Settings',
             });
 
             if (!uris || uris.length === 0) {
@@ -98,6 +100,9 @@ export class SettingsCommands {
             }
 
             const fileUri = uris[0];
+            if (!fileUri) {
+                return;
+            }
 
             // Step 2: Read file
             const content = await vscode.workspace.fs.readFile(fileUri);
@@ -105,28 +110,30 @@ export class SettingsCommands {
 
             // Step 3: Detect format
             const format: ExportFormat = fileUri.fsPath.endsWith('.json') ? 'json' : 'yaml';
-            this.logger.info(`Importing settings from ${format.toUpperCase()} file: ${fileUri.fsPath}`);
+            this.logger.info(
+                `Importing settings from ${format.toUpperCase()} file: ${fileUri.fsPath}`
+            );
 
             // Step 4: Choose strategy
             const strategyChoice = await vscode.window.showQuickPick(
                 [
-                    { 
-                        label: 'Merge', 
+                    {
+                        label: 'Merge',
                         description: 'Add imported items to existing settings (recommended)',
                         detail: 'Existing sources and profiles will be preserved',
-                        value: 'merge' as ImportStrategy
+                        value: 'merge' as ImportStrategy,
                     },
-                    { 
-                        label: 'Replace', 
+                    {
+                        label: 'Replace',
                         description: 'Delete all current settings and import new ones',
                         detail: '⚠️  Warning: All current sources, profiles, and settings will be lost',
-                        value: 'replace' as ImportStrategy
+                        value: 'replace' as ImportStrategy,
                     },
                 ],
-                { 
+                {
                     placeHolder: 'Choose import strategy',
                     title: 'Import Strategy',
-                    ignoreFocusOut: true
+                    ignoreFocusOut: true,
                 }
             );
 
@@ -142,7 +149,7 @@ export class SettingsCommands {
                     'Yes, Replace All',
                     'Cancel'
                 );
-                
+
                 if (confirm !== 'Yes, Replace All') {
                     this.logger.info('Import cancelled by user');
                     return;
@@ -158,12 +165,8 @@ export class SettingsCommands {
                 },
                 async (progress) => {
                     progress.report({ message: 'Validating settings file...' });
-                    
-                    await this.registryManager.importSettings(
-                        data, 
-                        format, 
-                        strategyChoice.value
-                    );
+
+                    await this.registryManager.importSettings(data, format, strategyChoice.value);
 
                     progress.report({ message: 'Import complete!' });
                 }
@@ -173,6 +176,7 @@ export class SettingsCommands {
             vscode.window.showInformationMessage(
                 `Settings imported successfully using ${strategyChoice.label.toLowerCase()} strategy`
             );
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
         } catch (error: any) {
             this.logger.error(`Failed to import settings: ${error.message}`);
             vscode.window.showErrorMessage(`Failed to import settings: ${error.message}`);

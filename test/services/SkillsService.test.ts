@@ -3,9 +3,9 @@
  * Tests for skills installation directory resolution and syncing
  */
 
-import * as assert from 'assert';
-import * as path from 'path';
-import * as os from 'os';
+import * as assert from 'node:assert';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
 suite('SkillsService', () => {
     suite('getSkillsDirectory', () => {
@@ -56,25 +56,26 @@ suite('SkillsService', () => {
 suite('Skill Kind Mapping', () => {
     test('should map skill kind to skill type', () => {
         const kindMap: Record<string, string> = {
-            'prompt': 'prompt',
-            'instruction': 'instructions',
+            prompt: 'prompt',
+            instruction: 'instructions',
             'chat-mode': 'chatmode',
-            'agent': 'agent',
-            'skill': 'skill'
+            agent: 'agent',
+            skill: 'skill',
         };
-        
+
         assert.strictEqual(kindMap['skill'], 'skill');
     });
 
     test('should recognize skill path pattern in collection', () => {
-        const pattern = /^(?:skills\/[^\/]+\/SKILL\.md|(prompts|instructions|agents)\/[^\/]+\.(prompt|instructions|agent)\.md)$/;
-        
+        const pattern =
+            /^(?:skills\/[^\/]+\/SKILL\.md|(prompts|instructions|agents)\/[^\/]+\.(prompt|instructions|agent)\.md)$/;
+
         assert.ok(pattern.test('skills/my-skill/SKILL.md'));
         assert.ok(pattern.test('skills/another-skill/SKILL.md'));
         assert.ok(pattern.test('prompts/test.prompt.md'));
         assert.ok(pattern.test('instructions/test.instructions.md'));
         assert.ok(pattern.test('agents/test.agent.md'));
-        
+
         assert.ok(!pattern.test('skills/SKILL.md'));
         assert.ok(!pattern.test('skills/my-skill/skill.md'));
         assert.ok(!pattern.test('prompts/test.md'));
@@ -90,7 +91,7 @@ suite('Skill Content Type', () => {
             const match = itemPath.match(/\.(prompt|instructions|chatmode|agent)\.md$/);
             return match ? match[1] : 'prompt';
         };
-        
+
         assert.strictEqual(detectType('skills/my-skill/SKILL.md'), 'skill');
         assert.strictEqual(detectType('prompts/test.prompt.md'), 'prompt');
         assert.strictEqual(detectType('instructions/test.instructions.md'), 'instructions');

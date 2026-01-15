@@ -3,7 +3,8 @@
  * Tests mapping of APM manifest format to Prompt Registry Bundle format
  */
 
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+
 import { ApmPackageMapper, ApmManifest, PackageContext } from '../../src/adapters/ApmPackageMapper';
 
 suite('ApmPackageMapper', () => {
@@ -180,7 +181,10 @@ suite('ApmPackageMapper', () => {
 
             const bundle = mapper.toBundle(manifest, context);
 
-            assert.strictEqual((bundle as any).apmPackageRef, 'test-owner/test-repo/packages/my-pkg');
+            assert.strictEqual(
+                (bundle as any).apmPackageRef,
+                'test-owner/test-repo/packages/my-pkg'
+            );
         });
 
         test('should generate correct manifest URL', () => {
@@ -277,7 +281,7 @@ suite('ApmPackageMapper', () => {
         });
 
         test('should handle null/undefined tags gracefully', () => {
-            const manifest: ApmManifest = { 
+            const manifest: ApmManifest = {
                 name: 'Test',
                 tags: undefined,
             };

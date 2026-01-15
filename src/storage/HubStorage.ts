@@ -3,10 +3,12 @@
  * Handles persistence, caching, and file operations for hub configs
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import * as yaml from 'js-yaml';
-import { HubConfig, HubReference, sanitizeHubId , ProfileActivationState } from '../types/hub';
+
+import { HubConfig, HubReference, sanitizeHubId, ProfileActivationState } from '../types/hub';
 
 /**
  * Hub metadata stored alongside configuration
@@ -59,7 +61,9 @@ export class HubStorage {
         try {
             sanitizeHubId(hubId);
         } catch (error) {
-            throw new Error(`Invalid hub ID: ${error instanceof Error ? error.message : String(error)}`);
+            throw new Error(
+                `Invalid hub ID: ${error instanceof Error ? error.message : String(error)}`
+            );
         }
     }
 
@@ -71,7 +75,7 @@ export class HubStorage {
     private getHubPaths(hubId: string): { config: string; meta: string } {
         return {
             config: path.join(this.storagePath, `${hubId}.yml`),
-            meta: path.join(this.storagePath, `${hubId}.meta.json`)
+            meta: path.join(this.storagePath, `${hubId}.meta.json`),
         };
     }
 
@@ -91,7 +95,7 @@ export class HubStorage {
             const yamlContent = yaml.dump(config, {
                 indent: 2,
                 lineWidth: 120,
-                noRefs: true
+                noRefs: true,
             });
             fs.writeFileSync(paths.config, yamlContent, 'utf-8');
 
@@ -99,14 +103,16 @@ export class HubStorage {
             const metadata: HubMetadata = {
                 reference,
                 lastModified: new Date(),
-                size: Buffer.byteLength(yamlContent, 'utf-8')
+                size: Buffer.byteLength(yamlContent, 'utf-8'),
             };
             fs.writeFileSync(paths.meta, JSON.stringify(metadata, null, 2), 'utf-8');
 
             // Update cache
             this.cache.set(hubId, { config, reference });
         } catch (error) {
-            throw new Error(`Failed to save hub '${hubId}': ${error instanceof Error ? error.message : String(error)}`);
+            throw new Error(
+                `Failed to save hub '${hubId}': ${error instanceof Error ? error.message : String(error)}`
+            );
         }
     }
 
@@ -146,7 +152,7 @@ export class HubStorage {
                 // Fallback if metadata doesn't exist
                 reference = {
                     type: 'local',
-                    location: paths.config
+                    location: paths.config,
                 };
             }
 
@@ -157,7 +163,9 @@ export class HubStorage {
 
             return result;
         } catch (error) {
-            throw new Error(`Failed to load hub '${hubId}': ${error instanceof Error ? error.message : String(error)}`);
+            throw new Error(
+                `Failed to load hub '${hubId}': ${error instanceof Error ? error.message : String(error)}`
+            );
         }
     }
 
@@ -212,7 +220,9 @@ export class HubStorage {
             // Remove from cache
             this.cache.delete(hubId);
         } catch (error) {
-            throw new Error(`Failed to delete hub '${hubId}': ${error instanceof Error ? error.message : String(error)}`);
+            throw new Error(
+                `Failed to delete hub '${hubId}': ${error instanceof Error ? error.message : String(error)}`
+            );
         }
     }
 
@@ -234,7 +244,9 @@ export class HubStorage {
 
             return hubIds;
         } catch (error) {
-            throw new Error(`Failed to list hubs: ${error instanceof Error ? error.message : String(error)}`);
+            throw new Error(
+                `Failed to list hubs: ${error instanceof Error ? error.message : String(error)}`
+            );
         }
     }
 
@@ -256,7 +268,9 @@ export class HubStorage {
             const metaContent = fs.readFileSync(paths.meta, 'utf-8');
             return JSON.parse(metaContent) as HubMetadata;
         } catch (error) {
-            throw new Error(`Failed to get metadata for hub '${hubId}': ${error instanceof Error ? error.message : String(error)}`);
+            throw new Error(
+                `Failed to get metadata for hub '${hubId}': ${error instanceof Error ? error.message : String(error)}`
+            );
         }
     }
 
@@ -319,10 +333,7 @@ export class HubStorage {
     /**
      * Delete profile activation state
      */
-    async deleteProfileActivationState(
-        hubId: string,
-        profileId: string
-    ): Promise<void> {
+    async deleteProfileActivationState(hubId: string, profileId: string): Promise<void> {
         const statePath = path.join(
             this.storagePath,
             'profile-activations',
@@ -349,10 +360,7 @@ export class HubStorage {
 
         for (const file of files) {
             if (file.endsWith('.json')) {
-                const content = await fs.promises.readFile(
-                    path.join(stateDir, file),
-                    'utf-8'
-                );
+                const content = await fs.promises.readFile(path.join(stateDir, file), 'utf-8');
                 states.push(JSON.parse(content));
             }
         }
@@ -365,20 +373,16 @@ export class HubStorage {
      */
     async getActiveProfileForHub(hubId: string): Promise<ProfileActivationState | null> {
         const allActive = await this.listActiveProfiles();
-        return allActive.find(state => state.hubId === hubId) || null;
+        return allActive.find((state) => state.hubId === hubId) || null;
     }
 
     /**
      * Set profile active flag in hub config
      */
-    async setProfileActiveFlag(
-        hubId: string,
-        profileId: string,
-        active: boolean
-    ): Promise<void> {
+    async setProfileActiveFlag(hubId: string, profileId: string, active: boolean): Promise<void> {
         const hubData = await this.loadHub(hubId);
 
-        const profile = hubData.config.profiles.find(p => p.id === profileId);
+        const profile = hubData.config.profiles.find((p) => p.id === profileId);
         if (!profile) {
             throw new Error(`Profile not found: ${profileId} in hub ${hubId}`);
         }
@@ -394,7 +398,7 @@ export class HubStorage {
      */
     async getActiveHubId(): Promise<string | null> {
         const activeHubPath = path.join(this.storagePath, 'activeHubId.json');
-        
+
         if (!fs.existsSync(activeHubPath)) {
             return null;
         }
@@ -404,6 +408,7 @@ export class HubStorage {
             const data = JSON.parse(content);
             return data.hubId || null;
         } catch (error) {
+            // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
             console.error('Failed to read active hub ID:', error);
             return null;
         }
@@ -434,13 +439,9 @@ export class HubStorage {
         // Write active hub ID
         const data = {
             hubId,
-            setAt: new Date().toISOString()
+            setAt: new Date().toISOString(),
         };
-        await fs.promises.writeFile(
-            activeHubPath,
-            JSON.stringify(data, null, 2),
-            'utf-8'
-        );
+        await fs.promises.writeFile(activeHubPath, JSON.stringify(data, null, 2), 'utf-8');
     }
 
     /**

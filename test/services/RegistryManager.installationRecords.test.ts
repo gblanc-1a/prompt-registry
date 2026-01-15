@@ -3,13 +3,15 @@
  * Tests for Requirements 1.2, 4.5, 5.1
  */
 
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
+
+import { BundleInstaller } from '../../src/services/BundleInstaller';
 import { RegistryManager } from '../../src/services/RegistryManager';
 import { RegistryStorage } from '../../src/storage/RegistryStorage';
-import { BundleInstaller } from '../../src/services/BundleInstaller';
-import { InstalledBundle, Bundle, RegistrySource } from '../../src/types/registry';
+import { InstalledBundle } from '../../src/types/registry';
 
 suite('RegistryManager - Installation Record Management', () => {
     let context: vscode.ExtensionContext;
@@ -124,7 +126,7 @@ suite('RegistryManager - Installation Record Management', () => {
         });
 
         test('should handle missing installation record gracefully', async () => {
-            storageStub.getInstalledBundle.resolves(undefined);
+            storageStub.getInstalledBundle.resolves();
 
             // Verify that getInstalledBundle returns undefined for non-existent bundle
             const result = await storageStub.getInstalledBundle('non-existent', 'user');

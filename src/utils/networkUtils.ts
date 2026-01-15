@@ -1,4 +1,5 @@
 import axios, { AxiosRequestConfig, AxiosResponse } from 'axios';
+
 import { Logger } from './logger';
 
 /**
@@ -25,7 +26,7 @@ export class NetworkUtils {
     public static async downloadFile(
         url: string,
         onProgress?: (progress: number) => void,
-        timeout: number = 300000
+        timeout: number = 300_000
     ): Promise<Buffer> {
         try {
             this.logger.debug(`Downloading file from: ${url}`);
@@ -38,7 +39,7 @@ export class NetworkUtils {
                         const progress = (progressEvent.loaded / progressEvent.total) * 100;
                         onProgress(progress);
                     }
-                }
+                },
             });
 
             return Buffer.from(response.data);
@@ -57,14 +58,17 @@ export class NetworkUtils {
         maxRetries: number = 3,
         retryDelay: number = 1000
     ): Promise<AxiosResponse<T>> {
-        let lastError: Error = new Error("No attempts made");
+        let lastError: Error = new Error('No attempts made');
 
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
                 return await axios.get<T>(url, config);
             } catch (error) {
                 lastError = error as Error;
-                this.logger.warn(`GET request failed (attempt ${attempt}/${maxRetries}): ${url}`, error as Error);
+                this.logger.warn(
+                    `GET request failed (attempt ${attempt}/${maxRetries}): ${url}`,
+                    error as Error
+                );
 
                 if (attempt < maxRetries) {
                     await this.delay(retryDelay * attempt);
@@ -72,7 +76,7 @@ export class NetworkUtils {
             }
         }
 
-        throw lastError || new Error("All retry attempts failed");
+        throw lastError || new Error('All retry attempts failed');
     }
 
     /**
@@ -82,7 +86,7 @@ export class NetworkUtils {
         const testUrls = [
             'https://api.github.com',
             'https://www.google.com',
-            'https://www.cloudflare.com'
+            'https://www.cloudflare.com',
         ];
 
         for (const url of testUrls) {
@@ -127,7 +131,7 @@ export class NetworkUtils {
         }
 
         const url = new URL(baseUrl);
-        
+
         for (const [key, value] of Object.entries(params)) {
             url.searchParams.set(key, String(value));
         }
@@ -142,7 +146,7 @@ export class NetworkUtils {
         try {
             const response = await axios.head(url);
             const contentLength = response.headers['content-length'];
-            return contentLength ? parseInt(contentLength, 10) : null;
+            return contentLength ? Number.parseInt(contentLength, 10) : null;
         } catch {
             return null;
         }
@@ -152,7 +156,7 @@ export class NetworkUtils {
      * Delay execution for specified milliseconds
      */
     private static async delay(ms: number): Promise<void> {
-        return new Promise(resolve => setTimeout(resolve, ms));
+        return new Promise((resolve) => setTimeout(resolve, ms));
     }
 
     /**

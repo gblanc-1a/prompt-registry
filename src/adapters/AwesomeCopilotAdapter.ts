@@ -1,9 +1,9 @@
 /**
  * Awesome Copilot Collection Adapter
- * 
+ *
  * Adapter for github/awesome-copilot style collection repositories.
  * Discovers .collection.yml files and exposes them as Prompt Registry bundles.
- * 
+ *
  * Collection Format:
  * ```yaml
  * id: azure-cloud-development
@@ -20,15 +20,18 @@
  * ```
  */
 
-import * as https from 'https';
+import { exec } from 'node:child_process';
+import * as https from 'node:https';
+import { promisify } from 'node:util';
+
+import archiver from 'archiver';
 import * as yaml from 'js-yaml';
 import * as vscode from 'vscode';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import archiver from 'archiver';
-import { RepositoryAdapter } from './RepositoryAdapter';
+
 import { Bundle, RegistrySource, ValidationResult, SourceMetadata } from '../types/registry';
 import { Logger } from '../utils/logger';
+
+import { RepositoryAdapter } from './RepositoryAdapter';
 
 const execAsync = promisify(exec);
 
@@ -48,8 +51,10 @@ interface CollectionManifest {
         show_badge?: boolean;
     };
     mcp?: {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
         items?: Record<string, any>;
     };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     mcpServers?: Record<string, any>;
 }
 
@@ -80,16 +85,16 @@ export interface AwesomeCopilotConfig {
 
 /**
  * AwesomeCopilotAdapter
- * 
+ *
  * Fetches bundles from awesome-copilot style collection repositories.
- * 
+ *
  * Features:
  * - Configurable repository URL (not hardcoded)
  * - Automatic collection discovery
  * - Content type mapping (prompt/instruction/chatmode/agent)
  * - Cache for performance
  * - GitHub API integration
- * 
+ *
  * Usage:
  * ```typescript
  * const source: RegistrySource = {
@@ -115,12 +120,13 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
     constructor(source: RegistrySource) {
         super(source);
         this.logger = Logger.getInstance();
-        
+
         // Parse config
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
         const userConfig = (source as any).config || {};
         this.config = {
             branch: userConfig.branch || 'main',
-            collectionsPath: userConfig.collectionsPath || 'collections'
+            collectionsPath: userConfig.collectionsPath || 'collections',
         };
 
         this.logger.info(`AwesomeCopilotAdapter initialized for: ${source.url}`);
@@ -130,7 +136,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
      * Fetch list of available bundles from the source
      * Scans the collections directory for .collection.yml files and creates Bundle objects.
      * Results are cached for 5 minutes to reduce API calls.
-     * 
+     *
      * @returns Promise resolving to array of Bundle objects from collection files
      * @throws Error if GitHub API fails or collection parsing fails
      */
@@ -156,16 +162,20 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
 
             for (let i = 0; i < collectionFiles.length; i += CONCURRENCY_LIMIT) {
                 const chunk = collectionFiles.slice(i, i + CONCURRENCY_LIMIT);
-                this.logger.debug(`Processing chunk ${i / CONCURRENCY_LIMIT + 1}/${Math.ceil(collectionFiles.length / CONCURRENCY_LIMIT)}`);
+                this.logger.debug(
+                    `Processing chunk ${i / CONCURRENCY_LIMIT + 1}/${Math.ceil(collectionFiles.length / CONCURRENCY_LIMIT)}`
+                );
 
-                const chunkResults = await Promise.all(chunk.map(async (file) => {
-                    try {
-                        return await this.parseCollection(file);
-                    } catch (error) {
-                        this.logger.warn(`Failed to parse collection ${file}:`, error as Error);
-                        return null;
-                    }
-                }));
+                const chunkResults = await Promise.all(
+                    chunk.map(async (file) => {
+                        try {
+                            return await this.parseCollection(file);
+                        } catch (error) {
+                            this.logger.warn(`Failed to parse collection ${file}:`, error as Error);
+                            return null;
+                        }
+                    })
+                );
 
                 for (const bundle of chunkResults) {
                     if (bundle) {
@@ -178,10 +188,11 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
             this.collectionsCache.set(cacheKey, { bundles, timestamp: Date.now() });
 
             return bundles;
-
         } catch (error) {
             this.logger.error('Failed to list bundles', error as Error);
-            throw new Error(`Failed to list awesome-copilot collections: ${(error as Error).message}`);
+            throw new Error(
+                `Failed to list awesome-copilot collections: ${(error as Error).message}`
+            );
         }
     }
 
@@ -189,7 +200,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
      * Download a bundle as a dynamically-created zip archive
      * Fetches all items referenced in the collection and creates a ZIP file on the fly.
      * The archive includes prompts, instructions, and a deployment manifest.
-     * 
+     *
      * @param bundle - Bundle object containing collection metadata
      * @returns Promise resolving to Buffer containing the ZIP archive
      * @throws Error if collection fetch fails or archive creation fails
@@ -199,21 +210,25 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
 
         try {
             // Find collection file from bundle metadata
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
             const collectionFile = (bundle as any).collectionFile || `${bundle.id}.collection.yml`;
             this.logger.debug(`Collection file: ${collectionFile}`);
-            
+
             // Parse collection
-            const collectionUrl = this.buildRawUrl(`${this.config.collectionsPath}/${collectionFile}`);
+            const collectionUrl = this.buildRawUrl(
+                `${this.config.collectionsPath}/${collectionFile}`
+            );
             this.logger.debug(`Fetching collection from: ${collectionUrl}`);
             const yamlContent = await this.fetchUrl(collectionUrl);
             const collection = yaml.load(yamlContent) as CollectionManifest;
-            this.logger.debug(`Collection loaded: ${collection.name}, items: ${collection.items.length}`);
+            this.logger.debug(
+                `Collection loaded: ${collection.name}, items: ${collection.items.length}`
+            );
 
             // Create zip archive
             const buffer = await this.createBundleArchive(collection, collectionFile);
             this.logger.debug(`Archive created: ${buffer.length} bytes`);
             return buffer;
-
         } catch (error) {
             this.logger.error('Failed to download bundle', error as Error);
             throw new Error(`Failed to download bundle: ${(error as Error).message}`);
@@ -223,7 +238,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
     /**
      * Fetch repository metadata
      * Retrieves information about the awesome-copilot repository including collection count.
-     * 
+     *
      * @returns Promise resolving to SourceMetadata with repository info
      * @throws Error if repository access fails or collection listing fails
      */
@@ -237,7 +252,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
                 description: `Awesome Copilot collections from ${this.source.url}`,
                 bundleCount: collectionFiles.length,
                 lastUpdated: new Date().toISOString(),
-                version: '1.0.0'
+                version: '1.0.0',
             };
         } catch (error) {
             throw new Error(`Failed to fetch metadata: ${(error as Error).message}`);
@@ -247,34 +262,34 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
     /**
      * Get manifest URL for a bundle
      * Returns the raw GitHub URL to the collection YAML file.
-     * 
+     *
      * @param bundleId - Bundle identifier matching the collection filename
      * @param version - Optional version (not used, always uses configured branch)
      * @returns URL string pointing to collection .yml file on GitHub raw content
      */
-    getManifestUrl(bundleId: string, version?: string): string {
-        const collectionFile = `${bundleId}.collection.yml`;
+    getManifestUrl(_bundleId: string, _version?: string): string {
+        const collectionFile = `${_bundleId}.collection.yml`;
         return this.buildRawUrl(`${this.config.collectionsPath}/${collectionFile}`);
     }
 
     /**
      * Get download URL for a bundle
      * Returns the collection YAML URL (bundles are created dynamically, not pre-packaged).
-     * 
+     *
      * @param bundleId - Bundle identifier matching the collection filename
      * @param version - Optional version (not used, always uses configured branch)
      * @returns URL string pointing to collection .yml file on GitHub raw content
      */
-    getDownloadUrl(bundleId: string, version?: string): string {
+    getDownloadUrl(_bundleId: string, _version?: string): string {
         // For awesome-copilot, download URL is same as manifest URL
         // (we download and package on the fly)
-        return this.getManifestUrl(bundleId, version);
+        return this.getManifestUrl(_bundleId, _version);
     }
 
     /**
      * Validate repository structure
      * Checks if the collections directory exists and contains at least one collection file.
-     * 
+     *
      * @returns Promise resolving to ValidationResult with status and any errors/warnings
      */
     async validate(): Promise<ValidationResult> {
@@ -282,16 +297,18 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
             // Check if collections directory exists
             const apiUrl = this.buildApiUrl(`${this.config.collectionsPath}`);
             const content = await this.fetchUrl(apiUrl);
-            
+
             const files = JSON.parse(content) as GitHubContent[];
-            const collectionFiles = files.filter(f => f.type === 'file' && f.name.endsWith('.collection.yml'));
+            const collectionFiles = files.filter(
+                (f) => f.type === 'file' && f.name.endsWith('.collection.yml')
+            );
 
             if (collectionFiles.length === 0) {
                 return {
                     valid: false,
                     errors: ['No .collection.yml files found in collections directory'],
                     warnings: [],
-                    bundlesFound: 0
+                    bundlesFound: 0,
                 };
             }
 
@@ -299,15 +316,14 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
                 valid: true,
                 errors: [],
                 warnings: [],
-                bundlesFound: collectionFiles.length
+                bundlesFound: collectionFiles.length,
             };
-
         } catch (error) {
             return {
                 valid: false,
                 errors: [`Failed to validate repository: ${(error as Error).message}`],
                 warnings: [],
-                bundlesFound: 0
+                bundlesFound: 0,
             };
         }
     }
@@ -318,11 +334,11 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
     private async listCollectionFiles(): Promise<string[]> {
         const apiUrl = this.buildApiUrl(`${this.config.collectionsPath}`);
         const content = await this.fetchUrl(apiUrl);
-        
+
         const files = JSON.parse(content) as GitHubContent[];
         return files
-            .filter(f => f.type === 'file' && f.name.endsWith('.collection.yml'))
-            .map(f => f.name);
+            .filter((f) => f.type === 'file' && f.name.endsWith('.collection.yml'))
+            .map((f) => f.name);
     }
 
     /**
@@ -330,7 +346,9 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
      */
     private async parseCollection(collectionFile: string): Promise<Bundle | null> {
         try {
-            const collectionUrl = this.buildRawUrl(`${this.config.collectionsPath}/${collectionFile}`);
+            const collectionUrl = this.buildRawUrl(
+                `${this.config.collectionsPath}/${collectionFile}`
+            );
             const yamlContent = await this.fetchUrl(collectionUrl);
             const collection = yaml.load(yamlContent) as CollectionManifest;
 
@@ -352,15 +370,16 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
                 lastUpdated: new Date().toISOString(),
                 size: `${collection.items.length} items`,
                 dependencies: [],
-                license: 'MIT'
+                license: 'MIT',
             };
 
             // Store collection file name for download
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
             (bundle as any).collectionFile = collectionFile;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
             (bundle as any).breakdown = breakdown;
 
             return bundle;
-
         } catch (error) {
             this.logger.error(`Failed to parse collection ${collectionFile}`, error as Error);
             return null;
@@ -370,27 +389,30 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
     /**
      * Create a zip archive containing collection files
      */
-    private async createBundleArchive(collection: CollectionManifest, collectionFile: string): Promise<Buffer> {
+    private async createBundleArchive(
+        collection: CollectionManifest,
+        _collectionFile: string
+    ): Promise<Buffer> {
         this.logger.debug(`Creating archive for collection: ${collection.name}`);
-        
+
         return new Promise<Buffer>((resolve, reject) => {
             // Use IIFE to handle async operations within Promise executor
             (async () => {
                 try {
                     const archive = archiver('zip', { zlib: { level: 9 } });
                     const chunks: Buffer[] = [];
-                    let totalSize = 0;
 
                     // Collect data chunks
                     archive.on('data', (chunk: Buffer) => {
                         chunks.push(chunk);
-                        totalSize += chunk.length;
                     });
 
                     // Resolve when archive is finalized
                     archive.on('finish', () => {
                         const buffer = Buffer.concat(chunks);
-                        this.logger.debug(`Archive finalized: ${buffer.length} bytes (${chunks.length} chunks)`);
+                        this.logger.debug(
+                            `Archive finalized: ${buffer.length} bytes (${chunks.length} chunks)`
+                        );
                         resolve(buffer);
                     });
 
@@ -415,7 +437,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
                     for (const item of collection.items) {
                         const itemUrl = this.buildRawUrl(item.path);
                         const content = await this.fetchUrl(itemUrl);
-                        
+
                         // For skills, preserve directory structure
                         if (item.kind === 'skill') {
                             // item.path is like skills/my-skill/SKILL.md
@@ -432,7 +454,6 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
                     // Finalize the archive (this triggers 'finish' event when complete)
                     this.logger.debug('Finalizing archive...');
                     archive.finalize();
-
                 } catch (error) {
                     this.logger.error('Failed to create archive', error as Error);
                     reject(error);
@@ -444,26 +465,30 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
     /**
      * Create deployment manifest from collection
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     private createDeploymentManifest(collection: CollectionManifest): any {
-        const prompts = collection.items.map(item => {
+        const prompts = collection.items.map((item) => {
             const itemKind = item.kind;
             const itemPath = item.path;
-            
+
             // For skills, preserve the full path (skills/skill-name/SKILL.md)
             if (itemKind === 'skill') {
                 // Extract skill name from path like skills/my-skill/SKILL.md
                 const skillMatch = itemPath.match(/skills\/([^/]+)\/SKILL\.md/);
-                const skillName = skillMatch ? skillMatch[1] : 'unknown-skill';
+                const skillName = skillMatch?.[1];
+                if (!skillName) {
+                    throw new Error(`Invalid skill path format: ${itemPath}`);
+                }
                 return {
                     id: skillName,
                     name: this.titleCase(skillName.replace(/-/g, ' ')),
                     description: `Skill from ${collection.name}`,
-                    file: itemPath,  // Preserve full path for skills
+                    file: itemPath, // Preserve full path for skills
                     type: 'skill' as const,
-                    tags: collection.tags || []
+                    tags: collection.tags || [],
                 };
             }
-            
+
             // For other types, use prompts/ folder
             const filename = itemPath.split('/').pop() || 'unknown';
             const id = filename.replace(/\.(prompt|instructions|chatmode|agent)\.md$/, '');
@@ -474,13 +499,13 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
                 description: `From ${collection.name}`,
                 file: `prompts/${filename}`,
                 type: this.mapKindToType(itemKind),
-                tags: collection.tags || []
+                tags: collection.tags || [],
             };
         });
 
         // Extract MCP servers from either 'mcp.items' or 'mcpServers' field
         const mcpServers = collection.mcpServers || collection.mcp?.items;
-        
+
         return {
             id: collection.id,
             name: collection.name,
@@ -491,21 +516,24 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
             license: 'MIT',
             tags: collection.tags || [],
             prompts,
-            ...(mcpServers && Object.keys(mcpServers).length > 0 ? { mcpServers } : {})
+            ...(mcpServers && Object.keys(mcpServers).length > 0 ? { mcpServers } : {}),
         };
     }
 
     /**
      * Map collection kind to Prompt Registry type
      */
-    private mapKindToType(kind: string): 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill' {
-        const kindMap: Record<string, 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill'> = {
-            'prompt': 'prompt',
-            'instruction': 'instructions',
-            'chat-mode': 'chatmode',
-            'agent': 'agent',
-            'skill': 'skill'
-        };
+    private mapKindToType(
+        kind: string
+    ): 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill' {
+        const kindMap: Record<string, 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill'> =
+            {
+                prompt: 'prompt',
+                instruction: 'instructions',
+                'chat-mode': 'chatmode',
+                agent: 'agent',
+                skill: 'skill',
+            };
         return kindMap[kind] || 'prompt';
     }
 
@@ -518,7 +546,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
             instructions: 0,
             chatmodes: 0,
             agents: 0,
-            skills: 0
+            skills: 0,
         };
 
         for (const item of items) {
@@ -549,14 +577,14 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
      */
     private inferEnvironments(tags: string[]): string[] {
         const envMap: Record<string, string> = {
-            'azure': 'cloud',
-            'aws': 'cloud',
-            'gcp': 'cloud',
-            'frontend': 'web',
-            'backend': 'server',
-            'database': 'data',
-            'devops': 'infrastructure',
-            'testing': 'testing'
+            azure: 'cloud',
+            aws: 'cloud',
+            gcp: 'cloud',
+            frontend: 'web',
+            backend: 'server',
+            database: 'data',
+            devops: 'infrastructure',
+            testing: 'testing',
         };
 
         const environments = new Set<string>();
@@ -592,8 +620,8 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
     private parseGitHubUrl(): { owner: string; repo: string } {
         const url = this.source.url.replace(/\.git$/, '');
         const match = url.match(/github\.com[/:]([^/]+)\/([^/]+)/);
-        
-        if (!match) {
+
+        if (!match || !match[1] || !match[2]) {
             throw new Error(`Invalid GitHub URL: ${this.source.url}`);
         }
 
@@ -614,17 +642,17 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
      */
     async forceAuthentication(): Promise<void> {
         this.logger.info('[AwesomeCopilotAdapter] Forcing re-authentication...');
-        
+
         // Clear current state
         this.authToken = undefined;
         this.authMethod = 'none';
 
         // Force new session with VS Code
         try {
-            const session = await vscode.authentication.getSession('github', ['repo'], { 
-                forceNewSession: true 
+            const session = await vscode.authentication.getSession('github', ['repo'], {
+                forceNewSession: true,
             });
-            
+
             if (session) {
                 this.authToken = session.accessToken;
                 this.authMethod = 'vscode';
@@ -645,7 +673,9 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
     private async getAuthenticationToken(): Promise<string | undefined> {
         // Return cached token if already resolved
         if (this.authToken !== undefined) {
-            this.logger.debug(`[AwesomeCopilotAdapter] Using cached token (method: ${this.authMethod})`);
+            this.logger.debug(
+                `[AwesomeCopilotAdapter] Using cached token (method: ${this.authMethod})`
+            );
             return this.authToken;
         }
 
@@ -654,12 +684,16 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
         // Try VSCode GitHub authentication first
         try {
             this.logger.debug('[AwesomeCopilotAdapter] Trying VSCode GitHub authentication...');
-            const session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: true });
+            const session = await vscode.authentication.getSession('github', ['repo'], {
+                createIfNone: true,
+            });
             if (session) {
                 this.authToken = session.accessToken;
                 this.authMethod = 'vscode';
                 this.logger.info('[AwesomeCopilotAdapter] ✓ Using VSCode GitHub authentication');
-                this.logger.debug(`[AwesomeCopilotAdapter] Token preview: ${this.authToken.substring(0, 8)}...`);
+                this.logger.debug(
+                    `[AwesomeCopilotAdapter] Token preview: ${this.authToken.substring(0, 8)}...`
+                );
                 return this.authToken;
             }
             this.logger.debug('[AwesomeCopilotAdapter] VSCode auth session not found');
@@ -676,7 +710,9 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
                 this.authToken = token;
                 this.authMethod = 'gh-cli';
                 this.logger.info('[AwesomeCopilotAdapter] ✓ Using gh CLI authentication');
-                this.logger.debug(`[AwesomeCopilotAdapter] Token preview: ${this.authToken.substring(0, 8)}...`);
+                this.logger.debug(
+                    `[AwesomeCopilotAdapter] Token preview: ${this.authToken.substring(0, 8)}...`
+                );
                 return this.authToken;
             }
             this.logger.debug('[AwesomeCopilotAdapter] gh CLI returned empty token');
@@ -690,13 +726,17 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
             this.authToken = explicitToken;
             this.authMethod = 'explicit';
             this.logger.info('[AwesomeCopilotAdapter] ✓ Using explicit token from configuration');
-            this.logger.debug(`[AwesomeCopilotAdapter] Token preview: ${this.authToken.substring(0, 8)}...`);
+            this.logger.debug(
+                `[AwesomeCopilotAdapter] Token preview: ${this.authToken.substring(0, 8)}...`
+            );
             return this.authToken;
         }
 
         // No authentication available
         this.authMethod = 'none';
-        this.logger.warn('[AwesomeCopilotAdapter] ✗ No authentication available - API rate limits will apply and private repos will be inaccessible');
+        this.logger.warn(
+            '[AwesomeCopilotAdapter] ✗ No authentication available - API rate limits will apply and private repos will be inaccessible'
+        );
         return undefined;
     }
 
@@ -706,12 +746,14 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
     private async fetchUrl(url: string): Promise<string> {
         const token = await this.getAuthenticationToken();
         const headers: Record<string, string> = {
-            'User-Agent': 'VSCode-Prompt-Registry'
+            'User-Agent': 'VSCode-Prompt-Registry',
         };
-        
+
         if (token) {
             headers['Authorization'] = `token ${token}`;
-            this.logger.debug(`[AwesomeCopilotAdapter] Request to ${url} with auth (method: ${this.authMethod})`);
+            this.logger.debug(
+                `[AwesomeCopilotAdapter] Request to ${url} with auth (method: ${this.authMethod})`
+            );
         } else {
             this.logger.debug(`[AwesomeCopilotAdapter] Request to ${url} WITHOUT auth`);
         }
@@ -719,40 +761,56 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
         // Log headers (sanitized)
         const sanitizedHeaders = { ...headers };
         if (sanitizedHeaders['Authorization']) {
-            sanitizedHeaders['Authorization'] = sanitizedHeaders['Authorization'].substring(0, 15) + '...';
+            sanitizedHeaders['Authorization'] =
+                sanitizedHeaders['Authorization'].substring(0, 15) + '...';
         }
-        this.logger.debug(`[AwesomeCopilotAdapter] Request headers: ${JSON.stringify(sanitizedHeaders)}`);
+        this.logger.debug(
+            `[AwesomeCopilotAdapter] Request headers: ${JSON.stringify(sanitizedHeaders)}`
+        );
 
         return new Promise((resolve, reject) => {
-            https.get(url, { headers }, (res) => {
-                let data = '';
-                res.on('data', chunk => data += chunk);
-                res.on('end', () => {
-                    if (res.statusCode === 200) {
-                        this.logger.debug(`[AwesomeCopilotAdapter] Response OK (${res.statusCode}), ${data.length} bytes`);
-                        resolve(data);
-                    } else {
-                        this.logger.error(`[AwesomeCopilotAdapter] HTTP ${res.statusCode}: ${res.statusMessage}`);
-                        this.logger.error(`[AwesomeCopilotAdapter] URL: ${url}`);
-                        this.logger.error(`[AwesomeCopilotAdapter] Auth method: ${this.authMethod}`);
-                        this.logger.error(`[AwesomeCopilotAdapter] Response: ${data.substring(0, 500)}`);
-                        
-                        // Provide helpful error messages
-                        let errorMsg = `HTTP ${res.statusCode}: ${res.statusMessage}`;
-                        if (res.statusCode === 404) {
-                            errorMsg += ' - Repository not found or not accessible. Check authentication.';
-                        } else if (res.statusCode === 401) {
-                            errorMsg += ' - Authentication failed. Token may be invalid or expired.';
-                        } else if (res.statusCode === 403) {
-                            errorMsg += ' - Access forbidden. Token may lack required scopes (repo).';
+            https
+                .get(url, { headers }, (res) => {
+                    let data = '';
+                    res.on('data', (chunk) => (data += chunk));
+                    res.on('end', () => {
+                        if (res.statusCode === 200) {
+                            this.logger.debug(
+                                `[AwesomeCopilotAdapter] Response OK (${res.statusCode}), ${data.length} bytes`
+                            );
+                            resolve(data);
+                        } else {
+                            this.logger.error(
+                                `[AwesomeCopilotAdapter] HTTP ${res.statusCode}: ${res.statusMessage}`
+                            );
+                            this.logger.error(`[AwesomeCopilotAdapter] URL: ${url}`);
+                            this.logger.error(
+                                `[AwesomeCopilotAdapter] Auth method: ${this.authMethod}`
+                            );
+                            this.logger.error(
+                                `[AwesomeCopilotAdapter] Response: ${data.substring(0, 500)}`
+                            );
+
+                            // Provide helpful error messages
+                            let errorMsg = `HTTP ${res.statusCode}: ${res.statusMessage}`;
+                            if (res.statusCode === 404) {
+                                errorMsg +=
+                                    ' - Repository not found or not accessible. Check authentication.';
+                            } else if (res.statusCode === 401) {
+                                errorMsg +=
+                                    ' - Authentication failed. Token may be invalid or expired.';
+                            } else if (res.statusCode === 403) {
+                                errorMsg +=
+                                    ' - Access forbidden. Token may lack required scopes (repo).';
+                            }
+                            reject(new Error(errorMsg));
                         }
-                        reject(new Error(errorMsg));
-                    }
+                    });
+                })
+                .on('error', (error) => {
+                    this.logger.error(`[AwesomeCopilotAdapter] Network error: ${error.message}`);
+                    reject(error);
                 });
-            }).on('error', (error) => {
-                this.logger.error(`[AwesomeCopilotAdapter] Network error: ${error.message}`);
-                reject(error);
-            });
         });
     }
 
@@ -762,7 +820,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
     private titleCase(str: string): string {
         return str
             .split(' ')
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+            .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
             .join(' ');
     }
 }

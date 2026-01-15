@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
+
 import { UpdateCheckResult } from '../services/UpdateCache';
+
 import { BaseNotificationService } from './BaseNotificationService';
 
 export interface BundleUpdateNotificationOptions {
@@ -13,7 +15,7 @@ export interface BundleUpdateNotificationOptions {
  */
 export class BundleUpdateNotifications extends BaseNotificationService {
     private bundleNameResolver?: (bundleId: string) => Promise<string>;
-    
+
     constructor(bundleNameResolver?: (bundleId: string) => Promise<string>) {
         super();
         this.bundleNameResolver = bundleNameResolver;
@@ -33,7 +35,7 @@ export class BundleUpdateNotifications extends BaseNotificationService {
         }
         return bundleId;
     }
-    
+
     /**
      * Show notification for available bundle updates
      * Groups multiple updates into a single notification
@@ -42,29 +44,36 @@ export class BundleUpdateNotifications extends BaseNotificationService {
         if (this.shouldSkipNotification(options.updates, options.notificationPreference)) {
             return;
         }
-        
+
         // Filter updates based on preference
-        const updatesToShow = this.filterUpdatesByPreference(options.updates, options.notificationPreference);
-        
-        const message = await this.buildUpdateMessage(updatesToShow);
-        const action = await this.showSuccessWithActions(
-            message,
-            ['Update Now', 'View Changes', 'Dismiss']
+        const updatesToShow = this.filterUpdatesByPreference(
+            options.updates,
+            options.notificationPreference
         );
-        
+
+        const message = await this.buildUpdateMessage(updatesToShow);
+        const action = await this.showSuccessWithActions(message, [
+            'Update Now',
+            'View Changes',
+            'Dismiss',
+        ]);
+
         await this.handleNotificationAction(action, updatesToShow);
     }
 
     /**
      * Filter updates based on notification preference
      */
-    private filterUpdatesByPreference(updates: UpdateCheckResult[], preference: string): UpdateCheckResult[] {
+    private filterUpdatesByPreference(
+        updates: UpdateCheckResult[],
+        preference: string
+    ): UpdateCheckResult[] {
         if (preference === 'critical') {
-            return updates.filter(update => this.isCriticalUpdate(update));
+            return updates.filter((update) => this.isCriticalUpdate(update));
         }
         return updates;
     }
-    
+
     /**
      * Show notification after auto-update completes
      * For single bundle update
@@ -78,26 +87,20 @@ export class BundleUpdateNotifications extends BaseNotificationService {
         const message = `✅ ${bundleName} auto-updated: ${oldVersion} → ${newVersion}`;
         await this.showSuccessWithActions(message, ['View Bundle', 'Settings']);
     }
-    
+
     /**
      * Show notification for bundle update failure
      */
-    async showUpdateFailure(
-        bundleId: string,
-        error: string
-    ): Promise<void> {
+    async showUpdateFailure(bundleId: string, error: string): Promise<void> {
         const bundleName = await this.getBundleDisplayName(bundleId);
         const message = `Failed to update ${bundleName}: ${error}`;
-        const action = await this.showErrorWithActions(
-            message,
-            ['Retry', 'Show Logs', 'Dismiss']
-        );
-        
+        const action = await this.showErrorWithActions(message, ['Retry', 'Show Logs', 'Dismiss']);
+
         if (action === 'Show Logs') {
             this.logger.show();
         }
     }
-    
+
     /**
      * Show batch update summary
      * Groups all successful and failed updates into a single notification
@@ -107,42 +110,43 @@ export class BundleUpdateNotifications extends BaseNotificationService {
         failed: Array<{ bundleId: string; error: string }>
     ): Promise<void> {
         const parts: string[] = [];
-        
+
         if (successful.length > 0) {
             const successfulNames = await Promise.all(
-                successful.map(id => this.getBundleDisplayName(id))
+                successful.map((id) => this.getBundleDisplayName(id))
             );
             parts.push(`✅ ${successful.length} updated: ${successfulNames.join(', ')}`);
         }
-        
+
         if (failed.length > 0) {
             const failedNames = await Promise.all(
-                failed.map(f => this.getBundleDisplayName(f.bundleId))
+                failed.map((f) => this.getBundleDisplayName(f.bundleId))
             );
             parts.push(`❌ ${failed.length} failed: ${failedNames.join(', ')}`);
         }
-        
+
         const message = `Batch update complete\n${parts.join('\n')}`;
-        
-        const action = failed.length > 0 
-            ? await this.showWarningWithActions(message, ['Show Details', 'Dismiss'])
-            : await this.showSuccessWithActions(message, ['Dismiss']);
-        
+
+        const action =
+            failed.length > 0
+                ? await this.showWarningWithActions(message, ['Show Details', 'Dismiss'])
+                : await this.showSuccessWithActions(message, ['Dismiss']);
+
         if (action === 'Show Details' && failed.length > 0) {
             // Show detailed error information
             const details = await Promise.all(
-                failed.map(async f => {
+                failed.map(async (f) => {
                     const bundleName = await this.getBundleDisplayName(f.bundleId);
                     return `${bundleName}: ${f.error}`;
                 })
             );
-            await this.showErrorWithActions(
-                `Update failures:\n${details.join('\n')}`,
-                ['Show Logs', 'Dismiss']
-            );
+            await this.showErrorWithActions(`Update failures:\n${details.join('\n')}`, [
+                'Show Logs',
+                'Dismiss',
+            ]);
         }
     }
-    
+
     /**
      * Build message for update notification
      * Handles both single and multiple updates
@@ -150,29 +154,32 @@ export class BundleUpdateNotifications extends BaseNotificationService {
     private async buildUpdateMessage(updates: UpdateCheckResult[]): Promise<string> {
         if (updates.length === 1) {
             const update = updates[0];
+            if (!update) {
+                return 'Update available';
+            }
             const bundleName = await this.getBundleDisplayName(update.bundleId);
             return `Update available for ${bundleName}: v${update.currentVersion} → v${update.latestVersion}`;
         }
-        
+
         // Multiple updates - list them all
         const updateList = await Promise.all(
-            updates.map(async u => {
+            updates.map(async (u) => {
                 const bundleName = await this.getBundleDisplayName(u.bundleId);
                 return `• ${bundleName}: v${u.currentVersion} → v${u.latestVersion}`;
             })
         );
-        
+
         return `${updates.length} bundle updates available:\n${updateList.join('\n')}`;
     }
-    
+
     private shouldSkipNotification(updates: UpdateCheckResult[], preference: string): boolean {
         if (preference === 'none') {
             return true;
         }
-        
+
         if (preference === 'critical') {
             // Filter to only critical updates (major version changes or security updates)
-            const criticalUpdates = updates.filter(update => this.isCriticalUpdate(update));
+            const criticalUpdates = updates.filter((update) => this.isCriticalUpdate(update));
             if (criticalUpdates.length === 0) {
                 this.logger.debug('No critical updates found, skipping notification');
                 return true;
@@ -180,7 +187,7 @@ export class BundleUpdateNotifications extends BaseNotificationService {
             // Continue with critical updates only
             return false;
         }
-        
+
         return false;
     }
 
@@ -192,16 +199,25 @@ export class BundleUpdateNotifications extends BaseNotificationService {
         try {
             const currentParts = update.currentVersion.split('.').map(Number);
             const latestParts = update.latestVersion.split('.').map(Number);
-            
+
+            const currentMajor = currentParts[0];
+            const latestMajor = latestParts[0];
+
             // Major version change is considered critical
-            return latestParts[0] > currentParts[0];
+            return (
+                latestMajor !== undefined &&
+                currentMajor !== undefined &&
+                latestMajor > currentMajor
+            );
         } catch (error) {
             // If version parsing fails, treat as critical to be safe
-            this.logger.warn(`Failed to parse versions for ${update.bundleId}, treating as critical`);
+            this.logger.warn(
+                `Failed to parse versions for ${update.bundleId}, treating as critical`
+            );
             return true;
         }
     }
-    
+
     private async handleNotificationAction(
         action: string | undefined,
         updates: UpdateCheckResult[]
@@ -210,19 +226,27 @@ export class BundleUpdateNotifications extends BaseNotificationService {
             case 'Update Now':
                 // Trigger update command
                 if (updates.length === 1) {
-                    await vscode.commands.executeCommand('promptRegistry.updateBundle', updates[0].bundleId);
+                    const firstUpdate = updates[0];
+                    if (firstUpdate) {
+                        await vscode.commands.executeCommand(
+                            'promptRegistry.updateBundle',
+                            firstUpdate.bundleId
+                        );
+                    }
                 } else {
                     await vscode.commands.executeCommand('promptRegistry.updateAllBundles');
                 }
                 break;
-            case 'View Changes':
+            case 'View Changes': {
                 // Open release notes for first update
-                if (updates.length > 0 && updates[0].releaseNotes) {
-                    await vscode.env.openExternal(vscode.Uri.parse(updates[0].releaseNotes));
+                const firstUpdate = updates[0];
+                if (updates.length > 0 && firstUpdate && firstUpdate.releaseNotes) {
+                    await vscode.env.openExternal(vscode.Uri.parse(firstUpdate.releaseNotes));
                 } else {
                     this.logger.warn('No release notes available for viewing');
                 }
                 break;
+            }
         }
     }
 }

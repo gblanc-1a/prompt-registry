@@ -1,15 +1,15 @@
 import * as fs from 'fs-extra';
-import * as path from 'path';
-import { Logger } from '../utils/logger';
-import { McpConfigLocator } from '../utils/mcpConfigLocator';
+
 import {
     McpConfiguration,
     McpServerConfig,
     McpServerDefinition,
     McpTrackingMetadata,
     McpVariableContext,
-    McpInstallOptions
+    McpInstallOptions,
 } from '../types/mcp';
+import { Logger } from '../utils/logger';
+import { McpConfigLocator } from '../utils/mcpConfigLocator';
 
 export class McpConfigService {
     private readonly logger: Logger;
@@ -35,12 +35,19 @@ export class McpConfigService {
             const config = JSON.parse(content) as McpConfiguration;
             return config;
         } catch (error) {
-            this.logger.error(`Failed to read mcp.json from ${location.configPath}`, error as Error);
+            this.logger.error(
+                `Failed to read mcp.json from ${location.configPath}`,
+                error as Error
+            );
             throw new Error(`Failed to read MCP configuration: ${(error as Error).message}`);
         }
     }
 
-    async writeMcpConfig(config: McpConfiguration, scope: 'user' | 'workspace', createBackup = true): Promise<void> {
+    async writeMcpConfig(
+        config: McpConfiguration,
+        scope: 'user' | 'workspace',
+        createBackup = true
+    ): Promise<void> {
         const location = McpConfigLocator.getMcpConfigLocation(scope);
         if (!location) {
             throw new Error(`Cannot determine ${scope}-level configuration path`);
@@ -68,11 +75,11 @@ export class McpConfigService {
             throw new Error(`Cannot determine ${scope}-level configuration path`);
         }
 
-        if (!await fs.pathExists(location.trackingPath)) {
+        if (!(await fs.pathExists(location.trackingPath))) {
             return {
                 managedServers: {},
                 lastUpdated: new Date().toISOString(),
-                version: McpConfigService.SCHEMA_VERSION
+                version: McpConfigService.SCHEMA_VERSION,
             };
         }
 
@@ -80,12 +87,18 @@ export class McpConfigService {
             const content = await fs.readFile(location.trackingPath, 'utf-8');
             return JSON.parse(content) as McpTrackingMetadata;
         } catch (error) {
-            this.logger.error(`Failed to read tracking metadata from ${location.trackingPath}`, error as Error);
+            this.logger.error(
+                `Failed to read tracking metadata from ${location.trackingPath}`,
+                error as Error
+            );
             throw new Error(`Failed to read tracking metadata: ${(error as Error).message}`);
         }
     }
 
-    async writeTrackingMetadata(metadata: McpTrackingMetadata, scope: 'user' | 'workspace'): Promise<void> {
+    async writeTrackingMetadata(
+        metadata: McpTrackingMetadata,
+        scope: 'user' | 'workspace'
+    ): Promise<void> {
         const location = McpConfigLocator.getMcpConfigLocation(scope);
         if (!location) {
             throw new Error(`Cannot determine ${scope}-level configuration path`);
@@ -100,7 +113,10 @@ export class McpConfigService {
             await fs.writeFile(location.trackingPath, content, 'utf-8');
             this.logger.debug(`Tracking metadata written to ${location.trackingPath}`);
         } catch (error) {
-            this.logger.error(`Failed to write tracking metadata to ${location.trackingPath}`, error as Error);
+            this.logger.error(
+                `Failed to write tracking metadata to ${location.trackingPath}`,
+                error as Error
+            );
             throw new Error(`Failed to write tracking metadata: ${(error as Error).message}`);
         }
     }
@@ -111,16 +127,19 @@ export class McpConfigService {
 
     parseServerPrefix(prefixedName: string): { bundleId: string; serverName: string } | null {
         const match = prefixedName.match(/^prompt-registry:([^:]+):(.+)$/);
-        if (!match) {
+        if (!match || !match[1] || !match[2]) {
             return null;
         }
         return {
             bundleId: match[1],
-            serverName: match[2]
+            serverName: match[2],
         };
     }
 
-    substituteVariables(value: string | undefined, context: McpVariableContext): string | undefined {
+    substituteVariables(
+        value: string | undefined,
+        context: McpVariableContext
+    ): string | undefined {
         if (!value) {
             return value;
         }
@@ -149,20 +168,22 @@ export class McpConfigService {
             bundlePath,
             bundleId,
             bundleVersion,
-            env: process.env as Record<string, string>
+            env: process.env as Record<string, string>,
         };
 
         return {
             command: this.substituteVariables(definition.command, context)!,
-            args: definition.args?.map(arg => this.substituteVariables(arg, context)!),
-            env: definition.env ? Object.fromEntries(
-                Object.entries(definition.env).map(([k, v]) => [
-                    k,
-                    this.substituteVariables(v, context)!
-                ])
-            ) : undefined,
+            args: definition.args?.map((arg: string) => this.substituteVariables(arg, context)!),
+            env: definition.env
+                ? Object.fromEntries(
+                      Object.entries(definition.env).map(([k, v]) => [
+                          k,
+                          this.substituteVariables(v as string | undefined, context)!,
+                      ])
+                  )
+                : undefined,
             disabled: definition.disabled,
-            description: definition.description
+            description: definition.description,
         };
     }
 
@@ -174,7 +195,7 @@ export class McpConfigService {
         const result: McpConfiguration = {
             servers: { ...existingConfig.servers },
             tasks: existingConfig.tasks ? { ...existingConfig.tasks } : undefined,
-            inputs: existingConfig.inputs ? [...existingConfig.inputs] : undefined
+            inputs: existingConfig.inputs ? [...existingConfig.inputs] : undefined,
         };
         const conflicts: string[] = [];
         const warnings: string[] = [];
@@ -239,7 +260,7 @@ export class McpConfigService {
         }
 
         const backupPath = location.configPath + McpConfigService.BACKUP_SUFFIX;
-        if (!await fs.pathExists(backupPath)) {
+        if (!(await fs.pathExists(backupPath))) {
             return false;
         }
 

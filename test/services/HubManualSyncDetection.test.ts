@@ -3,12 +3,13 @@
  * Tests for detecting profile changes and conflicts
  */
 
-import * as assert from 'assert';
-import * as path from 'path';
-import * as fs from 'fs';
-import { HubStorage } from '../../src/storage/HubStorage';
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import { HubManager } from '../../src/services/HubManager';
-import { HubConfig, HubProfile } from '../../src/types/hub';
+import { HubStorage } from '../../src/storage/HubStorage';
+import { HubConfig } from '../../src/types/hub';
 
 suite('Hub Manual Sync Detection', () => {
     let storage: HubStorage;
@@ -21,7 +22,7 @@ suite('Hub Manual Sync Detection', () => {
             name: 'Test Hub',
             description: 'Test hub',
             maintainer: 'Test',
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
         },
         sources: [
             {
@@ -32,9 +33,9 @@ suite('Hub Manual Sync Detection', () => {
                 enabled: true,
                 priority: 1,
                 metadata: {
-                    description: 'Test source'
-                }
-            }
+                    description: 'Test source',
+                },
+            },
         ],
         profiles: [
             {
@@ -46,15 +47,15 @@ suite('Hub Manual Sync Detection', () => {
                         id: 'bundle-1',
                         version: '1.0.0',
                         source: 'test-source',
-                        required: true
-                    }
+                        required: true,
+                    },
                 ],
                 icon: '📦',
                 active: false,
                 createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
-            }
-        ]
+                updatedAt: new Date().toISOString(),
+            },
+        ],
     });
 
     setup(() => {
@@ -80,7 +81,7 @@ suite('Hub Manual Sync Detection', () => {
 
             // Modify the hub's profile
             // Add small delay to ensure updatedAt > activatedAt (timestamp precision issue)
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
             const updated = await storage.loadHub('test-hub');
             updated.config.profiles[0].description = 'Updated description';
             updated.config.profiles[0].updatedAt = new Date(Date.now() + 1000).toISOString();
@@ -110,7 +111,7 @@ suite('Hub Manual Sync Detection', () => {
                 id: 'bundle-2',
                 version: '1.0.0',
                 source: 'test-source',
-                required: false
+                required: false,
             });
             updated.config.profiles[0].updatedAt = new Date(Date.now() + 1000).toISOString();
             await storage.saveHub('test-hub', updated.config, updated.reference);
@@ -128,14 +129,16 @@ suite('Hub Manual Sync Detection', () => {
                 id: 'bundle-2',
                 version: '1.0.0',
                 source: 'test-source',
-                required: false
+                required: false,
             });
             await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
             await hubManager.activateProfile('test-hub', 'profile-1', { installBundles: false });
 
             // Remove a bundle
             const updated = await storage.loadHub('test-hub');
-            updated.config.profiles[0].bundles = updated.config.profiles[0].bundles.filter(b => b.id !== 'bundle-2');
+            updated.config.profiles[0].bundles = updated.config.profiles[0].bundles.filter(
+                (b) => b.id !== 'bundle-2'
+            );
             updated.config.profiles[0].updatedAt = new Date(Date.now() + 1000).toISOString();
             await storage.saveHub('test-hub', updated.config, updated.reference);
 
@@ -172,7 +175,7 @@ suite('Hub Manual Sync Detection', () => {
             await hubManager.activateProfile('test-hub', 'profile-1', { installBundles: false });
 
             // Wait a bit to ensure timestamp difference
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             // Update metadata
             const updated = await storage.loadHub('test-hub');
@@ -193,10 +196,10 @@ suite('Hub Manual Sync Detection', () => {
         test('should track last sync timestamp', async () => {
             const hub = createTestHub();
             await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
-            
-            const beforeSync = new Date().getTime();
+
+            const beforeSync = Date.now();
             await hubManager.activateProfile('test-hub', 'profile-1', { installBundles: false });
-            const afterSync = new Date().getTime();
+            const afterSync = Date.now();
 
             const state = await storage.getProfileActivationState('test-hub', 'profile-1');
             assert.ok(state);
@@ -214,7 +217,7 @@ suite('Hub Manual Sync Detection', () => {
             const firstSync = new Date(state1.activatedAt).getTime();
 
             // Wait a bit and sync again
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
             await hubManager.syncProfile('test-hub', 'profile-1');
 
             const state2 = await storage.getProfileActivationState('test-hub', 'profile-1');
@@ -229,7 +232,7 @@ suite('Hub Manual Sync Detection', () => {
             await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
             await hubManager.activateProfile('test-hub', 'profile-1', { installBundles: false });
 
-            await new Promise(resolve => setTimeout(resolve, 100));
+            await new Promise((resolve) => setTimeout(resolve, 100));
 
             const timeSince = await hubManager.getTimeSinceLastSync('test-hub', 'profile-1');
             assert.ok(timeSince);
@@ -279,7 +282,7 @@ suite('Hub Manual Sync Detection', () => {
                 icon: '��',
                 active: false,
                 createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
+                updatedAt: new Date().toISOString(),
             });
             await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
             await hubManager.activateProfile('test-hub', 'profile-1', { installBundles: false });
@@ -313,7 +316,7 @@ suite('Hub Manual Sync Detection', () => {
             await hubManager.activateProfile('test-hub', 'profile-1', { installBundles: false });
 
             // Wait a bit to ensure timestamp difference
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             // Make multiple changes
             const updated = await storage.loadHub('test-hub');
@@ -322,7 +325,7 @@ suite('Hub Manual Sync Detection', () => {
                 id: 'bundle-2',
                 version: '1.0.0',
                 source: 'test-source',
-                required: false
+                required: false,
             });
             updated.config.profiles[0].bundles[0].version = '2.0.0';
             updated.config.profiles[0].updatedAt = new Date(Date.now() + 1000).toISOString();

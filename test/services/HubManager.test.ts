@@ -3,14 +3,16 @@
  * Tests for hub orchestration logic
  */
 
-import * as assert from 'assert';
-import * as path from 'path';
-import * as fs from 'fs';
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import * as yaml from 'js-yaml';
+
 import { HubManager } from '../../src/services/HubManager';
+import { ValidationResult } from '../../src/services/SchemaValidator';
 import { HubStorage } from '../../src/storage/HubStorage';
 import { HubConfig, HubReference } from '../../src/types/hub';
-import { ValidationResult } from '../../src/services/SchemaValidator';
 
 // Mock SchemaValidator for unit tests
 class MockSchemaValidator {
@@ -27,13 +29,13 @@ class MockSchemaValidator {
             return {
                 valid: false,
                 errors: this.errors.length > 0 ? this.errors : ['Schema validation failed'],
-                warnings: []
+                warnings: [],
             };
         }
         return {
             valid: true,
             errors: [],
-            warnings: []
+            warnings: [],
         };
     }
 }
@@ -46,7 +48,7 @@ suite('HubManager', () => {
 
     const localRef: HubReference = {
         type: 'local',
-        location: ''  // Will be set in setup
+        location: '', // Will be set in setup
     };
 
     setup(() => {
@@ -65,7 +67,13 @@ suite('HubManager', () => {
         // Initialize services
         storage = new HubStorage(tempDir);
         mockValidator = new MockSchemaValidator();
-        hubManager = new HubManager(storage, mockValidator as any, process.cwd(), undefined, undefined);
+        hubManager = new HubManager(
+            storage,
+            mockValidator as any,
+            process.cwd(),
+            undefined,
+            undefined
+        );
     });
 
     teardown(() => {
@@ -81,7 +89,13 @@ suite('HubManager', () => {
 
         test('should throw if storage is missing', () => {
             assert.throws(() => {
-                new HubManager(null as any, mockValidator as any, process.cwd(), undefined, undefined);
+                new HubManager(
+                    null as any,
+                    mockValidator as any,
+                    process.cwd(),
+                    undefined,
+                    undefined
+                );
             }, /storage is required/);
         });
 
@@ -111,13 +125,10 @@ suite('HubManager', () => {
         test('should fail if local file does not exist', async () => {
             const badRef: HubReference = {
                 type: 'local',
-                location: '/non/existent/file.yml'
+                location: '/non/existent/file.yml',
             };
 
-            await assert.rejects(
-                async () => await hubManager.importHub(badRef),
-                /File not found/
-            );
+            await assert.rejects(async () => await hubManager.importHub(badRef), /File not found/);
         });
 
         test('should fail if hub config is invalid', async () => {
@@ -239,7 +250,7 @@ suite('HubManager', () => {
 
             const syncRef: HubReference = {
                 type: 'local',
-                location: tempFixture
+                location: tempFixture,
             };
 
             // Import initial hub
@@ -303,7 +314,7 @@ suite('HubManager', () => {
     suite('Reference Validation', () => {
         test('should fail with missing type', async () => {
             const badRef: any = {
-                location: 'somewhere'
+                location: 'somewhere',
             };
 
             await assert.rejects(
@@ -314,7 +325,7 @@ suite('HubManager', () => {
 
         test('should fail with missing location', async () => {
             const badRef: any = {
-                type: 'local'
+                type: 'local',
             };
 
             await assert.rejects(
@@ -326,7 +337,7 @@ suite('HubManager', () => {
         test('should fail with invalid GitHub location', async () => {
             const badRef: HubReference = {
                 type: 'github',
-                location: 'invalid-format'
+                location: 'invalid-format',
             };
 
             await assert.rejects(
@@ -339,7 +350,7 @@ suite('HubManager', () => {
             // This will fail at fetch stage, but reference validation should pass
             const validRef: HubReference = {
                 type: 'github',
-                location: 'owner/repo'
+                location: 'owner/repo',
             };
 
             // Will fail at fetch, not at validation
@@ -372,10 +383,10 @@ suite('HubManager', () => {
 
         test('should set and retrieve active hub', async () => {
             const hubId = await hubManager.importHub(localRef, 'test-active-hub');
-            
+
             await hubManager.setActiveHub(hubId);
             const activeHub = await hubManager.getActiveHub();
-            
+
             assert.ok(activeHub, 'Should return active hub');
             assert.ok(activeHub.config, 'Should have config');
             assert.ok(activeHub.reference, 'Should have reference');
@@ -384,11 +395,11 @@ suite('HubManager', () => {
         test('should update active hub when changed', async () => {
             const hubId1 = await hubManager.importHub(localRef, 'test-hub-1');
             const hubId2 = await hubManager.importHub(localRef, 'test-hub-2');
-            
+
             await hubManager.setActiveHub(hubId1);
             let activeHub = await hubManager.getActiveHub();
             assert.ok(activeHub, 'First hub should be active');
-            
+
             await hubManager.setActiveHub(hubId2);
             activeHub = await hubManager.getActiveHub();
             assert.ok(activeHub, 'Second hub should be active');
@@ -396,12 +407,16 @@ suite('HubManager', () => {
 
         test('should return null after clearing active hub', async () => {
             const hubId = await hubManager.importHub(localRef, 'test-clear-hub');
-            
+
             await hubManager.setActiveHub(hubId);
             assert.ok(await hubManager.getActiveHub(), 'Hub should be active');
-            
+
             await hubManager.setActiveHub(null);
-            assert.strictEqual(await hubManager.getActiveHub(), null, 'Active hub should be cleared');
+            assert.strictEqual(
+                await hubManager.getActiveHub(),
+                null,
+                'Active hub should be cleared'
+            );
         });
 
         test('should reject setting non-existent hub as active', async () => {
@@ -415,12 +430,12 @@ suite('HubManager', () => {
         test('should list profiles from active hub only', async () => {
             const hubId1 = await hubManager.importHub(localRef, 'test-profiles-hub-1');
             const hubId2 = await hubManager.importHub(localRef, 'test-profiles-hub-2');
-            
+
             // Set first hub as active
             await hubManager.setActiveHub(hubId1);
-            
+
             const profiles = await hubManager.listActiveHubProfiles();
-            
+
             // Verify all profiles belong to the active hub
             for (const profile of profiles) {
                 assert.strictEqual(profile.hubId, hubId1, 'Profile should belong to active hub');
@@ -433,9 +448,9 @@ suite('HubManager', () => {
             // Import a hub (fixture should have some profiles, but we can test the flow)
             const hubId = await hubManager.importHub(localRef, 'test-no-profiles');
             await hubManager.setActiveHub(hubId);
-            
+
             const profiles = await hubManager.listActiveHubProfiles();
-            
+
             // Fixture has profiles, so this will have items, but we're testing the method works
             assert.ok(Array.isArray(profiles), 'Should return an array');
         });
@@ -449,14 +464,14 @@ suite('HubManager', () => {
         test('should auto-clear invalid active hub ID', async () => {
             const hubId = await hubManager.importHub(localRef, 'test-auto-clear');
             await hubManager.setActiveHub(hubId);
-            
+
             // Manually delete the hub
             await hubManager.deleteHub(hubId);
-            
+
             // Try to get active hub - should auto-clear and return null
             const activeHub = await hubManager.getActiveHub();
             assert.strictEqual(activeHub, null, 'Should auto-clear invalid hub ID');
-            
+
             // Verify it was cleared in storage
             const activeHubId = await storage.getActiveHubId();
             assert.strictEqual(activeHubId, null, 'Storage should have cleared active hub ID');
@@ -465,13 +480,10 @@ suite('HubManager', () => {
         test('should handle concurrent setActiveHub calls', async () => {
             const hubId1 = await hubManager.importHub(localRef, 'concurrent-1');
             const hubId2 = await hubManager.importHub(localRef, 'concurrent-2');
-            
+
             // Concurrent updates
-            await Promise.all([
-                hubManager.setActiveHub(hubId1),
-                hubManager.setActiveHub(hubId2)
-            ]);
-            
+            await Promise.all([hubManager.setActiveHub(hubId1), hubManager.setActiveHub(hubId2)]);
+
             const activeHub = await hubManager.getActiveHub();
             assert.ok(activeHub, 'Should have an active hub');
         });
@@ -490,7 +502,7 @@ suite('HubManager', () => {
             await hubManager.toggleProfileFavorite(hubId, profileId);
             let isFav = await hubManager.isProfileFavorite(hubId, profileId);
             assert.strictEqual(isFav, true);
-            
+
             favorites = await hubManager.getFavoriteProfiles();
             assert.deepStrictEqual(favorites[hubId], [profileId]);
 
@@ -498,7 +510,7 @@ suite('HubManager', () => {
             await hubManager.toggleProfileFavorite(hubId, profileId);
             isFav = await hubManager.isProfileFavorite(hubId, profileId);
             assert.strictEqual(isFav, false);
-            
+
             favorites = await hubManager.getFavoriteProfiles();
             // Should be empty array or undefined depending on implementation cleanup
             // Implementation: if (favorites[hubId].length === 0) { delete favorites[hubId]; }
@@ -512,12 +524,12 @@ suite('HubManager', () => {
             // Manually corrupt storage to have duplicates (if possible via API? No, API toggles)
             // But let's verify API doesn't add duplicate if we call it weirdly?
             // Actually API toggles. If we call it twice, it adds then removes.
-            
+
             // Let's verify standard behavior first
             await hubManager.toggleProfileFavorite(hubId, profileId);
             await hubManager.toggleProfileFavorite(hubId, profileId); // Remove
             await hubManager.toggleProfileFavorite(hubId, profileId); // Add back
-            
+
             const favorites = await hubManager.getFavoriteProfiles();
             assert.strictEqual(favorites[hubId].length, 1);
             assert.strictEqual(favorites[hubId][0], profileId);
@@ -538,11 +550,11 @@ suite('HubManager', () => {
         test('listProfilesFromHub should reflect active state', async () => {
             // Import a hub with profiles
             const hubId = await hubManager.importHub(localRef, 'active-state-hub');
-            
+
             // Initially no profiles are active
             let profiles = await hubManager.listProfilesFromHub(hubId);
             assert.ok(profiles.length > 0);
-            assert.ok(profiles.every(p => !p.active));
+            assert.ok(profiles.every((p) => !p.active));
 
             // Mark one profile as active in storage
             const profileToActivate = profiles[0];
@@ -550,21 +562,20 @@ suite('HubManager', () => {
                 hubId,
                 profileId: profileToActivate.id,
                 activatedAt: new Date().toISOString(),
-                syncedBundles: []
+                syncedBundles: [],
             });
 
             // Check if active state is reflected
             profiles = await hubManager.listProfilesFromHub(hubId);
-            const activeProfile = profiles.find(p => p.id === profileToActivate.id);
+            const activeProfile = profiles.find((p) => p.id === profileToActivate.id);
             assert.ok(activeProfile);
             assert.strictEqual(activeProfile.active, true);
-            
+
             // Check others are still inactive
-            const otherProfiles = profiles.filter(p => p.id !== profileToActivate.id);
+            const otherProfiles = profiles.filter((p) => p.id !== profileToActivate.id);
             if (otherProfiles.length > 0) {
-                assert.ok(otherProfiles.every(p => !p.active));
+                assert.ok(otherProfiles.every((p) => !p.active));
             }
         });
     });
-
 });

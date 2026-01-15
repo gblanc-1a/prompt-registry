@@ -3,11 +3,13 @@
  * Validates: Requirements 6.3
  */
 
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
-import { UpdateScheduler } from '../../src/services/UpdateScheduler';
+
 import { UpdateChecker } from '../../src/services/UpdateChecker';
+import { UpdateScheduler } from '../../src/services/UpdateScheduler';
 import { Logger } from '../../src/utils/logger';
 
 suite('Configuration Validation', () => {
@@ -24,9 +26,9 @@ suite('Configuration Validation', () => {
                 get: sandbox.stub(),
                 update: sandbox.stub(),
                 keys: sandbox.stub().returns([]),
-                setKeysForSync: sandbox.stub()
+                setKeysForSync: sandbox.stub(),
             },
-            subscriptions: []
+            subscriptions: [],
         } as any;
 
         // Stub Logger.warn to capture warnings
@@ -40,15 +42,18 @@ suite('Configuration Validation', () => {
     suite('UpdateScheduler Configuration Validation', () => {
         test('should accept valid frequency values', async () => {
             const validFrequencies = ['daily', 'weekly', 'manual'];
-            
+
             for (const frequency of validFrequencies) {
                 // Each scheduler instance is disposed after use to avoid timer leaks.
                 // Mock configuration
                 const configStub = sandbox.stub(vscode.workspace, 'getConfiguration');
                 configStub.withArgs('promptregistry.updateCheck').returns({
-                    get: sandbox.stub()
-                        .withArgs('enabled', true).returns(true)
-                        .withArgs('frequency', 'daily').returns(frequency)
+                    get: sandbox
+                        .stub()
+                        .withArgs('enabled', true)
+                        .returns(true)
+                        .withArgs('frequency', 'daily')
+                        .returns(frequency),
                 } as any);
 
                 const scheduler = new UpdateScheduler(mockContext as any, mockUpdateChecker as any);
@@ -56,9 +61,10 @@ suite('Configuration Validation', () => {
 
                 // Should not log any warnings for valid values
                 assert.strictEqual(
-                    loggerWarnStub.getCalls().filter(call => 
-                        call.args[0].includes('Invalid update check frequency')
-                    ).length,
+                    loggerWarnStub
+                        .getCalls()
+                        .filter((call) => call.args[0].includes('Invalid update check frequency'))
+                        .length,
                     0,
                     `Should not warn for valid frequency "${frequency}"`
                 );
@@ -72,23 +78,26 @@ suite('Configuration Validation', () => {
 
         test('should fallback to default for invalid frequency', async () => {
             const invalidFrequency = 'hourly';
-            
+
             // Mock configuration with invalid frequency
             const configStub = sandbox.stub(vscode.workspace, 'getConfiguration');
             configStub.withArgs('promptregistry.updateCheck').returns({
-                get: sandbox.stub()
-                    .withArgs('enabled', true).returns(true)
-                    .withArgs('frequency', 'daily').returns(invalidFrequency)
+                get: sandbox
+                    .stub()
+                    .withArgs('enabled', true)
+                    .returns(true)
+                    .withArgs('frequency', 'daily')
+                    .returns(invalidFrequency),
             } as any);
 
             const scheduler = new UpdateScheduler(mockContext as any, mockUpdateChecker as any);
             await scheduler.initialize();
 
             // Should log warning for invalid value
-            const warningCalls = loggerWarnStub.getCalls().filter(call => 
-                call.args[0].includes('Invalid update check frequency')
-            );
-            
+            const warningCalls = loggerWarnStub
+                .getCalls()
+                .filter((call) => call.args[0].includes('Invalid update check frequency'));
+
             assert.strictEqual(warningCalls.length, 1, 'Should log warning for invalid frequency');
             assert.ok(
                 warningCalls[0].args[0].includes(invalidFrequency),
@@ -106,15 +115,19 @@ suite('Configuration Validation', () => {
 
         test('should accept valid notification preferences', async () => {
             const validPreferences = ['all', 'critical', 'none'];
-            
+
             for (const preference of validPreferences) {
                 // Mock configuration
                 const configStub = sandbox.stub(vscode.workspace, 'getConfiguration');
                 configStub.withArgs('promptregistry.updateCheck').returns({
-                    get: sandbox.stub()
-                        .withArgs('enabled', true).returns(true)
-                        .withArgs('frequency', 'daily').returns('daily')
-                        .withArgs('notificationPreference', 'all').returns(preference)
+                    get: sandbox
+                        .stub()
+                        .withArgs('enabled', true)
+                        .returns(true)
+                        .withArgs('frequency', 'daily')
+                        .returns('daily')
+                        .withArgs('notificationPreference', 'all')
+                        .returns(preference),
                 } as any);
 
                 // Mock update checker to return empty results
@@ -128,9 +141,10 @@ suite('Configuration Validation', () => {
 
                 // Should not log any warnings for valid values
                 assert.strictEqual(
-                    loggerWarnStub.getCalls().filter(call => 
-                        call.args[0].includes('Invalid notification preference')
-                    ).length,
+                    loggerWarnStub
+                        .getCalls()
+                        .filter((call) => call.args[0].includes('Invalid notification preference'))
+                        .length,
                     0,
                     `Should not warn for valid preference "${preference}"`
                 );
@@ -144,14 +158,18 @@ suite('Configuration Validation', () => {
 
         test('should fallback to default for invalid notification preference', async () => {
             const invalidPreference = 'some';
-            
+
             // Mock configuration with invalid preference
             const configStub = sandbox.stub(vscode.workspace, 'getConfiguration');
             configStub.withArgs('promptregistry.updateCheck').returns({
-                get: sandbox.stub()
-                    .withArgs('enabled', true).returns(true)
-                    .withArgs('frequency', 'daily').returns('daily')
-                    .withArgs('notificationPreference', 'all').returns(invalidPreference)
+                get: sandbox
+                    .stub()
+                    .withArgs('enabled', true)
+                    .returns(true)
+                    .withArgs('frequency', 'daily')
+                    .returns('daily')
+                    .withArgs('notificationPreference', 'all')
+                    .returns(invalidPreference),
             } as any);
 
             // Mock update checker to return updates (to trigger notification)
@@ -162,8 +180,8 @@ suite('Configuration Validation', () => {
                     latestVersion: '2.0.0',
                     releaseDate: new Date().toISOString(),
                     downloadUrl: 'https://example.com/bundle.zip',
-                    autoUpdateEnabled: false
-                }
+                    autoUpdateEnabled: false,
+                },
             ]);
 
             const scheduler = new UpdateScheduler(mockContext as any, mockUpdateChecker as any);
@@ -173,10 +191,10 @@ suite('Configuration Validation', () => {
             await scheduler.checkNow();
 
             // Should log warning for invalid value
-            const warningCalls = loggerWarnStub.getCalls().filter(call => 
-                call.args[0].includes('Invalid notification preference')
-            );
-            
+            const warningCalls = loggerWarnStub
+                .getCalls()
+                .filter((call) => call.args[0].includes('Invalid notification preference'));
+
             assert.ok(warningCalls.length >= 1, 'Should log warning for invalid preference');
             assert.ok(
                 warningCalls[0].args[0].includes(invalidPreference),
@@ -198,19 +216,22 @@ suite('Configuration Validation', () => {
             // Mock configuration with non-string frequency
             const configStub = sandbox.stub(vscode.workspace, 'getConfiguration');
             configStub.withArgs('promptregistry.updateCheck').returns({
-                get: sandbox.stub()
-                    .withArgs('enabled', true).returns(true)
-                    .withArgs('frequency', 'daily').returns(123) // Invalid type
+                get: sandbox
+                    .stub()
+                    .withArgs('enabled', true)
+                    .returns(true)
+                    .withArgs('frequency', 'daily')
+                    .returns(123), // Invalid type
             } as any);
 
             const scheduler = new UpdateScheduler(mockContext as any, mockUpdateChecker as any);
             await scheduler.initialize();
 
             // Should log warning and use default
-            const warningCalls = loggerWarnStub.getCalls().filter(call => 
-                call.args[0].includes('Invalid update check frequency')
-            );
-            
+            const warningCalls = loggerWarnStub
+                .getCalls()
+                .filter((call) => call.args[0].includes('Invalid update check frequency'));
+
             assert.ok(warningCalls.length >= 1, 'Should log warning for non-string value');
 
             // Cleanup scheduler to prevent timer leaks
@@ -222,19 +243,22 @@ suite('Configuration Validation', () => {
             // Mock configuration with null values
             const configStub = sandbox.stub(vscode.workspace, 'getConfiguration');
             configStub.withArgs('promptregistry.updateCheck').returns({
-                get: sandbox.stub()
-                    .withArgs('enabled', true).returns(true)
-                    .withArgs('frequency', 'daily').returns(null)
+                get: sandbox
+                    .stub()
+                    .withArgs('enabled', true)
+                    .returns(true)
+                    .withArgs('frequency', 'daily')
+                    .returns(null),
             } as any);
 
             const scheduler = new UpdateScheduler(mockContext as any, mockUpdateChecker as any);
             await scheduler.initialize();
 
             // Should log warning and use default
-            const warningCalls = loggerWarnStub.getCalls().filter(call => 
-                call.args[0].includes('Invalid update check frequency')
-            );
-            
+            const warningCalls = loggerWarnStub
+                .getCalls()
+                .filter((call) => call.args[0].includes('Invalid update check frequency'));
+
             assert.ok(warningCalls.length >= 1, 'Should log warning for null value');
 
             // Cleanup scheduler to prevent timer leaks

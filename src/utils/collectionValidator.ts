@@ -1,15 +1,16 @@
 /**
  * Collection Validator
- * 
+ *
  * Standalone validation logic for awesome-copilot collections.
  * Can be used by VS Code extension or standalone CLI scripts.
- * 
+ *
  * Attribution: Inspired by github/awesome-copilot
  * https://github.com/github/awesome-copilot
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import * as yaml from 'js-yaml';
 
 /**
@@ -64,7 +65,7 @@ interface Collection {
 
 /**
  * CollectionValidator
- * 
+ *
  * Validates awesome-copilot collection files:
  * - Required fields (id, name, description, items)
  * - ID format (lowercase, numbers, hyphens only)
@@ -84,7 +85,7 @@ export class CollectionValidator {
 
     /**
      * Validate a single collection file
-     * 
+     *
      * @param collectionPath - Absolute path to collection file
      * @param projectRoot - Project root directory for resolving item paths
      * @returns Validation result with errors and warnings
@@ -99,11 +100,13 @@ export class CollectionValidator {
             if (!fs.existsSync(collectionPath)) {
                 return {
                     valid: false,
-                    errors: [{
-                        file: fileName,
-                        message: 'Collection file does not exist'
-                    }],
-                    warnings: []
+                    errors: [
+                        {
+                            file: fileName,
+                            message: 'Collection file does not exist',
+                        },
+                    ],
+                    warnings: [],
                 };
             }
 
@@ -116,22 +119,26 @@ export class CollectionValidator {
             } catch (parseError) {
                 return {
                     valid: false,
-                    errors: [{
-                        file: fileName,
-                        message: `Failed to parse YAML: ${(parseError as Error).message}`
-                    }],
-                    warnings: []
+                    errors: [
+                        {
+                            file: fileName,
+                            message: `Failed to parse YAML: ${(parseError as Error).message}`,
+                        },
+                    ],
+                    warnings: [],
                 };
             }
 
             if (!collection) {
                 return {
                     valid: false,
-                    errors: [{
-                        file: fileName,
-                        message: 'Empty or invalid YAML file'
-                    }],
-                    warnings: []
+                    errors: [
+                        {
+                            file: fileName,
+                            message: 'Empty or invalid YAML file',
+                        },
+                    ],
+                    warnings: [],
                 };
             }
 
@@ -161,24 +168,25 @@ export class CollectionValidator {
             return {
                 valid: errors.length === 0,
                 errors,
-                warnings
+                warnings,
             };
-
         } catch (error) {
             return {
                 valid: false,
-                errors: [{
-                    file: fileName,
-                    message: `Unexpected error: ${(error as Error).message}`
-                }],
-                warnings: []
+                errors: [
+                    {
+                        file: fileName,
+                        message: `Unexpected error: ${(error as Error).message}`,
+                    },
+                ],
+                warnings: [],
             };
         }
     }
 
     /**
      * Validate all collections in a directory
-     * 
+     *
      * @param collectionsDir - Absolute path to collections directory
      * @returns Aggregated validation result
      */
@@ -190,11 +198,13 @@ export class CollectionValidator {
         if (!fs.existsSync(collectionsDir)) {
             return {
                 valid: false,
-                errors: [{
-                    file: '',
-                    message: `Collections directory not found: ${collectionsDir}`
-                }],
-                warnings: []
+                errors: [
+                    {
+                        file: '',
+                        message: `Collections directory not found: ${collectionsDir}`,
+                    },
+                ],
+                warnings: [],
             };
         }
 
@@ -203,8 +213,9 @@ export class CollectionValidator {
 
         try {
             // Find all collection files
-            const files = fs.readdirSync(collectionsDir)
-                .filter(f => f.endsWith('.collection.yml'))
+            const files = fs
+                .readdirSync(collectionsDir)
+                .filter((f) => f.endsWith('.collection.yml'))
                 .sort();
 
             // Validate each file
@@ -219,17 +230,18 @@ export class CollectionValidator {
             return {
                 valid: allErrors.length === 0,
                 errors: allErrors,
-                warnings: allWarnings
+                warnings: allWarnings,
             };
-
         } catch (error) {
             return {
                 valid: false,
-                errors: [{
-                    file: '',
-                    message: `Failed to read collections directory: ${(error as Error).message}`
-                }],
-                warnings: []
+                errors: [
+                    {
+                        file: '',
+                        message: `Failed to read collections directory: ${(error as Error).message}`,
+                    },
+                ],
+                warnings: [],
             };
         }
     }
@@ -237,32 +249,36 @@ export class CollectionValidator {
     /**
      * Validate required fields
      */
-    private validateRequiredFields(collection: Collection, fileName: string, errors: ValidationError[]): void {
+    private validateRequiredFields(
+        collection: Collection,
+        fileName: string,
+        errors: ValidationError[]
+    ): void {
         if (!collection.id) {
             errors.push({
                 file: fileName,
-                message: 'Missing required field: id'
+                message: 'Missing required field: id',
             });
         }
 
         if (!collection.name) {
             errors.push({
                 file: fileName,
-                message: 'Missing required field: name'
+                message: 'Missing required field: name',
             });
         }
 
         if (!collection.description) {
             errors.push({
                 file: fileName,
-                message: 'Missing required field: description'
+                message: 'Missing required field: description',
             });
         }
 
         if (!collection.items || !Array.isArray(collection.items)) {
             errors.push({
                 file: fileName,
-                message: 'Missing or invalid field: items (must be an array)'
+                message: 'Missing or invalid field: items (must be an array)',
             });
         }
     }
@@ -274,7 +290,7 @@ export class CollectionValidator {
         if (!this.ID_PATTERN.test(id)) {
             errors.push({
                 file: fileName,
-                message: 'Invalid id format (must be lowercase letters, numbers, and hyphens only)'
+                message: 'Invalid id format (must be lowercase letters, numbers, and hyphens only)',
             });
         }
     }
@@ -282,11 +298,15 @@ export class CollectionValidator {
     /**
      * Validate description length
      */
-    private validateDescription(description: string, fileName: string, warnings: ValidationWarning[]): void {
+    private validateDescription(
+        description: string,
+        fileName: string,
+        warnings: ValidationWarning[]
+    ): void {
         if (description.length > this.MAX_DESCRIPTION_LENGTH) {
             warnings.push({
                 file: fileName,
-                message: `Description is longer than recommended (${this.MAX_DESCRIPTION_LENGTH} characters)`
+                message: `Description is longer than recommended (${this.MAX_DESCRIPTION_LENGTH} characters)`,
             });
         }
     }
@@ -304,17 +324,18 @@ export class CollectionValidator {
         if (items.length === 0) {
             warnings.push({
                 file: fileName,
-                message: 'Collection has no items'
+                message: 'Collection has no items',
             });
         }
 
         if (items.length > this.MAX_ITEMS) {
             warnings.push({
                 file: fileName,
-                message: `Collection has more than ${this.MAX_ITEMS} items (recommended max)`
+                message: `Collection has more than ${this.MAX_ITEMS} items (recommended max)`,
             });
         }
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
         items.forEach((item: any, index: number) => {
             const itemNumber = index + 1;
 
@@ -322,7 +343,7 @@ export class CollectionValidator {
             if (!item.path) {
                 errors.push({
                     file: fileName,
-                    message: `Item ${itemNumber}: Missing 'path' field`
+                    message: `Item ${itemNumber}: Missing 'path' field`,
                 });
             }
 
@@ -330,12 +351,12 @@ export class CollectionValidator {
             if (!item.kind) {
                 errors.push({
                     file: fileName,
-                    message: `Item ${itemNumber}: Missing 'kind' field`
+                    message: `Item ${itemNumber}: Missing 'kind' field`,
                 });
             } else if (!this.VALID_KINDS.includes(item.kind)) {
                 errors.push({
                     file: fileName,
-                    message: `Item ${itemNumber}: Invalid 'kind' value (must be one of: ${this.VALID_KINDS.join(', ')})`
+                    message: `Item ${itemNumber}: Invalid 'kind' value (must be one of: ${this.VALID_KINDS.join(', ')})`,
                 });
             }
 
@@ -345,7 +366,7 @@ export class CollectionValidator {
                 if (!fs.existsSync(itemPath)) {
                     errors.push({
                         file: fileName,
-                        message: `Item ${itemNumber}: Referenced file does not exist: ${item.path}`
+                        message: `Item ${itemNumber}: Referenced file does not exist: ${item.path}`,
                     });
                 }
             }
@@ -356,6 +377,7 @@ export class CollectionValidator {
      * Validate tags array
      */
     private validateTags(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
         tags: any,
         fileName: string,
         errors: ValidationError[],
@@ -364,7 +386,7 @@ export class CollectionValidator {
         if (!Array.isArray(tags)) {
             errors.push({
                 file: fileName,
-                message: 'Tags must be an array'
+                message: 'Tags must be an array',
             });
             return;
         }
@@ -372,22 +394,23 @@ export class CollectionValidator {
         if (tags.length > this.MAX_TAGS) {
             warnings.push({
                 file: fileName,
-                message: `More than ${this.MAX_TAGS} tags (recommended max)`
+                message: `More than ${this.MAX_TAGS} tags (recommended max)`,
             });
         }
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
         tags.forEach((tag: any, index: number) => {
             const tagNumber = index + 1;
 
             if (typeof tag !== 'string') {
                 errors.push({
                     file: fileName,
-                    message: `Tag ${tagNumber}: Must be a string`
+                    message: `Tag ${tagNumber}: Must be a string`,
                 });
             } else if (tag.length > this.MAX_TAG_LENGTH) {
                 warnings.push({
                     file: fileName,
-                    message: `Tag ${tagNumber}: Longer than ${this.MAX_TAG_LENGTH} characters`
+                    message: `Tag ${tagNumber}: Longer than ${this.MAX_TAG_LENGTH} characters`,
                 });
             }
         });

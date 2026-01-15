@@ -1,27 +1,24 @@
 /**
  * OlafRuntimeManager
- * 
- * Manages OLAF runtime installation and lifecycle using a user-space installation 
+ *
+ * Manages OLAF runtime installation and lifecycle using a user-space installation
  * with project-level symbolic links.
- * 
+ *
  * Installation Strategy:
  * - User-Space Installation: Install runtime once in user's global extension storage
  * - Project-Level Links: Create symbolic links in workspace for project-specific access
  * - Version Management: Support multiple runtime versions with automatic cleanup
  */
 
-import * as vscode from 'vscode';
-import * as path from 'path';
-import * as fs from 'fs';
-import * as https from 'https';
-import * as os from 'os';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import AdmZip = require('adm-zip');
-import { Logger } from '../utils/logger';
-import { OlafRuntimeInfo, OlafWorkspaceConfig } from '../types/olaf';
+import * as fs from 'node:fs';
+import * as https from 'node:https';
+import * as path from 'node:path';
 
-const execAsync = promisify(exec);
+import AdmZip = require('adm-zip');
+import * as vscode from 'vscode';
+
+import { OlafRuntimeInfo, OlafWorkspaceConfig } from '../types/olaf';
+import { Logger } from '../utils/logger';
 
 /**
  * Cache TTL for runtime status checks (5 minutes)
@@ -45,7 +42,8 @@ export class OlafRuntimeManager {
     private static instance: OlafRuntimeManager | null = null;
     private logger: Logger;
     private context: vscode.ExtensionContext | undefined;
-    private runtimeStatusCache: Map<string, { info: OlafRuntimeInfo; timestamp: number }> = new Map();
+    private runtimeStatusCache: Map<string, { info: OlafRuntimeInfo; timestamp: number }> =
+        new Map();
     private workspaceConfigCache: Map<string, OlafWorkspaceConfig> = new Map();
 
     private constructor() {
@@ -124,7 +122,7 @@ export class OlafRuntimeManager {
         if (!this.context) {
             throw new Error('OlafRuntimeManager not initialized. Call initialize() first.');
         }
-        
+
         const globalStoragePath = this.context.globalStorageUri.fsPath;
         return path.join(globalStoragePath, 'olaf-runtime', version);
     }
@@ -152,7 +150,7 @@ export class OlafRuntimeManager {
             const runtimePath = this.getUserRuntimePath(version);
             const olafPath = path.join(runtimePath, '.olaf');
             const idePath = path.join(runtimePath, this.getIdeSpecificFolderName());
-            
+
             return fs.existsSync(olafPath) && fs.existsSync(idePath);
         } catch (error) {
             this.logger.error(`[OlafRuntime] Error checking runtime installation: ${error}`);
@@ -163,10 +161,13 @@ export class OlafRuntimeManager {
     /**
      * Get runtime information for a specific version
      */
-    async getRuntimeInfo(version: string = 'latest', forceRefresh: boolean = false): Promise<OlafRuntimeInfo> {
+    async getRuntimeInfo(
+        version: string = 'latest',
+        forceRefresh: boolean = false
+    ): Promise<OlafRuntimeInfo> {
         const cacheKey = version;
         const cached = this.runtimeStatusCache.get(cacheKey);
-        
+
         // Return cached result if valid and not forcing refresh
         if (!forceRefresh && cached && Date.now() - cached.timestamp < RUNTIME_STATUS_CACHE_TTL) {
             return cached.info;
@@ -175,19 +176,19 @@ export class OlafRuntimeManager {
         const ideType = this.detectIDE();
         const installPath = this.getUserRuntimePath(version);
         const isInstalled = this.isRuntimeInstalled(version);
-        
+
         const info: OlafRuntimeInfo = {
             version,
             installPath,
             isInstalled,
             ideType,
-            installedAt: isInstalled ? await this.getInstallationTimestamp(installPath) : undefined
+            installedAt: isInstalled ? await this.getInstallationTimestamp(installPath) : undefined,
         };
 
         // Cache the result
         this.runtimeStatusCache.set(cacheKey, {
             info,
-            timestamp: Date.now()
+            timestamp: Date.now(),
         });
 
         return info;
@@ -218,20 +219,20 @@ export class OlafRuntimeManager {
      * Ensure runtime is installed for the current workspace
      * Downloads and installs if not present
      */
-    async ensureRuntimeInstalled(workspacePath?: string): Promise<boolean> {
+    async ensureRuntimeInstalled(_workspacePath?: string): Promise<boolean> {
         const version = 'latest'; // For now, always use latest
         const runtimeInfo = await this.getRuntimeInfo(version);
-        
+
         if (runtimeInfo.isInstalled) {
             this.logger.info(`[OlafRuntime] Runtime v${version} already installed`);
             return true;
         }
 
         this.logger.info(`[OlafRuntime] Runtime v${version} not found, installing...`);
-        
+
         try {
             await this.installRuntime(version);
-            
+
             // Verify installation
             const updatedInfo = await this.getRuntimeInfo(version, true);
             if (updatedInfo.isInstalled) {
@@ -259,14 +260,14 @@ export class OlafRuntimeManager {
 
         // Download runtime bundle
         const runtimeBuffer = await this.downloadRuntimeBundle(ideType, version);
-        
+
         // Extract runtime to user space
         const runtimePath = this.getUserRuntimePath(version);
         await this.extractRuntime(runtimeBuffer, runtimePath);
-        
+
         // Clear cache to reflect new installation
         this.clearCache();
-        
+
         this.logger.info(`[OlafRuntime] Runtime v${version} installed to ${runtimePath}`);
     }
 
@@ -276,52 +277,67 @@ export class OlafRuntimeManager {
     private async downloadRuntimeBundle(ide: string, version: string): Promise<Buffer> {
         const owner = 'AmadeusITGroup';
         const repo = 'olaf';
-        
-        this.logger.info(`[OlafRuntime] Attempting to download OLAF runtime for IDE: ${ide}, version: ${version}`);
+
+        this.logger.info(
+            `[OlafRuntime] Attempting to download OLAF runtime for IDE: ${ide}, version: ${version}`
+        );
         this.logger.info(`[OlafRuntime] Target repository: ${owner}/${repo}`);
-        
+
         // Get release information
-        const releaseUrl = version === 'latest' 
-            ? `https://api.github.com/repos/${owner}/${repo}/releases/latest`
-            : `https://api.github.com/repos/${owner}/${repo}/releases/tags/${version}`;
-        
+        const releaseUrl =
+            version === 'latest'
+                ? `https://api.github.com/repos/${owner}/${repo}/releases/latest`
+                : `https://api.github.com/repos/${owner}/${repo}/releases/tags/${version}`;
+
         this.logger.info(`[OlafRuntime] Fetching release info from: ${releaseUrl}`);
-        
+
         try {
             const releaseInfo = await this.makeGitHubRequest(releaseUrl);
             const actualVersion = releaseInfo.tag_name;
-            
+
             this.logger.info(`[OlafRuntime] Found release: ${actualVersion}`);
-            this.logger.info(`[OlafRuntime] Available assets: ${releaseInfo.assets?.map((a: any) => a.name).join(', ') || 'none'}`);
+            this.logger.info(
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
+                `[OlafRuntime] Available assets: ${releaseInfo.assets?.map((a: any) => a.name).join(', ') || 'none'}`
+            );
         } catch (error) {
             this.logger.error(`[OlafRuntime] Failed to fetch release information: ${error}`);
             throw error;
         }
-        
+
         const releaseInfo = await this.makeGitHubRequest(releaseUrl);
         const actualVersion = releaseInfo.tag_name;
-        
+
         // Find IDE-specific asset using the correct naming pattern
         const assetName = `${ide}-installation-bundle-${actualVersion}.zip`;
         this.logger.info(`[OlafRuntime] Looking for IDE-specific asset: ${assetName}`);
-        
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
         const asset = releaseInfo.assets?.find((a: any) => a.name === assetName);
-        
+
         if (!asset) {
             // Fallback to common bundle if IDE-specific not found
             const commonAssetName = `common-${actualVersion}.zip`;
-            this.logger.info(`[OlafRuntime] IDE-specific asset not found, looking for common asset: ${commonAssetName}`);
-            
+            this.logger.info(
+                `[OlafRuntime] IDE-specific asset not found, looking for common asset: ${commonAssetName}`
+            );
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
             const commonAsset = releaseInfo.assets?.find((a: any) => a.name === commonAssetName);
-            
+
             if (!commonAsset) {
-                throw new Error(`No runtime bundle found for ${ide} in release ${actualVersion}. Looking for: ${assetName} or ${commonAssetName}. Available assets: ${releaseInfo.assets?.map((a: any) => a.name).join(', ')}`);
+                throw new Error(
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
+                    `No runtime bundle found for ${ide} in release ${actualVersion}. Looking for: ${assetName} or ${commonAssetName}. Available assets: ${releaseInfo.assets?.map((a: any) => a.name).join(', ')}`
+                );
             }
-            
-            this.logger.warn(`[OlafRuntime] IDE-specific asset not found, using common bundle: ${commonAsset.name}`);
+
+            this.logger.warn(
+                `[OlafRuntime] IDE-specific asset not found, using common bundle: ${commonAsset.name}`
+            );
             return await this.downloadFile(commonAsset.browser_download_url);
         }
-        
+
         this.logger.info(`[OlafRuntime] Downloading runtime bundle: ${asset.name}`);
         return await this.downloadFile(asset.browser_download_url);
     }
@@ -329,53 +345,77 @@ export class OlafRuntimeManager {
     /**
      * Make authenticated GitHub API request
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     private async makeGitHubRequest(url: string): Promise<any> {
         return new Promise((resolve, reject) => {
             const options = {
                 headers: {
                     'User-Agent': 'Prompt-Registry-Extension',
-                    'Accept': 'application/vnd.github.v3+json'
-                }
+                    Accept: 'application/vnd.github.v3+json',
+                },
             };
 
             // Add authentication if available
             const token = this.getGitHubToken();
             if (token) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
                 (options.headers as any)['Authorization'] = `token ${token}`;
             }
 
-            https.get(url, options, (response) => {
-                let data = '';
-                
-                response.on('data', (chunk) => {
-                    data += chunk;
-                });
-                
-                response.on('end', () => {
-                    if (response.statusCode === 200) {
-                        try {
-                            resolve(JSON.parse(data));
-                        } catch (error) {
-                            this.logger.error(`[OlafRuntime] Failed to parse GitHub API response from ${url}: ${error}`);
-                            this.logger.error(`[OlafRuntime] Response data: ${data.substring(0, 500)}`);
-                            reject(new Error(`Failed to parse GitHub API response: ${error}`));
-                        }
-                    } else {
-                        this.logger.error(`[OlafRuntime] GitHub API request failed for ${url}: ${response.statusCode} ${response.statusMessage}`);
-                        this.logger.error(`[OlafRuntime] Response body: ${data.substring(0, 500)}`);
-                        
-                        if (response.statusCode === 404) {
-                            reject(new Error(`Repository or release not found: ${url}. Please verify the repository exists and has releases.`));
-                        } else if (response.statusCode === 403) {
-                            reject(new Error(`Access denied to repository: ${url}. The repository may be private or rate limited.`));
+            https
+                .get(url, options, (response) => {
+                    let data = '';
+
+                    response.on('data', (chunk) => {
+                        data += chunk;
+                    });
+
+                    response.on('end', () => {
+                        if (response.statusCode === 200) {
+                            try {
+                                resolve(JSON.parse(data));
+                            } catch (error) {
+                                this.logger.error(
+                                    `[OlafRuntime] Failed to parse GitHub API response from ${url}: ${error}`
+                                );
+                                this.logger.error(
+                                    `[OlafRuntime] Response data: ${data.substring(0, 500)}`
+                                );
+                                reject(new Error(`Failed to parse GitHub API response: ${error}`));
+                            }
                         } else {
-                            reject(new Error(`GitHub API request failed: ${response.statusCode} ${response.statusMessage}`));
+                            this.logger.error(
+                                `[OlafRuntime] GitHub API request failed for ${url}: ${response.statusCode} ${response.statusMessage}`
+                            );
+                            this.logger.error(
+                                `[OlafRuntime] Response body: ${data.substring(0, 500)}`
+                            );
+
+                            if (response.statusCode === 404) {
+                                reject(
+                                    new Error(
+                                        `Repository or release not found: ${url}. Please verify the repository exists and has releases.`
+                                    )
+                                );
+                            } else if (response.statusCode === 403) {
+                                reject(
+                                    new Error(
+                                        `Access denied to repository: ${url}. The repository may be private or rate limited.`
+                                    )
+                                );
+                            } else {
+                                reject(
+                                    new Error(
+                                        `GitHub API request failed: ${response.statusCode} ${response.statusMessage}`
+                                    )
+                                );
+                            }
                         }
-                    }
+                    });
+                })
+                .on('error', (error) => {
+                    reject(new Error(`GitHub API request failed: ${error.message}`));
                 });
-            }).on('error', (error) => {
-                reject(new Error(`GitHub API request failed: ${error.message}`));
-            });
         });
     }
 
@@ -387,7 +427,7 @@ export class OlafRuntimeManager {
         // Try VS Code configuration first
         const config = vscode.workspace.getConfiguration('promptregistry');
         const globalToken = config.get<string>('githubToken', '');
-        
+
         if (globalToken && globalToken.trim().length > 0) {
             return globalToken.trim();
         }
@@ -406,59 +446,70 @@ export class OlafRuntimeManager {
                 reject(new Error('Download timeout'));
             }, COMMAND_TIMEOUT);
 
-            https.get(url, (response) => {
-                // Handle redirects
-                if (response.statusCode === 301 || response.statusCode === 302) {
-                    clearTimeout(timeout);
-                    const redirectUrl = response.headers.location;
-                    if (redirectUrl) {
-                        this.downloadFile(redirectUrl).then(resolve).catch(reject);
-                        return;
-                    }
-                }
-
-                if (response.statusCode !== 200) {
-                    clearTimeout(timeout);
-                    reject(new Error(`Download failed: HTTP ${response.statusCode}`));
-                    return;
-                }
-
-                const contentLength = parseInt(response.headers['content-length'] || '0', 10);
-                if (contentLength > MAX_DOWNLOAD_SIZE) {
-                    clearTimeout(timeout);
-                    reject(new Error(`File too large: ${contentLength} bytes (max: ${MAX_DOWNLOAD_SIZE})`));
-                    return;
-                }
-
-                const chunks: Buffer[] = [];
-                let downloadedBytes = 0;
-
-                response.on('data', (chunk: Buffer) => {
-                    chunks.push(chunk);
-                    downloadedBytes += chunk.length;
-                    
-                    if (downloadedBytes > MAX_DOWNLOAD_SIZE) {
+            https
+                .get(url, (response) => {
+                    // Handle redirects
+                    if (response.statusCode === 301 || response.statusCode === 302) {
                         clearTimeout(timeout);
-                        reject(new Error(`Download size exceeded limit: ${downloadedBytes} bytes`));
+                        const redirectUrl = response.headers.location;
+                        if (redirectUrl) {
+                            this.downloadFile(redirectUrl).then(resolve).catch(reject);
+                            return;
+                        }
+                    }
+
+                    if (response.statusCode !== 200) {
+                        clearTimeout(timeout);
+                        reject(new Error(`Download failed: HTTP ${response.statusCode}`));
                         return;
                     }
-                });
 
-                response.on('end', () => {
-                    clearTimeout(timeout);
-                    const buffer = Buffer.concat(chunks);
-                    this.logger.debug(`[OlafRuntime] Downloaded ${buffer.length} bytes`);
-                    resolve(buffer);
-                });
+                    const contentLength = Number.parseInt(
+                        response.headers['content-length'] || '0',
+                        10
+                    );
+                    if (contentLength > MAX_DOWNLOAD_SIZE) {
+                        clearTimeout(timeout);
+                        reject(
+                            new Error(
+                                `File too large: ${contentLength} bytes (max: ${MAX_DOWNLOAD_SIZE})`
+                            )
+                        );
+                        return;
+                    }
 
-                response.on('error', (error) => {
+                    const chunks: Buffer[] = [];
+                    let downloadedBytes = 0;
+
+                    response.on('data', (chunk: Buffer) => {
+                        chunks.push(chunk);
+                        downloadedBytes += chunk.length;
+
+                        if (downloadedBytes > MAX_DOWNLOAD_SIZE) {
+                            clearTimeout(timeout);
+                            reject(
+                                new Error(`Download size exceeded limit: ${downloadedBytes} bytes`)
+                            );
+                            return;
+                        }
+                    });
+
+                    response.on('end', () => {
+                        clearTimeout(timeout);
+                        const buffer = Buffer.concat(chunks);
+                        this.logger.debug(`[OlafRuntime] Downloaded ${buffer.length} bytes`);
+                        resolve(buffer);
+                    });
+
+                    response.on('error', (error) => {
+                        clearTimeout(timeout);
+                        reject(new Error(`Download failed: ${error.message}`));
+                    });
+                })
+                .on('error', (error) => {
                     clearTimeout(timeout);
-                    reject(new Error(`Download failed: ${error.message}`));
+                    reject(new Error(`Download request failed: ${error.message}`));
                 });
-            }).on('error', (error) => {
-                clearTimeout(timeout);
-                reject(new Error(`Download request failed: ${error.message}`));
-            });
         });
     }
 
@@ -469,26 +520,26 @@ export class OlafRuntimeManager {
         try {
             // Ensure target directory exists
             await fs.promises.mkdir(targetPath, { recursive: true });
-            
+
             // Extract ZIP archive
             const zip = new AdmZip(buffer);
             zip.extractAllTo(targetPath, true);
-            
+
             // Verify extraction
             const olafPath = path.join(targetPath, '.olaf');
             const idePath = path.join(targetPath, this.getIdeSpecificFolderName());
-            
+
             if (!fs.existsSync(olafPath)) {
                 throw new Error('Runtime extraction failed: .olaf directory not found');
             }
-            
+
             // IDE-specific directory is optional for generic bundles
             if (!fs.existsSync(idePath)) {
                 this.logger.warn(`[OlafRuntime] IDE-specific directory not found: ${idePath}`);
                 // Create empty IDE directory as placeholder
                 await fs.promises.mkdir(idePath, { recursive: true });
             }
-            
+
             this.logger.debug(`[OlafRuntime] Runtime extracted to ${targetPath}`);
         } catch (error) {
             throw new Error(`Runtime extraction failed: ${(error as Error).message}`);
@@ -512,15 +563,12 @@ export class OlafRuntimeManager {
         const runtimePath = this.getUserRuntimePath(version);
         const workspaceOlafPath = path.join(workspacePath, '.olaf');
         const workspaceIdePath = path.join(workspacePath, this.getIdeSpecificFolderName());
-        
+
         this.logger.info(`[OlafRuntime] Creating workspace links in ${workspacePath}`);
 
         try {
             // Create symbolic link for .olaf directory
-            await this.createSymbolicLink(
-                path.join(runtimePath, '.olaf'),
-                workspaceOlafPath
-            );
+            await this.createSymbolicLink(path.join(runtimePath, '.olaf'), workspaceOlafPath);
 
             // Create symbolic link for IDE-specific directory
             await this.createSymbolicLink(
@@ -535,13 +583,13 @@ export class OlafRuntimeManager {
                 hasSymbolicLinks: true,
                 symbolicLinks: {
                     olafPath: workspaceOlafPath,
-                    idePath: workspaceIdePath
+                    idePath: workspaceIdePath,
                 },
-                configuredAt: new Date().toISOString()
+                configuredAt: new Date().toISOString(),
             };
-            
+
             this.workspaceConfigCache.set(workspacePath, config);
-            
+
             this.logger.info(`[OlafRuntime] Workspace links created successfully`);
         } catch (error) {
             this.logger.error(`[OlafRuntime] Failed to create workspace links: ${error}`);
@@ -557,18 +605,22 @@ export class OlafRuntimeManager {
             // Check if target already exists
             if (fs.existsSync(target)) {
                 const stats = await fs.promises.lstat(target);
-                
+
                 if (stats.isSymbolicLink()) {
                     // Check if it points to the correct location
                     const currentTarget = await fs.promises.readlink(target);
                     const resolvedCurrent = path.resolve(path.dirname(target), currentTarget);
                     const resolvedSource = path.resolve(source);
-                    
+
                     if (resolvedCurrent === resolvedSource) {
-                        this.logger.debug(`[OlafRuntime] Symbolic link already exists and is correct: ${target}`);
+                        this.logger.debug(
+                            `[OlafRuntime] Symbolic link already exists and is correct: ${target}`
+                        );
                         return;
                     } else {
-                        this.logger.warn(`[OlafRuntime] Symbolic link exists but points to wrong location: ${target} -> ${currentTarget}`);
+                        this.logger.warn(
+                            `[OlafRuntime] Symbolic link exists but points to wrong location: ${target} -> ${currentTarget}`
+                        );
                         await fs.promises.unlink(target);
                     }
                 } else {
@@ -585,15 +637,20 @@ export class OlafRuntimeManager {
             // Create the symbolic link
             await fs.promises.symlink(source, target, 'dir');
             this.logger.debug(`[OlafRuntime] Created symbolic link: ${target} -> ${source}`);
-            
         } catch (error) {
             // If symbolic link creation fails, try fallback to directory copying
-            if ((error as NodeJS.ErrnoException).code === 'EPERM' || 
-                (error as NodeJS.ErrnoException).code === 'ENOTSUP') {
-                this.logger.warn(`[OlafRuntime] Symbolic link not supported, falling back to directory copy: ${target}`);
+            if (
+                (error as NodeJS.ErrnoException).code === 'EPERM' ||
+                (error as NodeJS.ErrnoException).code === 'ENOTSUP'
+            ) {
+                this.logger.warn(
+                    `[OlafRuntime] Symbolic link not supported, falling back to directory copy: ${target}`
+                );
                 await this.fallbackToCopy(source, target);
             } else {
-                throw new Error(`Failed to create symbolic link ${target}: ${(error as Error).message}`);
+                throw new Error(
+                    `Failed to create symbolic link ${target}: ${(error as Error).message}`
+                );
             }
         }
     }
@@ -603,8 +660,7 @@ export class OlafRuntimeManager {
      */
     private async handleExistingPath(target: string): Promise<void> {
         const stats = await fs.promises.lstat(target);
-        const targetName = path.basename(target);
-        
+
         if (stats.isDirectory()) {
             // Check if directory is empty
             const entries = await fs.promises.readdir(target);
@@ -616,7 +672,9 @@ export class OlafRuntimeManager {
                 // Backup non-empty directory
                 const backupPath = `${target}.backup.${Date.now()}`;
                 await fs.promises.rename(target, backupPath);
-                this.logger.warn(`[OlafRuntime] Backed up existing directory: ${target} -> ${backupPath}`);
+                this.logger.warn(
+                    `[OlafRuntime] Backed up existing directory: ${target} -> ${backupPath}`
+                );
             }
         } else {
             // Backup existing file
@@ -643,18 +701,16 @@ export class OlafRuntimeManager {
      */
     private async copyDirectory(source: string, target: string): Promise<void> {
         await fs.promises.mkdir(target, { recursive: true });
-        
+
         const entries = await fs.promises.readdir(source, { withFileTypes: true });
-        
+
         for (const entry of entries) {
             const sourcePath = path.join(source, entry.name);
             const targetPath = path.join(target, entry.name);
-            
-            if (entry.isDirectory()) {
-                await this.copyDirectory(sourcePath, targetPath);
-            } else {
-                await fs.promises.copyFile(sourcePath, targetPath);
-            }
+
+            await (entry.isDirectory()
+                ? this.copyDirectory(sourcePath, targetPath)
+                : fs.promises.copyFile(sourcePath, targetPath));
         }
     }
 
@@ -664,11 +720,11 @@ export class OlafRuntimeManager {
     async hasWorkspaceLinks(workspacePath: string): Promise<boolean> {
         const olafPath = path.join(workspacePath, '.olaf');
         const idePath = path.join(workspacePath, this.getIdeSpecificFolderName());
-        
+
         try {
             const olafExists = fs.existsSync(olafPath);
             const ideExists = fs.existsSync(idePath);
-            
+
             return olafExists && ideExists;
         } catch (error) {
             return false;
@@ -688,7 +744,7 @@ export class OlafRuntimeManager {
     async removeWorkspaceLinks(workspacePath: string): Promise<void> {
         const olafPath = path.join(workspacePath, '.olaf');
         const idePath = path.join(workspacePath, this.getIdeSpecificFolderName());
-        
+
         try {
             // Remove .olaf link/directory
             if (fs.existsSync(olafPath)) {
@@ -718,7 +774,7 @@ export class OlafRuntimeManager {
 
             // Clear workspace config cache
             this.workspaceConfigCache.delete(workspacePath);
-            
+
             this.logger.info(`[OlafRuntime] Workspace links removed from ${workspacePath}`);
         } catch (error) {
             this.logger.error(`[OlafRuntime] Failed to remove workspace links: ${error}`);

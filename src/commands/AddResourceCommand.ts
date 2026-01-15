@@ -1,7 +1,9 @@
-import * as vscode from 'vscode';
-import * as path from 'path';
+import { execSync } from 'node:child_process';
+import * as path from 'node:path';
+
 import * as yaml from 'js-yaml';
-import { execSync } from 'child_process';
+import * as vscode from 'vscode';
+
 import { TemplateEngine } from '../services/TemplateEngine';
 import { generateSanitizedId } from '../utils/bundleNameUtils';
 
@@ -9,7 +11,7 @@ export enum ResourceType {
     Prompt = 'prompt',
     Instruction = 'instruction',
     Agent = 'agent',
-    Skill = 'skill'
+    Skill = 'skill',
 }
 
 interface ResourceTypeInfo {
@@ -30,50 +32,62 @@ export class AddResourceCommand {
         // Otherwise treat as extensionPath and append templates/resources path
         let templatesPath: string;
         if (extensionPathOrTemplateRoot) {
-            if (extensionPathOrTemplateRoot.includes('templates/resources') || extensionPathOrTemplateRoot.includes('templates\\resources')) {
-                templatesPath = extensionPathOrTemplateRoot;
-            } else {
-                templatesPath = path.join(extensionPathOrTemplateRoot, 'templates/resources');
-            }
+            templatesPath =
+                extensionPathOrTemplateRoot.includes('templates/resources') ||
+                extensionPathOrTemplateRoot.includes(String.raw`templates\resources`)
+                    ? extensionPathOrTemplateRoot
+                    : path.join(extensionPathOrTemplateRoot, 'templates/resources');
         } else {
             templatesPath = path.join(__dirname, '../templates/resources');
         }
         this.templateEngine = new TemplateEngine(templatesPath);
-        
+
         this.resourceTypes = new Map([
-            [ResourceType.Prompt, {
-                label: '$(file-text) Prompt',
-                description: 'Interactive prompt for Copilot',
-                icon: '$(file-text)',
-                folder: 'prompts',
-                extension: '.prompt.md',
-                template: 'prompt.template.md'
-            }],
-            [ResourceType.Instruction, {
-                label: '$(book) Instruction',
-                description: 'Step-by-step guidance document',
-                icon: '$(book)',
-                folder: 'instructions',
-                extension: '.instructions.md',
-                template: 'instruction.template.md'
-            }],
-            
-            [ResourceType.Agent, {
-                label: '$(robot) Agent',
-                description: 'Autonomous AI agent configuration',
-                icon: '$(robot)',
-                folder: 'agents',
-                extension: '.agent.md',
-                template: 'agent.template.md'
-            }],
-            [ResourceType.Skill, {
-                label: '$(lightbulb) Skill',
-                description: 'Agent skill with domain expertise',
-                icon: '$(lightbulb)',
-                folder: 'skills',
-                extension: '.skill.md',
-                template: 'skill.template.md'
-            }]
+            [
+                ResourceType.Prompt,
+                {
+                    label: '$(file-text) Prompt',
+                    description: 'Interactive prompt for Copilot',
+                    icon: '$(file-text)',
+                    folder: 'prompts',
+                    extension: '.prompt.md',
+                    template: 'prompt.template.md',
+                },
+            ],
+            [
+                ResourceType.Instruction,
+                {
+                    label: '$(book) Instruction',
+                    description: 'Step-by-step guidance document',
+                    icon: '$(book)',
+                    folder: 'instructions',
+                    extension: '.instructions.md',
+                    template: 'instruction.template.md',
+                },
+            ],
+
+            [
+                ResourceType.Agent,
+                {
+                    label: '$(robot) Agent',
+                    description: 'Autonomous AI agent configuration',
+                    icon: '$(robot)',
+                    folder: 'agents',
+                    extension: '.agent.md',
+                    template: 'agent.template.md',
+                },
+            ],
+            [
+                ResourceType.Skill,
+                {
+                    label: '$(lightbulb) Skill',
+                    description: 'Agent skill with domain expertise',
+                    icon: '$(lightbulb)',
+                    folder: 'skills',
+                    extension: '.skill.md',
+                    template: 'skill.template.md',
+                },
+            ],
         ]);
     }
 
@@ -122,11 +136,12 @@ export class AddResourceCommand {
             } catch {
                 fileExists = false;
             }
-            
+
             if (fileExists) {
                 const overwrite = await vscode.window.showWarningMessage(
                     `File ${fileName} already exists. Overwrite?`,
-                    'Yes', 'No'
+                    'Yes',
+                    'No'
                 );
                 if (overwrite !== 'Yes') {
                     return;
@@ -142,6 +157,7 @@ export class AddResourceCommand {
             }
 
             // Prepare template context
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
             const context: any = {
                 projectName: resourceName,
                 collectionId: generateSanitizedId(resourceName),
@@ -149,11 +165,14 @@ export class AddResourceCommand {
                 RESOURCE_DESCRIPTION: resourceDescription,
                 AUTHOR: author,
                 DATE: new Date().toISOString().split('T')[0],
-                VERSION: '1.0.0'
+                VERSION: '1.0.0',
             };
 
             // Render template using TemplateEngine
-            const content = await this.templateEngine.renderTemplate(resourceInfo.template, context);
+            const content = await this.templateEngine.renderTemplate(
+                resourceInfo.template,
+                context
+            );
 
             // Write file
             await vscode.workspace.fs.writeFile(resourceUri, Buffer.from(content, 'utf-8'));
@@ -161,7 +180,8 @@ export class AddResourceCommand {
             // Show success message
             const openFile = await vscode.window.showInformationMessage(
                 `✓ Created ${resourceInfo.label.replace(/\$\([^)]+\)\s*/, '')} at ${path.relative(workspaceFolder, resourcePath)}`,
-                'Open File', 'Add to Collection'
+                'Open File',
+                'Add to Collection'
             );
 
             if (openFile === 'Open File') {
@@ -170,7 +190,6 @@ export class AddResourceCommand {
             } else if (openFile === 'Add to Collection') {
                 await this.addToCollection(workspaceFolder, resourcePath, resourceType);
             }
-
         } catch (error) {
             vscode.window.showErrorMessage(
                 `Failed to add resource: ${error instanceof Error ? error.message : String(error)}`
@@ -186,14 +205,15 @@ export class AddResourceCommand {
         }
 
         if (folders.length === 1) {
-            return folders[0].uri.fsPath;
+            const firstFolder = folders[0];
+            return firstFolder?.uri.fsPath;
         }
 
         const selected = await vscode.window.showQuickPick(
-            folders.map(f => ({
+            folders.map((f) => ({
                 label: f.name,
                 description: f.uri.fsPath,
-                folder: f
+                folder: f,
             })),
             { placeHolder: 'Select workspace folder', ignoreFocusOut: true }
         );
@@ -207,7 +227,8 @@ export class AddResourceCommand {
                 label: info.label,
                 description: info.description,
                 detail: `Creates a new ${type} in ${info.folder}/`,
-                type: type as any
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
+                type: type as any,
             })
         );
 
@@ -215,9 +236,10 @@ export class AddResourceCommand {
             placeHolder: 'Select resource type to add',
             matchOnDescription: true,
             matchOnDetail: true,
-            ignoreFocusOut: true
+            ignoreFocusOut: true,
         });
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
         return selected ? (selected as any).type : undefined;
     }
 
@@ -234,7 +256,7 @@ export class AddResourceCommand {
                     return 'Resource name must be 100 characters or less';
                 }
                 return null;
-            }
+            },
         });
     }
 
@@ -251,7 +273,7 @@ export class AddResourceCommand {
                     return 'Description must be 500 characters or less';
                 }
                 return null;
-            }
+            },
         });
     }
 
@@ -267,7 +289,7 @@ export class AddResourceCommand {
                     return 'Author name is required';
                 }
                 return null;
-            }
+            },
         });
     }
 
@@ -279,11 +301,15 @@ export class AddResourceCommand {
         }
     }
 
-    private async addToCollection(workspaceRoot: string, resourcePath: string, resourceType: ResourceType): Promise<void> {
+    private async addToCollection(
+        workspaceRoot: string,
+        resourcePath: string,
+        resourceType: ResourceType
+    ): Promise<void> {
         try {
             const collectionsDir = path.join(workspaceRoot, 'collections');
             const collectionsDirUri = vscode.Uri.file(collectionsDir);
-            
+
             // Check if collections directory exists
             try {
                 await vscode.workspace.fs.stat(collectionsDirUri);
@@ -295,7 +321,10 @@ export class AddResourceCommand {
             // Find collection files
             const entries = await vscode.workspace.fs.readDirectory(collectionsDirUri);
             const collectionFiles = entries
-                .filter(([name, type]) => type === vscode.FileType.File && name.endsWith('.collection.yml'))
+                .filter(
+                    ([name, type]) =>
+                        type === vscode.FileType.File && name.endsWith('.collection.yml')
+                )
                 .map(([name]) => name);
 
             if (collectionFiles.length === 0) {
@@ -305,9 +334,9 @@ export class AddResourceCommand {
 
             // Let user select collection
             const selected = await vscode.window.showQuickPick(
-                collectionFiles.map(f => ({
+                collectionFiles.map((f) => ({
                     label: f,
-                    description: path.join('collections', f)
+                    description: path.join('collections', f),
                 })),
                 { placeHolder: 'Select collection to add resource to', ignoreFocusOut: true }
             );
@@ -319,13 +348,14 @@ export class AddResourceCommand {
             const collectionUri = vscode.Uri.file(path.join(collectionsDir, selected.label));
             const collectionContentBytes = await vscode.workspace.fs.readFile(collectionUri);
             const collectionContent = Buffer.from(collectionContentBytes).toString('utf-8');
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
             const collection: any = yaml.load(collectionContent);
 
             // Add resource to collection
             const relativePath = path.relative(workspaceRoot, resourcePath);
             const newItem = {
                 path: relativePath,
-                kind: resourceType
+                kind: resourceType,
             };
 
             if (!collection.items) {
@@ -333,6 +363,7 @@ export class AddResourceCommand {
             }
 
             // Check if already exists
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
             const exists = collection.items.some((item: any) => item.path === relativePath);
             if (exists) {
                 vscode.window.showInformationMessage('Resource already exists in collection');
@@ -343,10 +374,12 @@ export class AddResourceCommand {
 
             // Write back
             const updatedContent = yaml.dump(collection);
-            await vscode.workspace.fs.writeFile(collectionUri, Buffer.from(updatedContent, 'utf-8'));
+            await vscode.workspace.fs.writeFile(
+                collectionUri,
+                Buffer.from(updatedContent, 'utf-8')
+            );
 
             vscode.window.showInformationMessage(`✓ Added resource to ${selected.label}`);
-
         } catch (error) {
             vscode.window.showErrorMessage(
                 `Failed to add to collection: ${error instanceof Error ? error.message : String(error)}`

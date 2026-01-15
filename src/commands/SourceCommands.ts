@@ -4,10 +4,11 @@
  */
 
 import * as vscode from 'vscode';
+
 import { RegistryManager } from '../services/RegistryManager';
 import { RegistrySource, SourceType } from '../types/registry';
-import { Logger } from '../utils/logger';
 import { generateSanitizedId } from '../utils/bundleNameUtils';
+import { Logger } from '../utils/logger';
 
 /**
  * Source Commands Handler
@@ -29,8 +30,9 @@ export class SourceCommands {
                 [
                     {
                         label: '$(github) GitHub Releases',
-                        description: 'Versioned releases with zip file in the assets for both public or private GitHub repository',
-                        value: 'github' as SourceType
+                        description:
+                            'Versioned releases with zip file in the assets for both public or private GitHub repository',
+                        value: 'github' as SourceType,
                     },
                     // {
                     //     label: '$(repo) GitLab Repository',
@@ -49,49 +51,55 @@ export class SourceCommands {
                     // },
                     {
                         label: '$(package) Collection from GitHub repository',
-                        description: 'GitHub repository with .collection.yml files based on Awesome Copilot specification',
-                        value: 'awesome-copilot' as SourceType
+                        description:
+                            'GitHub repository with .collection.yml files based on Awesome Copilot specification',
+                        value: 'awesome-copilot' as SourceType,
                     },
                     {
                         label: '$(folder-library) Local Collection',
-                        description: 'Local filesystem directory with .collection.yml files  based on Awesome Copilot specification',
-                        value: 'local-awesome-copilot' as SourceType
+                        description:
+                            'Local filesystem directory with .collection.yml files  based on Awesome Copilot specification',
+                        value: 'local-awesome-copilot' as SourceType,
                     },
                     {
                         label: '$(package) APM Repository',
                         description: 'Remote APM repository (GitHub) containing apm.yml',
-                        value: 'apm' as SourceType
+                        value: 'apm' as SourceType,
                     },
                     {
                         label: '$(folder-library) Local APM Package',
                         description: 'Local filesystem directory containing apm.yml',
-                        value: 'local-apm' as SourceType
+                        value: 'local-apm' as SourceType,
                     },
                     {
                         label: '$(robot) OLAF Skills Repository',
-                        description: 'GitHub repository with AI skills in .olaf/core/skills directory structure',
-                        value: 'olaf' as SourceType
+                        description:
+                            'GitHub repository with AI skills in .olaf/core/skills directory structure',
+                        value: 'olaf' as SourceType,
                     },
                     {
                         label: '$(folder-library) Local OLAF Skills',
-                        description: 'Local filesystem directory with OLAF skills organized in bundle-based structure',
-                        value: 'local-olaf' as SourceType
+                        description:
+                            'Local filesystem directory with OLAF skills organized in bundle-based structure',
+                        value: 'local-olaf' as SourceType,
                     },
                     {
                         label: '$(sparkle) Skills Repository',
-                        description: 'GitHub repository with skills in skills/ folder (Anthropic-style SKILL.md files)',
-                        value: 'skills' as SourceType
+                        description:
+                            'GitHub repository with skills in skills/ folder (Anthropic-style SKILL.md files)',
+                        value: 'skills' as SourceType,
                     },
                     {
                         label: '$(folder-library) Local Skills',
-                        description: 'Local filesystem directory with skills in skills/ folder (SKILL.md files)',
-                        value: 'local-skills' as SourceType
+                        description:
+                            'Local filesystem directory with skills in skills/ folder (SKILL.md files)',
+                        value: 'local-skills' as SourceType,
                     },
                 ],
                 {
                     placeHolder: 'Select source type',
                     title: 'Add Registry Source',
-                    ignoreFocusOut: true
+                    ignoreFocusOut: true,
                 }
             );
 
@@ -107,9 +115,9 @@ export class SourceCommands {
                     if (!value || value.trim().length === 0) {
                         return 'Source name is required';
                     }
-                    return undefined;
+                    return;
                 },
-                ignoreFocusOut: true
+                ignoreFocusOut: true,
             });
 
             if (!name) {
@@ -123,65 +131,74 @@ export class SourceCommands {
             }
 
             // Step 3.5: Get additional config for awesome-copilot and local-awesome-copilot
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
             let config: any = undefined;
             if (sourceType.value === 'awesome-copilot') {
                 const branch = await vscode.window.showInputBox({
                     prompt: 'Enter branch name (or press Enter for "main")',
                     placeHolder: 'main',
                     value: 'main',
-                    ignoreFocusOut: true
+                    ignoreFocusOut: true,
                 });
 
                 const collectionsPath = await vscode.window.showInputBox({
                     prompt: 'Enter collections directory path (or press Enter for "collections")',
                     placeHolder: 'collections',
                     value: 'collections',
-                    ignoreFocusOut: true
+                    ignoreFocusOut: true,
                 });
 
                 config = {
                     branch: branch || 'main',
-                    collectionsPath: collectionsPath || 'collections'
+                    collectionsPath: collectionsPath || 'collections',
                 };
             } else if (sourceType.value === 'local-awesome-copilot') {
                 const collectionsPath = await vscode.window.showInputBox({
                     prompt: 'Enter collections directory path (or press Enter for "collections")',
                     placeHolder: 'collections',
                     value: 'collections',
-                    ignoreFocusOut: true
+                    ignoreFocusOut: true,
                 });
 
                 config = {
-                    collectionsPath: collectionsPath || 'collections'
+                    collectionsPath: collectionsPath || 'collections',
                 };
             } else if (sourceType.value === 'apm') {
                 const branch = await vscode.window.showInputBox({
                     prompt: 'Enter branch name (or press Enter for "main")',
                     placeHolder: 'main',
                     value: 'main',
-                    ignoreFocusOut: true
+                    ignoreFocusOut: true,
                 });
-                
+
                 config = {
-                    branch: branch || 'main'
+                    branch: branch || 'main',
                 };
             }
 
             // Step 4: Check if private/authentication needed (skip for local sources)
             let token: string | undefined;
             let isPrivate: { label: string; description: string; value: boolean } | undefined;
-            const isLocalSource = sourceType.value === 'local' || sourceType.value === 'local-awesome-copilot' || sourceType.value === 'local-apm' || sourceType.value === 'local-olaf';
-            
+            const isLocalSource =
+                sourceType.value === 'local' ||
+                sourceType.value === 'local-awesome-copilot' ||
+                sourceType.value === 'local-apm' ||
+                sourceType.value === 'local-olaf';
+
             if (!isLocalSource) {
                 isPrivate = await vscode.window.showQuickPick(
                     [
-                        { label: 'Public', description: 'No authentication required', value: false },
-                        { label: 'Private', description: 'Requires authentication', value: true }
+                        {
+                            label: 'Public',
+                            description: 'No authentication required',
+                            value: false,
+                        },
+                        { label: 'Private', description: 'Requires authentication', value: true },
                     ],
                     {
                         placeHolder: 'Is this source private?',
                         title: 'Source Access',
-                        ignoreFocusOut: true
+                        ignoreFocusOut: true,
                     }
                 );
 
@@ -190,7 +207,7 @@ export class SourceCommands {
                         prompt: 'Enter access token (optional - can be configured later)',
                         password: true,
                         placeHolder: 'Leave empty to configure later',
-                        ignoreFocusOut: true
+                        ignoreFocusOut: true,
                     });
                 }
             }
@@ -200,13 +217,13 @@ export class SourceCommands {
                 prompt: 'Enter priority (1 = highest)',
                 value: '10',
                 validateInput: (value) => {
-                    const num = parseInt(value, 10);
+                    const num = Number.parseInt(value, 10);
                     if (isNaN(num) || num < 1) {
                         return 'Priority must be a positive number';
                     }
-                    return undefined;
+                    return;
                 },
-                ignoreFocusOut: true
+                ignoreFocusOut: true,
             });
 
             if (!priority) {
@@ -220,14 +237,15 @@ export class SourceCommands {
                 type: sourceType.value,
                 url: url.trim(),
                 enabled: true,
-                priority: parseInt(priority, 10),
+                priority: Number.parseInt(priority, 10),
                 private: isPrivate?.value || false,
                 token: token && token.trim() ? token.trim() : undefined,
-                metadata: {}
+                metadata: {},
             };
 
             // Add config if present (for awesome-copilot and other types)
             if (config) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
                 (source as any).config = config;
             }
 
@@ -236,21 +254,24 @@ export class SourceCommands {
                 {
                     location: vscode.ProgressLocation.Notification,
                     title: `Validating source "${name}"...`,
-                    cancellable: false
+                    cancellable: false,
                 },
                 async () => {
                     const validation = await this.registryManager.validateSource(source);
-                    
+
                     if (!validation.valid) {
-                        throw new Error(`Source validation failed: ${validation.errors.join(', ')}`);
+                        throw new Error(
+                            `Source validation failed: ${validation.errors.join(', ')}`
+                        );
                     }
 
                     if (validation.warnings.length > 0) {
                         const proceed = await vscode.window.showWarningMessage(
                             `Source has warnings: ${validation.warnings.join(', ')}. Add anyway?`,
-                            'Yes', 'No'
+                            'Yes',
+                            'No'
                         );
-                        
+
                         if (proceed !== 'Yes') {
                             return;
                         }
@@ -260,17 +281,19 @@ export class SourceCommands {
                 }
             );
 
-            vscode.window.showInformationMessage(
-                `Source "${name}" added successfully!`,
-                'Sync Now', 'View Sources'
-            ).then(action => {
-                if (action === 'Sync Now') {
-                    this.syncSource(source.id);
-                } else if (action === 'View Sources') {
-                    this.listSources();
-                }
-            });
-
+            vscode.window
+                .showInformationMessage(
+                    `Source "${name}" added successfully!`,
+                    'Sync Now',
+                    'View Sources'
+                )
+                .then((action) => {
+                    if (action === 'Sync Now') {
+                        this.syncSource(source.id);
+                    } else if (action === 'View Sources') {
+                        this.listSources();
+                    }
+                });
         } catch (error) {
             this.logger.error('Failed to add source', error as Error);
             vscode.window.showErrorMessage(`Failed to add source: ${(error as Error).message}`);
@@ -280,32 +303,33 @@ export class SourceCommands {
     /**
      * Edit an existing source
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     async editSource(sourceId?: string | any): Promise<void> {
         try {
             // Extract source ID from tree item or string parameter
             const extractedId = this.extractSourceId(sourceId);
-            
+
             let finalId: string;
             // If no sourceId, let user select
             if (!extractedId) {
                 const sources = await this.registryManager.listSources();
-                
+
                 if (sources.length === 0) {
                     vscode.window.showInformationMessage('No sources found. Add one first.');
                     return;
                 }
 
                 const selected = await vscode.window.showQuickPick(
-                    sources.map(s => ({
+                    sources.map((s) => ({
                         label: s.enabled ? `✓ ${s.name}` : `○ ${s.name}`,
                         description: s.url,
                         detail: `${s.type} • Priority: ${s.priority}${s.private ? ' • Private' : ''}`,
-                        source: s
+                        source: s,
                     })),
                     {
                         placeHolder: 'Select source to edit',
                         title: 'Edit Source',
-                        ignoreFocusOut: true
+                        ignoreFocusOut: true,
                     }
                 );
 
@@ -319,7 +343,7 @@ export class SourceCommands {
             }
 
             const sources = await this.registryManager.listSources();
-            const source = sources.find(s => s.id === finalId);
+            const source = sources.find((s) => s.id === finalId);
 
             if (!source) {
                 vscode.window.showErrorMessage('Source not found');
@@ -333,12 +357,15 @@ export class SourceCommands {
                     { label: '$(link) Change URL', value: 'url' },
                     { label: '$(key) Configure Token', value: 'token' },
                     { label: '$(sort-precedence) Change Priority', value: 'priority' },
-                    { label: source.enabled ? '$(circle-slash) Disable' : '$(check) Enable', value: 'toggle' },
+                    {
+                        label: source.enabled ? '$(circle-slash) Disable' : '$(check) Enable',
+                        value: 'toggle',
+                    },
                 ],
                 {
                     placeHolder: `Edit "${source.name}"`,
                     title: 'Source Edit Options',
-                    ignoreFocusOut: true
+                    ignoreFocusOut: true,
                 }
             );
 
@@ -363,7 +390,6 @@ export class SourceCommands {
                     await this.toggleSource(finalId);
                     break;
             }
-
         } catch (error) {
             this.logger.error('Failed to edit source', error as Error);
             vscode.window.showErrorMessage(`Failed to edit source: ${(error as Error).message}`);
@@ -373,31 +399,32 @@ export class SourceCommands {
     /**
      * Remove a source
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     async removeSource(sourceId?: string | any): Promise<void> {
         try {
             // Extract source ID from tree item or string parameter
             const extractedId = this.extractSourceId(sourceId);
-            
+
             let finalId: string;
             // If no sourceId, let user select
             if (!extractedId) {
                 const sources = await this.registryManager.listSources();
-                
+
                 if (sources.length === 0) {
                     vscode.window.showInformationMessage('No sources found.');
                     return;
                 }
 
                 const selected = await vscode.window.showQuickPick(
-                    sources.map(s => ({
+                    sources.map((s) => ({
                         label: s.name,
                         description: s.url,
-                        source: s
+                        source: s,
                     })),
                     {
                         placeHolder: 'Select source to remove',
                         title: 'Remove Source',
-                        ignoreFocusOut: true
+                        ignoreFocusOut: true,
                     }
                 );
 
@@ -411,7 +438,7 @@ export class SourceCommands {
             }
 
             const sources = await this.registryManager.listSources();
-            const source = sources.find(s => s.id === finalId);
+            const source = sources.find((s) => s.id === finalId);
 
             if (!source) {
                 vscode.window.showErrorMessage('Source not found');
@@ -422,7 +449,8 @@ export class SourceCommands {
             const confirmation = await vscode.window.showWarningMessage(
                 `Are you sure you want to remove source "${source.name}"?`,
                 { modal: true },
-                'Remove', 'Cancel'
+                'Remove',
+                'Cancel'
             );
 
             if (confirmation !== 'Remove') {
@@ -431,10 +459,7 @@ export class SourceCommands {
 
             await this.registryManager.removeSource(finalId);
 
-            vscode.window.showInformationMessage(
-                `Source "${source.name}" removed successfully`
-            );
-
+            vscode.window.showInformationMessage(`Source "${source.name}" removed successfully`);
         } catch (error) {
             this.logger.error('Failed to remove source', error as Error);
             vscode.window.showErrorMessage(`Failed to remove source: ${(error as Error).message}`);
@@ -444,31 +469,34 @@ export class SourceCommands {
     /**
      * Sync a source (refresh bundle list)
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     async syncSource(sourceId?: string | any): Promise<void> {
         try {
             // Extract source ID from tree item or string parameter
             const extractedId = this.extractSourceId(sourceId);
-            
+
             let finalId: string;
             // If no sourceId, let user select
             if (!extractedId) {
                 const sources = await this.registryManager.listSources();
-                
+
                 if (sources.length === 0) {
                     vscode.window.showInformationMessage('No sources found.');
                     return;
                 }
 
                 const selected = await vscode.window.showQuickPick(
-                    sources.filter(s => s.enabled).map(s => ({
-                        label: s.name,
-                        description: s.url,
-                        source: s
-                    })),
+                    sources
+                        .filter((s) => s.enabled)
+                        .map((s) => ({
+                            label: s.name,
+                            description: s.url,
+                            source: s,
+                        })),
                     {
                         placeHolder: 'Select source to sync',
                         title: 'Sync Source',
-                        ignoreFocusOut: true
+                        ignoreFocusOut: true,
                     }
                 );
 
@@ -482,7 +510,7 @@ export class SourceCommands {
             }
 
             const sources = await this.registryManager.listSources();
-            const source = sources.find(s => s.id === finalId);
+            const source = sources.find((s) => s.id === finalId);
 
             if (!source) {
                 vscode.window.showErrorMessage('Source not found');
@@ -493,17 +521,14 @@ export class SourceCommands {
                 {
                     location: vscode.ProgressLocation.Notification,
                     title: `Syncing "${source.name}"...`,
-                    cancellable: false
+                    cancellable: false,
                 },
                 async () => {
                     await this.registryManager.syncSource(finalId!);
                 }
             );
 
-            vscode.window.showInformationMessage(
-                `Source "${source.name}" synced successfully`
-            );
-
+            vscode.window.showInformationMessage(`Source "${source.name}" synced successfully`);
         } catch (error) {
             this.logger.error('Failed to sync source', error as Error);
             vscode.window.showErrorMessage(`Failed to sync source: ${(error as Error).message}`);
@@ -516,7 +541,7 @@ export class SourceCommands {
     async syncAllSources(): Promise<void> {
         try {
             const sources = await this.registryManager.listSources();
-            const enabledSources = sources.filter(s => s.enabled);
+            const enabledSources = sources.filter((s) => s.enabled);
 
             if (enabledSources.length === 0) {
                 vscode.window.showInformationMessage('No enabled sources to sync.');
@@ -527,20 +552,26 @@ export class SourceCommands {
                 {
                     location: vscode.ProgressLocation.Notification,
                     title: `Syncing ${enabledSources.length} source(s)...`,
-                    cancellable: false
+                    cancellable: false,
                 },
                 async (progress) => {
                     for (let i = 0; i < enabledSources.length; i++) {
                         const source = enabledSources[i];
+                        if (!source) {
+                            continue;
+                        }
                         progress.report({
                             message: `Syncing "${source.name}" (${i + 1}/${enabledSources.length})`,
-                            increment: (100 / enabledSources.length)
+                            increment: 100 / enabledSources.length,
                         });
-                        
+
                         try {
                             await this.registryManager.syncSource(source.id);
                         } catch (error) {
-                            this.logger.warn(`Failed to sync source "${source.name}"`, error as Error);
+                            this.logger.warn(
+                                `Failed to sync source "${source.name}"`,
+                                error as Error
+                            );
                         }
                     }
                 }
@@ -549,7 +580,6 @@ export class SourceCommands {
             vscode.window.showInformationMessage(
                 `Synced ${enabledSources.length} source(s) successfully`
             );
-
         } catch (error) {
             this.logger.error('Failed to sync all sources', error as Error);
             vscode.window.showErrorMessage(`Failed to sync sources: ${(error as Error).message}`);
@@ -564,43 +594,54 @@ export class SourceCommands {
             const sources = await this.registryManager.listSources();
 
             if (sources.length === 0) {
-                vscode.window.showInformationMessage(
-                    'No sources found. Add one to get started!',
-                    'Add Source'
-                ).then(action => {
-                    if (action === 'Add Source') {
-                        this.addSource();
-                    }
-                });
+                vscode.window
+                    .showInformationMessage(
+                        'No sources found. Add one to get started!',
+                        'Add Source'
+                    )
+                    .then((action) => {
+                        if (action === 'Add Source') {
+                            this.addSource();
+                        }
+                    });
                 return;
             }
 
             const selected = await vscode.window.showQuickPick(
-                sources.map(s => ({
+                sources.map((s) => ({
                     label: s.enabled ? `✓ ${s.name}` : `○ ${s.name}`,
                     description: s.url,
                     detail: `${s.type} • Priority: ${s.priority}${s.private ? ' • Private' : ''}`,
-                    source: s
+                    source: s,
                 })),
                 {
                     placeHolder: 'Select a source to view actions',
                     title: 'Registry Sources',
-                    ignoreFocusOut: true
+                    ignoreFocusOut: true,
                 }
             );
 
             if (selected) {
                 // Show source actions
-                const action = await vscode.window.showQuickPick([
-                    { label: '$(sync) Sync', value: 'sync', enabled: selected.source.enabled },
-                    { label: '$(edit) Edit', value: 'edit', enabled: true },
-                    { label: selected.source.enabled ? '$(circle-slash) Disable' : '$(check) Enable', value: 'toggle', enabled: true },
-                    { label: '$(trash) Remove', value: 'remove', enabled: true },
-                ].filter(a => a.enabled), {
-                    placeHolder: `Actions for "${selected.source.name}"`,
-                    title: 'Source Actions',
-                    ignoreFocusOut: true
-                });
+                const action = await vscode.window.showQuickPick(
+                    [
+                        { label: '$(sync) Sync', value: 'sync', enabled: selected.source.enabled },
+                        { label: '$(edit) Edit', value: 'edit', enabled: true },
+                        {
+                            label: selected.source.enabled
+                                ? '$(circle-slash) Disable'
+                                : '$(check) Enable',
+                            value: 'toggle',
+                            enabled: true,
+                        },
+                        { label: '$(trash) Remove', value: 'remove', enabled: true },
+                    ].filter((a) => a.enabled),
+                    {
+                        placeHolder: `Actions for "${selected.source.name}"`,
+                        title: 'Source Actions',
+                        ignoreFocusOut: true,
+                    }
+                );
 
                 if (action) {
                     switch (action.value) {
@@ -619,7 +660,6 @@ export class SourceCommands {
                     }
                 }
             }
-
         } catch (error) {
             this.logger.error('Failed to list sources', error as Error);
             vscode.window.showErrorMessage(`Failed to list sources: ${(error as Error).message}`);
@@ -638,12 +678,12 @@ export class SourceCommands {
                     prompt: 'Enter GitHub repository URL',
                     placeHolder: 'https://github.com/owner/repo',
                     validateInput: (value) => {
-                        if (!value || !value.match(/github\.com/)) {
+                        if (!value || !/github\.com/.test(value)) {
                             return 'Please enter a valid GitHub URL';
                         }
-                        return undefined;
+                        return;
                     },
-                    ignoreFocusOut: true
+                    ignoreFocusOut: true,
                 });
 
             case 'gitlab':
@@ -654,9 +694,9 @@ export class SourceCommands {
                         if (!value || value.trim().length === 0) {
                             return 'URL is required';
                         }
-                        return undefined;
+                        return;
                     },
-                    ignoreFocusOut: true
+                    ignoreFocusOut: true,
                 });
 
             case 'http':
@@ -664,12 +704,12 @@ export class SourceCommands {
                     prompt: 'Enter HTTP registry URL',
                     placeHolder: 'https://registry.example.com',
                     validateInput: (value) => {
-                        if (!value || !value.match(/^https?:\/\//)) {
+                        if (!value || !/^https?:\/\//.test(value)) {
                             return 'Please enter a valid HTTP/HTTPS URL';
                         }
-                        return undefined;
+                        return;
                     },
-                    ignoreFocusOut: true
+                    ignoreFocusOut: true,
                 });
 
             case 'local': {
@@ -677,10 +717,14 @@ export class SourceCommands {
                     canSelectFolders: true,
                     canSelectFiles: false,
                     canSelectMany: false,
-                    title: 'Select local registry directory'
+                    title: 'Select local registry directory',
                 });
-                
-                return uris && uris.length > 0 ? uris[0].fsPath : undefined;
+
+                if (!uris || uris.length === 0) {
+                    return undefined;
+                }
+                const firstUri = uris[0];
+                return firstUri ? firstUri.fsPath : undefined;
             }
 
             case 'awesome-copilot':
@@ -689,12 +733,12 @@ export class SourceCommands {
                     placeHolder: 'https://github.com/github/awesome-copilot',
                     value: 'https://github.com/github/awesome-copilot',
                     validateInput: (value) => {
-                        if (!value || !value.match(/github\.com/)) {
+                        if (!value || !/github\.com/.test(value)) {
                             return 'Please enter a valid GitHub URL';
                         }
-                        return undefined;
+                        return;
                     },
-                    ignoreFocusOut: true
+                    ignoreFocusOut: true,
                 });
 
             case 'local-awesome-copilot': {
@@ -702,10 +746,14 @@ export class SourceCommands {
                     canSelectFolders: true,
                     canSelectFiles: false,
                     canSelectMany: false,
-                    title: 'Select local awesome-copilot collections directory'
+                    title: 'Select local awesome-copilot collections directory',
                 });
-                
-                return uris && uris.length > 0 ? uris[0].fsPath : undefined;
+
+                if (!uris || uris.length === 0) {
+                    return undefined;
+                }
+                const firstUri = uris[0];
+                return firstUri ? firstUri.fsPath : undefined;
             }
 
             case 'apm':
@@ -713,12 +761,12 @@ export class SourceCommands {
                     prompt: 'Enter GitHub repository URL',
                     placeHolder: 'https://github.com/owner/repo',
                     validateInput: (value) => {
-                        if (!value || !value.match(/github\.com/)) {
+                        if (!value || !/github\.com/.test(value)) {
                             return 'Please enter a valid GitHub URL';
                         }
-                        return undefined;
+                        return;
                     },
-                    ignoreFocusOut: true
+                    ignoreFocusOut: true,
                 });
 
             case 'local-apm': {
@@ -726,10 +774,14 @@ export class SourceCommands {
                     canSelectFolders: true,
                     canSelectFiles: false,
                     canSelectMany: false,
-                    title: 'Select local APM package directory'
+                    title: 'Select local APM package directory',
                 });
-                
-                return uris && uris.length > 0 ? uris[0].fsPath : undefined;
+
+                if (!uris || uris.length === 0) {
+                    return undefined;
+                }
+                const firstUri = uris[0];
+                return firstUri ? firstUri.fsPath : undefined;
             }
 
             case 'olaf':
@@ -737,12 +789,12 @@ export class SourceCommands {
                     prompt: 'Enter GitHub repository URL containing OLAF skills',
                     placeHolder: 'https://github.com/owner/repo',
                     validateInput: (value) => {
-                        if (!value || !value.match(/github\.com/)) {
+                        if (!value || !/github\.com/.test(value)) {
                             return 'Please enter a valid GitHub URL';
                         }
-                        return undefined;
+                        return;
                     },
-                    ignoreFocusOut: true
+                    ignoreFocusOut: true,
                 });
 
             case 'local-olaf': {
@@ -751,10 +803,14 @@ export class SourceCommands {
                     canSelectFiles: false,
                     canSelectMany: false,
                     title: 'Select local OLAF skills directory',
-                    openLabel: 'Select Directory'
+                    openLabel: 'Select Directory',
                 });
-                
-                return uris && uris.length > 0 ? uris[0].fsPath : undefined;
+
+                if (!uris || uris.length === 0) {
+                    return undefined;
+                }
+                const firstUri = uris[0];
+                return firstUri ? firstUri.fsPath : undefined;
             }
 
             case 'skills':
@@ -763,12 +819,12 @@ export class SourceCommands {
                     placeHolder: 'https://github.com/anthropics/skills',
                     value: 'https://github.com/anthropics/skills',
                     validateInput: (value) => {
-                        if (!value || !value.match(/github\.com/)) {
+                        if (!value || !/github\.com/.test(value)) {
                             return 'Please enter a valid GitHub URL';
                         }
-                        return undefined;
+                        return;
                     },
-                    ignoreFocusOut: true
+                    ignoreFocusOut: true,
                 });
 
             case 'local-skills': {
@@ -777,10 +833,14 @@ export class SourceCommands {
                     canSelectFiles: false,
                     canSelectMany: false,
                     title: 'Select local skills directory (must contain skills/ folder)',
-                    openLabel: 'Select Directory'
+                    openLabel: 'Select Directory',
                 });
-                
-                return uris && uris.length > 0 ? uris[0].fsPath : undefined;
+
+                if (!uris || uris.length === 0) {
+                    return undefined;
+                }
+                const firstUri = uris[0];
+                return firstUri ? firstUri.fsPath : undefined;
             }
 
             default:
@@ -800,7 +860,7 @@ export class SourceCommands {
      */
     private async renameSource(sourceId: string): Promise<void> {
         const sources = await this.registryManager.listSources();
-        const source = sources.find(s => s.id === sourceId);
+        const source = sources.find((s) => s.id === sourceId);
 
         if (!source) {
             return;
@@ -813,9 +873,9 @@ export class SourceCommands {
                 if (!value || value.trim().length === 0) {
                     return 'Source name is required';
                 }
-                return undefined;
+                return;
             },
-            ignoreFocusOut: true
+            ignoreFocusOut: true,
         });
 
         if (newName && newName !== source.name) {
@@ -829,7 +889,7 @@ export class SourceCommands {
      */
     private async changeSourceUrl(sourceId: string): Promise<void> {
         const sources = await this.registryManager.listSources();
-        const source = sources.find(s => s.id === sourceId);
+        const source = sources.find((s) => s.id === sourceId);
 
         if (!source) {
             return;
@@ -851,13 +911,13 @@ export class SourceCommands {
             prompt: 'Enter access token (leave empty to remove)',
             password: true,
             placeHolder: 'Access token',
-            ignoreFocusOut: true
+            ignoreFocusOut: true,
         });
 
         if (token !== undefined) {
             await this.registryManager.updateSource(sourceId, {
                 token: token.trim() || undefined,
-                private: !!token.trim()
+                private: !!token.trim(),
             });
             vscode.window.showInformationMessage('Token configuration updated');
         }
@@ -868,7 +928,7 @@ export class SourceCommands {
      */
     private async changePriority(sourceId: string): Promise<void> {
         const sources = await this.registryManager.listSources();
-        const source = sources.find(s => s.id === sourceId);
+        const source = sources.find((s) => s.id === sourceId);
 
         if (!source) {
             return;
@@ -878,17 +938,19 @@ export class SourceCommands {
             prompt: 'Enter new priority (1 = highest)',
             value: source.priority.toString(),
             validateInput: (value) => {
-                const num = parseInt(value, 10);
+                const num = Number.parseInt(value, 10);
                 if (isNaN(num) || num < 1) {
                     return 'Priority must be a positive number';
                 }
-                return undefined;
+                return;
             },
-            ignoreFocusOut: true
+            ignoreFocusOut: true,
         });
 
         if (newPriority) {
-            await this.registryManager.updateSource(sourceId, { priority: parseInt(newPriority, 10) });
+            await this.registryManager.updateSource(sourceId, {
+                priority: Number.parseInt(newPriority, 10),
+            });
             vscode.window.showInformationMessage('Source priority updated');
         }
     }
@@ -896,32 +958,33 @@ export class SourceCommands {
     /**
      * Toggle source enabled/disabled
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     async toggleSource(sourceId?: string | any): Promise<void> {
         try {
             // Extract source ID from tree item or string parameter
             const extractedId = this.extractSourceId(sourceId);
-            
+
             let finalId: string;
             // If no sourceId, let user select
             if (!extractedId) {
                 const sources = await this.registryManager.listSources();
-                
+
                 if (sources.length === 0) {
                     vscode.window.showInformationMessage('No sources found.');
                     return;
                 }
 
                 const selected = await vscode.window.showQuickPick(
-                    sources.map(s => ({
+                    sources.map((s) => ({
                         label: s.enabled ? `✓ ${s.name}` : `○ ${s.name}`,
                         description: s.url,
                         detail: `${s.type} • Priority: ${s.priority}`,
-                        source: s
+                        source: s,
                     })),
                     {
                         placeHolder: 'Select source to toggle',
                         title: 'Toggle Source',
-                        ignoreFocusOut: true
+                        ignoreFocusOut: true,
                     }
                 );
 
@@ -935,7 +998,7 @@ export class SourceCommands {
             }
 
             const sources = await this.registryManager.listSources();
-            const source = sources.find(s => s.id === finalId);
+            const source = sources.find((s) => s.id === finalId);
 
             if (!source) {
                 vscode.window.showErrorMessage('Source not found');
@@ -956,21 +1019,22 @@ export class SourceCommands {
      * Extract source ID from tree item or string parameter
      * Context menu passes tree item object, command palette passes string
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     private extractSourceId(sourceIdOrItem?: string | any): string | undefined {
         if (!sourceIdOrItem) {
             return undefined;
         }
-        
+
         // Handle tree item object from context menu
         if (typeof sourceIdOrItem === 'object' && 'data' in sourceIdOrItem) {
             return sourceIdOrItem.data?.id;
         }
-        
+
         // Handle direct string ID
         if (typeof sourceIdOrItem === 'string') {
             return sourceIdOrItem;
         }
-        
+
         return undefined;
     }
 }

@@ -1,13 +1,15 @@
 /**
  * GitHubAdapter Authentication Tests
- * 
+ *
  * Tests to verify authentication headers are built correctly
  * for different authentication methods (VSCode, gh CLI, explicit token)
  */
 
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
+
 import { GitHubAdapter } from '../../src/adapters/GitHubAdapter';
 import { RegistrySource } from '../../src/types/registry';
 
@@ -48,7 +50,8 @@ suite('GitHubAdapter Authentication Tests', () => {
             scopes: ['repo'],
         };
 
-        const getSessionStub = sandbox.stub(vscode.authentication, 'getSession')
+        const getSessionStub = sandbox
+            .stub(vscode.authentication, 'getSession')
             .resolves(mockSession as any);
 
         const adapter = new GitHubAdapter(source);
@@ -59,7 +62,7 @@ suite('GitHubAdapter Authentication Tests', () => {
 
         assert.strictEqual(token, mockSession.accessToken);
         assert.strictEqual((adapter as any).authMethod, 'vscode');
-        
+
         // Verify getSession was called with correct params
         assert.ok(getSessionStub.calledOnce);
         assert.ok(getSessionStub.calledWith('github', ['repo'], { silent: true }));
@@ -84,34 +87,36 @@ suite('GitHubAdapter Authentication Tests', () => {
 
         // Get headers
         const makeRequest = (adapter as any).makeRequest.bind(adapter);
-        
+
         // Spy on https.get to capture headers
-        const httpsModule = require('https');
-        const httpsGetStub = sandbox.stub(httpsModule, 'get').callsFake((url: any, options: any, callback: any) => {
-            // Verify Authorization header format
-            assert.ok(options.headers.Authorization, 'Authorization header should exist');
-            assert.strictEqual(
-                options.headers.Authorization,
-                `Bearer ${mockToken}`,
-                'Should use Bearer format, not token format'
-            );
-            
-            // Return mock response
-            const mockResponse: any = {
-                statusCode: 200,
-                on: (event: string, handler: Function) => {
-                    if (event === 'data') {
-                        handler('{"test": "data"}');
-                    } else if (event === 'end') {
-                        handler();
-                    }
-                    return mockResponse;
-                },
-            };
-            
-            callback(mockResponse);
-            return { on: () => ({}) };
-        });
+        const httpsModule = require('node:https');
+        const httpsGetStub = sandbox
+            .stub(httpsModule, 'get')
+            .callsFake((url: any, options: any, callback: any) => {
+                // Verify Authorization header format
+                assert.ok(options.headers.Authorization, 'Authorization header should exist');
+                assert.strictEqual(
+                    options.headers.Authorization,
+                    `Bearer ${mockToken}`,
+                    'Should use Bearer format, not token format'
+                );
+
+                // Return mock response
+                const mockResponse: any = {
+                    statusCode: 200,
+                    on: (event: string, handler: Function) => {
+                        if (event === 'data') {
+                            handler('{"test": "data"}');
+                        } else if (event === 'end') {
+                            handler();
+                        }
+                        return mockResponse;
+                    },
+                };
+
+                callback(mockResponse);
+                return { on: () => ({}) };
+            });
 
         try {
             await makeRequest('https://api.github.com/repos/test-owner/test-repo');
@@ -127,8 +132,8 @@ suite('GitHubAdapter Authentication Tests', () => {
 
         // Mock gh CLI success
         const mockToken = 'ghp_cliToken123';
-        const { exec } = require('child_process');
-        const execStub = sandbox.stub(require('child_process'), 'exec');
+        const { exec } = require('node:child_process');
+        const execStub = sandbox.stub(require('node:child_process'), 'exec');
         execStub.callsFake((cmd: string, callback: Function) => {
             if (cmd === 'gh auth token') {
                 callback(null, { stdout: mockToken + '\n', stderr: '' });
@@ -148,9 +153,11 @@ suite('GitHubAdapter Authentication Tests', () => {
         sandbox.stub(vscode.authentication, 'getSession').rejects(new Error('Not authenticated'));
 
         // Mock gh CLI failure
-        sandbox.stub(require('child_process'), 'exec').callsFake((cmd: string, callback: Function) => {
-            callback(new Error('gh not found'), null);
-        });
+        sandbox
+            .stub(require('node:child_process'), 'exec')
+            .callsFake((cmd: string, callback: Function) => {
+                callback(new Error('gh not found'), null);
+            });
 
         // Create source with explicit token
         const mockToken = 'ghp_explicitToken123';
@@ -170,9 +177,11 @@ suite('GitHubAdapter Authentication Tests', () => {
     test.skip('should return undefined when no authentication is available', async () => {
         // Mock all auth methods failing
         sandbox.stub(vscode.authentication, 'getSession').rejects(new Error('Not authenticated'));
-        sandbox.stub(require('child_process'), 'exec').callsFake((cmd: string, callback: Function) => {
-            callback(new Error('gh not found'), null);
-        });
+        sandbox
+            .stub(require('node:child_process'), 'exec')
+            .callsFake((cmd: string, callback: Function) => {
+                callback(new Error('gh not found'), null);
+            });
 
         const adapter = new GitHubAdapter(source);
 
@@ -191,7 +200,8 @@ suite('GitHubAdapter Authentication Tests', () => {
             scopes: ['repo'],
         };
 
-        const getSessionStub = sandbox.stub(vscode.authentication, 'getSession')
+        const getSessionStub = sandbox
+            .stub(vscode.authentication, 'getSession')
             .resolves(mockSession as any);
 
         const adapter = new GitHubAdapter(source);
@@ -202,7 +212,7 @@ suite('GitHubAdapter Authentication Tests', () => {
 
         assert.strictEqual(token1, mockToken);
         assert.strictEqual(token2, mockToken);
-        
+
         // Should only call VSCode auth once (cached on second call)
         assert.ok(getSessionStub.calledOnce, 'VSCode auth should only be called once');
     });
@@ -224,35 +234,42 @@ suite('GitHubAdapter Authentication Tests', () => {
         await (adapter as any).getAuthenticationToken();
 
         // Spy on https.get for download
-        const httpsModule = require('https');
-        const httpsGetStub = sandbox.stub(httpsModule, 'get').callsFake((url: any, options: any, callback: any) => {
-            // Verify download includes auth
-            assert.ok(options.headers.Authorization, 'Download should include Authorization header');
-            assert.strictEqual(
-                options.headers.Authorization,
-                `Bearer ${mockToken}`,
-                'Download should use Bearer format'
-            );
-            
-            // Return mock response
-            const mockResponse: any = {
-                statusCode: 200,
-                on: (event: string, handler: Function) => {
-                    if (event === 'data') {
-                        handler(Buffer.from('test data'));
-                    } else if (event === 'end') {
-                        handler();
-                    }
-                    return mockResponse;
-                },
-            };
-            
-            callback(mockResponse);
-            return { on: () => ({}) };
-        });
+        const httpsModule = require('node:https');
+        const httpsGetStub = sandbox
+            .stub(httpsModule, 'get')
+            .callsFake((url: any, options: any, callback: any) => {
+                // Verify download includes auth
+                assert.ok(
+                    options.headers.Authorization,
+                    'Download should include Authorization header'
+                );
+                assert.strictEqual(
+                    options.headers.Authorization,
+                    `Bearer ${mockToken}`,
+                    'Download should use Bearer format'
+                );
+
+                // Return mock response
+                const mockResponse: any = {
+                    statusCode: 200,
+                    on: (event: string, handler: Function) => {
+                        if (event === 'data') {
+                            handler(Buffer.from('test data'));
+                        } else if (event === 'end') {
+                            handler();
+                        }
+                        return mockResponse;
+                    },
+                };
+
+                callback(mockResponse);
+                return { on: () => ({}) };
+            });
 
         try {
-            await (adapter as any).downloadFile('https://github.com/test-owner/test-repo/releases/download/v1.0.0/bundle.zip');
+            await (adapter as any).downloadFile(
+                'https://github.com/test-owner/test-repo/releases/download/v1.0.0/bundle.zip'
+            );
             assert.ok(httpsGetStub.calledOnce, 'Download should use https.get');
         } catch (error) {
             // Expected if mock doesn't perfectly emulate response
@@ -260,11 +277,11 @@ suite('GitHubAdapter Authentication Tests', () => {
     });
 
     test.skip('should provide helpful error message for 404 errors', async () => {
-        sandbox.stub(vscode.authentication, 'getSession').resolves(undefined);
+        sandbox.stub(vscode.authentication, 'getSession').resolves();
 
         const adapter = new GitHubAdapter(source);
 
-        const httpsModule = require('https');
+        const httpsModule = require('node:https');
         sandbox.stub(httpsModule, 'get').callsFake((url: any, options: any, callback: any) => {
             const mockResponse: any = {
                 statusCode: 404,
@@ -278,13 +295,15 @@ suite('GitHubAdapter Authentication Tests', () => {
                     return mockResponse;
                 },
             };
-            
+
             callback(mockResponse);
             return { on: () => ({}) };
         });
 
         try {
-            await (adapter as any).makeRequest('https://api.github.com/repos/test-owner/private-repo');
+            await (adapter as any).makeRequest(
+                'https://api.github.com/repos/test-owner/private-repo'
+            );
             assert.fail('Should have thrown an error');
         } catch (error: any) {
             assert.ok(error.message.includes('404'));
@@ -305,7 +324,7 @@ suite('GitHubAdapter Authentication Tests', () => {
 
         const adapter = new GitHubAdapter(source);
 
-        const httpsModule = require('https');
+        const httpsModule = require('node:https');
         sandbox.stub(httpsModule, 'get').callsFake((url: any, options: any, callback: any) => {
             const mockResponse: any = {
                 statusCode: 401,
@@ -319,7 +338,7 @@ suite('GitHubAdapter Authentication Tests', () => {
                     return mockResponse;
                 },
             };
-            
+
             callback(mockResponse);
             return { on: () => ({}) };
         });
@@ -346,7 +365,7 @@ suite('GitHubAdapter Authentication Tests', () => {
 
         const adapter = new GitHubAdapter(source);
 
-        const httpsModule = require('https');
+        const httpsModule = require('node:https');
         sandbox.stub(httpsModule, 'get').callsFake((url: any, options: any, callback: any) => {
             const mockResponse: any = {
                 statusCode: 403,
@@ -360,7 +379,7 @@ suite('GitHubAdapter Authentication Tests', () => {
                     return mockResponse;
                 },
             };
-            
+
             callback(mockResponse);
             return { on: () => ({}) };
         });

@@ -2,8 +2,10 @@
  * GitLabAdapter Unit Tests
  */
 
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+
 import nock from 'nock';
+
 import { GitLabAdapter } from '../../src/adapters/GitLabAdapter';
 import { RegistrySource } from '../../src/types/registry';
 
@@ -88,10 +90,7 @@ suite('GitLabAdapter', () => {
                 .reply(404);
 
             const adapter = new GitLabAdapter(mockSource);
-            await assert.rejects(
-                async () => await adapter.fetchBundles(),
-                /404|Not found/
-            );
+            await assert.rejects(async () => await adapter.fetchBundles(), /404|Not found/);
         });
 
         test('should handle rate limiting', async () => {
@@ -100,10 +99,7 @@ suite('GitLabAdapter', () => {
                 .reply(429, { message: 'Rate limit exceeded' });
 
             const adapter = new GitLabAdapter(mockSource);
-            await assert.rejects(
-                async () => await adapter.fetchBundles(),
-                /429|Rate limit/
-            );
+            await assert.rejects(async () => await adapter.fetchBundles(), /429|Rate limit/);
         });
     });
 

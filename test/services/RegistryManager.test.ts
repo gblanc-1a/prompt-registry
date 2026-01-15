@@ -1,17 +1,19 @@
 /**
  * RegistryManager Behavior Tests
- * 
+ *
  * Tests verify actual outcomes rather than implementation details.
  * Focus on requirements from bundle-state-management-fixes spec.
  */
 
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
+
+import { RepositoryAdapterFactory } from '../../src/adapters/RepositoryAdapter';
 import { RegistryManager } from '../../src/services/RegistryManager';
 import { RegistryStorage } from '../../src/storage/RegistryStorage';
 import { RegistrySource } from '../../src/types/registry';
-import { RepositoryAdapterFactory } from '../../src/adapters/RepositoryAdapter';
 import { BundleBuilder, TEST_SOURCE_IDS } from '../helpers/bundleTestHelpers';
 
 suite('RegistryManager - Settings Export/Import Behavior', () => {
@@ -22,19 +24,19 @@ suite('RegistryManager - Settings Export/Import Behavior', () => {
 
     setup(() => {
         sandbox = sinon.createSandbox();
-        
+
         mockContext = {
             globalState: {
                 get: sandbox.stub(),
                 update: sandbox.stub().resolves(),
                 keys: sandbox.stub().returns([]),
-                setKeysForSync: sandbox.stub()
+                setKeysForSync: sandbox.stub(),
             } as any,
             workspaceState: {
                 get: sandbox.stub(),
                 update: sandbox.stub().resolves(),
                 keys: sandbox.stub().returns([]),
-                setKeysForSync: sandbox.stub()
+                setKeysForSync: sandbox.stub(),
             } as any,
             subscriptions: [],
             extensionPath: '/mock/path',
@@ -45,7 +47,7 @@ suite('RegistryManager - Settings Export/Import Behavior', () => {
         } as any;
 
         manager = RegistryManager.getInstance(mockContext);
-        
+
         // Create and inject mock storage
         mockStorage = sandbox.createStubInstance(RegistryStorage);
         mockStorage.getSources.resolves([]);
@@ -61,7 +63,7 @@ suite('RegistryManager - Settings Export/Import Behavior', () => {
     test('should export settings as JSON string with required fields', async () => {
         const exportedString = await manager.exportSettings('json');
         const exported = JSON.parse(exportedString);
-        
+
         assert.ok(exported.version, 'Should have version');
         assert.ok(exported.exportedAt, 'Should have timestamp');
         assert.ok(Array.isArray(exported.sources), 'Should have sources array');
@@ -72,23 +74,25 @@ suite('RegistryManager - Settings Export/Import Behavior', () => {
         const testData = {
             version: '1.0.0',
             exportedAt: new Date().toISOString(),
-            sources: [{
-                id: 'test-source',
-                name: 'Test',
-                type: 'local' as const,
-                url: 'file:///mock/path',
-                enabled: true,
-                priority: 0
-            }],
+            sources: [
+                {
+                    id: 'test-source',
+                    name: 'Test',
+                    type: 'local' as const,
+                    url: 'file:///mock/path',
+                    enabled: true,
+                    priority: 0,
+                },
+            ],
             profiles: [],
-            configuration: {}
+            configuration: {},
         };
-        
+
         mockStorage.addSource.resolves();
         mockStorage.getSources.resolves([testData.sources[0]]);
-        
+
         await manager.importSettings(JSON.stringify(testData), 'json', 'merge');
-        
+
         // Verify source was added
         const sources = await manager.listSources();
         assert.ok(sources.length > 0, 'Should have imported sources');
@@ -102,19 +106,19 @@ suite('RegistryManager - Version Selection Behavior', () => {
 
     setup(() => {
         sandbox = sinon.createSandbox();
-        
+
         mockContext = {
             globalState: {
                 get: sandbox.stub(),
                 update: sandbox.stub().resolves(),
                 keys: sandbox.stub().returns([]),
-                setKeysForSync: sandbox.stub()
+                setKeysForSync: sandbox.stub(),
             } as any,
             workspaceState: {
                 get: sandbox.stub(),
                 update: sandbox.stub().resolves(),
                 keys: sandbox.stub().returns([]),
-                setKeysForSync: sandbox.stub()
+                setKeysForSync: sandbox.stub(),
             } as any,
             subscriptions: [],
             extensionPath: '/mock/path',
@@ -138,9 +142,9 @@ suite('RegistryManager - Version Selection Behavior', () => {
     test('should retrieve available versions for a bundle', async () => {
         // This tests Requirement 2.1: Display dropdown with all available versions
         const bundleId = 'owner-repo-v2.0.0';
-        
+
         const versions = await manager.getAvailableVersions(bundleId);
-        
+
         // Should return array of version strings
         assert.ok(Array.isArray(versions), 'Should return array of versions');
     });
@@ -154,19 +158,19 @@ suite('RegistryManager - Event Emission Behavior', () => {
 
     setup(() => {
         sandbox = sinon.createSandbox();
-        
+
         mockContext = {
             globalState: {
                 get: sandbox.stub(),
                 update: sandbox.stub().resolves(),
                 keys: sandbox.stub().returns([]),
-                setKeysForSync: sandbox.stub()
+                setKeysForSync: sandbox.stub(),
             } as any,
             workspaceState: {
                 get: sandbox.stub(),
                 update: sandbox.stub().resolves(),
                 keys: sandbox.stub().returns([]),
-                setKeysForSync: sandbox.stub()
+                setKeysForSync: sandbox.stub(),
             } as any,
             subscriptions: [],
             extensionPath: '/mock/path',
@@ -181,7 +185,7 @@ suite('RegistryManager - Event Emission Behavior', () => {
         (mockContext.globalState.get as sinon.SinonStub).withArgs('installations').returns([]);
 
         manager = RegistryManager.getInstance(mockContext);
-        
+
         // Create and inject mock storage
         mockStorage = sandbox.createStubInstance(RegistryStorage);
         mockStorage.getSources.resolves([]);
@@ -198,12 +202,12 @@ suite('RegistryManager - Event Emission Behavior', () => {
         // Requirement 6.1: Fire onBundleInstalled event
         let eventFired = false;
         let firedBundleId: string | undefined;
-        
+
         const listener = manager.onBundleInstalled((bundle) => {
             eventFired = true;
             firedBundleId = bundle.bundleId;
         });
-        
+
         // Set up mocks for actual installation
         const testBundle = {
             id: 'test-bundle',
@@ -218,27 +222,27 @@ suite('RegistryManager - Event Emission Behavior', () => {
             lastUpdated: new Date().toISOString(),
             downloads: 0,
             rating: 0,
-            environments: []
+            environments: [],
         };
-        
+
         const testSource = {
             id: 'test-source',
             name: 'Test Source',
             type: 'local' as const,
             url: 'file:///test',
             enabled: true,
-            priority: 0
+            priority: 0,
         };
-        
-        mockStorage.getInstalledBundle.resolves(undefined);
+
+        mockStorage.getInstalledBundle.resolves();
         mockStorage.getSources.resolves([testSource]);
-        
+
         // Mock adapter and installer
         const mockAdapter = {
-            downloadBundle: sandbox.stub().resolves(Buffer.from('test'))
+            downloadBundle: sandbox.stub().resolves(Buffer.from('test')),
         };
         sandbox.stub(RepositoryAdapterFactory, 'create').returns(mockAdapter as any);
-        
+
         const mockInstaller = (manager as any).installer;
         sandbox.stub(mockInstaller, 'installFromBuffer').resolves({
             bundleId: 'test-bundle',
@@ -246,20 +250,20 @@ suite('RegistryManager - Event Emission Behavior', () => {
             sourceId: 'test-source',
             sourceType: 'local',
             installedAt: new Date().toISOString(),
-            scope: 'user'
+            scope: 'user',
         });
-        
+
         mockStorage.recordInstallation.resolves();
-        
+
         // Stub getBundleDetails to return test bundle
         sandbox.stub(manager as any, 'getBundleDetails').resolves(testBundle);
-        
+
         // Perform actual installation which should fire the event
         await manager.installBundle('test-bundle', { scope: 'user' });
-        
+
         assert.ok(eventFired, 'Event should fire when bundle is installed');
         assert.strictEqual(firedBundleId, 'test-bundle', 'Event should contain correct bundle ID');
-        
+
         listener.dispose();
     });
 
@@ -267,12 +271,12 @@ suite('RegistryManager - Event Emission Behavior', () => {
         // Requirement 6.2: Fire onBundleUninstalled event
         let eventFired = false;
         let firedBundleId: string | undefined;
-        
+
         const listener = manager.onBundleUninstalled((bundleId) => {
             eventFired = true;
             firedBundleId = bundleId;
         });
-        
+
         // Set up mocks for actual uninstallation
         const installedBundle = {
             bundleId: 'test-bundle',
@@ -282,21 +286,21 @@ suite('RegistryManager - Event Emission Behavior', () => {
             installedAt: new Date().toISOString(),
             scope: 'user' as const,
             installPath: '/mock/path',
-            manifest: { id: 'test-bundle', name: 'Test', version: '1.0.0' } as any
+            manifest: { id: 'test-bundle', name: 'Test', version: '1.0.0' } as any,
         };
-        
+
         mockStorage.getInstalledBundle.resolves(installedBundle);
         mockStorage.removeInstallation.resolves();
-        
+
         const mockInstaller = (manager as any).installer;
         sandbox.stub(mockInstaller, 'uninstall').resolves();
-        
+
         // Perform actual uninstallation which should fire the event
         await manager.uninstallBundle('test-bundle', 'user');
-        
+
         assert.ok(eventFired, 'Event should fire when bundle is uninstalled');
         assert.strictEqual(firedBundleId, 'test-bundle', 'Event should contain correct bundle ID');
-        
+
         listener.dispose();
     });
 
@@ -304,12 +308,12 @@ suite('RegistryManager - Event Emission Behavior', () => {
         // Requirement 6.3: Fire onBundleUpdated event
         let eventFired = false;
         let firedUpdate: any;
-        
+
         const listener = manager.onBundleUpdated((update) => {
             eventFired = true;
             firedUpdate = update;
         });
-        
+
         // Set up mocks for actual update
         const currentInstallation = {
             bundleId: 'test-bundle',
@@ -319,9 +323,9 @@ suite('RegistryManager - Event Emission Behavior', () => {
             installedAt: new Date().toISOString(),
             scope: 'user' as const,
             installPath: '/mock/path',
-            manifest: { id: 'test-bundle', name: 'Test', version: '1.0.0' } as any
+            manifest: { id: 'test-bundle', name: 'Test', version: '1.0.0' } as any,
         };
-        
+
         const updatedBundle = {
             id: 'test-bundle',
             name: 'Test Bundle',
@@ -335,29 +339,29 @@ suite('RegistryManager - Event Emission Behavior', () => {
             lastUpdated: new Date().toISOString(),
             downloads: 0,
             rating: 0,
-            environments: []
+            environments: [],
         };
-        
+
         const testSource = {
             id: 'test-source',
             name: 'Test Source',
             type: 'local' as const,
             url: 'file:///test',
             enabled: true,
-            priority: 0
+            priority: 0,
         };
-        
+
         mockStorage.getInstalledBundles.resolves([currentInstallation]);
         mockStorage.getSources.resolves([testSource]);
         mockStorage.removeInstallation.resolves();
         mockStorage.recordInstallation.resolves();
-        
+
         // Mock adapter
         const mockAdapter = {
-            downloadBundle: sandbox.stub().resolves(Buffer.from('test'))
+            downloadBundle: sandbox.stub().resolves(Buffer.from('test')),
         };
         sandbox.stub(RepositoryAdapterFactory, 'create').returns(mockAdapter as any);
-        
+
         // Mock installer
         const mockInstaller = (manager as any).installer;
         sandbox.stub(mockInstaller, 'update').resolves({
@@ -366,19 +370,23 @@ suite('RegistryManager - Event Emission Behavior', () => {
             sourceId: 'test-source',
             sourceType: 'local',
             installedAt: new Date().toISOString(),
-            scope: 'user'
+            scope: 'user',
         });
-        
+
         // Stub getBundleDetails
         sandbox.stub(manager as any, 'getBundleDetails').resolves(updatedBundle);
-        
+
         // Perform actual update which should fire the event
         await manager.updateBundle('test-bundle');
-        
+
         assert.ok(eventFired, 'Event should fire when bundle is updated');
-        assert.strictEqual(firedUpdate.bundleId, 'test-bundle', 'Event should contain correct bundle ID');
+        assert.strictEqual(
+            firedUpdate.bundleId,
+            'test-bundle',
+            'Event should contain correct bundle ID'
+        );
         assert.strictEqual(firedUpdate.version, '2.0.0', 'Event should contain new version');
-        
+
         listener.dispose();
     });
 });
@@ -391,19 +399,19 @@ suite('RegistryManager - Installation Record Structure', () => {
 
     setup(() => {
         sandbox = sinon.createSandbox();
-        
+
         mockContext = {
             globalState: {
                 get: sandbox.stub(),
                 update: sandbox.stub().resolves(),
                 keys: sandbox.stub().returns([]),
-                setKeysForSync: sandbox.stub()
+                setKeysForSync: sandbox.stub(),
             } as any,
             workspaceState: {
                 get: sandbox.stub(),
                 update: sandbox.stub().resolves(),
                 keys: sandbox.stub().returns([]),
-                setKeysForSync: sandbox.stub()
+                setKeysForSync: sandbox.stub(),
             } as any,
             subscriptions: [],
             extensionPath: '/mock/path',
@@ -414,7 +422,7 @@ suite('RegistryManager - Installation Record Structure', () => {
         } as any;
 
         manager = RegistryManager.getInstance(mockContext);
-        
+
         // Create and inject mock storage
         mockStorage = sandbox.createStubInstance(RegistryStorage);
         mockStorage.getInstalledBundles.resolves([]);
@@ -428,13 +436,13 @@ suite('RegistryManager - Installation Record Structure', () => {
     test('should list installed bundles', async () => {
         // Requirement 4.5: Store both full bundle ID and source type
         const installed = await manager.listInstalledBundles();
-        
+
         assert.ok(Array.isArray(installed), 'Should return array of installed bundles');
     });
 
     test('should return empty array when no bundles installed', async () => {
         const installed = await manager.listInstalledBundles();
-        
+
         assert.strictEqual(installed.length, 0, 'Should return empty array');
     });
 });
@@ -447,19 +455,19 @@ suite('RegistryManager - Source Management', () => {
 
     setup(() => {
         sandbox = sinon.createSandbox();
-        
+
         mockContext = {
             globalState: {
                 get: sandbox.stub(),
                 update: sandbox.stub().resolves(),
                 keys: sandbox.stub().returns([]),
-                setKeysForSync: sandbox.stub()
+                setKeysForSync: sandbox.stub(),
             } as any,
             workspaceState: {
                 get: sandbox.stub(),
                 update: sandbox.stub().resolves(),
                 keys: sandbox.stub().returns([]),
-                setKeysForSync: sandbox.stub()
+                setKeysForSync: sandbox.stub(),
             } as any,
             subscriptions: [],
             extensionPath: '/mock/path',
@@ -470,7 +478,7 @@ suite('RegistryManager - Source Management', () => {
         } as any;
 
         manager = RegistryManager.getInstance(mockContext);
-        
+
         // Create and inject mock storage
         mockStorage = sandbox.createStubInstance(RegistryStorage);
         mockStorage.getSources.resolves([]);
@@ -483,7 +491,7 @@ suite('RegistryManager - Source Management', () => {
 
     test('should list sources', async () => {
         const sources = await manager.listSources();
-        
+
         assert.ok(Array.isArray(sources), 'Should return array of sources');
     });
 
@@ -494,27 +502,32 @@ suite('RegistryManager - Source Management', () => {
             type: 'local',
             url: 'file:///mock/path',
             enabled: true,
-            priority: 0
+            priority: 0,
         };
-        
+
         // Mock the storage to return the new source after adding
         mockStorage.addSource.resolves();
         mockStorage.getSources.resolves([newSource]);
-        
+
         // Mock the adapter factory to return a mock adapter with successful validation
         const mockAdapter = {
             validate: sandbox.stub().resolves({ valid: true, errors: [] }),
-            fetchBundles: sandbox.stub().resolves([])
+            fetchBundles: sandbox.stub().resolves([]),
         };
-        const factoryStub = sandbox.stub(RepositoryAdapterFactory, 'create').returns(mockAdapter as any);
-        
+        const factoryStub = sandbox
+            .stub(RepositoryAdapterFactory, 'create')
+            .returns(mockAdapter as any);
+
         await manager.addSource(newSource);
-        
+
         // Verify the source is now in the list
         const sources = await manager.listSources();
-        assert.ok(sources.some(s => s.id === 'new-source'), 'Added source should be in source list');
+        assert.ok(
+            sources.some((s) => s.id === 'new-source'),
+            'Added source should be in source list'
+        );
         assert.strictEqual(sources[0].name, 'New Source', 'Source should have correct name');
-        
+
         // Verify adapter was created and validated
         assert.ok(factoryStub.called, 'Adapter factory should be called');
         assert.ok(mockAdapter.validate.called, 'Adapter validation should be called');
@@ -529,19 +542,19 @@ suite('RegistryManager - Version Change Installation', () => {
 
     setup(() => {
         sandbox = sinon.createSandbox();
-        
+
         mockContext = {
             globalState: {
                 get: sandbox.stub(),
                 update: sandbox.stub().resolves(),
                 keys: sandbox.stub().returns([]),
-                setKeysForSync: sandbox.stub()
+                setKeysForSync: sandbox.stub(),
             } as any,
             workspaceState: {
                 get: sandbox.stub(),
                 update: sandbox.stub().resolves(),
                 keys: sandbox.stub().returns([]),
-                setKeysForSync: sandbox.stub()
+                setKeysForSync: sandbox.stub(),
             } as any,
             subscriptions: [],
             extensionPath: '/mock/path',
@@ -562,7 +575,7 @@ suite('RegistryManager - Version Change Installation', () => {
 
     test('should allow installing different version when bundle already installed', async () => {
         const bundleId = 'test-bundle';
-        
+
         // Mock existing installation with v1.0.0
         mockStorage.getInstalledBundle.resolves({
             bundleId: bundleId,
@@ -572,7 +585,7 @@ suite('RegistryManager - Version Change Installation', () => {
             sourceId: 'test-source',
             sourceType: 'github',
             installPath: '/mock/path',
-            manifest: { id: bundleId, name: 'Test', version: '1.0.0' } as any
+            manifest: { id: bundleId, name: 'Test', version: '1.0.0' } as any,
         });
 
         // Mock bundle resolution to return v1.0.1
@@ -582,19 +595,21 @@ suite('RegistryManager - Version Change Installation', () => {
             version: '1.0.1',
             description: 'Test',
             author: 'Test',
-            tags: []
+            tags: [],
         };
 
         // Stub internal methods
         sandbox.stub(manager as any, 'resolveInstallationBundle').resolves(mockBundle);
-        sandbox.stub(manager as any, 'getSourceForBundle').resolves({ id: 'test-source', type: 'github' });
+        sandbox
+            .stub(manager as any, 'getSourceForBundle')
+            .resolves({ id: 'test-source', type: 'github' });
         sandbox.stub(manager as any, 'downloadAndInstall').resolves({
             bundleId: bundleId,
             version: '1.0.1',
             installedAt: new Date().toISOString(),
             scope: 'user',
             sourceId: 'test-source',
-            sourceType: 'github'
+            sourceType: 'github',
         });
         mockStorage.recordInstallation.resolves();
 
@@ -604,13 +619,21 @@ suite('RegistryManager - Version Change Installation', () => {
         // Verify installation was recorded with correct version
         assert.ok(mockStorage.recordInstallation.called, 'Installation should be recorded');
         const recordedInstallation = mockStorage.recordInstallation.firstCall.args[0];
-        assert.strictEqual(recordedInstallation.version, '1.0.1', 'Should install requested version 1.0.1');
-        assert.strictEqual(recordedInstallation.bundleId, bundleId, 'Should record correct bundle ID');
+        assert.strictEqual(
+            recordedInstallation.version,
+            '1.0.1',
+            'Should install requested version 1.0.1'
+        );
+        assert.strictEqual(
+            recordedInstallation.bundleId,
+            bundleId,
+            'Should record correct bundle ID'
+        );
     });
 
     test('should throw error when installing same version without force', async () => {
         const bundleId = 'test-bundle';
-        
+
         // Mock existing installation with v1.0.0
         mockStorage.getInstalledBundle.resolves({
             bundleId: bundleId,
@@ -620,7 +643,7 @@ suite('RegistryManager - Version Change Installation', () => {
             sourceId: 'test-source',
             sourceType: 'github',
             installPath: '/mock/path',
-            manifest: { id: bundleId, name: 'Test', version: '1.0.0' } as any
+            manifest: { id: bundleId, name: 'Test', version: '1.0.0' } as any,
         });
 
         // Mock bundle resolution to return same version
@@ -630,7 +653,7 @@ suite('RegistryManager - Version Change Installation', () => {
             version: '1.0.0',
             description: 'Test',
             author: 'Test',
-            tags: []
+            tags: [],
         };
 
         sandbox.stub(manager as any, 'resolveInstallationBundle').resolves(mockBundle);
@@ -645,7 +668,7 @@ suite('RegistryManager - Version Change Installation', () => {
 
     test('should allow downgrade from v1.0.17 to v1.0.15', async () => {
         const bundleId = 'amadeus-airlines-solutions-workflow-instructions';
-        
+
         // Mock existing installation with v1.0.17
         mockStorage.getInstalledBundle.resolves({
             bundleId: `${bundleId}-1.0.17`,
@@ -655,7 +678,7 @@ suite('RegistryManager - Version Change Installation', () => {
             sourceId: 'test-source',
             sourceType: 'github',
             installPath: '/mock/path',
-            manifest: { id: bundleId, name: 'Amadeus', version: '1.0.17' } as any
+            manifest: { id: bundleId, name: 'Amadeus', version: '1.0.17' } as any,
         });
 
         // Mock bundle resolution to return v1.0.15 (downgrade)
@@ -665,18 +688,20 @@ suite('RegistryManager - Version Change Installation', () => {
             version: '1.0.15',
             description: 'Test',
             author: 'Test',
-            tags: []
+            tags: [],
         };
 
         sandbox.stub(manager as any, 'resolveInstallationBundle').resolves(mockBundle);
-        sandbox.stub(manager as any, 'getSourceForBundle').resolves({ id: 'test-source', type: 'github' });
+        sandbox
+            .stub(manager as any, 'getSourceForBundle')
+            .resolves({ id: 'test-source', type: 'github' });
         sandbox.stub(manager as any, 'downloadAndInstall').resolves({
             bundleId: `${bundleId}-1.0.15`,
             version: '1.0.15',
             installedAt: new Date().toISOString(),
             scope: 'user',
             sourceId: 'test-source',
-            sourceType: 'github'
+            sourceType: 'github',
         });
         mockStorage.recordInstallation.resolves();
 
@@ -686,8 +711,15 @@ suite('RegistryManager - Version Change Installation', () => {
         // Verify downgrade was recorded with correct version
         assert.ok(mockStorage.recordInstallation.called, 'Downgrade should be recorded');
         const recordedInstallation = mockStorage.recordInstallation.firstCall.args[0];
-        assert.strictEqual(recordedInstallation.version, '1.0.15', 'Should install downgraded version 1.0.15');
-        assert.ok(recordedInstallation.bundleId.includes('1.0.15'), 'Bundle ID should reflect downgraded version');
+        assert.strictEqual(
+            recordedInstallation.version,
+            '1.0.15',
+            'Should install downgraded version 1.0.15'
+        );
+        assert.ok(
+            recordedInstallation.bundleId.includes('1.0.15'),
+            'Bundle ID should reflect downgraded version'
+        );
     });
 });
 
@@ -699,19 +731,19 @@ suite('RegistryManager - Bundle Resolution', () => {
 
     setup(() => {
         sandbox = sinon.createSandbox();
-        
+
         mockContext = {
             globalState: {
                 get: sandbox.stub(),
                 update: sandbox.stub().resolves(),
                 keys: sandbox.stub().returns([]),
-                setKeysForSync: sandbox.stub()
+                setKeysForSync: sandbox.stub(),
             } as any,
             workspaceState: {
                 get: sandbox.stub(),
                 update: sandbox.stub().resolves(),
                 keys: sandbox.stub().returns([]),
-                setKeysForSync: sandbox.stub()
+                setKeysForSync: sandbox.stub(),
             } as any,
             subscriptions: [],
             extensionPath: '/mock/path',
@@ -722,7 +754,7 @@ suite('RegistryManager - Bundle Resolution', () => {
         } as any;
 
         registryManager = RegistryManager.getInstance(mockContext);
-        
+
         // Create and inject mock storage using the existing pattern
         mockStorage = sandbox.createStubInstance(RegistryStorage);
         (registryManager as any).storage = mockStorage;
@@ -736,22 +768,24 @@ suite('RegistryManager - Bundle Resolution', () => {
         // Arrange - The scenario where update check returns versioned ID but sources have consolidated ID
         const versionedBundleId = 'amadeus-airlines-solutions-workflow-instructions-1.0.17';
         const identityBundleId = 'amadeus-airlines-solutions-workflow-instructions';
-        
+
         const sourceBundle = BundleBuilder.fromSource(identityBundleId, 'GITHUB')
             .withVersion('1.0.18')
             .build();
         sourceBundle.sourceId = TEST_SOURCE_IDS.GITHUB;
-        
-        mockStorage.getCachedBundleMetadata.resolves(undefined);
-        mockStorage.getSources.resolves([{
-            id: TEST_SOURCE_IDS.GITHUB,
-            type: 'github',
-            name: 'Test Source',
-            url: 'https://github.com/test/repo',
-            enabled: true,
-            priority: 1
-        }]);
-        
+
+        mockStorage.getCachedBundleMetadata.resolves();
+        mockStorage.getSources.resolves([
+            {
+                id: TEST_SOURCE_IDS.GITHUB,
+                type: 'github',
+                name: 'Test Source',
+                url: 'https://github.com/test/repo',
+                enabled: true,
+                priority: 1,
+            },
+        ]);
+
         sandbox.stub(registryManager, 'searchBundles').resolves([sourceBundle]);
 
         // Act - This happens when user clicks "View Details" after update check
@@ -765,22 +799,24 @@ suite('RegistryManager - Bundle Resolution', () => {
     test('should resolve bundle by identity when source has versioned ID', async () => {
         // Arrange - Test the reverse case: identity -> versioned bundle
         const identityBundleId = 'amadeus-airlines-solutions-workflow-instructions';
-        
+
         const versionedBundle = BundleBuilder.fromSource(identityBundleId, 'GITHUB')
             .withVersion('1.0.18')
             .build();
         versionedBundle.sourceId = TEST_SOURCE_IDS.GITHUB;
-        
-        mockStorage.getCachedBundleMetadata.resolves(undefined);
-        mockStorage.getSources.resolves([{
-            id: TEST_SOURCE_IDS.GITHUB,
-            type: 'github',
-            name: 'Test Source',
-            url: 'https://github.com/test/repo',
-            enabled: true,
-            priority: 1
-        }]);
-        
+
+        mockStorage.getCachedBundleMetadata.resolves();
+        mockStorage.getSources.resolves([
+            {
+                id: TEST_SOURCE_IDS.GITHUB,
+                type: 'github',
+                name: 'Test Source',
+                url: 'https://github.com/test/repo',
+                enabled: true,
+                priority: 1,
+            },
+        ]);
+
         sandbox.stub(registryManager, 'searchBundles').resolves([versionedBundle]);
 
         // Act
@@ -794,22 +830,24 @@ suite('RegistryManager - Bundle Resolution', () => {
     test('should handle exact ID matches without identity matching', async () => {
         // Arrange - Test that exact matches still work
         const bundleId = 'exact-match-bundle-1.0.0';
-        
+
         const exactBundle = BundleBuilder.fromSource('exact-match-bundle', 'GITHUB')
             .withVersion('1.0.0')
             .build();
         exactBundle.sourceId = TEST_SOURCE_IDS.GITHUB;
-        
-        mockStorage.getCachedBundleMetadata.resolves(undefined);
-        mockStorage.getSources.resolves([{
-            id: TEST_SOURCE_IDS.GITHUB,
-            type: 'github',
-            name: 'Test Source',
-            url: 'https://github.com/test/repo',
-            enabled: true,
-            priority: 1
-        }]);
-        
+
+        mockStorage.getCachedBundleMetadata.resolves();
+        mockStorage.getSources.resolves([
+            {
+                id: TEST_SOURCE_IDS.GITHUB,
+                type: 'github',
+                name: 'Test Source',
+                url: 'https://github.com/test/repo',
+                enabled: true,
+                priority: 1,
+            },
+        ]);
+
         sandbox.stub(registryManager, 'searchBundles').resolves([exactBundle]);
 
         // Act

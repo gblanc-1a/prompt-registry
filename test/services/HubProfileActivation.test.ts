@@ -3,9 +3,10 @@
  * Tests for profile activation state management and persistence
  */
 
-import * as assert from 'assert';
-import * as path from 'path';
-import * as fs from 'fs';
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import { HubStorage } from '../../src/storage/HubStorage';
 import { HubConfig, ProfileActivationState } from '../../src/types/hub';
 
@@ -19,7 +20,7 @@ suite('Hub Profile Activation State', () => {
             name: 'Test Hub',
             description: 'Test hub for activation',
             maintainer: 'Test',
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
         },
         sources: [
             {
@@ -30,9 +31,9 @@ suite('Hub Profile Activation State', () => {
                 enabled: true,
                 priority: 1,
                 metadata: {
-                    description: 'Test source'
-                }
-            }
+                    description: 'Test source',
+                },
+            },
         ],
         profiles: [
             {
@@ -44,19 +45,19 @@ suite('Hub Profile Activation State', () => {
                         id: 'bundle-1',
                         version: '1.0.0',
                         source: 'source-1',
-                        required: true
+                        required: true,
                     },
                     {
                         id: 'bundle-2',
                         version: '1.0.0',
                         source: 'source-1',
-                        required: false
-                    }
+                        required: false,
+                    },
                 ],
                 icon: '📦',
                 active: false,
                 createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
+                updatedAt: new Date().toISOString(),
             },
             {
                 id: 'profile-2',
@@ -66,9 +67,9 @@ suite('Hub Profile Activation State', () => {
                 icon: '📦',
                 active: false,
                 createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
-            }
-        ]
+                updatedAt: new Date().toISOString(),
+            },
+        ],
     });
 
     setup(() => {
@@ -91,13 +92,13 @@ suite('Hub Profile Activation State', () => {
                 hubId: 'test-hub',
                 profileId: 'profile-1',
                 activatedAt: new Date().toISOString(),
-                syncedBundles: ['bundle-1', 'bundle-2']
+                syncedBundles: ['bundle-1', 'bundle-2'],
             };
 
             await storage.saveProfileActivationState('test-hub', 'profile-1', state);
 
             const retrieved = await storage.getProfileActivationState('test-hub', 'profile-1');
-            assert.ok(retrieved, "Expected activation state to exist");
+            assert.ok(retrieved, 'Expected activation state to exist');
             assert.strictEqual(retrieved.hubId, 'test-hub');
             assert.strictEqual(retrieved.profileId, 'profile-1');
             assert.strictEqual(retrieved.syncedBundles.length, 2);
@@ -113,7 +114,7 @@ suite('Hub Profile Activation State', () => {
                 hubId: 'test-hub',
                 profileId: 'profile-1',
                 activatedAt: new Date().toISOString(),
-                syncedBundles: ['bundle-1']
+                syncedBundles: ['bundle-1'],
             };
 
             await storage.saveProfileActivationState('test-hub', 'profile-1', state1);
@@ -122,13 +123,13 @@ suite('Hub Profile Activation State', () => {
                 hubId: 'test-hub',
                 profileId: 'profile-1',
                 activatedAt: new Date().toISOString(),
-                syncedBundles: ['bundle-1', 'bundle-2']
+                syncedBundles: ['bundle-1', 'bundle-2'],
             };
 
             await storage.saveProfileActivationState('test-hub', 'profile-1', state2);
 
             const retrieved = await storage.getProfileActivationState('test-hub', 'profile-1');
-            assert.ok(retrieved, "Expected activation state to exist");
+            assert.ok(retrieved, 'Expected activation state to exist');
             assert.strictEqual(retrieved.syncedBundles.length, 2);
         });
 
@@ -137,7 +138,7 @@ suite('Hub Profile Activation State', () => {
                 hubId: 'test-hub',
                 profileId: 'profile-1',
                 activatedAt: new Date().toISOString(),
-                syncedBundles: []
+                syncedBundles: [],
             };
 
             await storage.saveProfileActivationState('test-hub', 'profile-1', state);
@@ -154,14 +155,14 @@ suite('Hub Profile Activation State', () => {
                 hubId: 'hub-1',
                 profileId: 'profile-1',
                 activatedAt: new Date().toISOString(),
-                syncedBundles: []
+                syncedBundles: [],
             };
 
             const state2: ProfileActivationState = {
                 hubId: 'hub-2',
                 profileId: 'profile-2',
                 activatedAt: new Date().toISOString(),
-                syncedBundles: []
+                syncedBundles: [],
             };
 
             await storage.saveProfileActivationState('hub-1', 'profile-1', state1);
@@ -181,7 +182,7 @@ suite('Hub Profile Activation State', () => {
                 hubId: 'test-hub',
                 profileId: 'profile-1',
                 activatedAt: new Date().toISOString(),
-                syncedBundles: []
+                syncedBundles: [],
             };
 
             await storage.saveProfileActivationState('test-hub', 'profile-1', state);
@@ -204,7 +205,7 @@ suite('Hub Profile Activation State', () => {
             await storage.setProfileActiveFlag('test-hub', 'profile-1', true);
 
             const updated = await storage.loadHub('test-hub');
-            const profile = updated.config.profiles.find(p => p.id === 'profile-1');
+            const profile = updated.config.profiles.find((p) => p.id === 'profile-1');
             assert.strictEqual(profile?.active, true);
         });
 
@@ -216,7 +217,7 @@ suite('Hub Profile Activation State', () => {
             await storage.setProfileActiveFlag('test-hub', 'profile-1', false);
 
             const updated = await storage.loadHub('test-hub');
-            const profile = updated.config.profiles.find(p => p.id === 'profile-1');
+            const profile = updated.config.profiles.find((p) => p.id === 'profile-1');
             assert.strictEqual(profile?.active, false);
         });
 
@@ -228,8 +229,8 @@ suite('Hub Profile Activation State', () => {
             await storage.setProfileActiveFlag('test-hub', 'profile-2', false);
 
             const updated = await storage.loadHub('test-hub');
-            const profile1 = updated.config.profiles.find(p => p.id === 'profile-1');
-            const profile2 = updated.config.profiles.find(p => p.id === 'profile-2');
+            const profile1 = updated.config.profiles.find((p) => p.id === 'profile-1');
+            const profile2 = updated.config.profiles.find((p) => p.id === 'profile-2');
             assert.strictEqual(profile1?.active, true);
             assert.strictEqual(profile2?.active, false);
         });
@@ -254,7 +255,7 @@ suite('Hub Profile Activation State', () => {
                 hubId: 'test-hub',
                 profileId: 'profile-1',
                 activatedAt: new Date().toISOString(),
-                syncedBundles: ['bundle-1']
+                syncedBundles: ['bundle-1'],
             };
 
             await storage.saveProfileActivationState('test-hub', 'profile-1', state);
@@ -263,7 +264,7 @@ suite('Hub Profile Activation State', () => {
             const storage2 = new HubStorage(tempDir);
             const retrieved = await storage2.getProfileActivationState('test-hub', 'profile-1');
 
-            assert.ok(retrieved, "Expected activation state to exist");
+            assert.ok(retrieved, 'Expected activation state to exist');
 
             assert.strictEqual(retrieved.hubId, 'test-hub');
             assert.strictEqual(retrieved.profileId, 'profile-1');
@@ -278,7 +279,7 @@ suite('Hub Profile Activation State', () => {
             // Create new storage instance
             const storage2 = new HubStorage(tempDir);
             const updated = await storage2.loadHub('test-hub');
-            const profile = updated.config.profiles.find(p => p.id === 'profile-1');
+            const profile = updated.config.profiles.find((p) => p.id === 'profile-1');
 
             assert.strictEqual(profile?.active, true);
         });
@@ -290,13 +291,13 @@ suite('Hub Profile Activation State', () => {
                 hubId: 'test-hub',
                 profileId: 'profile-1',
                 activatedAt: new Date().toISOString(),
-                syncedBundles: ['bundle-1', 'bundle-2', 'bundle-3']
+                syncedBundles: ['bundle-1', 'bundle-2', 'bundle-3'],
             };
 
             await storage.saveProfileActivationState('test-hub', 'profile-1', state);
 
             const retrieved = await storage.getProfileActivationState('test-hub', 'profile-1');
-            assert.ok(retrieved, "Expected activation state to exist");
+            assert.ok(retrieved, 'Expected activation state to exist');
             assert.deepStrictEqual(retrieved.syncedBundles, ['bundle-1', 'bundle-2', 'bundle-3']);
         });
 
@@ -305,13 +306,13 @@ suite('Hub Profile Activation State', () => {
                 hubId: 'test-hub',
                 profileId: 'profile-1',
                 activatedAt: new Date().toISOString(),
-                syncedBundles: []
+                syncedBundles: [],
             };
 
             await storage.saveProfileActivationState('test-hub', 'profile-1', state);
 
             const retrieved = await storage.getProfileActivationState('test-hub', 'profile-1');
-            assert.ok(retrieved, "Expected activation state to exist");
+            assert.ok(retrieved, 'Expected activation state to exist');
             assert.strictEqual(retrieved.syncedBundles.length, 0);
         });
     });

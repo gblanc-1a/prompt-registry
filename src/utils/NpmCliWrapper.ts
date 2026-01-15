@@ -1,6 +1,6 @@
 /**
  * NpmCliWrapper
- * 
+ *
  * Wrapper for npm CLI commands with security-focused input validation.
  * Extends CliWrapper base class for common CLI functionality.
  */

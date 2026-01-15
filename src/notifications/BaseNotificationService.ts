@@ -4,6 +4,7 @@
  */
 
 import * as vscode from 'vscode';
+
 import { Logger } from '../utils/logger';
 
 /**
@@ -29,7 +30,7 @@ export abstract class BaseNotificationService {
      * Show success message with optional actions
      */
     protected async showSuccessWithActions(
-        message: string, 
+        message: string,
         actions: string[] = []
     ): Promise<string | undefined> {
         this.logger.info(`Success notification: ${message}`);
@@ -40,7 +41,7 @@ export abstract class BaseNotificationService {
      * Show warning message with optional actions
      */
     protected async showWarningWithActions(
-        message: string, 
+        message: string,
         actions: string[] = []
     ): Promise<string | undefined> {
         this.logger.warn(`Warning notification: ${message}`);
@@ -51,7 +52,7 @@ export abstract class BaseNotificationService {
      * Show error message with optional actions
      */
     protected async showErrorWithActions(
-        message: string, 
+        message: string,
         actions: string[] = []
     ): Promise<string | undefined> {
         this.logger.error(`Error notification: ${message}`);
@@ -86,7 +87,7 @@ export abstract class BaseNotificationService {
             {
                 location: vscode.ProgressLocation.Notification,
                 title,
-                cancellable: false
+                cancellable: false,
             },
             task
         );

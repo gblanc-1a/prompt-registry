@@ -1,12 +1,14 @@
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
+
 import { NpmCliWrapper } from '../../src/utils/NpmCliWrapper';
 import {
     createMockProcess,
     createSuccessProcess,
     createFailureProcess,
-    createErrorProcess
+    createErrorProcess,
 } from '../helpers/processTestHelpers';
 
 suite('NpmCliWrapper', () => {
@@ -14,7 +16,7 @@ suite('NpmCliWrapper', () => {
     let npmWrapper: NpmCliWrapper;
     // Use require to get a stubbable reference to child_process
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const childProcess = require('child_process');
+    const childProcess = require('node:child_process');
 
     setup(() => {
         sandbox = sinon.createSandbox();
@@ -105,9 +107,12 @@ suite('NpmCliWrapper', () => {
 
     suite('promptAndInstall()', () => {
         test('should show prompt and handle user decline', async () => {
-            const showInformationMessageStub = sandbox.stub(vscode.window, 'showInformationMessage');
-            showInformationMessageStub.onFirstCall().resolves(undefined); // User declines
-            showInformationMessageStub.onSecondCall().resolves(undefined); // User dismisses manual instruction
+            const showInformationMessageStub = sandbox.stub(
+                vscode.window,
+                'showInformationMessage'
+            );
+            showInformationMessageStub.onFirstCall().resolves(); // User declines
+            showInformationMessageStub.onSecondCall().resolves(); // User dismisses manual instruction
 
             const result = await npmWrapper.promptAndInstall('/test/path');
 
@@ -117,9 +122,12 @@ suite('NpmCliWrapper', () => {
         });
 
         test('should return success when user chooses "No, I\'ll do it later"', async () => {
-            const showInformationMessageStub = sandbox.stub(vscode.window, 'showInformationMessage');
-            showInformationMessageStub.onFirstCall().resolves('No, I\'ll do it later' as any);
-            showInformationMessageStub.onSecondCall().resolves(undefined);
+            const showInformationMessageStub = sandbox.stub(
+                vscode.window,
+                'showInformationMessage'
+            );
+            showInformationMessageStub.onFirstCall().resolves("No, I'll do it later" as any);
+            showInformationMessageStub.onSecondCall().resolves();
 
             const result = await npmWrapper.promptAndInstall('/test/path');
 
@@ -148,7 +156,7 @@ suite('NpmCliWrapper', () => {
         test('should handle stdout data before close', async () => {
             const { process, emitEvents } = createMockProcess({
                 exitCode: 0,
-                stdoutData: '9.8.1\n'
+                stdoutData: '9.8.1\n',
             });
             sandbox.stub(childProcess, 'spawn').returns(process as any);
 
@@ -162,7 +170,7 @@ suite('NpmCliWrapper', () => {
         test('should handle stderr data on failure', async () => {
             const { process, emitEvents } = createMockProcess({
                 exitCode: 1,
-                stderrData: 'npm ERR! code ENOENT'
+                stderrData: 'npm ERR! code ENOENT',
             });
             sandbox.stub(childProcess, 'spawn').returns(process as any);
 

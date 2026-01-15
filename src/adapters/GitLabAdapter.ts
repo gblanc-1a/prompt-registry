@@ -3,9 +3,11 @@
  * Fetches bundles from GitLab repositories
  */
 
-import * as https from 'https';
-import { RepositoryAdapter } from './RepositoryAdapter';
+import * as https from 'node:https';
+
 import { Bundle, SourceMetadata, ValidationResult, RegistrySource } from '../types/registry';
+
+import { RepositoryAdapter } from './RepositoryAdapter';
 
 /**
  * GitLab API response types
@@ -23,7 +25,7 @@ interface GitLabRelease {
     released_at: string;
 }
 
-interface GitLabFile {
+interface _GitLabFile {
     file_name: string;
     file_path: string;
     type: string;
@@ -38,7 +40,7 @@ export class GitLabAdapter extends RepositoryAdapter {
 
     constructor(source: RegistrySource) {
         super(source);
-        
+
         if (!this.isValidUrl(source.url)) {
             throw new Error(`Invalid GitLab URL: ${source.url}`);
         }
@@ -60,56 +62,59 @@ export class GitLabAdapter extends RepositoryAdapter {
      */
     private parseGitLabUrl(): string {
         const url = this.source.url.replace(/\.git$/, '');
-        
+
         // Handle gitlab.com URLs
         let match = url.match(/gitlab\.com[/:](.+)/);
-        if (match) {
+        if (match && match[1]) {
             return encodeURIComponent(match[1]);
         }
-        
+
         // Handle self-hosted GitLab URLs
         match = url.match(/https?:\/\/[^/]+\/(.+)/);
-        if (match) {
+        if (match && match[1]) {
             return encodeURIComponent(match[1]);
         }
-        
+
         throw new Error(`Invalid GitLab URL format: ${this.source.url}`);
     }
 
     /**
      * Make HTTP request to GitLab API
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     private async makeRequest(url: string): Promise<any> {
         return new Promise((resolve, reject) => {
             const headers = this.getHeaders();
-            
+
             // GitLab uses different auth header
             if (this.getAuthToken()) {
                 headers['PRIVATE-TOKEN'] = this.getAuthToken() || '';
             }
 
-            https.get(url, { headers }, (res) => {
-                let data = '';
+            https
+                .get(url, { headers }, (res) => {
+                    let data = '';
 
-                res.on('data', (chunk) => {
-                    data += chunk;
+                    res.on('data', (chunk) => {
+                        data += chunk;
+                    });
+
+                    res.on('end', () => {
+                        if (res.statusCode !== 200) {
+                            reject(new Error(`GitLab API error: ${res.statusCode} - ${data}`));
+                            return;
+                        }
+
+                        try {
+                            resolve(JSON.parse(data));
+                        } catch (error) {
+                            reject(new Error(`Failed to parse GitLab API response: ${error}`));
+                        }
+                    });
+                })
+                .on('error', (error) => {
+                    reject(new Error(`GitLab API request failed: ${error.message}`));
                 });
-
-                res.on('end', () => {
-                    if (res.statusCode !== 200) {
-                        reject(new Error(`GitLab API error: ${res.statusCode} - ${data}`));
-                        return;
-                    }
-
-                    try {
-                        resolve(JSON.parse(data));
-                    } catch (error) {
-                        reject(new Error(`Failed to parse GitLab API response: ${error}`));
-                    }
-                });
-            }).on('error', (error) => {
-                reject(new Error(`GitLab API request failed: ${error.message}`));
-            });
         });
     }
 
@@ -117,8 +122,7 @@ export class GitLabAdapter extends RepositoryAdapter {
      * Check if URL is valid GitLab URL
      */
     isValidUrl(url: string): boolean {
-        return url.includes('gitlab.com') || 
-               url.match(/https?:\/\/[^/]+\/[^/]+\/[^/]+/) !== null;
+        return url.includes('gitlab.com') || url.match(/https?:\/\/[^/]+\/[^/]+\/[^/]+/) !== null;
     }
 
     /**
@@ -128,7 +132,7 @@ export class GitLabAdapter extends RepositoryAdapter {
         try {
             const projectPath = this.parseGitLabUrl();
             const url = `${this.apiBase}/projects/${projectPath}`;
-            
+
             const project = await this.makeRequest(url);
 
             return {
@@ -150,9 +154,9 @@ export class GitLabAdapter extends RepositoryAdapter {
         try {
             const projectPath = this.parseGitLabUrl();
             const releasesUrl = `${this.apiBase}/projects/${projectPath}/releases`;
-            
-            const releases = await this.makeRequest(releasesUrl) as GitLabRelease[];
-            
+
+            const releases = (await this.makeRequest(releasesUrl)) as GitLabRelease[];
+
             if (!Array.isArray(releases)) {
                 return [];
             }
@@ -162,16 +166,16 @@ export class GitLabAdapter extends RepositoryAdapter {
             for (const release of releases) {
                 // Look for bundle zip in release assets
                 const bundleAsset = release.assets?.links?.find(
-                    link => link.name.endsWith('.zip') || link.name.includes('bundle')
+                    (link) => link.name.endsWith('.zip') || link.name.includes('bundle')
                 );
 
                 if (bundleAsset) {
                     // Fetch manifest for this release
                     const manifestUrl = `${this.apiBase}/projects/${projectPath}/repository/files/deployment-manifest.yml/raw?ref=${release.tag_name}`;
-                    
+
                     try {
                         const manifest = await this.makeRequest(manifestUrl);
-                        
+
                         bundles.push({
                             id: manifest.id || release.tag_name,
                             name: manifest.name || release.name,
@@ -190,6 +194,7 @@ export class GitLabAdapter extends RepositoryAdapter {
                         });
                     } catch (manifestError) {
                         // Skip this release if manifest is not found
+                        // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
                         console.warn(`No manifest found for release ${release.tag_name}`);
                     }
                 }
@@ -245,28 +250,30 @@ export class GitLabAdapter extends RepositoryAdapter {
     async downloadBundle(bundle: Bundle): Promise<Buffer> {
         return new Promise((resolve, reject) => {
             const headers = this.getHeaders();
-            
+
             if (this.getAuthToken()) {
                 headers['PRIVATE-TOKEN'] = this.getAuthToken() || '';
             }
 
-            https.get(bundle.downloadUrl, { headers }, (res) => {
-                const chunks: Buffer[] = [];
+            https
+                .get(bundle.downloadUrl, { headers }, (res) => {
+                    const chunks: Buffer[] = [];
 
-                res.on('data', (chunk) => {
-                    chunks.push(chunk);
-                });
+                    res.on('data', (chunk) => {
+                        chunks.push(chunk);
+                    });
 
-                res.on('end', () => {
-                    if (res.statusCode !== 200) {
-                        reject(new Error(`Failed to download bundle: ${res.statusCode}`));
-                        return;
-                    }
-                    resolve(Buffer.concat(chunks));
+                    res.on('end', () => {
+                        if (res.statusCode !== 200) {
+                            reject(new Error(`Failed to download bundle: ${res.statusCode}`));
+                            return;
+                        }
+                        resolve(Buffer.concat(chunks));
+                    });
+                })
+                .on('error', (error) => {
+                    reject(new Error(`Download failed: ${error.message}`));
                 });
-            }).on('error', (error) => {
-                reject(new Error(`Download failed: ${error.message}`));
-            });
         });
     }
 }

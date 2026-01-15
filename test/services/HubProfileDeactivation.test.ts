@@ -3,11 +3,12 @@
  * Tests for deactivating profiles and cleanup
  */
 
-import * as assert from 'assert';
-import * as path from 'path';
-import * as fs from 'fs';
-import { HubStorage } from '../../src/storage/HubStorage';
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import { HubManager } from '../../src/services/HubManager';
+import { HubStorage } from '../../src/storage/HubStorage';
 import { HubConfig } from '../../src/types/hub';
 
 suite('Hub Profile Deactivation', () => {
@@ -21,7 +22,7 @@ suite('Hub Profile Deactivation', () => {
             name: 'Test Hub',
             description: 'Test hub',
             maintainer: 'Test',
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
         },
         sources: [
             {
@@ -32,9 +33,9 @@ suite('Hub Profile Deactivation', () => {
                 enabled: true,
                 priority: 1,
                 metadata: {
-                    description: 'Test source'
-                }
-            }
+                    description: 'Test source',
+                },
+            },
         ],
         profiles: [
             {
@@ -46,13 +47,13 @@ suite('Hub Profile Deactivation', () => {
                         id: 'bundle-1',
                         version: '1.0.0',
                         source: 'test-source',
-                        required: true
-                    }
+                        required: true,
+                    },
                 ],
                 icon: '📦',
                 active: false,
                 createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
+                updatedAt: new Date().toISOString(),
             },
             {
                 id: 'profile-2',
@@ -63,15 +64,15 @@ suite('Hub Profile Deactivation', () => {
                         id: 'bundle-2',
                         version: '1.0.0',
                         source: 'test-source',
-                        required: true
-                    }
+                        required: true,
+                    },
                 ],
                 icon: '📦',
                 active: false,
                 createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
-            }
-        ]
+                updatedAt: new Date().toISOString(),
+            },
+        ],
     });
 
     setup(() => {
@@ -116,7 +117,7 @@ suite('Hub Profile Deactivation', () => {
             await hubManager.deactivateProfile('test-hub', 'profile-1');
 
             const updated = await storage.loadHub('test-hub');
-            const profile = updated.config.profiles.find(p => p.id === 'profile-1');
+            const profile = updated.config.profiles.find((p) => p.id === 'profile-1');
             assert.strictEqual(profile?.active, false);
         });
 
@@ -168,8 +169,8 @@ suite('Hub Profile Deactivation', () => {
             assert.ok(state2);
 
             const updated = await storage.loadHub('test-hub');
-            const profile1 = updated.config.profiles.find(p => p.id === 'profile-1');
-            const profile2 = updated.config.profiles.find(p => p.id === 'profile-2');
+            const profile1 = updated.config.profiles.find((p) => p.id === 'profile-1');
+            const profile2 = updated.config.profiles.find((p) => p.id === 'profile-2');
 
             assert.strictEqual(profile1?.active, false);
             assert.strictEqual(profile2?.active, true);
@@ -234,8 +235,8 @@ suite('Hub Profile Deactivation', () => {
             const active = await hubManager.listAllActiveProfiles();
 
             assert.strictEqual(active.length, 2);
-            assert.ok(active.some(p => p.hubId === 'hub-1'));
-            assert.ok(active.some(p => p.hubId === 'hub-2'));
+            assert.ok(active.some((p) => p.hubId === 'hub-1'));
+            assert.ok(active.some((p) => p.hubId === 'hub-2'));
         });
 
         test('should return empty array when no profiles are active', async () => {

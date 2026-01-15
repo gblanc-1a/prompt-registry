@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
-import { ExtensionUpdateManager } from '../services/updateManager';
+
 import { InstallationManager } from '../services/installationManager';
+import { ExtensionUpdateManager } from '../services/updateManager';
 import { InstallationScope } from '../types/platform';
 import { Logger } from '../utils/logger';
 
@@ -28,14 +29,16 @@ export class UpdateCommand {
             // Check if Prompt Registry is installed
             const installedScopes = await this.installationManager.getInstalledScopes();
             if (installedScopes.length === 0) {
-                await vscode.window.showWarningMessage(
-                    'Prompt Registry is not installed. Would you like to install it now?',
-                    'Install Prompt Registry'
-                ).then((action) => {
-                    if (action === 'Install Prompt Registry') {
-                        vscode.commands.executeCommand('promptregistry.enhancedInstall');
-                    }
-                });
+                await vscode.window
+                    .showWarningMessage(
+                        'Prompt Registry is not installed. Would you like to install it now?',
+                        'Install Prompt Registry'
+                    )
+                    .then((action) => {
+                        if (action === 'Install Prompt Registry') {
+                            vscode.commands.executeCommand('promptregistry.enhancedInstall');
+                        }
+                    });
                 return;
             }
 
@@ -44,24 +47,23 @@ export class UpdateCommand {
                 {
                     location: vscode.ProgressLocation.Notification,
                     title: 'Checking for updates...',
-                    cancellable: false
+                    cancellable: false,
                 },
                 async () => {
                     return await this.updateManager.checkForUpdates();
                 }
             );
 
-            const updatesAvailable = updateChecks.filter(check => check.hasUpdate);
+            const updatesAvailable = updateChecks.filter((check) => check.hasUpdate);
 
             if (updatesAvailable.length === 0) {
-                await vscode.window.showInformationMessage(
-                    'Prompt Registry is up to date!',
-                    'Show Version Info'
-                ).then((action) => {
-                    if (action === 'Show Version Info') {
-                        vscode.commands.executeCommand('promptregistry.showVersion');
-                    }
-                });
+                await vscode.window
+                    .showInformationMessage('Prompt Registry is up to date!', 'Show Version Info')
+                    .then((action) => {
+                        if (action === 'Show Version Info') {
+                            vscode.commands.executeCommand('promptregistry.showVersion');
+                        }
+                    });
                 return;
             }
 
@@ -76,7 +78,7 @@ export class UpdateCommand {
                 {
                     location: vscode.ProgressLocation.Notification,
                     title: 'Updating Prompt Registry',
-                    cancellable: true
+                    cancellable: true,
                 },
                 async (progress, token) => {
                     try {
@@ -88,29 +90,28 @@ export class UpdateCommand {
                                     const scopeText = scope ? ` (${scope})` : '';
                                     progress.report({
                                         increment: 0,
-                                        message: `${message}${scopeText}`
+                                        message: `${message}${scopeText}`,
                                     });
                                 }
                             );
 
-                            const successCount = results.filter(r => r.success).length;
+                            const successCount = results.filter((r) => r.success).length;
                             const totalCount = results.length;
 
-                            if (successCount === totalCount) {
-                                await vscode.window.showInformationMessage(
-                                    `Prompt Registry updated successfully in ${successCount} scope(s)!`
-                                );
-                            } else {
-                                await vscode.window.showWarningMessage(
-                                    `Prompt Registry update completed with ${successCount}/${totalCount} successful updates.`,
-                                    'Show Logs'
-                                ).then((action) => {
-                                    if (action === 'Show Logs') {
-                                        this.logger.show();
-                                    }
-                                });
-                            }
-
+                            await (successCount === totalCount
+                                ? vscode.window.showInformationMessage(
+                                      `Prompt Registry updated successfully in ${successCount} scope(s)!`
+                                  )
+                                : vscode.window
+                                      .showWarningMessage(
+                                          `Prompt Registry update completed with ${successCount}/${totalCount} successful updates.`,
+                                          'Show Logs'
+                                      )
+                                      .then((action) => {
+                                          if (action === 'Show Logs') {
+                                              this.logger.show();
+                                          }
+                                      }));
                         } else {
                             // Update specific scope
                             const scope = updateOption as InstallationScope;
@@ -120,25 +121,29 @@ export class UpdateCommand {
                                 (progressValue, message) => {
                                     progress.report({
                                         increment: 0,
-                                        message
+                                        message,
                                     });
                                 }
                             );
 
                             if (result.success) {
-                                await vscode.window.showInformationMessage(
-                                    `Prompt Registry updated successfully in ${scope} scope!\n\nVersion: ${result.version}`,
-                                    'Show in Explorer'
-                                ).then((action) => {
-                                    if (action === 'Show in Explorer') {
-                                        vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(result.installedPath));
-                                    }
-                                });
+                                await vscode.window
+                                    .showInformationMessage(
+                                        `Prompt Registry updated successfully in ${scope} scope!\n\nVersion: ${result.version}`,
+                                        'Show in Explorer'
+                                    )
+                                    .then((action) => {
+                                        if (action === 'Show in Explorer') {
+                                            vscode.commands.executeCommand(
+                                                'revealFileInOS',
+                                                vscode.Uri.file(result.installedPath)
+                                            );
+                                        }
+                                    });
                             } else {
                                 throw new Error(result.error || 'Update failed');
                             }
                         }
-
                     } catch (error) {
                         if (token.isCancellationRequested) {
                             this.logger.info('Update cancelled by user');
@@ -148,21 +153,23 @@ export class UpdateCommand {
                     }
                 }
             );
-
         } catch (error) {
             this.logger.error('Update failed', error as Error);
-            
-            await vscode.window.showErrorMessage(
-                `Failed to update Prompt Registry: ${(error as Error).message}`,
-                'Show Logs'
-            ).then((action) => {
-                if (action === 'Show Logs') {
-                    this.logger.show();
-                }
-            });
+
+            await vscode.window
+                .showErrorMessage(
+                    `Failed to update Prompt Registry: ${(error as Error).message}`,
+                    'Show Logs'
+                )
+                .then((action) => {
+                    if (action === 'Show Logs') {
+                        this.logger.show();
+                    }
+                });
         }
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     private async selectUpdateOption(availableUpdates: any[]): Promise<string | undefined> {
         if (availableUpdates.length === 1) {
             // Only one scope has updates, ask for confirmation
@@ -181,19 +188,19 @@ export class UpdateCommand {
             {
                 label: '🔄 Update All',
                 description: `Update all ${availableUpdates.length} scopes`,
-                detail: 'Recommended'
+                detail: 'Recommended',
             },
-            ...availableUpdates.map(update => ({
+            ...availableUpdates.map((update) => ({
                 label: `📁 Update ${update.scope}`,
                 description: `${update.currentVersion} → ${update.latestVersion}`,
-                detail: update.scope
-            }))
+                detail: update.scope,
+            })),
         ];
 
         const selectedItem = await vscode.window.showQuickPick(quickPickItems, {
             title: 'Select Update Option',
             placeHolder: 'Choose which installations to update',
-            ignoreFocusOut: true
+            ignoreFocusOut: true,
         });
 
         if (!selectedItem) {

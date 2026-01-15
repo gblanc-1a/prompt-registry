@@ -1,6 +1,6 @@
-import * as fs from 'fs';
-import * as path from 'path';
-import { promisify } from 'util';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { promisify } from 'node:util';
 
 const readFile = promisify(fs.readFile);
 const writeFile = promisify(fs.writeFile);
@@ -54,6 +54,7 @@ export class FileUtils {
     /**
      * Read a file as JSON
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     public static async readJson<T = any>(filePath: string): Promise<T> {
         const content = await this.readFile(filePath);
         return JSON.parse(content);
@@ -62,6 +63,7 @@ export class FileUtils {
     /**
      * Write an object to a file as JSON
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     public static async writeJson(filePath: string, obj: any): Promise<void> {
         const content = JSON.stringify(obj, null, 2);
         await this.writeFile(filePath, content);
@@ -141,11 +143,13 @@ export class FileUtils {
      */
     public static formatFileSize(bytes: number): string {
         const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-        if (bytes === 0) {return '0 Bytes';}
-        
+        if (bytes === 0) {
+            return '0 Bytes';
+        }
+
         const i = Math.floor(Math.log(bytes) / Math.log(1024));
         const size = bytes / Math.pow(1024, i);
-        
+
         return `${Math.round(size * 100) / 100} ${sizes[i]}`;
     }
 

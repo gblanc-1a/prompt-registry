@@ -1,8 +1,15 @@
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+
 import * as vscode from 'vscode';
-import * as os from 'os';
-import * as path from 'path';
-import * as fs from 'fs';
-import { Platform, PlatformDetectionResult, PlatformConfig, InstallationScope } from '../types/platform';
+
+import {
+    Platform,
+    PlatformDetectionResult,
+    PlatformConfig,
+    InstallationScope,
+} from '../types/platform';
 import { Logger } from '../utils/logger';
 
 /**
@@ -39,7 +46,7 @@ export class PlatformDetector {
             this.detectByEnvironmentVariables.bind(this),
             this.detectByProcessInfo.bind(this),
             this.detectByConfigFiles.bind(this),
-            this.detectByVSCodeAPI.bind(this)
+            this.detectByVSCodeAPI.bind(this),
         ];
 
         const results: PlatformDetectionResult[] = [];
@@ -49,7 +56,9 @@ export class PlatformDetector {
                 const result = await method();
                 if (result.platform !== Platform.UNKNOWN) {
                     results.push(result);
-                    this.logger.debug(`Detection method found: ${result.platform} (confidence: ${result.confidence})`);
+                    this.logger.debug(
+                        `Detection method found: ${result.platform} (confidence: ${result.confidence})`
+                    );
                 }
             } catch (error) {
                 this.logger.warn(`Platform detection method failed: ${error}`);
@@ -58,8 +67,10 @@ export class PlatformDetector {
 
         // Aggregate results and pick the most confident one
         this.detectionResult = this.aggregateResults(results);
-        
-        this.logger.info(`Platform detected: ${this.detectionResult.platform} (confidence: ${this.detectionResult.confidence})`);
+
+        this.logger.info(
+            `Platform detected: ${this.detectionResult.platform} (confidence: ${this.detectionResult.confidence})`
+        );
         return this.detectionResult;
     }
 
@@ -73,56 +84,86 @@ export class PlatformDetector {
                 bundlePrefix: 'vscode',
                 installationPaths: {
                     user: this.getUserDataPath('Code'),
-                    workspace: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.vscode'),
-                    project: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.olaf')
+                    workspace: path.join(
+                        vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '',
+                        '.vscode'
+                    ),
+                    project: path.join(
+                        vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '',
+                        '.olaf'
+                    ),
                 },
                 configFiles: ['settings.json', 'keybindings.json'],
-                environmentVariables: ['VSCODE_PID', 'VSCODE_IPC_HOOK']
+                environmentVariables: ['VSCODE_PID', 'VSCODE_IPC_HOOK'],
             },
             [Platform.WINDSURF]: {
                 platform: Platform.WINDSURF,
                 bundlePrefix: 'windsurf',
                 installationPaths: {
                     user: this.getUserDataPath('Windsurf'),
-                    workspace: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.windsurf'),
-                    project: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.olaf')
+                    workspace: path.join(
+                        vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '',
+                        '.windsurf'
+                    ),
+                    project: path.join(
+                        vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '',
+                        '.olaf'
+                    ),
                 },
                 configFiles: ['settings.json', 'keybindings.json'],
-                environmentVariables: ['WINDSURF_PID', 'WINDSURF_IPC_HOOK']
+                environmentVariables: ['WINDSURF_PID', 'WINDSURF_IPC_HOOK'],
             },
             [Platform.KIRO]: {
                 platform: Platform.KIRO,
                 bundlePrefix: 'kiro',
                 installationPaths: {
                     user: this.getUserDataPath('Kiro'),
-                    workspace: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.kiro'),
-                    project: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.olaf')
+                    workspace: path.join(
+                        vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '',
+                        '.kiro'
+                    ),
+                    project: path.join(
+                        vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '',
+                        '.olaf'
+                    ),
                 },
                 configFiles: ['settings.json', 'keybindings.json'],
-                environmentVariables: ['KIRO_PID', 'KIRO_IPC_HOOK']
+                environmentVariables: ['KIRO_PID', 'KIRO_IPC_HOOK'],
             },
             [Platform.CURSOR]: {
                 platform: Platform.CURSOR,
                 bundlePrefix: 'cursor',
                 installationPaths: {
                     user: this.getUserDataPath('Cursor'),
-                    workspace: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.cursor'),
-                    project: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.olaf')
+                    workspace: path.join(
+                        vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '',
+                        '.cursor'
+                    ),
+                    project: path.join(
+                        vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '',
+                        '.olaf'
+                    ),
                 },
                 configFiles: ['settings.json', 'keybindings.json'],
-                environmentVariables: ['CURSOR_PID', 'CURSOR_IPC_HOOK']
+                environmentVariables: ['CURSOR_PID', 'CURSOR_IPC_HOOK'],
             },
             [Platform.UNKNOWN]: {
                 platform: Platform.UNKNOWN,
                 bundlePrefix: 'vscode', // fallback to vscode
                 installationPaths: {
                     user: this.getUserDataPath('Code'),
-                    workspace: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.vscode'),
-                    project: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.olaf')
+                    workspace: path.join(
+                        vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '',
+                        '.vscode'
+                    ),
+                    project: path.join(
+                        vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '',
+                        '.olaf'
+                    ),
                 },
                 configFiles: ['settings.json'],
-                environmentVariables: []
-            }
+                environmentVariables: [],
+            },
         };
 
         return configs[platform];
@@ -139,36 +180,36 @@ export class PlatformDetector {
 
     private async detectByExecutablePath(): Promise<PlatformDetectionResult> {
         const executablePath = process.execPath;
-        
+
         if (executablePath.toLowerCase().includes('windsurf')) {
             return {
                 platform: Platform.WINDSURF,
                 confidence: 0.9,
-                executablePath
+                executablePath,
             };
         }
-        
+
         if (executablePath.toLowerCase().includes('cursor')) {
             return {
                 platform: Platform.CURSOR,
                 confidence: 0.9,
-                executablePath
+                executablePath,
             };
         }
-        
+
         if (executablePath.toLowerCase().includes('kiro')) {
             return {
                 platform: Platform.KIRO,
                 confidence: 0.9,
-                executablePath
+                executablePath,
             };
         }
-        
+
         if (executablePath.toLowerCase().includes('code')) {
             return {
                 platform: Platform.VSCODE,
                 confidence: 0.8,
-                executablePath
+                executablePath,
             };
         }
 
@@ -177,48 +218,48 @@ export class PlatformDetector {
 
     private async detectByEnvironmentVariables(): Promise<PlatformDetectionResult> {
         const env = process.env;
-        
+
         if (env.WINDSURF_PID || env.WINDSURF_IPC_HOOK) {
             return {
                 platform: Platform.WINDSURF,
                 confidence: 0.8,
-                environment: { 
-                    WINDSURF_PID: env.WINDSURF_PID || '', 
-                    WINDSURF_IPC_HOOK: env.WINDSURF_IPC_HOOK || '' 
-                }
+                environment: {
+                    WINDSURF_PID: env.WINDSURF_PID || '',
+                    WINDSURF_IPC_HOOK: env.WINDSURF_IPC_HOOK || '',
+                },
             };
         }
-        
+
         if (env.CURSOR_PID || env.CURSOR_IPC_HOOK) {
             return {
                 platform: Platform.CURSOR,
                 confidence: 0.8,
-                environment: { 
-                    CURSOR_PID: env.CURSOR_PID || '', 
-                    CURSOR_IPC_HOOK: env.CURSOR_IPC_HOOK || '' 
-                }
+                environment: {
+                    CURSOR_PID: env.CURSOR_PID || '',
+                    CURSOR_IPC_HOOK: env.CURSOR_IPC_HOOK || '',
+                },
             };
         }
-        
+
         if (env.KIRO_PID || env.KIRO_IPC_HOOK) {
             return {
                 platform: Platform.KIRO,
                 confidence: 0.8,
-                environment: { 
-                    KIRO_PID: env.KIRO_PID || '', 
-                    KIRO_IPC_HOOK: env.KIRO_IPC_HOOK || '' 
-                }
+                environment: {
+                    KIRO_PID: env.KIRO_PID || '',
+                    KIRO_IPC_HOOK: env.KIRO_IPC_HOOK || '',
+                },
             };
         }
-        
+
         if (env.VSCODE_PID || env.VSCODE_IPC_HOOK) {
             return {
                 platform: Platform.VSCODE,
                 confidence: 0.7,
-                environment: { 
-                    VSCODE_PID: env.VSCODE_PID || '', 
-                    VSCODE_IPC_HOOK: env.VSCODE_IPC_HOOK || '' 
-                }
+                environment: {
+                    VSCODE_PID: env.VSCODE_PID || '',
+                    VSCODE_IPC_HOOK: env.VSCODE_IPC_HOOK || '',
+                },
             };
         }
 
@@ -229,19 +270,19 @@ export class PlatformDetector {
         try {
             const processTitle = process.title?.toLowerCase() || '';
             const argv0 = process.argv0?.toLowerCase() || '';
-            
+
             if (processTitle.includes('windsurf') || argv0.includes('windsurf')) {
                 return { platform: Platform.WINDSURF, confidence: 0.7 };
             }
-            
+
             if (processTitle.includes('cursor') || argv0.includes('cursor')) {
                 return { platform: Platform.CURSOR, confidence: 0.7 };
             }
-            
+
             if (processTitle.includes('kiro') || argv0.includes('kiro')) {
                 return { platform: Platform.KIRO, confidence: 0.7 };
             }
-            
+
             if (processTitle.includes('code') || argv0.includes('code')) {
                 return { platform: Platform.VSCODE, confidence: 0.6 };
             }
@@ -258,16 +299,24 @@ export class PlatformDetector {
                 this.getUserDataPath('Windsurf'),
                 this.getUserDataPath('Cursor'),
                 this.getUserDataPath('Kiro'),
-                this.getUserDataPath('Code')
+                this.getUserDataPath('Code'),
             ];
 
             for (const [index, userDataPath] of userDataPaths.entries()) {
                 if (fs.existsSync(userDataPath)) {
-                    const platforms = [Platform.WINDSURF, Platform.CURSOR, Platform.KIRO, Platform.VSCODE];
-                    return {
-                        platform: platforms[index],
-                        confidence: 0.5
-                    };
+                    const platforms = [
+                        Platform.WINDSURF,
+                        Platform.CURSOR,
+                        Platform.KIRO,
+                        Platform.VSCODE,
+                    ];
+                    const detectedPlatform = platforms[index];
+                    if (detectedPlatform) {
+                        return {
+                            platform: detectedPlatform,
+                            confidence: 0.5,
+                        };
+                    }
                 }
             }
         } catch (error) {
@@ -282,19 +331,19 @@ export class PlatformDetector {
             // Try to detect using VSCode API information
             const version = vscode.version;
             const appName = vscode.env.appName?.toLowerCase();
-            
+
             if (appName?.includes('windsurf')) {
                 return { platform: Platform.WINDSURF, confidence: 0.9, version };
             }
-            
+
             if (appName?.includes('cursor')) {
                 return { platform: Platform.CURSOR, confidence: 0.9, version };
             }
-            
+
             if (appName?.includes('kiro')) {
                 return { platform: Platform.KIRO, confidence: 0.9, version };
             }
-            
+
             // Default to VSCode if no specific detection
             return { platform: Platform.VSCODE, confidence: 0.6, version };
         } catch (error) {
@@ -316,8 +365,11 @@ export class PlatformDetector {
         for (const result of results) {
             const currentScore = platformScores.get(result.platform) || 0;
             platformScores.set(result.platform, currentScore + result.confidence);
-            
-            if (!platformData.has(result.platform) || result.confidence > (platformData.get(result.platform)?.confidence || 0)) {
+
+            if (
+                !platformData.has(result.platform) ||
+                result.confidence > (platformData.get(result.platform)?.confidence || 0)
+            ) {
                 platformData.set(result.platform, result);
             }
         }
@@ -337,7 +389,7 @@ export class PlatformDetector {
         return {
             platform: bestPlatform,
             confidence: Math.min(bestScore / results.length, 1), // normalize confidence
-            ...bestResult
+            ...bestResult,
         };
     }
 

@@ -3,9 +3,10 @@
  * Tests for hub profile operations
  */
 
-import * as assert from 'assert';
-import * as path from 'path';
-import * as fs from 'fs';
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import { HubManager } from '../../src/services/HubManager';
 import { HubStorage } from '../../src/storage/HubStorage';
 import { HubConfig } from '../../src/types/hub';
@@ -21,7 +22,7 @@ suite('HubManager - Profile Methods', () => {
             name: 'Test Hub with Profiles',
             description: 'Hub for testing profile methods',
             maintainer: 'Test',
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
         },
         sources: [],
         profiles: [
@@ -34,13 +35,13 @@ suite('HubManager - Profile Methods', () => {
                         id: 'bundle-1',
                         version: '1.0.0',
                         source: 'test-source',
-                        required: false
-                    }
+                        required: false,
+                    },
                 ],
                 icon: '',
                 active: false,
                 createdAt: '',
-                updatedAt: ''
+                updatedAt: '',
             },
             {
                 id: 'profile-2',
@@ -51,21 +52,21 @@ suite('HubManager - Profile Methods', () => {
                         id: 'bundle-2',
                         version: '2.0.0',
                         source: 'test-source',
-                        required: false
+                        required: false,
                     },
                     {
                         id: 'bundle-3',
                         version: '1.5.0',
                         source: 'test-source',
-                        required: false
-                    }
+                        required: false,
+                    },
                 ],
                 icon: '',
                 active: false,
                 createdAt: '',
-                updatedAt: ''
-            }
-        ]
+                updatedAt: '',
+            },
+        ],
     };
 
     setup(() => {
@@ -91,20 +92,26 @@ suite('HubManager - Profile Methods', () => {
                     name: 'No Profiles Hub',
                     description: 'Hub without profiles',
                     maintainer: 'Test',
-                    updatedAt: new Date().toISOString()
+                    updatedAt: new Date().toISOString(),
                 },
                 sources: [],
-                profiles: []
+                profiles: [],
             };
 
-            await storage.saveHub('no-profiles', hubConfig, { type: 'github', location: 'test/no-profiles' });
+            await storage.saveHub('no-profiles', hubConfig, {
+                type: 'github',
+                location: 'test/no-profiles',
+            });
             const profiles = await hubManager.listProfilesFromHub('no-profiles');
 
             assert.strictEqual(profiles.length, 0);
         });
 
         test('should return all profiles from hub', async () => {
-            await storage.saveHub('test-hub-profiles', sampleHubConfig, { type: 'github', location: 'test/repo' });
+            await storage.saveHub('test-hub-profiles', sampleHubConfig, {
+                type: 'github',
+                location: 'test/repo',
+            });
             const profiles = await hubManager.listProfilesFromHub('test-hub-profiles');
 
             assert.strictEqual(profiles.length, 2);
@@ -127,7 +134,10 @@ suite('HubManager - Profile Methods', () => {
 
     suite('getHubProfile', () => {
         test('should return specific profile from hub', async () => {
-            await storage.saveHub('test-hub-profiles', sampleHubConfig, { type: 'github', location: 'test/repo' });
+            await storage.saveHub('test-hub-profiles', sampleHubConfig, {
+                type: 'github',
+                location: 'test/repo',
+            });
             const profile = await hubManager.getHubProfile('test-hub-profiles', 'profile-2');
 
             assert.strictEqual(profile.id, 'profile-2');
@@ -146,7 +156,10 @@ suite('HubManager - Profile Methods', () => {
         });
 
         test('should throw error for non-existent profile', async () => {
-            await storage.saveHub('test-hub-profiles', sampleHubConfig, { type: 'github', location: 'test/repo' });
+            await storage.saveHub('test-hub-profiles', sampleHubConfig, {
+                type: 'github',
+                location: 'test/repo',
+            });
             await assert.rejects(
                 async () => await hubManager.getHubProfile('test-hub-profiles', 'non-existent'),
                 (err: Error) => {
@@ -164,15 +177,21 @@ suite('HubManager - Profile Methods', () => {
         });
 
         test('should return profiles from single hub', async () => {
-            await storage.saveHub('test-hub-profiles', sampleHubConfig, { type: 'github', location: 'test/repo' });
+            await storage.saveHub('test-hub-profiles', sampleHubConfig, {
+                type: 'github',
+                location: 'test/repo',
+            });
             const profiles = await hubManager.listAllHubProfiles();
 
             assert.strictEqual(profiles.length, 2);
-            assert.ok(profiles.every(p => p.hubId === 'test-hub-profiles'));
+            assert.ok(profiles.every((p) => p.hubId === 'test-hub-profiles'));
         });
 
         test('should return profiles from multiple hubs', async () => {
-            await storage.saveHub('test-hub-profiles', sampleHubConfig, { type: 'github', location: 'test/repo' });
+            await storage.saveHub('test-hub-profiles', sampleHubConfig, {
+                type: 'github',
+                location: 'test/repo',
+            });
 
             const anotherConfig: HubConfig = {
                 version: '1.0.0',
@@ -180,7 +199,7 @@ suite('HubManager - Profile Methods', () => {
                     name: 'Another Hub',
                     description: 'Another test hub',
                     maintainer: 'Test',
-                    updatedAt: new Date().toISOString()
+                    updatedAt: new Date().toISOString(),
                 },
                 sources: [],
                 profiles: [
@@ -192,19 +211,25 @@ suite('HubManager - Profile Methods', () => {
                         icon: '',
                         active: false,
                         createdAt: '',
-                        updatedAt: ''
-                    }
-                ]
+                        updatedAt: '',
+                    },
+                ],
             };
 
-            await storage.saveHub('another-hub', anotherConfig, { type: 'github', location: 'test/another' });
+            await storage.saveHub('another-hub', anotherConfig, {
+                type: 'github',
+                location: 'test/another',
+            });
             const profiles = await hubManager.listAllHubProfiles();
 
             assert.strictEqual(profiles.length, 3);
         });
 
         test('should include hub information with profiles', async () => {
-            await storage.saveHub('test-hub-profiles', sampleHubConfig, { type: 'github', location: 'test/repo' });
+            await storage.saveHub('test-hub-profiles', sampleHubConfig, {
+                type: 'github',
+                location: 'test/repo',
+            });
             const profiles = await hubManager.listAllHubProfiles();
 
             assert.ok(profiles[0].hubId);

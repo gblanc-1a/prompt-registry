@@ -20,8 +20,7 @@ export type NotificationPreference = 'all' | 'critical' | 'none';
  */
 export function isValidUpdateCheckFrequency(value: unknown): value is UpdateCheckFrequency {
     return (
-        typeof value === 'string' &&
-        (value === 'daily' || value === 'weekly' || value === 'manual')
+        typeof value === 'string' && (value === 'daily' || value === 'weekly' || value === 'manual')
     );
 }
 
@@ -32,8 +31,7 @@ export function isValidUpdateCheckFrequency(value: unknown): value is UpdateChec
  */
 export function isValidNotificationPreference(value: unknown): value is NotificationPreference {
     return (
-        typeof value === 'string' &&
-        (value === 'all' || value === 'critical' || value === 'none')
+        typeof value === 'string' && (value === 'all' || value === 'critical' || value === 'none')
     );
 }
 

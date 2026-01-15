@@ -3,9 +3,9 @@
  * Provides utilities for testing button states and bundle identity matching
  */
 
-import { VersionManager } from '../../src/utils/versionManager';
-import { BundleIdentityMatcher } from '../../src/utils/bundleIdentityMatcher';
 import { SourceType } from '../../src/types/registry';
+import { BundleIdentityMatcher } from '../../src/utils/bundleIdentityMatcher';
+import { VersionManager } from '../../src/utils/versionManager';
 
 /**
  * Determine button state based on installation status and version comparison
@@ -54,10 +54,11 @@ export function filterBundlesBySearch(bundles: any[], searchText: string): any[]
     }
 
     const term = searchText.toLowerCase();
-    return bundles.filter(bundle =>
-        bundle.name.toLowerCase().includes(term) ||
-        bundle.description.toLowerCase().includes(term) ||
-        (bundle.tags && bundle.tags.some((tag: string) => tag.toLowerCase().includes(term))) ||
-        (bundle.author && bundle.author.toLowerCase().includes(term))
+    return bundles.filter(
+        (bundle) =>
+            bundle.name.toLowerCase().includes(term) ||
+            bundle.description.toLowerCase().includes(term) ||
+            (bundle.tags && bundle.tags.some((tag: string) => tag.toLowerCase().includes(term))) ||
+            (bundle.author && bundle.author.toLowerCase().includes(term))
     );
 }

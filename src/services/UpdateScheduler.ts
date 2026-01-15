@@ -4,19 +4,20 @@
  */
 
 import * as vscode from 'vscode';
-import { UpdateChecker } from './UpdateChecker';
-import { UpdateCheckResult } from './UpdateCache';
+
 import { BundleUpdateNotifications } from '../notifications/BundleUpdateNotifications';
-import { AutoUpdateService } from './AutoUpdateService';
-import { Logger } from '../utils/logger';
-import { 
-    UpdateCheckFrequency, 
+import {
+    UpdateCheckFrequency,
     getValidUpdateCheckFrequency,
-    getValidNotificationPreference
+    getValidNotificationPreference,
 } from '../utils/configTypeGuards';
+import { Logger } from '../utils/logger';
+
+import { AutoUpdateService } from './AutoUpdateService';
+import { UpdateCheckResult } from './UpdateCache';
+import { UpdateChecker } from './UpdateChecker';
 
 // Re-export for backward compatibility
-export type { UpdateCheckFrequency };
 
 /**
  * Update scheduler configuration
@@ -34,7 +35,7 @@ const SCHEDULER_CONSTANTS = {
     STARTUP_CHECK_DELAY_MS: 5000, // 5 seconds per requirements
     DAILY_INTERVAL_MS: 24 * 60 * 60 * 1000, // 24 hours
     WEEKLY_INTERVAL_MS: 7 * 24 * 60 * 60 * 1000, // 7 days
-    UPDATE_CHECK_TIMEOUT_MS: 30000, // 30 seconds timeout for update checks
+    UPDATE_CHECK_TIMEOUT_MS: 30_000, // 30 seconds timeout for update checks
 } as const;
 
 /**
@@ -53,7 +54,7 @@ export class UpdateScheduler {
     private isInitialized: boolean = false;
     private isCheckInProgress: boolean = false;
     private readonly isTestEnvironment: boolean;
-    
+
     // Event emitter for update detection - typed with UpdateCheckResult[]
     private readonly _onUpdatesDetected = new vscode.EventEmitter<UpdateCheckResult[]>();
     readonly onUpdatesDetected = this._onUpdatesDetected.event;
@@ -68,7 +69,7 @@ export class UpdateScheduler {
         this.bundleNotifications = new BundleUpdateNotifications(bundleNameResolver);
         this.autoUpdateService = autoUpdateService;
         this.logger = Logger.getInstance();
-        
+
         // Test Environment Detection
         // ---------------------------
         // This detection exists because Node.js timers (setTimeout/setInterval) keep the
@@ -80,18 +81,18 @@ export class UpdateScheduler {
         // 4. Uses explicit detection rather than mocking internals
         const isNodeTestEnvironment =
             process.env.NODE_ENV === 'test' ||
-            process.argv.some(arg => arg.includes('mocha')) ||
-            process.argv.some(arg => arg.includes('test'));
+            process.argv.some((arg) => arg.includes('mocha')) ||
+            process.argv.some((arg) => arg.includes('test'));
         const allowTimersOverride = process.env.UPDATE_SCHEDULER_ALLOW_TIMERS_IN_TESTS === 'true';
         this.isTestEnvironment = isNodeTestEnvironment && !allowTimersOverride;
-        
+
         // Load configuration
         this.config = this.loadConfiguration();
-        
+
         // Register for automatic disposal when extension deactivates (if subscriptions available)
         if (context?.subscriptions) {
             context.subscriptions.push({
-                dispose: () => this.dispose()
+                dispose: () => this.dispose(),
             });
         }
     }
@@ -106,7 +107,7 @@ export class UpdateScheduler {
         }
 
         this.logger.info('Initializing UpdateScheduler');
-        
+
         // Schedule startup check
         if (this.config.enabled && !this.isTestEnvironment) {
             this.scheduleStartupCheck();
@@ -127,7 +128,7 @@ export class UpdateScheduler {
      */
     private scheduleStartupCheck(): void {
         this.logger.debug(`Scheduling startup check in ${this.config.startupCheckDelay}ms`);
-        
+
         this.startupCheckTimer = setTimeout(async () => {
             try {
                 this.logger.info('Performing startup update check');
@@ -162,7 +163,9 @@ export class UpdateScheduler {
         }
 
         const intervalMs = this.getCheckInterval();
-        this.logger.debug(`Scheduling periodic checks every ${intervalMs}ms (${this.config.frequency})`);
+        this.logger.debug(
+            `Scheduling periodic checks every ${intervalMs}ms (${this.config.frequency})`
+        );
 
         this.scheduledCheckTimer = setTimeout(async () => {
             // Prevent overlapping checks
@@ -201,7 +204,7 @@ export class UpdateScheduler {
     updateSchedule(frequency: UpdateCheckFrequency): void {
         this.logger.info(`Updating check frequency to: ${frequency}`);
         this.config.frequency = frequency;
-        
+
         // Reschedule with new frequency
         this.schedulePeriodicChecks();
     }
@@ -212,7 +215,7 @@ export class UpdateScheduler {
     updateEnabled(enabled: boolean): void {
         this.logger.info(`Updating enabled state to: ${enabled}`);
         this.config.enabled = enabled;
-        
+
         if (enabled) {
             this.schedulePeriodicChecks();
         } else {
@@ -230,6 +233,7 @@ export class UpdateScheduler {
      */
     private async performUpdateCheck(bypassCache: boolean = false): Promise<void> {
         let timeoutHandle: NodeJS.Timeout | undefined;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
         let checkPromise: Promise<any>;
 
         if (this.isTestEnvironment) {
@@ -246,40 +250,46 @@ export class UpdateScheduler {
 
             checkPromise = Promise.race([
                 this.updateChecker.checkForUpdates(bypassCache),
-                timeoutPromise
+                timeoutPromise,
             ]);
         }
 
         try {
             const updates = await checkPromise;
-            
+
             if (timeoutHandle) {
                 clearTimeout(timeoutHandle);
                 timeoutHandle = undefined;
             }
-            
+
             this.lastCheckTime = new Date();
-            
+
             // Defensive check: ensure updates is an array
             if (!Array.isArray(updates)) {
-                this.logger.warn('UpdateChecker.checkForUpdates() returned non-array, treating as no updates');
+                this.logger.warn(
+                    'UpdateChecker.checkForUpdates() returned non-array, treating as no updates'
+                );
                 return;
             }
-            
+
             this.logger.info(`Update check complete: ${updates.length} updates found`);
-            
+
             // Emit event for update detection (for tree view updates)
             if (updates.length > 0) {
-                this.logger.debug(`Updates available for: ${updates.map(u => u.bundleId).join(', ')}`);
+                this.logger.debug(
+                    `Updates available for: ${updates.map((u) => u.bundleId).join(', ')}`
+                );
                 this._onUpdatesDetected.fire(updates);
-                
+
                 // 1. Check global auto-update setting
                 const config = vscode.workspace.getConfiguration('promptregistry.updateCheck');
                 const globalAutoUpdateEnabled = config.get<boolean>('autoUpdate', false);
-                
+
                 // 2. If global auto-update is enabled, trigger background updates for opted-in bundles
                 if (globalAutoUpdateEnabled && this.autoUpdateService) {
-                    this.logger.info(`Global auto-update enabled, processing ${updates.length} updates`);
+                    this.logger.info(
+                        `Global auto-update enabled, processing ${updates.length} updates`
+                    );
                     try {
                         await this.autoUpdateService.autoUpdateBundles(updates);
                         this.logger.info('Auto-update batch completed');
@@ -288,28 +298,38 @@ export class UpdateScheduler {
                         // Continue to show notifications even if auto-update fails
                     }
                 } else if (globalAutoUpdateEnabled && !this.autoUpdateService) {
-                    this.logger.warn('Global auto-update enabled but AutoUpdateService not available');
+                    this.logger.warn(
+                        'Global auto-update enabled but AutoUpdateService not available'
+                    );
                 } else {
                     this.logger.debug('Global auto-update disabled, skipping background updates');
                 }
-                
+
                 // 3. Show notifications for all applicable updates (including those that failed auto-update)
-                const rawNotificationPreference = config.get<string>('notificationPreference', 'all');
-                
+                const rawNotificationPreference = config.get<string>(
+                    'notificationPreference',
+                    'all'
+                );
+
                 // Validate and sanitize notification preference
-                const notificationPreference = getValidNotificationPreference(rawNotificationPreference, 'all');
-                
+                const notificationPreference = getValidNotificationPreference(
+                    rawNotificationPreference,
+                    'all'
+                );
+
                 // Log warning if invalid value was provided
                 if (rawNotificationPreference !== notificationPreference) {
                     this.logger.warn(
                         `Invalid notification preference "${rawNotificationPreference}" in configuration. Using default "${notificationPreference}".`
                     );
                 }
-                
-                this.logger.debug(`Showing update notification with preference: ${notificationPreference}`);
+
+                this.logger.debug(
+                    `Showing update notification with preference: ${notificationPreference}`
+                );
                 await this.bundleNotifications.showUpdateNotification({
                     updates,
-                    notificationPreference
+                    notificationPreference,
                 });
             }
         } catch (error) {
@@ -344,21 +364,21 @@ export class UpdateScheduler {
     private loadConfiguration(): UpdateSchedulerConfig {
         const config = vscode.workspace.getConfiguration('promptregistry.updateCheck');
         const rawFrequency = config.get<string>('frequency', 'daily');
-        
+
         // Validate and sanitize frequency
         const frequency = getValidUpdateCheckFrequency(rawFrequency, 'daily');
-        
+
         // Log warning if invalid value was provided
         if (rawFrequency !== frequency) {
             this.logger.warn(
                 `Invalid update check frequency "${rawFrequency}" in configuration. Using default "${frequency}".`
             );
         }
-        
+
         return {
             enabled: config.get<boolean>('enabled', true),
             frequency,
-            startupCheckDelay: SCHEDULER_CONSTANTS.STARTUP_CHECK_DELAY_MS
+            startupCheckDelay: SCHEDULER_CONSTANTS.STARTUP_CHECK_DELAY_MS,
         };
     }
 
@@ -381,7 +401,7 @@ export class UpdateScheduler {
      */
     dispose(): void {
         this.logger.debug('Disposing UpdateScheduler');
-        
+
         if (this.startupCheckTimer) {
             clearTimeout(this.startupCheckTimer);
             this.startupCheckTimer = undefined;
@@ -391,9 +411,11 @@ export class UpdateScheduler {
             clearTimeout(this.scheduledCheckTimer);
             this.scheduledCheckTimer = undefined;
         }
-        
+
         this._onUpdatesDetected.dispose();
-        
+
         this.isInitialized = false;
     }
 }
+
+export { type UpdateCheckFrequency } from '../utils/configTypeGuards';

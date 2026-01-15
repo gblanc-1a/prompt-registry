@@ -2,7 +2,8 @@
  * Unit tests for VersionManager
  * Requirements: 2.1, 2.2, 4.2
  */
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+
 import { VersionManager } from '../../src/utils/versionManager';
 
 suite('VersionManager Unit Tests', () => {
@@ -61,13 +62,22 @@ suite('VersionManager Unit Tests', () => {
 
         test('should throw error for very long version strings', () => {
             const longVersion = '1.0.0-' + 'a'.repeat(200);
-            assert.throws(() => VersionManager.compareVersions(longVersion, '1.0.0'), /exceeds maximum length/);
-            assert.throws(() => VersionManager.compareVersions('1.0.0', longVersion), /exceeds maximum length/);
+            assert.throws(
+                () => VersionManager.compareVersions(longVersion, '1.0.0'),
+                /exceeds maximum length/
+            );
+            assert.throws(
+                () => VersionManager.compareVersions('1.0.0', longVersion),
+                /exceeds maximum length/
+            );
         });
 
         test('should handle build metadata correctly', () => {
             // Build metadata should be ignored per semver spec
-            assert.strictEqual(VersionManager.compareVersions('1.0.0+build.123', '1.0.0+build.456'), 0);
+            assert.strictEqual(
+                VersionManager.compareVersions('1.0.0+build.123', '1.0.0+build.456'),
+                0
+            );
             assert.strictEqual(VersionManager.compareVersions('1.0.0+build', '1.0.0'), 0);
         });
     });
@@ -210,10 +220,7 @@ suite('VersionManager Unit Tests', () => {
         });
 
         test('should handle single-part bundle IDs', () => {
-            assert.strictEqual(
-                VersionManager.extractBundleIdentity('repo', 'github'),
-                'repo'
-            );
+            assert.strictEqual(VersionManager.extractBundleIdentity('repo', 'github'), 'repo');
         });
 
         test('should handle numeric repo names', () => {
@@ -225,7 +232,10 @@ suite('VersionManager Unit Tests', () => {
 
         test('should throw error for excessively long bundle IDs', () => {
             const longId = 'a'.repeat(201) + '-v1.0.0';
-            assert.throws(() => VersionManager.extractBundleIdentity(longId, 'github'), /exceeds maximum length/);
+            assert.throws(
+                () => VersionManager.extractBundleIdentity(longId, 'github'),
+                /exceeds maximum length/
+            );
         });
 
         test('should return as-is for non-GitHub sources', () => {

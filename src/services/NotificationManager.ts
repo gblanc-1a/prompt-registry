@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+
 import { Logger } from '../utils/logger';
 
 /**
@@ -8,25 +9,25 @@ import { Logger } from '../utils/logger';
 export class NotificationManager {
     private static instance: NotificationManager;
     private logger: Logger;
-    
+
     private constructor() {
         this.logger = Logger.getInstance();
     }
-    
+
     public static getInstance(): NotificationManager {
         if (!NotificationManager.instance) {
             NotificationManager.instance = new NotificationManager();
         }
         return NotificationManager.instance;
     }
-    
+
     /**
      * Show information notification with automatic logging
-     * 
+     *
      * @param message - The notification message to display
      * @param actions - Optional action button labels
      * @returns The label of the action button clicked by user, or undefined if dismissed
-     * 
+     *
      * @example
      * const action = await notificationManager.showInfo('Update available', 'Update', 'Dismiss');
      * if (action === 'Update') {
@@ -37,14 +38,14 @@ export class NotificationManager {
         this.logger.info(`Notification (Info): ${message}`);
         return await vscode.window.showInformationMessage(message, ...actions);
     }
-    
+
     /**
      * Show warning notification with automatic logging
-     * 
+     *
      * @param message - The warning message to display
      * @param actions - Optional action button labels
      * @returns The label of the action button clicked by user, or undefined if dismissed
-     * 
+     *
      * @example
      * const action = await notificationManager.showWarning('Configuration issue detected', 'Fix', 'Ignore');
      * if (action === 'Fix') {
@@ -55,14 +56,14 @@ export class NotificationManager {
         this.logger.warn(`Notification (Warning): ${message}`);
         return await vscode.window.showWarningMessage(message, ...actions);
     }
-    
+
     /**
      * Show error notification with automatic logging
-     * 
+     *
      * @param message - The error message to display
      * @param actions - Optional action button labels
      * @returns The label of the action button clicked by user, or undefined if dismissed
-     * 
+     *
      * @example
      * const action = await notificationManager.showError('Operation failed', 'Retry', 'Show Logs');
      * if (action === 'Show Logs') {

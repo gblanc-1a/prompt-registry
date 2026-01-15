@@ -2,7 +2,8 @@
  * Source Management Commands Unit Tests
  */
 
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 
@@ -14,7 +15,7 @@ suite('Source Management Commands', () => {
         sandbox = sinon.createSandbox();
         mockContext = {
             globalState: {
-                get: sandbox.stub().returns(undefined),
+                get: sandbox.stub().returns(null),
                 update: sandbox.stub().resolves(),
                 keys: sandbox.stub().returns([]),
             },
@@ -49,8 +50,9 @@ suite('Source Management Commands', () => {
 
             // Validation would typically happen in the command
             const url = 'invalid-url';
-            const isValidUrl = url.startsWith('http://') || url.startsWith('https://') || url.startsWith('git@');
-            
+            const isValidUrl =
+                url.startsWith('http://') || url.startsWith('https://') || url.startsWith('git@');
+
             if (!isValidUrl) {
                 assert.ok(true, 'Invalid URL detected');
             }
@@ -206,11 +208,25 @@ suite('Source Management Commands', () => {
 
         test('should remove source from storage', async () => {
             const sources = [
-                { id: 'source-1', name: 'Source 1', type: 'github', url: 'url1', enabled: true, priority: 1 },
-                { id: 'source-2', name: 'Source 2', type: 'github', url: 'url2', enabled: true, priority: 2 },
+                {
+                    id: 'source-1',
+                    name: 'Source 1',
+                    type: 'github',
+                    url: 'url1',
+                    enabled: true,
+                    priority: 1,
+                },
+                {
+                    id: 'source-2',
+                    name: 'Source 2',
+                    type: 'github',
+                    url: 'url2',
+                    enabled: true,
+                    priority: 2,
+                },
             ];
 
-            const updatedSources = sources.filter(s => s.id !== 'source-1');
+            const updatedSources = sources.filter((s) => s.id !== 'source-1');
 
             assert.strictEqual(updatedSources.length, 1);
             assert.strictEqual(updatedSources[0].id, 'source-2');
@@ -218,17 +234,38 @@ suite('Source Management Commands', () => {
 
         test('should not affect other sources when removing one', async () => {
             const sources = [
-                { id: 'source-1', name: 'Source 1', type: 'github', url: 'url1', enabled: true, priority: 1 },
-                { id: 'source-2', name: 'Source 2', type: 'github', url: 'url2', enabled: true, priority: 2 },
-                { id: 'source-3', name: 'Source 3', type: 'github', url: 'url3', enabled: true, priority: 3 },
+                {
+                    id: 'source-1',
+                    name: 'Source 1',
+                    type: 'github',
+                    url: 'url1',
+                    enabled: true,
+                    priority: 1,
+                },
+                {
+                    id: 'source-2',
+                    name: 'Source 2',
+                    type: 'github',
+                    url: 'url2',
+                    enabled: true,
+                    priority: 2,
+                },
+                {
+                    id: 'source-3',
+                    name: 'Source 3',
+                    type: 'github',
+                    url: 'url3',
+                    enabled: true,
+                    priority: 3,
+                },
             ];
 
-            const updatedSources = sources.filter(s => s.id !== 'source-2');
+            const updatedSources = sources.filter((s) => s.id !== 'source-2');
 
             assert.strictEqual(updatedSources.length, 2);
-            assert.ok(updatedSources.find(s => s.id === 'source-1'));
-            assert.ok(updatedSources.find(s => s.id === 'source-3'));
-            assert.ok(!updatedSources.find(s => s.id === 'source-2'));
+            assert.ok(updatedSources.find((s) => s.id === 'source-1'));
+            assert.ok(updatedSources.find((s) => s.id === 'source-3'));
+            assert.ok(!updatedSources.find((s) => s.id === 'source-2'));
         });
     });
 
@@ -288,10 +325,10 @@ suite('Source Management Commands', () => {
     suite('syncSource', () => {
         test('should refresh bundles from source', async () => {
             sandbox.stub(vscode.window, 'showInformationMessage').resolves();
-            
+
             // Simulate sync operation
             const syncStartTime = Date.now();
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
             const syncEndTime = Date.now();
 
             assert.ok(syncEndTime >= syncStartTime);
@@ -299,7 +336,7 @@ suite('Source Management Commands', () => {
 
         test('should handle sync errors gracefully', async () => {
             const showErrorMessageStub = sandbox.stub(vscode.window, 'showErrorMessage');
-            
+
             const error = new Error('Sync failed');
             showErrorMessageStub.resolves();
 
@@ -330,33 +367,89 @@ suite('Source Management Commands', () => {
     suite('syncAllSources', () => {
         test('should sync all enabled sources', async () => {
             const sources = [
-                { id: 'source-1', name: 'Source 1', type: 'github', url: 'url1', enabled: true, priority: 1 },
-                { id: 'source-2', name: 'Source 2', type: 'github', url: 'url2', enabled: false, priority: 2 },
-                { id: 'source-3', name: 'Source 3', type: 'github', url: 'url3', enabled: true, priority: 3 },
+                {
+                    id: 'source-1',
+                    name: 'Source 1',
+                    type: 'github',
+                    url: 'url1',
+                    enabled: true,
+                    priority: 1,
+                },
+                {
+                    id: 'source-2',
+                    name: 'Source 2',
+                    type: 'github',
+                    url: 'url2',
+                    enabled: false,
+                    priority: 2,
+                },
+                {
+                    id: 'source-3',
+                    name: 'Source 3',
+                    type: 'github',
+                    url: 'url3',
+                    enabled: true,
+                    priority: 3,
+                },
             ];
 
-            const enabledSources = sources.filter(s => s.enabled);
+            const enabledSources = sources.filter((s) => s.enabled);
 
             assert.strictEqual(enabledSources.length, 2);
-            assert.ok(enabledSources.every(s => s.enabled));
+            assert.ok(enabledSources.every((s) => s.enabled));
         });
 
         test('should skip disabled sources', async () => {
             const sources = [
-                { id: 'source-1', name: 'Source 1', type: 'github', url: 'url1', enabled: false, priority: 1 },
-                { id: 'source-2', name: 'Source 2', type: 'github', url: 'url2', enabled: false, priority: 2 },
+                {
+                    id: 'source-1',
+                    name: 'Source 1',
+                    type: 'github',
+                    url: 'url1',
+                    enabled: false,
+                    priority: 1,
+                },
+                {
+                    id: 'source-2',
+                    name: 'Source 2',
+                    type: 'github',
+                    url: 'url2',
+                    enabled: false,
+                    priority: 2,
+                },
             ];
 
-            const enabledSources = sources.filter(s => s.enabled);
+            const enabledSources = sources.filter((s) => s.enabled);
 
             assert.strictEqual(enabledSources.length, 0);
         });
 
         test('should continue on individual source failures', async () => {
             const sources = [
-                { id: 'source-1', name: 'Source 1', type: 'github', url: 'url1', enabled: true, priority: 1 },
-                { id: 'source-2', name: 'Source 2', type: 'github', url: 'url2', enabled: true, priority: 2 },
-                { id: 'source-3', name: 'Source 3', type: 'github', url: 'url3', enabled: true, priority: 3 },
+                {
+                    id: 'source-1',
+                    name: 'Source 1',
+                    type: 'github',
+                    url: 'url1',
+                    enabled: true,
+                    priority: 1,
+                },
+                {
+                    id: 'source-2',
+                    name: 'Source 2',
+                    type: 'github',
+                    url: 'url2',
+                    enabled: true,
+                    priority: 2,
+                },
+                {
+                    id: 'source-3',
+                    name: 'Source 3',
+                    type: 'github',
+                    url: 'url3',
+                    enabled: true,
+                    priority: 3,
+                },
             ];
 
             const results = await Promise.allSettled(
@@ -368,8 +461,8 @@ suite('Source Management Commands', () => {
                 })
             );
 
-            const fulfilled = results.filter(r => r.status === 'fulfilled');
-            const rejected = results.filter(r => r.status === 'rejected');
+            const fulfilled = results.filter((r) => r.status === 'fulfilled');
+            const rejected = results.filter((r) => r.status === 'rejected');
 
             assert.strictEqual(fulfilled.length, 2);
             assert.strictEqual(rejected.length, 1);

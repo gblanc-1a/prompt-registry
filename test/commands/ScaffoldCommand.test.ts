@@ -1,14 +1,15 @@
 /**
  * ScaffoldCommand Unit Tests
- * 
+ *
  * Tests for the GitHub structure scaffolding command
  * Following TDD approach - tests written first
  */
 
-import * as assert from 'assert';
-import * as path from 'path';
-import * as fs from 'fs';
-import * as os from 'os';
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+
 import { ScaffoldCommand, ScaffoldType } from '../../src/commands/ScaffoldCommand';
 
 const TEMPLATES_ROOT = path.join(process.cwd(), 'templates/scaffolds/github');
@@ -34,22 +35,40 @@ suite('ScaffoldCommand', () => {
         test('should not contain AwesomeCopilot type', () => {
             // Verify AwesomeCopilot is not in ScaffoldType enum
             const scaffoldTypes = Object.values(ScaffoldType);
-            assert.ok(!scaffoldTypes.includes('awesome-copilot' as ScaffoldType), 
-                'ScaffoldType should not contain awesome-copilot');
-            assert.ok(!('AwesomeCopilot' in ScaffoldType), 
-                'ScaffoldType should not have AwesomeCopilot key');
+            assert.ok(
+                !scaffoldTypes.includes('awesome-copilot' as ScaffoldType),
+                'ScaffoldType should not contain awesome-copilot'
+            );
+            assert.ok(
+                !('AwesomeCopilot' in ScaffoldType),
+                'ScaffoldType should not have AwesomeCopilot key'
+            );
         });
 
         test('should only contain GitHub, Apm, and Skill types', () => {
             const scaffoldTypes = Object.values(ScaffoldType);
-            assert.strictEqual(scaffoldTypes.length, 3, 'ScaffoldType should have exactly 3 values');
-            assert.ok(scaffoldTypes.includes(ScaffoldType.GitHub), 'ScaffoldType should contain GitHub');
+            assert.strictEqual(
+                scaffoldTypes.length,
+                3,
+                'ScaffoldType should have exactly 3 values'
+            );
+            assert.ok(
+                scaffoldTypes.includes(ScaffoldType.GitHub),
+                'ScaffoldType should contain GitHub'
+            );
             assert.ok(scaffoldTypes.includes(ScaffoldType.Apm), 'ScaffoldType should contain Apm');
-            assert.ok(scaffoldTypes.includes(ScaffoldType.Skill), 'ScaffoldType should contain Skill');
+            assert.ok(
+                scaffoldTypes.includes(ScaffoldType.Skill),
+                'ScaffoldType should contain Skill'
+            );
         });
 
         test('GitHub type should have correct value', () => {
-            assert.strictEqual(ScaffoldType.GitHub, 'github', 'GitHub type should have value "github"');
+            assert.strictEqual(
+                ScaffoldType.GitHub,
+                'github',
+                'GitHub type should have value "github"'
+            );
         });
 
         test('Apm type should have correct value', () => {
@@ -83,7 +102,7 @@ suite('ScaffoldCommand', () => {
 
         test('should create nested structure when specified', async () => {
             const nestedPath = path.join(testDir, 'my-project', 'copilot-prompts');
-            
+
             await scaffoldCommand.execute(nestedPath);
 
             assert.ok(fs.existsSync(path.join(nestedPath, 'prompts')));
@@ -100,7 +119,11 @@ suite('ScaffoldCommand', () => {
 
             const content = fs.readFileSync(promptFile, 'utf8');
             assert.ok(content.length > 0);
-            assert.ok(content.includes('name:') || content.includes('description:') || content.includes('Create README'));
+            assert.ok(
+                content.includes('name:') ||
+                    content.includes('description:') ||
+                    content.includes('Create README')
+            );
         });
 
         test('should create example instruction file', async () => {
@@ -111,7 +134,11 @@ suite('ScaffoldCommand', () => {
 
             const content = fs.readFileSync(instructionFile, 'utf8');
             assert.ok(content.length > 0);
-            assert.ok(content.includes('name:') || content.includes('description:') || content.includes('TypeScript'));
+            assert.ok(
+                content.includes('name:') ||
+                    content.includes('description:') ||
+                    content.includes('TypeScript')
+            );
         });
 
         test('should create example agent file', async () => {
@@ -122,7 +149,11 @@ suite('ScaffoldCommand', () => {
 
             const content = fs.readFileSync(agentFile, 'utf8');
             assert.ok(content.length > 0);
-            assert.ok(content.includes('Persona') || content.includes('Expertise') || content.includes('Guidelines'));
+            assert.ok(
+                content.includes('Persona') ||
+                    content.includes('Expertise') ||
+                    content.includes('Guidelines')
+            );
         });
 
         test('should create example collection file', async () => {
@@ -201,7 +232,9 @@ suite('ScaffoldCommand', () => {
             const collection = yaml.load(content);
 
             const promptItem = collection.items.find((item: any) => item.path.includes('prompt'));
-            const instructionItem = collection.items.find((item: any) => item.path.includes('instruction'));
+            const instructionItem = collection.items.find((item: any) =>
+                item.path.includes('instruction')
+            );
             const agentItem = collection.items.find((item: any) => item.path.includes('agent'));
 
             assert.strictEqual(promptItem?.kind, 'prompt');
@@ -222,7 +255,7 @@ suite('ScaffoldCommand', () => {
     suite('Error Handling', () => {
         test('should throw error for invalid path', async () => {
             const invalidPath = '/invalid/path/that/does/not/exist/and/cannot/be/created/abc123xyz';
-            
+
             await assert.rejects(
                 async () => await scaffoldCommand.execute(invalidPath),
                 /Cannot create directory|permission denied|EACCES|ENOENT/i
@@ -235,10 +268,10 @@ suite('ScaffoldCommand', () => {
                 await scaffoldCommand.execute('/root/test-scaffold');
             } catch (error) {
                 assert.ok(error instanceof Error);
-                assert.ok((error as Error).message.length > 0);
+                assert.ok(error.message.length > 0);
             }
         });
-        
+
         test('should support custom project name in collection', async () => {
             await scaffoldCommand.execute(testDir, { projectName: 'my-awesome-prompts' });
 
@@ -247,7 +280,10 @@ suite('ScaffoldCommand', () => {
             const yaml = require('js-yaml');
             const collection = yaml.load(content);
 
-            assert.ok(collection.id === 'my-awesome-prompts' || collection.name.includes('my-awesome-prompts'));
+            assert.ok(
+                collection.id === 'my-awesome-prompts' ||
+                    collection.name.includes('my-awesome-prompts')
+            );
         });
 
         test.skip('should support skipping example files', async () => {
@@ -255,10 +291,12 @@ suite('ScaffoldCommand', () => {
 
             // Folders should exist
             assert.ok(fs.existsSync(path.join(testDir, 'prompts')));
-            
+
             // But example files should not
             assert.ok(!fs.existsSync(path.join(testDir, 'prompts', 'example.prompt.md')));
-            assert.ok(!fs.existsSync(path.join(testDir, 'instructions', 'example.instructions.md')));
+            assert.ok(
+                !fs.existsSync(path.join(testDir, 'instructions', 'example.instructions.md'))
+            );
         });
     });
 
@@ -282,7 +320,11 @@ suite('ScaffoldCommand', () => {
             const content = fs.readFileSync(instructionFile, 'utf8');
 
             assert.ok(content.length > 100);
-            assert.ok(content.includes('best practice') || content.includes('guideline') || content.includes('standard'));
+            assert.ok(
+                content.includes('best practice') ||
+                    content.includes('guideline') ||
+                    content.includes('standard')
+            );
         });
 
         test('example chatmode should define a persona', async () => {
@@ -292,7 +334,12 @@ suite('ScaffoldCommand', () => {
             const content = fs.readFileSync(agentFile, 'utf8');
 
             assert.ok(content.length > 100);
-            assert.ok(content.includes('You are') || content.includes('Act as') || content.includes('persona') || content.includes('role'));
+            assert.ok(
+                content.includes('You are') ||
+                    content.includes('Act as') ||
+                    content.includes('persona') ||
+                    content.includes('role')
+            );
         });
     });
 });
@@ -322,7 +369,7 @@ suite('Skill Scaffold', () => {
         assert.ok(fs.existsSync(skillFile), 'SKILL.md should exist');
 
         const content = fs.readFileSync(skillFile, 'utf8');
-        
+
         // Should have YAML frontmatter
         assert.ok(content.startsWith('---'), 'Should have YAML frontmatter');
         assert.ok(content.includes('name:'), 'Should have name field');
@@ -353,20 +400,23 @@ suite('Skill Scaffold', () => {
     });
 
     test('should use provided description', async () => {
-        await skillScaffoldCommand.execute(testDir, { 
+        await skillScaffoldCommand.execute(testDir, {
             projectName: 'described-skill',
-            description: 'A custom skill description'
+            description: 'A custom skill description',
         });
 
         const skillFile = path.join(testDir, 'described-skill', 'SKILL.md');
         const content = fs.readFileSync(skillFile, 'utf8');
-        assert.ok(content.includes('A custom skill description'), 'Should use provided description');
+        assert.ok(
+            content.includes('A custom skill description'),
+            'Should use provided description'
+        );
     });
 
     test('should use provided author', async () => {
-        await skillScaffoldCommand.execute(testDir, { 
+        await skillScaffoldCommand.execute(testDir, {
             projectName: 'authored-skill',
-            author: 'Test Author'
+            author: 'Test Author',
         });
 
         const skillFile = path.join(testDir, 'authored-skill', 'SKILL.md');

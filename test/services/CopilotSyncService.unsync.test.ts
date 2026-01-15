@@ -1,9 +1,10 @@
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
-import * as assert from 'assert';
-import * as path from 'path';
-import * as fs from 'fs';
-import * as os from 'os';
 import * as vscode from 'vscode';
+
 import { CopilotSyncService } from '../../src/services/CopilotSyncService';
 
 suite('CopilotSyncService - Unsync Bundle Fix', () => {
@@ -16,11 +17,11 @@ suite('CopilotSyncService - Unsync Bundle Fix', () => {
     setup(() => {
         // Create temp directory structure
         tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'copilot-sync-test-'));
-        
+
         // Mock a realistic structure: .../User/globalStorage/prompt-registry
         const userDir = path.join(tempDir, 'User');
         const globalStorageDir = path.join(userDir, 'globalStorage', 'prompt-registry');
-        
+
         bundlesDir = path.join(globalStorageDir, 'bundles');
         // Default prompts dir is .../User/prompts
         copilotDir = path.join(userDir, 'prompts');
@@ -43,23 +44,23 @@ suite('CopilotSyncService - Unsync Bundle Fix', () => {
         // Cleanup
         try {
             fs.rmSync(tempDir, { recursive: true, force: true });
-        } catch (e) {
-            console.error('Cleanup failed:', e);
+        } catch (error) {
+            console.error('Cleanup failed:', error);
         }
     });
 
     test('should delete copied file (not symlink) if content matches source', async () => {
         const bundleId = 'test-bundle';
         const bundlePath = path.join(bundlesDir, bundleId);
-        
+
         // 1. Create bundle with manifest and prompt
         fs.mkdirSync(bundlePath, { recursive: true });
-        
+
         const promptContent = '# Test Prompt\nThis is a test prompt.';
         const promptFile = 'test.prompt.md';
-        
+
         fs.writeFileSync(path.join(bundlePath, promptFile), promptContent);
-        
+
         const manifest = {
             id: bundleId,
             version: '1.0.0',
@@ -69,13 +70,13 @@ suite('CopilotSyncService - Unsync Bundle Fix', () => {
                     id: 'test-prompt',
                     name: 'Test Prompt',
                     file: promptFile,
-                    type: 'prompt'
-                }
-            ]
+                    type: 'prompt',
+                },
+            ],
         };
-        
+
         fs.writeFileSync(
-            path.join(bundlePath, 'deployment-manifest.yml'), 
+            path.join(bundlePath, 'deployment-manifest.yml'),
             JSON.stringify(manifest) // JSON is valid YAML
         );
 
@@ -86,27 +87,35 @@ suite('CopilotSyncService - Unsync Bundle Fix', () => {
 
         // Verify setup
         assert.ok(fs.existsSync(targetFile), 'Target file should exist');
-        assert.strictEqual(fs.lstatSync(targetFile).isSymbolicLink(), false, 'Target file should NOT be a symlink');
+        assert.strictEqual(
+            fs.lstatSync(targetFile).isSymbolicLink(),
+            false,
+            'Target file should NOT be a symlink'
+        );
 
         // 3. Run unsyncBundle
         await service.unsyncBundle(bundleId);
 
         // 4. Verify deletion
-        assert.strictEqual(fs.existsSync(targetFile), false, 'Target file should be deleted because content matched');
+        assert.strictEqual(
+            fs.existsSync(targetFile),
+            false,
+            'Target file should be deleted because content matched'
+        );
     });
 
     test('should NOT delete copied file if content differs', async () => {
         const bundleId = 'test-bundle-diff';
         const bundlePath = path.join(bundlesDir, bundleId);
-        
+
         // 1. Create bundle with manifest and prompt
         fs.mkdirSync(bundlePath, { recursive: true });
-        
+
         const promptContent = '# Original Prompt';
         const promptFile = 'test.prompt.md';
-        
+
         fs.writeFileSync(path.join(bundlePath, promptFile), promptContent);
-        
+
         const manifest = {
             id: bundleId,
             version: '1.0.0',
@@ -116,13 +125,13 @@ suite('CopilotSyncService - Unsync Bundle Fix', () => {
                     id: 'test-prompt-diff',
                     name: 'Test Prompt Diff',
                     file: promptFile,
-                    type: 'prompt'
-                }
-            ]
+                    type: 'prompt',
+                },
+            ],
         };
-        
+
         fs.writeFileSync(
-            path.join(bundlePath, 'deployment-manifest.yml'), 
+            path.join(bundlePath, 'deployment-manifest.yml'),
             JSON.stringify(manifest)
         );
 
@@ -133,27 +142,34 @@ suite('CopilotSyncService - Unsync Bundle Fix', () => {
 
         // Verify setup
         assert.ok(fs.existsSync(targetFile), 'Target file should exist');
-        assert.strictEqual(fs.lstatSync(targetFile).isSymbolicLink(), false, 'Target file should NOT be a symlink');
+        assert.strictEqual(
+            fs.lstatSync(targetFile).isSymbolicLink(),
+            false,
+            'Target file should NOT be a symlink'
+        );
 
         // 3. Run unsyncBundle
         await service.unsyncBundle(bundleId);
 
         // 4. Verify persistence
-        assert.ok(fs.existsSync(targetFile), 'Target file should NOT be deleted because content differed');
+        assert.ok(
+            fs.existsSync(targetFile),
+            'Target file should NOT be deleted because content differed'
+        );
     });
-    
+
     test('should handle line ending differences (CRLF vs LF)', async () => {
         const bundleId = 'test-bundle-crlf';
         const bundlePath = path.join(bundlesDir, bundleId);
-        
+
         // 1. Create bundle with manifest and prompt (using LF)
         fs.mkdirSync(bundlePath, { recursive: true });
-        
+
         const promptContentLF = '# Test Prompt\nLine 2\nLine 3';
         const promptFile = 'test.prompt.md';
-        
+
         fs.writeFileSync(path.join(bundlePath, promptFile), promptContentLF);
-        
+
         const manifest = {
             id: bundleId,
             version: '1.0.0',
@@ -163,13 +179,13 @@ suite('CopilotSyncService - Unsync Bundle Fix', () => {
                     id: 'test-prompt-crlf',
                     name: 'Test Prompt CRLF',
                     file: promptFile,
-                    type: 'prompt'
-                }
-            ]
+                    type: 'prompt',
+                },
+            ],
         };
-        
+
         fs.writeFileSync(
-            path.join(bundlePath, 'deployment-manifest.yml'), 
+            path.join(bundlePath, 'deployment-manifest.yml'),
             JSON.stringify(manifest)
         );
 
@@ -180,11 +196,15 @@ suite('CopilotSyncService - Unsync Bundle Fix', () => {
 
         // Verify setup
         assert.ok(fs.existsSync(targetFile), 'Target file should exist');
-        
+
         // 3. Run unsyncBundle
         await service.unsyncBundle(bundleId);
 
         // 4. Verify deletion (normalization should handle it)
-        assert.strictEqual(fs.existsSync(targetFile), false, 'Target file should be deleted despite line ending differences');
+        assert.strictEqual(
+            fs.existsSync(targetFile),
+            false,
+            'Target file should be deleted despite line ending differences'
+        );
     });
 });

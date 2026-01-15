@@ -1,6 +1,6 @@
 /**
  * CliWrapper - Abstract base class for CLI command wrappers
- * 
+ *
  * Provides common functionality for executing CLI commands with:
  * - Availability checking
  * - Version retrieval
@@ -9,9 +9,11 @@
  * - Terminal execution
  */
 
-import { spawn } from 'child_process';
-import * as fs from 'fs';
+import { spawn } from 'node:child_process';
+import * as fs from 'node:fs';
+
 import * as vscode from 'vscode';
+
 import { Logger } from './logger';
 
 /**
@@ -63,11 +65,11 @@ export abstract class CliWrapper {
     async isAvailable(): Promise<boolean> {
         return new Promise((resolve) => {
             const proc = spawn(this.getCommandName(), ['--version'], { shell: USE_SHELL });
-            
+
             proc.on('close', (code) => {
                 resolve(code === 0);
             });
-            
+
             proc.on('error', () => {
                 resolve(false);
             });
@@ -78,19 +80,20 @@ export abstract class CliWrapper {
      * Get the CLI tool version
      */
     async getVersion(): Promise<string | undefined> {
-        return new Promise((resolve) => {
+        return new Promise<string | undefined>((resolve) => {
             const proc = spawn(this.getCommandName(), ['--version'], { shell: USE_SHELL });
             let output = '';
-            
+
             proc.stdout.on('data', (data) => {
                 output += data.toString();
             });
-            
+
             proc.on('close', (code) => {
                 resolve(code === 0 ? output.trim() : undefined);
             });
-            
+
             proc.on('error', () => {
+                // eslint-disable-next-line unicorn/no-useless-undefined
                 resolve(undefined);
             });
         });
@@ -103,11 +106,11 @@ export abstract class CliWrapper {
         if (!cwd || cwd.trim() === '') {
             throw new Error('Working directory cannot be empty');
         }
-        
+
         if (!fs.existsSync(cwd)) {
             throw new Error(`Working directory does not exist: ${cwd}`);
         }
-        
+
         const stats = fs.statSync(cwd);
         if (!stats.isDirectory()) {
             throw new Error(`Path is not a directory: ${cwd}`);
@@ -124,64 +127,73 @@ export abstract class CliWrapper {
         try {
             this.validateCwd(cwd);
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Invalid working directory';
-            this.logger.error(`${displayName}.installWithProgress validation failed: ${errorMessage}`);
+            const errorMessage =
+                error instanceof Error ? error.message : 'Invalid working directory';
+            this.logger.error(
+                `${displayName}.installWithProgress validation failed: ${errorMessage}`
+            );
             return { success: false, error: errorMessage };
         }
 
         this.logger.debug(`Starting ${cmdName} install in: ${cwd}`);
-        
+
         const available = await this.isAvailable();
         if (!available) {
             const error = `${cmdName} not found. Please install it first.`;
             this.logger.error(`${cmdName} not available on system`);
             return { success: false, error };
         }
-        
+
         return new Promise((resolve) => {
             vscode.window.withProgress(
                 {
                     location: vscode.ProgressLocation.Notification,
                     title: 'Installing dependencies...',
-                    cancellable: true
+                    cancellable: true,
                 },
                 async (_progress, token) => {
                     const proc = spawn(cmdName, ['install'], {
                         cwd,
                         shell: USE_SHELL,
-                        timeout: COMMAND_TIMEOUT
+                        timeout: COMMAND_TIMEOUT,
                     });
-                    
+
                     token.onCancellationRequested(() => {
                         proc.kill();
                         resolve({ success: false, error: 'Installation cancelled' });
                     });
-                    
+
                     let errorOutput = '';
                     let output = '';
-                    
+
                     proc.stdout.on('data', (data) => {
                         output += data.toString();
                     });
-                    
+
                     proc.stderr.on('data', (data) => {
                         errorOutput += data.toString();
                     });
-                    
+
                     proc.on('close', (code) => {
                         if (code === 0) {
-                            this.logger.info(`${cmdName} install completed successfully in: ${cwd}`);
-                            vscode.window.showInformationMessage('Dependencies installed successfully!');
+                            this.logger.info(
+                                `${cmdName} install completed successfully in: ${cwd}`
+                            );
+                            vscode.window.showInformationMessage(
+                                'Dependencies installed successfully!'
+                            );
                             resolve({ success: true, output });
                         } else {
                             const errorMessage = `${cmdName} install failed with code ${code}`;
-                            const detailedError = errorOutput ? `${errorMessage}. Error: ${errorOutput}` : errorMessage;
+                            const detailedError = errorOutput
+                                ? `${errorMessage}. Error: ${errorOutput}`
+                                : errorMessage;
                             this.logger.error(`${cmdName} install failed: ${detailedError}`);
                             vscode.window.showErrorMessage(detailedError);
                             resolve({ success: false, error: detailedError });
                         }
                     });
-                    
+
                     proc.on('error', (err) => {
                         const errorMessage = this.formatProcessError(err, cmdName);
                         this.logger.error(`${cmdName} install process error: ${errorMessage}`);
@@ -203,14 +215,17 @@ export abstract class CliWrapper {
         try {
             this.validateCwd(cwd);
         } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : 'Invalid working directory';
-            this.logger.error(`${displayName}.installInTerminal validation failed: ${errorMessage}`);
+            const errorMessage =
+                error instanceof Error ? error.message : 'Invalid working directory';
+            this.logger.error(
+                `${displayName}.installInTerminal validation failed: ${errorMessage}`
+            );
             vscode.window.showErrorMessage(errorMessage);
             return { success: false, error: errorMessage };
         }
 
         this.logger.debug(`Starting ${cmdName} install in terminal: ${cwd}`);
-        
+
         const available = await this.isAvailable();
         if (!available) {
             const error = `${cmdName} not found. Please install it first.`;
@@ -218,21 +233,21 @@ export abstract class CliWrapper {
             vscode.window.showErrorMessage(error);
             return { success: false, error };
         }
-        
+
         try {
             const terminal = vscode.window.createTerminal({
                 name: `${cmdName} install`,
-                cwd
+                cwd,
             });
-            
+
             terminal.show();
             terminal.sendText(`${cmdName} install`);
-            
+
             this.logger.info(`${cmdName} install started in terminal for: ${cwd}`);
             vscode.window.showInformationMessage(
                 `${cmdName} install started in terminal. Check the terminal output for progress.`
             );
-            
+
             return { success: true };
         } catch (error) {
             const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
@@ -247,13 +262,13 @@ export abstract class CliWrapper {
      */
     async promptAndInstall(cwd: string, useProgress: boolean = true): Promise<CliInstallResult> {
         const cmdName = this.getCommandName();
-        
+
         const choice = await vscode.window.showInformationMessage(
             'Scaffolding complete! Would you like to install dependencies now?',
             `Yes, run ${cmdName} install`,
-            'No, I\'ll do it later'
+            "No, I'll do it later"
         );
-        
+
         if (choice !== `Yes, run ${cmdName} install`) {
             vscode.window.showInformationMessage(
                 `To install dependencies later, run: ${cmdName} install`,
@@ -261,8 +276,8 @@ export abstract class CliWrapper {
             );
             return { success: true };
         }
-        
-        return useProgress 
+
+        return useProgress
             ? await this.installWithProgress(cwd)
             : await this.installInTerminal(cwd);
     }

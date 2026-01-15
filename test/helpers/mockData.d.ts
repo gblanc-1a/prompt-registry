@@ -26,7 +26,10 @@ export declare const loadBundleContentFromFixtures: () => Record<string, Record<
 /**
  * Validate that a bundle contains expected platform-specific content
  */
-export declare const validateBundleContent: (platform: string, files: Record<string, string>) => boolean;
+export declare const validateBundleContent: (
+    platform: string,
+    files: Record<string, string>
+) => boolean;
 /**
  * Create a temporary workspace directory for testing
  */

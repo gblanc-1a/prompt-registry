@@ -1,17 +1,19 @@
 /**
  * Build Collection Bundle Tests
- * 
+ *
  * Transposed from workflow-bundle/test/build-collection-bundle.test.js
  * Tests the bundle building functionality.
- * 
+ *
  * Feature: workflow-bundle-scaffolding
  * Requirements: 15.4
  */
 
-import * as assert from 'assert';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import * as yaml from 'js-yaml';
+
 import {
     createTestProject,
     writeFile,
@@ -19,7 +21,7 @@ import {
     unzipFile,
     unzipList,
     getBasicScriptEnv,
-    TestProject
+    TestProject,
 } from '../helpers/scriptTestHelpers';
 
 suite('Build Collection Bundle Tests', () => {
@@ -31,8 +33,8 @@ suite('Build Collection Bundle Tests', () => {
         }
     });
 
-    test('outputs manifest asset and zip with only referenced files', function() {
-        this.timeout(30000);
+    test('outputs manifest asset and zip with only referenced files', function () {
+        this.timeout(30_000);
 
         project = createTestProject('wf-bundle-', { initGit: false });
         const { root, scriptsDir } = project;
@@ -52,7 +54,7 @@ suite('Build Collection Bundle Tests', () => {
                 '  - path: prompts/a.md',
                 '    kind: prompt',
                 'version: "1.0.0"',
-            ].join('\n'),
+            ].join('\n')
         );
 
         const buildScript = path.join(scriptsDir, 'build-collection-bundle.js');
@@ -60,25 +62,29 @@ suite('Build Collection Bundle Tests', () => {
             'node',
             [
                 buildScript,
-                '--collection-file', 'collections/a.collection.yml',
-                '--version', '1.2.3',
-                '--repo-slug', 'repo',
-                '--out-dir', 'dist',
+                '--collection-file',
+                'collections/a.collection.yml',
+                '--version',
+                '1.2.3',
+                '--repo-slug',
+                'repo',
+                '--out-dir',
+                'dist',
             ],
             root,
-            getBasicScriptEnv(),
+            getBasicScriptEnv()
         );
 
         assert.strictEqual(res.code, 0, res.stderr || res.stdout);
-        
+
         const out = JSON.parse(res.stdout);
-        
+
         // Check manifest asset exists
         assert.ok(
             fs.existsSync(path.join(root, out.manifestAsset)),
             `Manifest asset should exist at ${out.manifestAsset}`
         );
-        
+
         // Check zip asset exists
         assert.ok(
             fs.existsSync(path.join(root, out.zipAsset)),
@@ -99,18 +105,34 @@ suite('Build Collection Bundle Tests', () => {
             root
         );
         const zippedManifest = yaml.load(zippedManifestContent) as any;
-        assert.strictEqual(zippedManifest.id, standaloneManifest.id, 'Zipped manifest ID should match standalone');
-        assert.strictEqual(zippedManifest.version, standaloneManifest.version, 'Zipped manifest version should match standalone');
+        assert.strictEqual(
+            zippedManifest.id,
+            standaloneManifest.id,
+            'Zipped manifest ID should match standalone'
+        );
+        assert.strictEqual(
+            zippedManifest.version,
+            standaloneManifest.version,
+            'Zipped manifest version should match standalone'
+        );
 
         // Check zip contents
         const listing = unzipList(path.join(root, out.zipAsset), root);
-        assert.match(listing, /deployment-manifest\.yml/, 'Zip should contain deployment-manifest.yml');
+        assert.match(
+            listing,
+            /deployment-manifest\.yml/,
+            'Zip should contain deployment-manifest.yml'
+        );
         assert.match(listing, /prompts\/a\.md/, 'Zip should contain referenced prompt file');
-        assert.doesNotMatch(listing, /collections\/a\.collection\.yml/, 'Zip should not contain collection file itself');
+        assert.doesNotMatch(
+            listing,
+            /collections\/a\.collection\.yml/,
+            'Zip should not contain collection file itself'
+        );
     });
 
-    test('includes all referenced files in zip', function() {
-        this.timeout(30000);
+    test('includes all referenced files in zip', function () {
+        this.timeout(30_000);
 
         project = createTestProject('wf-bundle-', { initGit: false });
         const { root, scriptsDir } = project;
@@ -139,7 +161,7 @@ suite('Build Collection Bundle Tests', () => {
                 '  - path: agents/agent1.md',
                 '    kind: agent',
                 'version: "1.0.0"',
-            ].join('\n'),
+            ].join('\n')
         );
 
         const buildScript = path.join(scriptsDir, 'build-collection-bundle.js');
@@ -147,17 +169,21 @@ suite('Build Collection Bundle Tests', () => {
             'node',
             [
                 buildScript,
-                '--collection-file', 'collections/multi.collection.yml',
-                '--version', '1.0.0',
-                '--repo-slug', 'test-repo',
-                '--out-dir', 'dist',
+                '--collection-file',
+                'collections/multi.collection.yml',
+                '--version',
+                '1.0.0',
+                '--repo-slug',
+                'test-repo',
+                '--out-dir',
+                'dist',
             ],
             root,
-            getBasicScriptEnv(),
+            getBasicScriptEnv()
         );
 
         assert.strictEqual(res.code, 0, res.stderr || res.stdout);
-        
+
         const out = JSON.parse(res.stdout);
         const listing = unzipList(path.join(root, out.zipAsset), root);
 
@@ -168,8 +194,8 @@ suite('Build Collection Bundle Tests', () => {
         assert.match(listing, /agents\/agent1\.md/, 'Zip should contain agent');
     });
 
-    test('bundle ID format is correct', function() {
-        this.timeout(30000);
+    test('bundle ID format is correct', function () {
+        this.timeout(30_000);
 
         project = createTestProject('wf-bundle-', { initGit: false });
         const { root, scriptsDir } = project;
@@ -187,7 +213,7 @@ suite('Build Collection Bundle Tests', () => {
                 '  - path: prompts/test.md',
                 '    kind: prompt',
                 'version: "2.1.0"',
-            ].join('\n'),
+            ].join('\n')
         );
 
         const buildScript = path.join(scriptsDir, 'build-collection-bundle.js');
@@ -195,17 +221,21 @@ suite('Build Collection Bundle Tests', () => {
             'node',
             [
                 buildScript,
-                '--collection-file', 'collections/my-collection.collection.yml',
-                '--version', '2.1.0',
-                '--repo-slug', 'my-repo',
-                '--out-dir', 'dist',
+                '--collection-file',
+                'collections/my-collection.collection.yml',
+                '--version',
+                '2.1.0',
+                '--repo-slug',
+                'my-repo',
+                '--out-dir',
+                'dist',
             ],
             root,
-            getBasicScriptEnv(),
+            getBasicScriptEnv()
         );
 
         assert.strictEqual(res.code, 0, res.stderr || res.stdout);
-        
+
         const out = JSON.parse(res.stdout);
         assert.strictEqual(
             out.bundleId,
@@ -214,8 +244,8 @@ suite('Build Collection Bundle Tests', () => {
         );
     });
 
-    test('fails when collection file is missing', function() {
-        this.timeout(30000);
+    test('fails when collection file is missing', function () {
+        this.timeout(30_000);
 
         project = createTestProject('wf-bundle-', { initGit: false });
         const { root, scriptsDir } = project;
@@ -225,20 +255,24 @@ suite('Build Collection Bundle Tests', () => {
             'node',
             [
                 buildScript,
-                '--collection-file', 'collections/nonexistent.collection.yml',
-                '--version', '1.0.0',
-                '--repo-slug', 'repo',
-                '--out-dir', 'dist',
+                '--collection-file',
+                'collections/nonexistent.collection.yml',
+                '--version',
+                '1.0.0',
+                '--repo-slug',
+                'repo',
+                '--out-dir',
+                'dist',
             ],
             root,
-            getBasicScriptEnv(),
+            getBasicScriptEnv()
         );
 
         assert.notStrictEqual(res.code, 0, 'Should fail when collection file is missing');
     });
 
-    test('fails when referenced file is missing', function() {
-        this.timeout(30000);
+    test('fails when referenced file is missing', function () {
+        this.timeout(30_000);
 
         project = createTestProject('wf-bundle-', { initGit: false });
         const { root, scriptsDir } = project;
@@ -255,7 +289,7 @@ suite('Build Collection Bundle Tests', () => {
                 '  - path: prompts/missing.md',
                 '    kind: prompt',
                 'version: "1.0.0"',
-            ].join('\n'),
+            ].join('\n')
         );
 
         const buildScript = path.join(scriptsDir, 'build-collection-bundle.js');
@@ -263,18 +297,23 @@ suite('Build Collection Bundle Tests', () => {
             'node',
             [
                 buildScript,
-                '--collection-file', 'collections/broken.collection.yml',
-                '--version', '1.0.0',
-                '--repo-slug', 'repo',
-                '--out-dir', 'dist',
+                '--collection-file',
+                'collections/broken.collection.yml',
+                '--version',
+                '1.0.0',
+                '--repo-slug',
+                'repo',
+                '--out-dir',
+                'dist',
             ],
             root,
-            getBasicScriptEnv(),
+            getBasicScriptEnv()
         );
 
         assert.notStrictEqual(res.code, 0, 'Should fail when referenced file is missing');
         assert.ok(
-            res.stderr.toLowerCase().includes('not found') || res.stderr.toLowerCase().includes('missing'),
+            res.stderr.toLowerCase().includes('not found') ||
+                res.stderr.toLowerCase().includes('missing'),
             `Error should mention missing file: ${res.stderr}`
         );
     });

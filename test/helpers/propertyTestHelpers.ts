@@ -1,18 +1,18 @@
 /**
  * Property-Based Test Helpers
- * 
+ *
  * Shared utilities for property-based tests across adapter test files.
  * These helpers provide consistent patterns for error checking, logging,
  * HTTP mocking, and test configuration.
- * 
+ *
  * Usage:
  * ```typescript
  * import { ErrorCheckers, LoggerHelpers, PropertyTestConfig, createMockHttpResponse } from '../helpers/propertyTestHelpers';
  * ```
  */
 
-import * as sinon from 'sinon';
 import * as fc from 'fast-check';
+import * as sinon from 'sinon';
 
 /**
  * HTTP status code to message mapping
@@ -37,7 +37,7 @@ export const HTTP_STATUS_MESSAGES: Record<number, string> = {
 
 /**
  * Error checking utilities for adapter tests
- * 
+ *
  * Provides consistent error message validation across property-based tests.
  * These helpers check for specific error patterns in adapter error messages.
  */
@@ -48,10 +48,12 @@ export const ErrorCheckers = {
      */
     indicatesHtmlDetection: (error: Error): boolean => {
         const msg = error.message.toLowerCase();
-        return msg.includes('html') ||
+        return (
+            msg.includes('html') ||
             msg.includes('content-type') ||
             msg.includes('format') ||
-            msg.includes('parse');
+            msg.includes('parse')
+        );
     },
 
     /**
@@ -60,11 +62,13 @@ export const ErrorCheckers = {
      */
     indicatesAuthIssue: (error: Error): boolean => {
         const msg = error.message.toLowerCase();
-        return msg.includes('authentication') ||
+        return (
+            msg.includes('authentication') ||
             msg.includes('unauthorized') ||
             msg.includes('forbidden') ||
             msg.includes('access') ||
-            msg.includes('html');
+            msg.includes('html')
+        );
     },
 
     /**
@@ -73,9 +77,7 @@ export const ErrorCheckers = {
      */
     isJsonParseError: (error: Error): boolean => {
         const msg = error.message.toLowerCase();
-        return msg.includes('json') && 
-            msg.includes('parse') &&
-            !msg.includes('html');
+        return msg.includes('json') && msg.includes('parse') && !msg.includes('html');
     },
 
     /**
@@ -84,10 +86,12 @@ export const ErrorCheckers = {
      */
     mentionsParsingIssue: (error: Error): boolean => {
         const msg = error.message.toLowerCase();
-        return msg.includes('parse') ||
+        return (
+            msg.includes('parse') ||
             msg.includes('format') ||
             msg.includes('invalid') ||
-            msg.includes('error');
+            msg.includes('error')
+        );
     },
 
     /**
@@ -96,11 +100,13 @@ export const ErrorCheckers = {
      */
     indicatesNetworkIssue: (error: Error): boolean => {
         const msg = error.message.toLowerCase();
-        return msg.includes('network') ||
+        return (
+            msg.includes('network') ||
             msg.includes('timeout') ||
             msg.includes('connection') ||
             msg.includes('econnrefused') ||
-            msg.includes('enotfound');
+            msg.includes('enotfound')
+        );
     },
 
     /**
@@ -109,15 +115,15 @@ export const ErrorCheckers = {
      */
     indicatesRateLimit: (error: Error): boolean => {
         const msg = error.message.toLowerCase();
-        return msg.includes('rate limit') ||
-            msg.includes('too many requests') ||
-            msg.includes('429');
-    }
+        return (
+            msg.includes('rate limit') || msg.includes('too many requests') || msg.includes('429')
+        );
+    },
 };
 
 /**
  * Logger management utilities for tests with stubbed loggers
- * 
+ *
  * Provides consistent logger interaction patterns across property-based tests.
  * Requires a sinon-stubbed Logger instance.
  */
@@ -153,7 +159,7 @@ export class LoggerHelpers {
      * Useful for verifying specific log messages were emitted
      */
     hasLogContaining(searchText: string): boolean {
-        return this.collectAllCalls().some(call => {
+        return this.collectAllCalls().some((call) => {
             const message = call.args[0]?.toString().toLowerCase() || '';
             return message.includes(searchText.toLowerCase());
         });
@@ -164,8 +170,9 @@ export class LoggerHelpers {
      * Returns array of error message strings
      */
     getErrorMessages(): string[] {
-        return (this.loggerStub.error?.getCalls() || [])
-            .map((call: sinon.SinonSpyCall) => call.args[0]?.toString() || '');
+        return (this.loggerStub.error?.getCalls() || []).map(
+            (call: sinon.SinonSpyCall) => call.args[0]?.toString() || ''
+        );
     }
 
     /**
@@ -173,8 +180,9 @@ export class LoggerHelpers {
      * Returns array of debug message strings
      */
     getDebugMessages(): string[] {
-        return (this.loggerStub.debug?.getCalls() || [])
-            .map((call: sinon.SinonSpyCall) => call.args[0]?.toString() || '');
+        return (this.loggerStub.debug?.getCalls() || []).map(
+            (call: sinon.SinonSpyCall) => call.args[0]?.toString() || ''
+        );
     }
 
     /**
@@ -191,7 +199,7 @@ export class LoggerHelpers {
 
 /**
  * Property test configuration
- * 
+ *
  * Centralized configuration for property-based tests.
  * Optimized for speed while maintaining good coverage.
  */
@@ -201,11 +209,11 @@ export const PropertyTestConfig = {
      * Reduced for faster execution while maintaining coverage
      */
     RUNS: {
-        QUICK: 3,          // Quick smoke tests
-        STANDARD: 5,       // Standard property tests  
-        EXTENDED: 8,       // Tests with more complex scenarios
+        QUICK: 3, // Quick smoke tests
+        STANDARD: 5, // Standard property tests
+        EXTENDED: 8, // Tests with more complex scenarios
         COMPREHENSIVE: 10, // Tests covering many combinations
-        THOROUGH: 15,      // Thorough testing (use sparingly)
+        THOROUGH: 15, // Thorough testing (use sparingly)
     },
 
     /**
@@ -219,31 +227,31 @@ export const PropertyTestConfig = {
      */
     FAST_CHECK_OPTIONS: {
         verbose: false,
-        endOnFailure: true,  // Stop on first failure for faster feedback
+        endOnFailure: true, // Stop on first failure for faster feedback
         interruptAfterTimeLimit: 1000, // Stop after 1 second per property
-    }
+    },
 };
 
 /**
  * Create a mock HTTP response object
- * 
+ *
  * Returns a mock that mimics Node.js IncomingMessage behavior.
  * Useful for testing HTTP adapter logic without real network calls.
- * 
+ *
  * @param statusCode - HTTP status code (e.g., 200, 404, 500)
  * @param responseBody - Response body as string (default: JSON error)
  * @param contentType - Content-Type header value (default: application/json)
  * @returns Mock response object with on() method for event handling
  */
 export const createMockHttpResponse = (
-    statusCode: number, 
+    statusCode: number,
     responseBody: string = JSON.stringify({ message: 'Error' }),
     contentType: string = 'application/json'
 ) => {
     const mockResponse = {
         statusCode,
         statusMessage: HTTP_STATUS_MESSAGES[statusCode] || 'Unknown',
-        headers: { 
+        headers: {
             'content-type': contentType,
             'content-length': responseBody.length.toString(),
         },
@@ -257,15 +265,15 @@ export const createMockHttpResponse = (
             return mockResponse; // Return same instance for proper chaining
         },
     };
-    
+
     return mockResponse;
 };
 
 /**
  * Stub HTTPS module to return a mock response
- * 
+ *
  * Optimized version that reuses mock objects for better performance.
- * 
+ *
  * @param sandbox - Sinon sandbox for stub management
  * @param statusCode - HTTP status code to return
  * @param responseBody - Optional response body (default: JSON error)
@@ -273,14 +281,14 @@ export const createMockHttpResponse = (
  * @returns Sinon stub for verification
  */
 export const stubHttpsWithResponse = (
-    sandbox: sinon.SinonSandbox, 
-    statusCode: number, 
+    sandbox: sinon.SinonSandbox,
+    statusCode: number,
     responseBody?: string,
     contentType?: string
 ) => {
-    const https = require('https');
+    const https = require('node:https');
     const mockResponse = createMockHttpResponse(statusCode, responseBody, contentType);
-    
+
     // Reuse existing stub if it exists, otherwise create new one
     const existingStub = https.get?.isSinonProxy ? https.get : null;
     if (existingStub) {
@@ -293,20 +301,19 @@ export const stubHttpsWithResponse = (
         });
         return existingStub;
     }
-    
-    return sandbox.stub(https, 'get')
-        .callsFake((...args: any[]) => {
-            const callback = args[2] || args[1];
-            if (typeof callback === 'function') {
-                callback(mockResponse);
-            }
-            return { on: () => ({ on: () => {} }) };
-        });
+
+    return sandbox.stub(https, 'get').callsFake((...args: any[]) => {
+        const callback = args[2] || args[1];
+        if (typeof callback === 'function') {
+            callback(mockResponse);
+        }
+        return { on: () => ({ on: () => {} }) };
+    });
 };
 
 /**
  * Common test data generators for fast-check
- * 
+ *
  * These generators provide reusable arbitraries for property-based tests.
  * They ensure consistent test data generation across different test files.
  */
@@ -316,8 +323,7 @@ export const TestGenerators = {
      * Filters out whitespace-only strings to ensure valid tokens
      */
     githubToken: () => {
-        return fc.string({ minLength: 20, maxLength: 50 })
-            .filter(s => s.trim().length > 0);
+        return fc.string({ minLength: 20, maxLength: 50 }).filter((s) => s.trim().length > 0);
     },
 
     /**
@@ -337,13 +343,17 @@ export const TestGenerators = {
     githubRepoUrl: () => {
         const ownerChars = 'abcdefghijklmnopqrstuvwxyz0123456789-'.split('');
         const repoChars = 'abcdefghijklmnopqrstuvwxyz0123456789-_'.split('');
-        
-        return fc.tuple(
-            fc.array(fc.constantFrom(...ownerChars), { minLength: 1, maxLength: 39 })
-                .map(chars => chars.join('')),
-            fc.array(fc.constantFrom(...repoChars), { minLength: 1, maxLength: 100 })
-                .map(chars => chars.join(''))
-        ).map(([owner, repo]) => `https://github.com/${owner}/${repo}`);
+
+        return fc
+            .tuple(
+                fc
+                    .array(fc.constantFrom(...ownerChars), { minLength: 1, maxLength: 39 })
+                    .map((chars) => chars.join('')),
+                fc
+                    .array(fc.constantFrom(...repoChars), { minLength: 1, maxLength: 100 })
+                    .map((chars) => chars.join(''))
+            )
+            .map(([owner, repo]) => `https://github.com/${owner}/${repo}`);
     },
 
     /**
@@ -377,12 +387,12 @@ export const TestGenerators = {
             'text/plain',
             'application/octet-stream'
         );
-    }
+    },
 };
 
 /**
  * Bundle-specific test data generators
- * 
+ *
  * Shared generators for bundle-related property-based tests.
  * Ensures consistent version and bundle ID generation across test files.
  */
@@ -390,32 +400,35 @@ export const BundleGenerators = {
     /**
      * Generate semantic version strings (0-10 for each component)
      * Format: "major.minor.patch" (e.g., "1.2.3")
-     * 
+     *
      * Used across AutoUpdateService, UpdateChecker, and RegistryTreeProvider tests.
      */
     version: () => {
-        return fc.tuple(
-            fc.integer({ min: 0, max: 10 }),
-            fc.integer({ min: 0, max: 10 }),
-            fc.integer({ min: 0, max: 10 })
-        ).map(([major, minor, patch]) => `${major}.${minor}.${patch}`);
+        return fc
+            .tuple(
+                fc.integer({ min: 0, max: 10 }),
+                fc.integer({ min: 0, max: 10 }),
+                fc.integer({ min: 0, max: 10 })
+            )
+            .map(([major, minor, patch]) => `${major}.${minor}.${patch}`);
     },
 
     /**
      * Generate valid bundle IDs
      * Format: lowercase alphanumeric with hyphens, 1-20 chars
-     * 
+     *
      * Used across AutoUpdateService, UpdateChecker, and RegistryTreeProvider tests.
      */
     bundleId: () => {
-        return fc.string({ minLength: 1, maxLength: 20 })
-            .map(s => s.replace(/[^a-zA-Z0-9-]/g, 'a').toLowerCase());
+        return fc
+            .string({ minLength: 1, maxLength: 20 })
+            .map((s) => s.replace(/[^a-zA-Z0-9-]/g, 'a').toLowerCase());
     },
 
     /**
      * Generate semantic version tuples (for UpdateChecker compatibility)
      * Returns tuple of [major, minor, patch] integers
-     * 
+     *
      * @param maxMajor - Maximum major version (default: 10)
      * @param maxMinor - Maximum minor version (default: 10)
      * @param maxPatch - Maximum patch version (default: 10)
@@ -426,5 +439,5 @@ export const BundleGenerators = {
             fc.integer({ min: 0, max: maxMinor }),
             fc.integer({ min: 0, max: maxPatch })
         );
-    }
+    },
 };

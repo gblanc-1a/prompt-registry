@@ -2,14 +2,13 @@
  * Tests for configuration type guards
  */
 
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+
 import {
     isValidUpdateCheckFrequency,
     isValidNotificationPreference,
     getValidUpdateCheckFrequency,
     getValidNotificationPreference,
-    UpdateCheckFrequency,
-    NotificationPreference
 } from '../../src/utils/configTypeGuards';
 
 suite('configTypeGuards', () => {

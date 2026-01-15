@@ -1,12 +1,15 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { promisify } from 'node:util';
+
 import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
 import * as yauzl from 'yauzl';
-import { promisify } from 'util';
-import { Platform, InstallationScope } from '../types/platform';
+
 import { BundleInfo } from '../types/github';
-import { PlatformDetector } from './platformDetector';
+import { Platform, InstallationScope } from '../types/platform';
 import { Logger } from '../utils/logger';
+
+import { PlatformDetector } from './platformDetector';
 
 const readFile = promisify(fs.readFile);
 const writeFile = promisify(fs.writeFile);
@@ -58,22 +61,28 @@ export class InstallationManager {
         onProgress?: (progress: number, message: string) => void
     ): Promise<InstallationResult> {
         try {
-            this.logger.info(`Starting installation of ${bundleInfo.filename} with scope: ${scope}`);
+            this.logger.info(
+                `Starting installation of ${bundleInfo.filename} with scope: ${scope}`
+            );
 
             const platform = await this.platformDetector.detectPlatform();
-            const metadataPath = this.platformDetector.getInstallationPath(platform.platform, scope);
-            
+            const metadataPath = this.platformDetector.getInstallationPath(
+                platform.platform,
+                scope
+            );
+
             // For project scope, extract files to project root; for others use the standard path
-            const extractionPath = scope === InstallationScope.PROJECT 
-                ? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || ''
-                : metadataPath;
+            const extractionPath =
+                scope === InstallationScope.PROJECT
+                    ? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || ''
+                    : metadataPath;
 
             // Update progress
             onProgress?.(10, 'Preparing installation directory...');
 
             // Ensure metadata directory exists
             await this.ensureDirectoryExists(metadataPath);
-            
+
             // Ensure extraction directory exists (if different from metadata)
             if (extractionPath !== metadataPath) {
                 await this.ensureDirectoryExists(extractionPath);
@@ -83,13 +92,24 @@ export class InstallationManager {
             onProgress?.(20, 'Extracting bundle...');
 
             // Extract bundle to the appropriate location
-            const extractedFiles = await this.extractBundle(bundleBuffer, extractionPath, onProgress);
+            const extractedFiles = await this.extractBundle(
+                bundleBuffer,
+                extractionPath,
+                onProgress
+            );
 
             // Update progress
             onProgress?.(80, 'Finalizing installation...');
 
             // Create installation metadata (always in metadata path)
-            await this.createInstallationMetadata(metadataPath, bundleInfo, scope, platform.platform, extractedFiles, extractionPath);
+            await this.createInstallationMetadata(
+                metadataPath,
+                bundleInfo,
+                scope,
+                platform.platform,
+                extractedFiles,
+                extractionPath
+            );
 
             // Update progress
             onProgress?.(90, 'Updating configuration...');
@@ -106,15 +126,14 @@ export class InstallationManager {
                 installedFiles: extractedFiles,
                 version: bundleInfo.version,
                 scope,
-                platform: platform.platform
+                platform: platform.platform,
             };
 
             this.logger.info(`Installation completed successfully at: ${extractionPath}`);
             return result;
-
         } catch (error) {
             this.logger.error('Installation failed', error as Error);
-            
+
             return {
                 success: false,
                 installedPath: '',
@@ -122,7 +141,7 @@ export class InstallationManager {
                 version: bundleInfo.version,
                 scope,
                 platform: Platform.UNKNOWN,
-                error: (error as Error).message
+                error: (error as Error).message,
             };
         }
     }
@@ -136,7 +155,10 @@ export class InstallationManager {
         this.logger.info(`Starting to prune empty directories for scope: ${scope}`);
 
         const platform = await this.platformDetector.detectPlatform();
-        const installationPath = this.platformDetector.getInstallationPath(platform.platform, scope);
+        const installationPath = this.platformDetector.getInstallationPath(
+            platform.platform,
+            scope
+        );
 
         // Check if installation exists
         try {
@@ -167,7 +189,7 @@ export class InstallationManager {
         for (const file of installedFiles) {
             const filePath = path.join(extractionPath, file);
             let dir = path.dirname(filePath);
-            
+
             // Add all parent directories up to the extraction path
             while (dir !== extractionPath && dir !== path.dirname(dir)) {
                 directoriesToCheck.add(dir);
@@ -203,7 +225,9 @@ export class InstallationManager {
                 this.logger.info(`Removed metadata file: ${metadataPath}`);
             } catch (error) {
                 // Metadata file might not exist or already removed, which is fine
-                this.logger.debug(`Metadata file not found or already removed: ${installationPath}`);
+                this.logger.debug(
+                    `Metadata file not found or already removed: ${installationPath}`
+                );
             }
             await this.removeIfEmpty(installationPath);
         }
@@ -219,20 +243,24 @@ export class InstallationManager {
         try {
             // Check if directory exists
             await access(dirPath);
-            
+
             // Read directory contents
             const files = await fs.promises.readdir(dirPath);
-            
+
             if (files.length === 0) {
                 // Directory is empty, remove it
                 await fs.promises.rmdir(dirPath);
                 this.logger.info(`Removed empty directory: ${dirPath}`);
             } else {
-                this.logger.debug(`Directory not empty, keeping: ${dirPath} (${files.length} items)`);
+                this.logger.debug(
+                    `Directory not empty, keeping: ${dirPath} (${files.length} items)`
+                );
             }
         } catch (error) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
             if ((error as any).code === 'ENOENT') {
                 this.logger.debug(`Directory does not exist: ${dirPath}`);
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
             } else if ((error as any).code === 'ENOTEMPTY') {
                 this.logger.debug(`Directory not empty: ${dirPath}`);
             } else {
@@ -254,11 +282,11 @@ export class InstallationManager {
         try {
             await access(dirPath);
             const files = await fs.promises.readdir(dirPath);
-            
+
             if (files.length === 0) {
                 await fs.promises.rmdir(dirPath);
                 this.logger.info(`Removed empty parent directory: ${dirPath}`);
-                
+
                 // Recursively check parent directory
                 const parentDir = path.dirname(dirPath);
                 await this.removeEmptyParentsRecursively(parentDir, rootPath);
@@ -277,7 +305,10 @@ export class InstallationManager {
             this.logger.info(`Starting uninstallation with scope: ${scope}`);
 
             const platform = await this.platformDetector.detectPlatform();
-            const installationPath = this.platformDetector.getInstallationPath(platform.platform, scope);
+            const installationPath = this.platformDetector.getInstallationPath(
+                platform.platform,
+                scope
+            );
 
             // Check if installation exists
             try {
@@ -288,7 +319,7 @@ export class InstallationManager {
             }
 
             // Read installation metadata to get list of installed files
-            const metadataPath = path.join(installationPath, '.olaf-metadata.json');
+            const _metadataPath = path.join(installationPath, '.olaf-metadata.json');
             let installedFiles: string[] = [];
             let extractionPath = installationPath;
 
@@ -317,18 +348,18 @@ export class InstallationManager {
             await this.pruneEmptyDirs(scope);
 
             // Remove the installation path with metadata
-            try{
+            try {
                 await access(installationPath);
                 await fs.promises.rm(installationPath, { recursive: true });
-
-            } catch(error) {
-                this.logger.error(`It was not possible to remove the installation path: ${installationPath}`, error as Error);
+            } catch (error) {
+                this.logger.error(
+                    `It was not possible to remove the installation path: ${installationPath}`,
+                    error as Error
+                );
             }
-
 
             this.logger.info(`Uninstallation completed successfully from: ${installationPath}`);
             return true;
-
         } catch (error) {
             this.logger.error('Uninstallation failed', error as Error);
             return false;
@@ -338,10 +369,14 @@ export class InstallationManager {
     /**
      * Get current installation information
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     public async getInstallationInfo(scope: InstallationScope): Promise<any | null> {
         try {
             const platform = await this.platformDetector.detectPlatform();
-            const installationPath = this.platformDetector.getInstallationPath(platform.platform, scope);
+            const installationPath = this.platformDetector.getInstallationPath(
+                platform.platform,
+                scope
+            );
 
             return await this.readInstallationMetadata(installationPath);
         } catch {
@@ -355,7 +390,10 @@ export class InstallationManager {
     public async isInstalled(scope: InstallationScope): Promise<boolean> {
         try {
             const platform = await this.platformDetector.detectPlatform();
-            const installationPath = this.platformDetector.getInstallationPath(platform.platform, scope);
+            const installationPath = this.platformDetector.getInstallationPath(
+                platform.platform,
+                scope
+            );
             const metadataPath = path.join(installationPath, '.olaf-metadata.json');
 
             await access(metadataPath);
@@ -369,7 +407,11 @@ export class InstallationManager {
      * Get all installation scopes where Prompt Registry is installed
      */
     public async getInstalledScopes(): Promise<InstallationScope[]> {
-        const scopes = [InstallationScope.USER, InstallationScope.WORKSPACE, InstallationScope.PROJECT];
+        const scopes = [
+            InstallationScope.USER,
+            InstallationScope.WORKSPACE,
+            InstallationScope.PROJECT,
+        ];
         const installedScopes: InstallationScope[] = [];
 
         for (const scope of scopes) {
@@ -400,106 +442,117 @@ export class InstallationManager {
             let processedEntries = 0;
             let totalEntries = 0;
 
-            yauzl.fromBuffer(bundleBuffer, { lazyEntries: true }, (err: Error | null, zipfile?: yauzl.ZipFile) => {
-                if (err) {
-                    reject(err);
-                    return;
-                }
-
-                if (!zipfile) {
-                    reject(new Error('Failed to open zip file'));
-                    return;
-                }
-
-                totalEntries = zipfile.entryCount;
-                this.logger.debug(`Extracting ${totalEntries} entries from bundle to ${extractPath}`);
-
-                zipfile.readEntry();
-
-                zipfile.on('entry', (entry: yauzl.Entry) => {
-                    const fileName = entry.fileName;
-                    
-                    // Skip directories
-                    if (fileName.endsWith('/')) {
-                        processedEntries++;
-                        zipfile.readEntry();
+            yauzl.fromBuffer(
+                bundleBuffer,
+                { lazyEntries: true },
+                (err: Error | null, zipfile?: yauzl.ZipFile) => {
+                    if (err) {
+                        reject(err);
                         return;
                     }
 
-                    // Skip common hidden files but allow important dot directories like .github
-                    const isHiddenFile = fileName.startsWith('.') && 
-                        !fileName.startsWith('.github/') && 
-                        !fileName.startsWith('.vscode/') &&
-                        !fileName.startsWith('.windsurf/') && 
-                        !fileName.startsWith('.kiro/') && 
-                        !fileName.startsWith('.cursor/') &&
-                        !fileName.startsWith('.olaf/');
-                    
-                    if (isHiddenFile) {
-                        processedEntries++;
-                        zipfile.readEntry();
+                    if (!zipfile) {
+                        reject(new Error('Failed to open zip file'));
                         return;
                     }
 
-                    const outputPath = path.join(extractPath, fileName);
-                    const outputDir = path.dirname(outputPath);
+                    totalEntries = zipfile.entryCount;
+                    this.logger.debug(
+                        `Extracting ${totalEntries} entries from bundle to ${extractPath}`
+                    );
 
-                    // Ensure output directory exists
-                    fs.mkdir(outputDir, { recursive: true }, (mkdirErr) => {
-                        if (mkdirErr) {
-                            reject(mkdirErr);
+                    zipfile.readEntry();
+
+                    zipfile.on('entry', (entry: yauzl.Entry) => {
+                        const fileName = entry.fileName;
+
+                        // Skip directories
+                        if (fileName.endsWith('/')) {
+                            processedEntries++;
+                            zipfile.readEntry();
                             return;
                         }
 
-                        zipfile.openReadStream(entry, (streamErr: Error | null, readStream?: NodeJS.ReadableStream) => {
-                            if (streamErr) {
-                                reject(streamErr);
+                        // Skip common hidden files but allow important dot directories like .github
+                        const isHiddenFile =
+                            fileName.startsWith('.') &&
+                            !fileName.startsWith('.github/') &&
+                            !fileName.startsWith('.vscode/') &&
+                            !fileName.startsWith('.windsurf/') &&
+                            !fileName.startsWith('.kiro/') &&
+                            !fileName.startsWith('.cursor/') &&
+                            !fileName.startsWith('.olaf/');
+
+                        if (isHiddenFile) {
+                            processedEntries++;
+                            zipfile.readEntry();
+                            return;
+                        }
+
+                        const outputPath = path.join(extractPath, fileName);
+                        const outputDir = path.dirname(outputPath);
+
+                        // Ensure output directory exists
+                        fs.mkdir(outputDir, { recursive: true }, (mkdirErr) => {
+                            if (mkdirErr) {
+                                reject(mkdirErr);
                                 return;
                             }
 
-                            if (!readStream) {
-                                reject(new Error('Failed to open read stream'));
-                                return;
-                            }
+                            zipfile.openReadStream(
+                                entry,
+                                (streamErr: Error | null, readStream?: NodeJS.ReadableStream) => {
+                                    if (streamErr) {
+                                        reject(streamErr);
+                                        return;
+                                    }
 
-                            const writeStream = fs.createWriteStream(outputPath);
-                            
-                            readStream.pipe(writeStream);
+                                    if (!readStream) {
+                                        reject(new Error('Failed to open read stream'));
+                                        return;
+                                    }
 
-                            writeStream.on('close', () => {
-                                extractedFiles.push(fileName);
-                                processedEntries++;
-                                
-                                // Update progress
-                                const progress = 20 + (processedEntries / totalEntries) * 60; // 20-80% for extraction
-                                onProgress?.(progress, `Extracting: ${fileName}`);
+                                    const writeStream = fs.createWriteStream(outputPath);
 
-                                this.logger.debug(`Extracted: ${fileName}`);
-                                
-                                if (processedEntries === totalEntries) {
-                                    resolve(extractedFiles);
-                                } else {
-                                    zipfile.readEntry();
+                                    readStream.pipe(writeStream);
+
+                                    writeStream.on('close', () => {
+                                        extractedFiles.push(fileName);
+                                        processedEntries++;
+
+                                        // Update progress
+                                        const progress =
+                                            20 + (processedEntries / totalEntries) * 60; // 20-80% for extraction
+                                        onProgress?.(progress, `Extracting: ${fileName}`);
+
+                                        this.logger.debug(`Extracted: ${fileName}`);
+
+                                        if (processedEntries === totalEntries) {
+                                            resolve(extractedFiles);
+                                        } else {
+                                            zipfile.readEntry();
+                                        }
+                                    });
+
+                                    writeStream.on('error', (writeErr) => {
+                                        reject(writeErr);
+                                    });
                                 }
-                            });
-
-                            writeStream.on('error', (writeErr) => {
-                                reject(writeErr);
-                            });
+                            );
                         });
                     });
-                });
 
-                zipfile.on('end', () => {
-                    if (processedEntries === totalEntries) {
-                        resolve(extractedFiles);
-                    }
-                });
+                    zipfile.on('end', () => {
+                        if (processedEntries === totalEntries) {
+                            resolve(extractedFiles);
+                        }
+                    });
 
-                zipfile.on('error', (zipErr: Error) => {
-                    reject(zipErr);
-                });
-            });
+                    zipfile.on('error', (zipErr: Error) => {
+                        reject(zipErr);
+                    });
+                }
+            );
         });
     }
 
@@ -519,18 +572,19 @@ export class InstallationManager {
             bundleInfo: {
                 filename: bundleInfo.filename,
                 size: bundleInfo.size,
-                platform: bundleInfo.platform
+                platform: bundleInfo.platform,
             },
             installedFiles: installedFiles,
-            extractionPath: extractionPath
+            extractionPath: extractionPath,
         };
 
         const metadataFilePath = path.join(metadataPath, '.olaf-metadata.json');
         await writeFile(metadataFilePath, JSON.stringify(metadata, null, 2));
-        
+
         this.logger.debug(`Created installation metadata at: ${metadataFilePath}`);
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     private async readInstallationMetadata(installationPath: string): Promise<any> {
         const metadataPath = path.join(installationPath, '.olaf-metadata.json');
         const metadataContent = await readFile(metadataPath, 'utf8');
@@ -566,22 +620,34 @@ export class InstallationManager {
         }
     }
 
-    private async updateVSCodeConfiguration(scope: InstallationScope, installationPath: string): Promise<void> {
+    private async updateVSCodeConfiguration(
+        scope: InstallationScope,
+        _installationPath: string
+    ): Promise<void> {
         // Add VSCode-specific configuration updates here
         this.logger.debug(`Updating VSCode configuration for scope: ${scope}`);
     }
 
-    private async updateWindsurfConfiguration(scope: InstallationScope, installationPath: string): Promise<void> {
+    private async updateWindsurfConfiguration(
+        scope: InstallationScope,
+        _installationPath: string
+    ): Promise<void> {
         // Add Windsurf-specific configuration updates here
         this.logger.debug(`Updating Windsurf configuration for scope: ${scope}`);
     }
 
-    private async updateKiroConfiguration(scope: InstallationScope, installationPath: string): Promise<void> {
+    private async updateKiroConfiguration(
+        scope: InstallationScope,
+        _installationPath: string
+    ): Promise<void> {
         // Add Kiro-specific configuration updates here
         this.logger.debug(`Updating Kiro configuration for scope: ${scope}`);
     }
 
-    private async updateCursorConfiguration(scope: InstallationScope, installationPath: string): Promise<void> {
+    private async updateCursorConfiguration(
+        scope: InstallationScope,
+        _installationPath: string
+    ): Promise<void> {
         // Add Cursor-specific configuration updates here
         this.logger.debug(`Updating Cursor configuration for scope: ${scope}`);
     }

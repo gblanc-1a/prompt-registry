@@ -1,16 +1,18 @@
 /**
  * MarketplaceViewProvider Event Handling Tests
- * 
+ *
  * Tests for verifying that the marketplace UI refreshes correctly on bundle events
  * Requirements: 6.4, 6.5
  */
 
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
-import { MarketplaceViewProvider } from '../../src/ui/MarketplaceViewProvider';
+
 import { RegistryManager } from '../../src/services/RegistryManager';
 import { InstalledBundle, DeploymentManifest } from '../../src/types/registry';
+import { MarketplaceViewProvider } from '../../src/ui/MarketplaceViewProvider';
 
 // Helper to create mock manifest
 function createMockManifest(): DeploymentManifest {
@@ -19,20 +21,20 @@ function createMockManifest(): DeploymentManifest {
             directories: [],
             files: [],
             include_patterns: [],
-            exclude_patterns: []
+            exclude_patterns: [],
         },
         bundle_settings: {
             include_common_in_environment_bundles: true,
             create_common_bundle: true,
             compression: 'zip' as any,
             naming: {
-                environment_bundle: 'bundle'
-            }
+                environment_bundle: 'bundle',
+            },
         },
         metadata: {
             manifest_version: '1.0.0',
-            description: 'Test manifest'
-        }
+            description: 'Test manifest',
+        },
     };
 }
 
@@ -56,7 +58,7 @@ suite('MarketplaceViewProvider - Event Handling', () => {
             storagePath: '/mock/storage',
             globalStoragePath: '/mock/global-storage',
             logPath: '/mock/logs',
-            extensionMode: 2 // ExtensionMode.Test
+            extensionMode: 2, // ExtensionMode.Test
         } as any;
 
         // Create mock RegistryManager with event emitters
@@ -79,7 +81,7 @@ suite('MarketplaceViewProvider - Event Handling', () => {
             onAutoUpdatePreferenceChanged: sandbox.stub().returns({ dispose: () => {} }),
             searchBundles: sandbox.stub().resolves([]),
             listInstalledBundles: sandbox.stub().resolves([]),
-            listSources: sandbox.stub().resolves([])
+            listSources: sandbox.stub().resolves([]),
         } as any;
 
         // Create MarketplaceViewProvider
@@ -93,22 +95,31 @@ suite('MarketplaceViewProvider - Event Handling', () => {
     suite('Event Listener Registration', () => {
         test('should register listener for onBundleInstalled event', () => {
             // Requirement 6.4: WHEN the marketplace receives an installation event THEN the system SHALL reload bundle data and refresh the UI
-            
-            assert.ok(mockRegistryManager.onBundleInstalled.calledOnce, 'Should register onBundleInstalled listener');
+
+            assert.ok(
+                mockRegistryManager.onBundleInstalled.calledOnce,
+                'Should register onBundleInstalled listener'
+            );
             assert.ok(onBundleInstalledCallback, 'Should have callback for onBundleInstalled');
         });
 
         test('should register listener for onBundleUninstalled event', () => {
             // Requirement 6.5: WHEN the marketplace receives an uninstallation event THEN the system SHALL reload bundle data and refresh the UI
-            
-            assert.ok(mockRegistryManager.onBundleUninstalled.calledOnce, 'Should register onBundleUninstalled listener');
+
+            assert.ok(
+                mockRegistryManager.onBundleUninstalled.calledOnce,
+                'Should register onBundleUninstalled listener'
+            );
             assert.ok(onBundleUninstalledCallback, 'Should have callback for onBundleUninstalled');
         });
 
         test('should register listener for onBundleUpdated event', () => {
             // Requirement 6.4: WHEN the marketplace receives an update event THEN the system SHALL reload bundle data and refresh the UI
-            
-            assert.ok(mockRegistryManager.onBundleUpdated.calledOnce, 'Should register onBundleUpdated listener');
+
+            assert.ok(
+                mockRegistryManager.onBundleUpdated.calledOnce,
+                'Should register onBundleUpdated listener'
+            );
             assert.ok(onBundleUpdatedCallback, 'Should have callback for onBundleUpdated');
         });
     });
@@ -116,7 +127,7 @@ suite('MarketplaceViewProvider - Event Handling', () => {
     suite('UI Refresh on Events', () => {
         test('should refresh UI when onBundleInstalled event fires', async () => {
             // Requirement 6.4: WHEN the marketplace receives an installation event THEN the system SHALL reload bundle data and refresh the UI
-            
+
             const mockInstallation: InstalledBundle = {
                 bundleId: 'test-bundle',
                 version: '1.0.0',
@@ -125,7 +136,7 @@ suite('MarketplaceViewProvider - Event Handling', () => {
                 scope: 'user',
                 sourceId: 'test-source',
                 sourceType: 'github',
-                manifest: createMockManifest()
+                manifest: createMockManifest(),
             };
 
             // Spy on loadBundles (private method, but we can verify searchBundles is called)
@@ -137,7 +148,7 @@ suite('MarketplaceViewProvider - Event Handling', () => {
             }
 
             // Wait for async operations
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             // Verify searchBundles was called (indicating UI refresh)
             assert.ok(
@@ -148,7 +159,7 @@ suite('MarketplaceViewProvider - Event Handling', () => {
 
         test('should refresh UI when onBundleUninstalled event fires', async () => {
             // Requirement 6.5: WHEN the marketplace receives an uninstallation event THEN the system SHALL reload bundle data and refresh the UI
-            
+
             const bundleId = 'test-bundle-v1.0.0';
 
             // Spy on loadBundles
@@ -160,7 +171,7 @@ suite('MarketplaceViewProvider - Event Handling', () => {
             }
 
             // Wait for async operations
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             // Verify searchBundles was called
             assert.ok(
@@ -171,7 +182,7 @@ suite('MarketplaceViewProvider - Event Handling', () => {
 
         test('should refresh UI when onBundleUpdated event fires', async () => {
             // Requirement 6.4: WHEN the marketplace receives an update event THEN the system SHALL reload bundle data and refresh the UI
-            
+
             const mockInstallation: InstalledBundle = {
                 bundleId: 'test-bundle',
                 version: '1.1.0',
@@ -180,7 +191,7 @@ suite('MarketplaceViewProvider - Event Handling', () => {
                 scope: 'user',
                 sourceId: 'test-source',
                 sourceType: 'github',
-                manifest: createMockManifest()
+                manifest: createMockManifest(),
             };
 
             // Spy on loadBundles
@@ -192,7 +203,7 @@ suite('MarketplaceViewProvider - Event Handling', () => {
             }
 
             // Wait for async operations
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             // Verify searchBundles was called
             assert.ok(
@@ -215,7 +226,7 @@ suite('MarketplaceViewProvider - Event Handling', () => {
                 scope: 'user',
                 sourceId: 'test-source',
                 sourceType: 'github',
-                manifest: createMockManifest()
+                manifest: createMockManifest(),
             };
 
             // Fire the event - should not throw
@@ -226,7 +237,7 @@ suite('MarketplaceViewProvider - Event Handling', () => {
             }, 'Event listener should handle errors gracefully');
 
             // Wait for async operations
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
         });
 
         test('should handle errors in onBundleUninstalled listener gracefully', async () => {
@@ -243,7 +254,7 @@ suite('MarketplaceViewProvider - Event Handling', () => {
             }, 'Event listener should handle errors gracefully');
 
             // Wait for async operations
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
         });
 
         test('should handle errors in onBundleUpdated listener gracefully', async () => {
@@ -258,7 +269,7 @@ suite('MarketplaceViewProvider - Event Handling', () => {
                 scope: 'user',
                 sourceId: 'test-source',
                 sourceType: 'github',
-                manifest: createMockManifest()
+                manifest: createMockManifest(),
             };
 
             // Fire the event - should not throw
@@ -269,7 +280,7 @@ suite('MarketplaceViewProvider - Event Handling', () => {
             }, 'Event listener should handle errors gracefully');
 
             // Wait for async operations
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
         });
     });
 
@@ -283,7 +294,7 @@ suite('MarketplaceViewProvider - Event Handling', () => {
                 scope: 'user',
                 sourceId: 'test-source',
                 sourceType: 'github',
-                manifest: createMockManifest()
+                manifest: createMockManifest(),
             };
 
             // Fire the event
@@ -292,7 +303,7 @@ suite('MarketplaceViewProvider - Event Handling', () => {
             }
 
             // Wait for async operations
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             // The event should have been processed without errors
             // (logging is verified through the try-catch blocks we added)
@@ -308,7 +319,7 @@ suite('MarketplaceViewProvider - Event Handling', () => {
             }
 
             // Wait for async operations
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             // The event should have been processed without errors
             assert.ok(true, 'Event processed successfully');
@@ -323,7 +334,7 @@ suite('MarketplaceViewProvider - Event Handling', () => {
                 scope: 'user',
                 sourceId: 'test-source',
                 sourceType: 'github',
-                manifest: createMockManifest()
+                manifest: createMockManifest(),
             };
 
             // Fire the event
@@ -332,7 +343,7 @@ suite('MarketplaceViewProvider - Event Handling', () => {
             }
 
             // Wait for async operations
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             // The event should have been processed without errors
             assert.ok(true, 'Event processed successfully');

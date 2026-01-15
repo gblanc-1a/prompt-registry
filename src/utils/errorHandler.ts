@@ -4,6 +4,7 @@
  */
 
 import * as vscode from 'vscode';
+
 import { Logger } from './logger';
 import { toError } from './typeGuards';
 
@@ -17,6 +18,7 @@ export type ErrorCategory = 'network' | 'notfound' | 'validation' | 'authenticat
  */
 export interface ErrorHandlingOptions {
     operation: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     context?: Record<string, any>;
     showUserMessage?: boolean;
     userMessagePrefix?: string;
@@ -44,23 +46,23 @@ export class ErrorHandler {
      */
     static categorize(error: Error): ErrorCategory {
         const msg = error.message.toLowerCase();
-        
+
         if (this.isNetworkError(msg)) {
             return 'network';
         }
-        
+
         if (this.isNotFoundError(msg)) {
             return 'notfound';
         }
-        
+
         if (this.isValidationError(msg)) {
             return 'validation';
         }
-        
+
         if (this.isAuthenticationError(msg)) {
             return 'authentication';
         }
-        
+
         return 'unexpected';
     }
 
@@ -88,7 +90,14 @@ export class ErrorHandler {
      */
     static async handle(error: unknown, options: ErrorHandlingOptions): Promise<void> {
         const errorObj = toError(error);
-        const { operation, context, showUserMessage = false, userMessagePrefix, logLevel = 'error', rethrow = false } = options;
+        const {
+            operation,
+            context,
+            showUserMessage = false,
+            userMessagePrefix,
+            logLevel = 'error',
+            rethrow = false,
+        } = options;
 
         // Categorize the error
         const category = this.categorize(errorObj);
@@ -96,7 +105,7 @@ export class ErrorHandler {
         // Log the error with context and category
         const logMessage = `Failed to ${operation}`;
         const logContext = { ...context, errorCategory: category };
-        
+
         switch (logLevel) {
             case 'error':
                 this.logger.error(logMessage, errorObj, logContext);
@@ -112,11 +121,13 @@ export class ErrorHandler {
         // Show user message if requested
         if (showUserMessage) {
             const baseMessage = this.getUserMessage(errorObj, category);
-            const prefix = userMessagePrefix || `${operation.charAt(0).toUpperCase() + operation.slice(1)} failed`;
+            const prefix =
+                userMessagePrefix ||
+                `${operation.charAt(0).toUpperCase() + operation.slice(1)} failed`;
 
             // Default behavior (no custom prefix): use categorized, user-friendly message
             const userMessage = `${prefix}: ${baseMessage}`;
-            
+
             await vscode.window.showErrorMessage(userMessage);
         }
 
@@ -132,13 +143,13 @@ export class ErrorHandler {
     static async handleCategorized(error: unknown, options: ErrorHandlingOptions): Promise<void> {
         const errorObj = toError(error);
         const category = this.categorize(errorObj);
-        
+
         // Use categorized user message
         const enhancedOptions = {
             ...options,
-            userMessagePrefix: options.userMessagePrefix || this.getUserMessage(errorObj, category)
+            userMessagePrefix: options.userMessagePrefix || this.getUserMessage(errorObj, category),
         };
-        
+
         return this.handle(error, enhancedOptions);
     }
 
@@ -155,25 +166,19 @@ export class ErrorHandler {
             'etimedout',
             'connection',
             'dns',
-            'socket'
+            'socket',
         ];
-        
-        return networkKeywords.some(keyword => message.includes(keyword));
+
+        return networkKeywords.some((keyword) => message.includes(keyword));
     }
 
     /**
      * Check if error indicates resource not found
      */
     private static isNotFoundError(message: string): boolean {
-        const notFoundKeywords = [
-            'not found',
-            '404',
-            'does not exist',
-            'missing',
-            'unavailable'
-        ];
-        
-        return notFoundKeywords.some(keyword => message.includes(keyword));
+        const notFoundKeywords = ['not found', '404', 'does not exist', 'missing', 'unavailable'];
+
+        return notFoundKeywords.some((keyword) => message.includes(keyword));
     }
 
     /**
@@ -186,10 +191,10 @@ export class ErrorHandler {
             'schema',
             'format',
             'required',
-            'malformed'
+            'malformed',
         ];
-        
-        return validationKeywords.some(keyword => message.includes(keyword));
+
+        return validationKeywords.some((keyword) => message.includes(keyword));
     }
 
     /**
@@ -203,10 +208,10 @@ export class ErrorHandler {
             'token',
             'credentials',
             '401',
-            '403'
+            '403',
         ];
-        
-        return authKeywords.some(keyword => message.includes(keyword));
+
+        return authKeywords.some((keyword) => message.includes(keyword));
     }
 
     /**
@@ -232,30 +237,45 @@ export class ErrorHandler {
      */
     static createServiceHandler(serviceName: string) {
         return {
-            async handle(error: unknown, operation: string, context?: Record<string, any>): Promise<void> {
+            async handle(
+                error: unknown,
+                operation: string,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
+                context?: Record<string, any>
+            ): Promise<void> {
                 await ErrorHandler.handle(error, {
                     operation: `${serviceName}.${operation}`,
                     context,
-                    logLevel: 'error'
+                    logLevel: 'error',
                 });
             },
 
-            async handleWithUserMessage(error: unknown, operation: string, context?: Record<string, any>): Promise<void> {
+            async handleWithUserMessage(
+                error: unknown,
+                operation: string,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
+                context?: Record<string, any>
+            ): Promise<void> {
                 await ErrorHandler.handle(error, {
                     operation: `${serviceName}.${operation}`,
                     context,
                     showUserMessage: true,
-                    logLevel: 'error'
+                    logLevel: 'error',
                 });
             },
 
-            async wrap<T>(operation: () => Promise<T>, operationName: string, context?: Record<string, any>): Promise<T | undefined> {
+            async wrap<T>(
+                operation: () => Promise<T>,
+                operationName: string,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
+                context?: Record<string, any>
+            ): Promise<T | undefined> {
                 return await ErrorHandler.withErrorHandling(operation, {
                     operation: `${serviceName}.${operationName}`,
                     context,
-                    logLevel: 'error'
+                    logLevel: 'error',
                 });
-            }
+            },
         };
     }
 }
@@ -264,13 +284,19 @@ export class ErrorHandler {
  * Common error types for better error categorization
  */
 export class RegistryError extends Error {
-    constructor(message: string, public readonly code: string, public readonly context?: Record<string, any>) {
+    constructor(
+        message: string,
+        public readonly code: string,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
+        public readonly context?: Record<string, any>
+    ) {
         super(message);
         this.name = 'RegistryError';
     }
 }
 
 export class NetworkError extends RegistryError {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     constructor(message: string, context?: Record<string, any>) {
         super(message, 'NETWORK_ERROR', context);
         this.name = 'NetworkError';
@@ -278,6 +304,7 @@ export class NetworkError extends RegistryError {
 }
 
 export class ValidationError extends RegistryError {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     constructor(message: string, context?: Record<string, any>) {
         super(message, 'VALIDATION_ERROR', context);
         this.name = 'ValidationError';
@@ -285,6 +312,7 @@ export class ValidationError extends RegistryError {
 }
 
 export class NotFoundError extends RegistryError {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     constructor(message: string, context?: Record<string, any>) {
         super(message, 'NOT_FOUND', context);
         this.name = 'NotFoundError';
@@ -292,6 +320,7 @@ export class NotFoundError extends RegistryError {
 }
 
 export class ConfigurationError extends RegistryError {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     constructor(message: string, context?: Record<string, any>) {
         super(message, 'CONFIGURATION_ERROR', context);
         this.name = 'ConfigurationError';

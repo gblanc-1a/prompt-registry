@@ -2,9 +2,9 @@
  * Platform Detector Unit Tests
  */
 
-import * as assert from 'assert';
-import * as os from 'os';
-import * as path from 'path';
+import * as assert from 'node:assert';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
 suite('Platform Detector', () => {
     suite('Platform Detection', () => {
@@ -49,7 +49,7 @@ suite('Platform Detector', () => {
 
         test('should construct correct path for Windows', () => {
             const platform = 'win32';
-            const homeDir = 'C:\\Users\\testuser';
+            const homeDir = String.raw`C:\Users\testuser`;
 
             const copilotPath = path.join(
                 homeDir,
@@ -174,7 +174,8 @@ suite('Platform Detector', () => {
 
         test('should read APPDATA on Windows', () => {
             if (process.platform === 'win32') {
-                const appData = process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
+                const appData =
+                    process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming');
                 assert.ok(appData);
             } else {
                 assert.ok(true); // Skip on non-Windows

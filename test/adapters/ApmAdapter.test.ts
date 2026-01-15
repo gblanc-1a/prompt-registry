@@ -3,18 +3,20 @@
  * Tests remote APM package adapter (GitHub-based)
  */
 
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+
+import nock from 'nock';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
-import nock from 'nock';
+
 import { ApmAdapter } from '../../src/adapters/ApmAdapter';
-import { RegistrySource } from '../../src/types/registry';
 import { ApmRuntimeManager } from '../../src/services/ApmRuntimeManager';
+import { RegistrySource } from '../../src/types/registry';
 
 suite('ApmAdapter', () => {
     let sandbox: sinon.SinonSandbox;
     let mockRuntime: sinon.SinonStubbedInstance<ApmRuntimeManager>;
-    
+
     const mockSource: RegistrySource = {
         id: 'test-apm',
         name: 'Test APM',
@@ -27,17 +29,19 @@ suite('ApmAdapter', () => {
     setup(() => {
         sandbox = sinon.createSandbox();
         nock.cleanAll(); // Clean any existing nocks (e.g. from unit.setup.js)
-        
+
         // Mock runtime manager
         ApmRuntimeManager.resetInstance();
         mockRuntime = sandbox.createStubInstance(ApmRuntimeManager);
         mockRuntime.getStatus.resolves({ installed: true, version: '1.0.0' });
         mockRuntime.isAvailable.resolves(true);
-        
-        sandbox.stub(ApmRuntimeManager, 'getInstance').returns(mockRuntime as unknown as ApmRuntimeManager);
-        
+
+        sandbox
+            .stub(ApmRuntimeManager, 'getInstance')
+            .returns(mockRuntime as unknown as ApmRuntimeManager);
+
         // Stub vscode authentication
-        sandbox.stub(vscode.authentication, 'getSession').resolves(undefined);
+        sandbox.stub(vscode.authentication, 'getSession').resolves();
     });
 
     teardown(() => {
@@ -50,37 +54,37 @@ suite('ApmAdapter', () => {
         test('should use VS Code authentication token when available', async () => {
             const adapter = new ApmAdapter(mockSource);
             const token = 'vscode-token';
-            
+
             // Mock VS Code auth
             (vscode.authentication.getSession as sinon.SinonStub).resolves({
                 accessToken: token,
                 scopes: ['repo'],
                 id: 'id',
-                account: { id: 'acc', label: 'acc' }
+                account: { id: 'acc', label: 'acc' },
             });
-            
+
             // Verify nock request
             const scope = nock('https://api.github.com')
                 .get('/repos/test-owner/test-repo/git/trees/main')
                 .query({ recursive: '1' })
                 .matchHeader('Authorization', `token ${token}`)
                 .reply(200, { tree: [] });
-            
+
             await adapter.fetchBundles();
-            
+
             assert.ok(scope.isDone(), 'Request with auth header was not made');
         });
 
         test('should use token in HTTPS requests', async () => {
             const adapter = new ApmAdapter(mockSource);
             const token = 'test-token-123';
-            
+
             // Mock VS Code auth
             (vscode.authentication.getSession as sinon.SinonStub).resolves({
                 accessToken: token,
                 scopes: ['repo'],
                 id: 'id',
-                account: { id: 'acc', label: 'acc' }
+                account: { id: 'acc', label: 'acc' },
             });
 
             // Verify nock request
@@ -94,26 +98,26 @@ suite('ApmAdapter', () => {
 
             assert.ok(scope.isDone(), 'Request with auth header was not made');
         });
-        
+
         test('should fallback to config token if VS Code auth fails', async () => {
             const sourceWithToken = { ...mockSource, token: 'config-token' };
             const adapter = new ApmAdapter(sourceWithToken);
-            
+
             // Stub execShell to fail (simulate gh not installed or not authenticated)
             sandbox.stub(adapter as any, 'execShell').rejects(new Error('gh not found'));
-            
+
             // VS Code auth fails/returns undefined
-            (vscode.authentication.getSession as sinon.SinonStub).resolves(undefined);
-            
+            (vscode.authentication.getSession as sinon.SinonStub).resolves();
+
             // Verify nock request
             const scope = nock('https://api.github.com')
                 .get('/repos/test-owner/test-repo/git/trees/main')
                 .query({ recursive: '1' })
                 .matchHeader('Authorization', 'token config-token')
                 .reply(200, { tree: [] });
-            
+
             await adapter.fetchBundles();
-            
+
             assert.ok(scope.isDone(), 'Request with config token auth header was not made');
         });
     });
@@ -145,7 +149,7 @@ suite('ApmAdapter', () => {
         test('should extract owner and repo from URL', () => {
             const adapter = new ApmAdapter(mockSource);
             const { owner, repo } = (adapter as any).parseGitHubUrl();
-            
+
             assert.strictEqual(owner, 'test-owner');
             assert.strictEqual(repo, 'test-repo');
         });
@@ -154,7 +158,7 @@ suite('ApmAdapter', () => {
             const source = { ...mockSource, url: 'https://github.com/owner/repo.git' };
             const adapter = new ApmAdapter(source);
             const { repo } = (adapter as any).parseGitHubUrl();
-            
+
             assert.strictEqual(repo, 'repo');
         });
     });
@@ -163,64 +167,63 @@ suite('ApmAdapter', () => {
         test('should throw error when runtime not installed and setup fails', async () => {
             mockRuntime.getStatus.resolves({ installed: false, uvxAvailable: false });
             mockRuntime.setupRuntime.resolves(false);
-            
+
             const adapter = new ApmAdapter(mockSource);
-            
-            await assert.rejects(
-                () => adapter.fetchBundles(),
-                /APM runtime is not available/
-            );
-            
+
+            await assert.rejects(() => adapter.fetchBundles(), /APM runtime is not available/);
+
             assert.ok(mockRuntime.setupRuntime.called);
         });
 
         test('should proceed when runtime setup succeeds', async () => {
             mockRuntime.getStatus.resolves({ installed: false, uvxAvailable: false });
             mockRuntime.setupRuntime.resolves(true);
-            
+
             const adapter = new ApmAdapter(mockSource);
-            
+
             // Stub fetchGitTree to avoid network
             sandbox.stub(adapter as any, 'fetchGitTree').resolves([]);
-            
+
             const bundles = await adapter.fetchBundles();
-            
+
             assert.ok(mockRuntime.setupRuntime.called);
             assert.ok(Array.isArray(bundles));
         });
 
         test('should return empty array when manifest not found', async () => {
             const adapter = new ApmAdapter(mockSource);
-            
+
             // Will return empty array for non-existent repo
             const bundles = await adapter.fetchBundles();
-            
+
             assert.ok(Array.isArray(bundles));
         });
 
         test('should fetch bundles using git tree optimization', async () => {
             const adapter = new ApmAdapter(mockSource);
-            
+
             // Mock httpsGet to return tree then manifests
             const httpsGetStub = sandbox.stub(adapter as any, 'httpsGet');
-            
+
             // 1. Git Tree response
-            httpsGetStub.onCall(0).resolves(JSON.stringify({
-                tree: [
-                    { path: 'apm.yml', type: 'blob' },
-                    { path: 'sub-package/apm.yml', type: 'blob' },
-                    { path: 'node_modules/apm.yml', type: 'blob' } // Should be ignored
-                ]
-            }));
-            
+            httpsGetStub.onCall(0).resolves(
+                JSON.stringify({
+                    tree: [
+                        { path: 'apm.yml', type: 'blob' },
+                        { path: 'sub-package/apm.yml', type: 'blob' },
+                        { path: 'node_modules/apm.yml', type: 'blob' }, // Should be ignored
+                    ],
+                })
+            );
+
             // 2. Root manifest response
             httpsGetStub.onCall(1).resolves('name: root-pkg\nversion: 1.0.0');
-            
+
             // 3. Sub-package manifest response
             httpsGetStub.onCall(2).resolves('name: sub-pkg\nversion: 1.0.0');
-            
+
             const bundles = await adapter.fetchBundles();
-            
+
             assert.strictEqual(bundles.length, 2);
             assert.strictEqual(bundles[0].name, 'root-pkg');
             assert.strictEqual(bundles[1].name, 'sub-pkg');
@@ -228,13 +231,13 @@ suite('ApmAdapter', () => {
 
         test('should cache results', async () => {
             const adapter = new ApmAdapter(mockSource);
-            
+
             // First call
             const bundles1 = await adapter.fetchBundles();
-            
+
             // Second call should use cache (same result, no network)
             const bundles2 = await adapter.fetchBundles();
-            
+
             // Both should return arrays
             assert.ok(Array.isArray(bundles1));
             assert.ok(Array.isArray(bundles2));
@@ -244,25 +247,25 @@ suite('ApmAdapter', () => {
     suite('validate', () => {
         test('should return invalid when runtime not installed', async () => {
             mockRuntime.getStatus.resolves({ installed: false });
-            
+
             const adapter = new ApmAdapter(mockSource);
             const result = await adapter.validate();
-            
+
             assert.strictEqual(result.valid, false);
             assert.ok(result.errors.length > 0);
             assert.ok(result.errors[0].includes('APM CLI'));
         });
 
         test('should return runtime version in status', async () => {
-            mockRuntime.getStatus.resolves({ 
-                installed: true, 
-                version: '2.0.0' 
+            mockRuntime.getStatus.resolves({
+                installed: true,
+                version: '2.0.0',
             });
-            
+
             const adapter = new ApmAdapter(mockSource);
-            
+
             const result = await adapter.validate();
-            
+
             // Should include validation info
             assert.ok('valid' in result);
             assert.ok('errors' in result);
@@ -273,7 +276,7 @@ suite('ApmAdapter', () => {
         test('should generate correct raw GitHub URL', () => {
             const adapter = new ApmAdapter(mockSource);
             const url = adapter.getManifestUrl('some-bundle');
-            
+
             assert.ok(url.includes('raw.githubusercontent.com'));
             assert.ok(url.includes('test-owner/test-repo'));
             assert.ok(url.includes('apm.yml'));
@@ -285,7 +288,7 @@ suite('ApmAdapter', () => {
             const adapter = new ApmAdapter(mockSource);
             const downloadUrl = adapter.getDownloadUrl('some-bundle');
             const manifestUrl = adapter.getManifestUrl('some-bundle');
-            
+
             assert.strictEqual(downloadUrl, manifestUrl);
         });
     });
@@ -293,36 +296,36 @@ suite('ApmAdapter', () => {
     suite('requiresAuthentication', () => {
         test('should return false for public repos by default', () => {
             const adapter = new ApmAdapter(mockSource);
-            
+
             assert.strictEqual(adapter.requiresAuthentication(), false);
         });
 
         test('should return true when source is marked private', () => {
             const source = { ...mockSource, private: true };
             const adapter = new ApmAdapter(source);
-            
+
             assert.strictEqual(adapter.requiresAuthentication(), true);
         });
     });
 
     suite('Configuration', () => {
         test('should accept custom branch config', () => {
-            const source = { 
-                ...mockSource, 
-                config: { branch: 'develop' } 
+            const source = {
+                ...mockSource,
+                config: { branch: 'develop' },
             };
             const adapter = new ApmAdapter(source);
-            
+
             assert.ok(adapter);
         });
 
         test('should accept custom cache TTL config', () => {
-            const source = { 
-                ...mockSource, 
-                config: { cacheTtl: 60000 } 
+            const source = {
+                ...mockSource,
+                config: { cacheTtl: 60_000 },
             };
             const adapter = new ApmAdapter(source);
-            
+
             assert.ok(adapter);
         });
     });
@@ -335,7 +338,7 @@ suite('ApmAdapter', () => {
                 'javascript:alert(1)',
                 'file:///etc/passwd',
             ];
-            
+
             for (const url of maliciousUrls) {
                 const source = { ...mockSource, url };
                 assert.throws(
@@ -350,11 +353,11 @@ suite('ApmAdapter', () => {
             // This test verifies that even if a manifest contains script fields,
             // the adapter does not execute them - it only parses YAML data
             const adapter = new ApmAdapter(mockSource);
-            
+
             // Fetch bundles - internal https.get will fail for non-existent repo
             // but this demonstrates the adapter doesn't execute scripts
             const bundles = await adapter.fetchBundles();
-            
+
             // Should return array (empty or with bundles) without executing any scripts
             assert.ok(Array.isArray(bundles));
         });
@@ -365,20 +368,20 @@ suite('ApmAdapter', () => {
             // When network fails, adapter should return empty array (internal error handling)
             // Network errors are caught internally and result in empty bundle array
             const adapter = new ApmAdapter(mockSource);
-            
+
             // The adapter uses https.get internally which will fail for non-existent repos
             // This tests the graceful handling - no unhandled rejections
             const bundles = await adapter.fetchBundles();
-            
+
             // Should return empty array on failure (repo doesn't exist)
             assert.ok(Array.isArray(bundles));
         });
 
         test('should provide helpful error messages when runtime not installed', async () => {
             mockRuntime.getStatus.resolves({ installed: false });
-            
+
             const adapter = new ApmAdapter(mockSource);
-            
+
             try {
                 await adapter.fetchBundles();
                 assert.fail('Should have thrown');

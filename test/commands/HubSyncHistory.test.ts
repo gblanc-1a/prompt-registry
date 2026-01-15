@@ -1,11 +1,12 @@
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
+import * as vscode from 'vscode';
+
 import { HubSyncHistory, SyncHistoryEntry } from '../../src/commands/HubSyncHistory';
 import { HubManager } from '../../src/services/HubManager';
 import { HubStorage } from '../../src/storage/HubStorage';
-import { HubProfileBundle } from '../../src/types/hub';
-import * as vscode from 'vscode';
-import * as path from 'path';
-import * as fs from 'fs';
 
 suite('Hub Sync History', () => {
     let storage: HubStorage;
@@ -14,7 +15,9 @@ suite('Hub Sync History', () => {
     let testDir: string;
 
     setup(async () => {
-        const globalStorageUri = vscode.Uri.file(path.join(__dirname, '../../test-workspace', '.test-storage'));
+        const globalStorageUri = vscode.Uri.file(
+            path.join(__dirname, '../../test-workspace', '.test-storage')
+        );
         testDir = globalStorageUri.fsPath;
 
         // Clean up test directory
@@ -41,7 +44,7 @@ suite('Hub Sync History', () => {
                 name: 'Test Hub',
                 description: 'Test hub for sync history',
                 maintainer: 'test@example.com',
-                updatedAt: new Date().toISOString()
+                updatedAt: new Date().toISOString(),
             },
             sources: [
                 {
@@ -51,8 +54,8 @@ suite('Hub Sync History', () => {
                     url: 'github:test/repo',
                     enabled: true,
                     priority: 1,
-                    metadata: { description: 'Test source' }
-                }
+                    metadata: { description: 'Test source' },
+                },
             ],
             profiles: [
                 {
@@ -67,18 +70,18 @@ suite('Hub Sync History', () => {
                             id: 'bundle-1',
                             version: '1.0.0',
                             source: 'test-source',
-                            required: false
-                        }
+                            required: false,
+                        },
                     ],
-                    updatedAt: new Date().toISOString()
-                }
-            ]
+                    updatedAt: new Date().toISOString(),
+                },
+            ],
         };
 
         const reference = {
             type: 'github' as const,
             location: 'github:test/hub-repo',
-            branch: 'main'
+            branch: 'main',
         };
 
         await storage.saveHub(hubId, hubConfig, reference);
@@ -90,14 +93,22 @@ suite('Hub Sync History', () => {
                 added: [],
                 updated: [],
                 removed: [],
-                metadataChanged: false
+                metadataChanged: false,
             };
             const previousState = {
-                bundles: [{ id: 'bundle-1', version: '1.0.0', source: 'test-source', required: false }],
-                activatedAt: new Date().toISOString()
+                bundles: [
+                    { id: 'bundle-1', version: '1.0.0', source: 'test-source', required: false },
+                ],
+                activatedAt: new Date().toISOString(),
             };
 
-            await syncHistory.recordSync('test-hub', 'test-profile', changes, previousState, 'success');
+            await syncHistory.recordSync(
+                'test-hub',
+                'test-profile',
+                changes,
+                previousState,
+                'success'
+            );
 
             const history = await syncHistory.getHistory('test-hub', 'test-profile');
             assert.strictEqual(history.length, 1);
@@ -111,17 +122,27 @@ suite('Hub Sync History', () => {
 
         test('should record sync with bundle additions', async () => {
             const changes = {
-                added: [{ id: 'bundle-2', version: '1.0.0', source: 'test-source', required: false }],
+                added: [
+                    { id: 'bundle-2', version: '1.0.0', source: 'test-source', required: false },
+                ],
                 updated: [],
                 removed: [],
-                metadataChanged: false
+                metadataChanged: false,
             };
             const previousState = {
-                bundles: [{ id: 'bundle-1', version: '1.0.0', source: 'test-source', required: false }],
-                activatedAt: new Date().toISOString()
+                bundles: [
+                    { id: 'bundle-1', version: '1.0.0', source: 'test-source', required: false },
+                ],
+                activatedAt: new Date().toISOString(),
             };
 
-            await syncHistory.recordSync('test-hub', 'test-profile', changes, previousState, 'success');
+            await syncHistory.recordSync(
+                'test-hub',
+                'test-profile',
+                changes,
+                previousState,
+                'success'
+            );
 
             const history = await syncHistory.getHistory('test-hub', 'test-profile');
             assert.strictEqual(history.length, 1);
@@ -135,14 +156,22 @@ suite('Hub Sync History', () => {
                 added: [],
                 updated: [{ id: 'bundle-1', oldVersion: '1.0.0', newVersion: '2.0.0' }],
                 removed: [],
-                metadataChanged: false
+                metadataChanged: false,
             };
             const previousState = {
-                bundles: [{ id: 'bundle-1', version: '1.0.0', source: 'test-source', required: false }],
-                activatedAt: new Date().toISOString()
+                bundles: [
+                    { id: 'bundle-1', version: '1.0.0', source: 'test-source', required: false },
+                ],
+                activatedAt: new Date().toISOString(),
             };
 
-            await syncHistory.recordSync('test-hub', 'test-profile', changes, previousState, 'success');
+            await syncHistory.recordSync(
+                'test-hub',
+                'test-profile',
+                changes,
+                previousState,
+                'success'
+            );
 
             const history = await syncHistory.getHistory('test-hub', 'test-profile');
             assert.strictEqual(history.length, 1);
@@ -157,14 +186,22 @@ suite('Hub Sync History', () => {
                 added: [],
                 updated: [],
                 removed: ['bundle-1'],
-                metadataChanged: false
+                metadataChanged: false,
             };
             const previousState = {
-                bundles: [{ id: 'bundle-1', version: '1.0.0', source: 'test-source', required: false }],
-                activatedAt: new Date().toISOString()
+                bundles: [
+                    { id: 'bundle-1', version: '1.0.0', source: 'test-source', required: false },
+                ],
+                activatedAt: new Date().toISOString(),
             };
 
-            await syncHistory.recordSync('test-hub', 'test-profile', changes, previousState, 'success');
+            await syncHistory.recordSync(
+                'test-hub',
+                'test-profile',
+                changes,
+                previousState,
+                'success'
+            );
 
             const history = await syncHistory.getHistory('test-hub', 'test-profile');
             assert.strictEqual(history.length, 1);
@@ -177,14 +214,22 @@ suite('Hub Sync History', () => {
                 added: [],
                 updated: [],
                 removed: [],
-                metadataChanged: true
+                metadataChanged: true,
             };
             const previousState = {
-                bundles: [{ id: 'bundle-1', version: '1.0.0', source: 'test-source', required: false }],
-                activatedAt: new Date().toISOString()
+                bundles: [
+                    { id: 'bundle-1', version: '1.0.0', source: 'test-source', required: false },
+                ],
+                activatedAt: new Date().toISOString(),
             };
 
-            await syncHistory.recordSync('test-hub', 'test-profile', changes, previousState, 'success');
+            await syncHistory.recordSync(
+                'test-hub',
+                'test-profile',
+                changes,
+                previousState,
+                'success'
+            );
 
             const history = await syncHistory.getHistory('test-hub', 'test-profile');
             assert.strictEqual(history.length, 1);
@@ -200,8 +245,10 @@ suite('Hub Sync History', () => {
 
         test('should return sync history in chronological order', async () => {
             const previousState = {
-                bundles: [{ id: 'bundle-1', version: '1.0.0', source: 'test-source', required: false }],
-                activatedAt: new Date().toISOString()
+                bundles: [
+                    { id: 'bundle-1', version: '1.0.0', source: 'test-source', required: false },
+                ],
+                activatedAt: new Date().toISOString(),
             };
 
             // First sync
@@ -209,26 +256,40 @@ suite('Hub Sync History', () => {
                 'test-hub',
                 'test-profile',
                 {
-                    added: [{ id: 'bundle-2', version: '1.0.0', source: 'test-source', required: false }],
+                    added: [
+                        {
+                            id: 'bundle-2',
+                            version: '1.0.0',
+                            source: 'test-source',
+                            required: false,
+                        },
+                    ],
                     updated: [],
                     removed: [],
-                    metadataChanged: false
+                    metadataChanged: false,
                 },
                 previousState,
                 'success'
             );
 
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             // Second sync
             await syncHistory.recordSync(
                 'test-hub',
                 'test-profile',
                 {
-                    added: [{ id: 'bundle-3', version: '1.0.0', source: 'test-source', required: false }],
+                    added: [
+                        {
+                            id: 'bundle-3',
+                            version: '1.0.0',
+                            source: 'test-source',
+                            required: false,
+                        },
+                    ],
                     updated: [],
                     removed: [],
-                    metadataChanged: false
+                    metadataChanged: false,
                 },
                 previousState,
                 'success'
@@ -244,8 +305,10 @@ suite('Hub Sync History', () => {
 
         test('should limit history to specified count', async () => {
             const previousState = {
-                bundles: [{ id: 'bundle-1', version: '1.0.0', source: 'test-source', required: false }],
-                activatedAt: new Date().toISOString()
+                bundles: [
+                    { id: 'bundle-1', version: '1.0.0', source: 'test-source', required: false },
+                ],
+                activatedAt: new Date().toISOString(),
             };
 
             // Create 5 sync operations
@@ -254,15 +317,22 @@ suite('Hub Sync History', () => {
                     'test-hub',
                     'test-profile',
                     {
-                        added: [{ id: `bundle-${i + 2}`, version: '1.0.0', source: 'test-source', required: false }],
+                        added: [
+                            {
+                                id: `bundle-${i + 2}`,
+                                version: '1.0.0',
+                                source: 'test-source',
+                                required: false,
+                            },
+                        ],
                         updated: [],
                         removed: [],
-                        metadataChanged: false
+                        metadataChanged: false,
                     },
                     previousState,
                     'success'
                 );
-                await new Promise(resolve => setTimeout(resolve, 5));
+                await new Promise((resolve) => setTimeout(resolve, 5));
             }
 
             const history = await syncHistory.getHistory('test-hub', 'test-profile', 3);
@@ -278,15 +348,22 @@ suite('Hub Sync History', () => {
                 timestamp: new Date().toISOString(),
                 status: 'success',
                 changes: {
-                    added: [{ id: 'bundle-2', version: '1.0.0', source: 'test-source', required: false }],
+                    added: [
+                        {
+                            id: 'bundle-2',
+                            version: '1.0.0',
+                            source: 'test-source',
+                            required: false,
+                        },
+                    ],
                     updated: [{ id: 'bundle-1', oldVersion: '1.0.0', newVersion: '2.0.0' }],
                     removed: [],
-                    metadataChanged: false
+                    metadataChanged: false,
                 },
                 previousState: {
                     bundles: [],
-                    activatedAt: new Date().toISOString()
-                }
+                    activatedAt: new Date().toISOString(),
+                },
             };
 
             const formatted = syncHistory.formatHistoryEntry(entry);
@@ -305,12 +382,12 @@ suite('Hub Sync History', () => {
                     added: [],
                     updated: [],
                     removed: [],
-                    metadataChanged: false
+                    metadataChanged: false,
                 },
                 previousState: {
                     bundles: [],
-                    activatedAt: new Date().toISOString()
-                }
+                    activatedAt: new Date().toISOString(),
+                },
             };
 
             const formatted = syncHistory.formatHistoryEntry(entry);
@@ -329,12 +406,12 @@ suite('Hub Sync History', () => {
                     added: [],
                     updated: [],
                     removed: [],
-                    metadataChanged: false
+                    metadataChanged: false,
                 },
                 previousState: {
                     bundles: [],
-                    activatedAt: new Date().toISOString()
-                }
+                    activatedAt: new Date().toISOString(),
+                },
             };
 
             const formatted = syncHistory.formatHistoryEntry(entry);
@@ -351,15 +428,22 @@ suite('Hub Sync History', () => {
                 timestamp: new Date().toISOString(),
                 status: 'success',
                 changes: {
-                    added: [{ id: 'bundle-2', version: '1.0.0', source: 'test-source', required: false }],
+                    added: [
+                        {
+                            id: 'bundle-2',
+                            version: '1.0.0',
+                            source: 'test-source',
+                            required: false,
+                        },
+                    ],
                     updated: [],
                     removed: [],
-                    metadataChanged: false
+                    metadataChanged: false,
                 },
                 previousState: {
                     bundles: [],
-                    activatedAt: new Date().toISOString()
-                }
+                    activatedAt: new Date().toISOString(),
+                },
             };
 
             const items = syncHistory.createHistoryQuickPickItems([entry]);
@@ -376,15 +460,22 @@ suite('Hub Sync History', () => {
                 timestamp: new Date().toISOString(),
                 status: 'success',
                 changes: {
-                    added: [{ id: 'bundle-2', version: '1.0.0', source: 'test-source', required: false }],
+                    added: [
+                        {
+                            id: 'bundle-2',
+                            version: '1.0.0',
+                            source: 'test-source',
+                            required: false,
+                        },
+                    ],
                     updated: [{ id: 'bundle-1', oldVersion: '1.0.0', newVersion: '2.0.0' }],
                     removed: [],
-                    metadataChanged: false
+                    metadataChanged: false,
                 },
                 previousState: {
                     bundles: [],
-                    activatedAt: new Date().toISOString()
-                }
+                    activatedAt: new Date().toISOString(),
+                },
             };
 
             const items = syncHistory.createHistoryQuickPickItems([entry]);
@@ -403,12 +494,12 @@ suite('Hub Sync History', () => {
                     added: [],
                     updated: [],
                     removed: [],
-                    metadataChanged: false
+                    metadataChanged: false,
                 },
                 previousState: {
                     bundles: [],
-                    activatedAt: new Date().toISOString()
-                }
+                    activatedAt: new Date().toISOString(),
+                },
             };
 
             const items = syncHistory.createHistoryQuickPickItems([entry]);
@@ -432,18 +523,30 @@ suite('Hub Sync History', () => {
                     added: [],
                     updated: [],
                     removed: [],
-                    metadataChanged: false
+                    metadataChanged: false,
                 },
                 previousState: {
                     bundles: [
-                        { id: 'bundle-1', version: '1.0.0', source: 'test-source', required: false },
-                        { id: 'bundle-2', version: '1.0.0', source: 'test-source', required: false }
+                        {
+                            id: 'bundle-1',
+                            version: '1.0.0',
+                            source: 'test-source',
+                            required: false,
+                        },
+                        {
+                            id: 'bundle-2',
+                            version: '1.0.0',
+                            source: 'test-source',
+                            required: false,
+                        },
                     ],
-                    activatedAt: new Date().toISOString()
-                }
+                    activatedAt: new Date().toISOString(),
+                },
             };
 
-            await syncHistory.rollbackToEntry('test-hub', 'test-profile', entry, { installBundles: false });
+            await syncHistory.rollbackToEntry('test-hub', 'test-profile', entry, {
+                installBundles: false,
+            });
 
             const state = await storage.getProfileActivationState('test-hub', 'test-profile');
             assert.ok(state);
@@ -465,16 +568,25 @@ suite('Hub Sync History', () => {
                     added: [],
                     updated: [],
                     removed: [],
-                    metadataChanged: false
+                    metadataChanged: false,
                 },
                 previousState: {
-                    bundles: [{ id: 'bundle-1', version: '1.0.0', source: 'test-source', required: false }],
-                    activatedAt: new Date().toISOString()
-                }
+                    bundles: [
+                        {
+                            id: 'bundle-1',
+                            version: '1.0.0',
+                            source: 'test-source',
+                            required: false,
+                        },
+                    ],
+                    activatedAt: new Date().toISOString(),
+                },
             };
 
             const historyBefore = await syncHistory.getHistory('test-hub', 'test-profile');
-            await syncHistory.rollbackToEntry('test-hub', 'test-profile', entry, { installBundles: false });
+            await syncHistory.rollbackToEntry('test-hub', 'test-profile', entry, {
+                installBundles: false,
+            });
 
             const historyAfter = await syncHistory.getHistory('test-hub', 'test-profile');
             assert.strictEqual(historyAfter.length, historyBefore.length + 1);
@@ -493,16 +605,19 @@ suite('Hub Sync History', () => {
                     added: [],
                     updated: [],
                     removed: [],
-                    metadataChanged: false
+                    metadataChanged: false,
                 },
                 previousState: {
                     bundles: [],
-                    activatedAt: new Date().toISOString()
-                }
+                    activatedAt: new Date().toISOString(),
+                },
             };
 
             await assert.rejects(
-                async () => await syncHistory.rollbackToEntry('test-hub', 'test-profile', entry, { installBundles: false }),
+                async () =>
+                    await syncHistory.rollbackToEntry('test-hub', 'test-profile', entry, {
+                        installBundles: false,
+                    }),
                 /Profile test-profile is not active in hub test-hub/
             );
         });
@@ -511,8 +626,10 @@ suite('Hub Sync History', () => {
     suite('Clear History', () => {
         test('should clear all history for a profile', async () => {
             const previousState = {
-                bundles: [{ id: 'bundle-1', version: '1.0.0', source: 'test-source', required: false }],
-                activatedAt: new Date().toISOString()
+                bundles: [
+                    { id: 'bundle-1', version: '1.0.0', source: 'test-source', required: false },
+                ],
+                activatedAt: new Date().toISOString(),
             };
 
             // Create some history
@@ -521,10 +638,17 @@ suite('Hub Sync History', () => {
                     'test-hub',
                     'test-profile',
                     {
-                        added: [{ id: `bundle-${i + 2}`, version: '1.0.0', source: 'test-source', required: false }],
+                        added: [
+                            {
+                                id: `bundle-${i + 2}`,
+                                version: '1.0.0',
+                                source: 'test-source',
+                                required: false,
+                            },
+                        ],
                         updated: [],
                         removed: [],
-                        metadataChanged: false
+                        metadataChanged: false,
                     },
                     previousState,
                     'success'
@@ -542,8 +666,10 @@ suite('Hub Sync History', () => {
 
         test('should clear history only for specified profile', async () => {
             const previousState = {
-                bundles: [{ id: 'bundle-1', version: '1.0.0', source: 'test-source', required: false }],
-                activatedAt: new Date().toISOString()
+                bundles: [
+                    { id: 'bundle-1', version: '1.0.0', source: 'test-source', required: false },
+                ],
+                activatedAt: new Date().toISOString(),
             };
 
             // Create history for profile 1
@@ -551,10 +677,17 @@ suite('Hub Sync History', () => {
                 'test-hub',
                 'test-profile',
                 {
-                    added: [{ id: 'bundle-2', version: '1.0.0', source: 'test-source', required: false }],
+                    added: [
+                        {
+                            id: 'bundle-2',
+                            version: '1.0.0',
+                            source: 'test-source',
+                            required: false,
+                        },
+                    ],
                     updated: [],
                     removed: [],
-                    metadataChanged: false
+                    metadataChanged: false,
                 },
                 previousState,
                 'success'
@@ -565,10 +698,17 @@ suite('Hub Sync History', () => {
                 'test-hub',
                 'test-profile-2',
                 {
-                    added: [{ id: 'bundle-3', version: '1.0.0', source: 'test-source', required: false }],
+                    added: [
+                        {
+                            id: 'bundle-3',
+                            version: '1.0.0',
+                            source: 'test-source',
+                            required: false,
+                        },
+                    ],
                     updated: [],
                     removed: [],
-                    metadataChanged: false
+                    metadataChanged: false,
                 },
                 previousState,
                 'success'

@@ -1,22 +1,25 @@
 /**
  * Local Skills filesystem adapter
  * Handles local filesystem directories containing Anthropic-style skills with SKILL.md files
- * 
+ *
  * Directory structure:
  * - skills/ folder at root
  * - Each subfolder is a skill (folder name = skill ID)
  * - Each skill has a SKILL.md file with YAML frontmatter (name, description) and markdown instructions
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import { promisify } from 'util';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { promisify } from 'node:util';
+
 import AdmZip = require('adm-zip');
 import * as yaml from 'js-yaml';
-import { RepositoryAdapter } from './RepositoryAdapter';
+
 import { Bundle, SourceMetadata, ValidationResult, RegistrySource } from '../types/registry';
 import { SkillItem, SkillFrontmatter, ParsedSkillFile } from '../types/skills';
 import { Logger } from '../utils/logger';
+
+import { RepositoryAdapter } from './RepositoryAdapter';
 
 const readdir = promisify(fs.readdir);
 const readFile = promisify(fs.readFile);
@@ -34,7 +37,7 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
     constructor(source: RegistrySource) {
         super(source);
         this.logger = Logger.getInstance();
-        
+
         if (!this.isValidLocalPath(source.url)) {
             throw new Error(`Invalid local skills path: ${source.url}`);
         }
@@ -45,16 +48,16 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
      */
     private getLocalPath(): string {
         let localPath = this.source.url;
-        
+
         if (localPath.startsWith('file://')) {
             localPath = localPath.substring(7);
         }
-        
+
         if (localPath.startsWith('~/')) {
-            const os = require('os');
+            const os = require('node:os');
             localPath = path.join(os.homedir(), localPath.slice(2));
         }
-        
+
         return path.normalize(localPath);
     }
 
@@ -62,10 +65,12 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
      * Check if path is valid local filesystem path
      */
     private isValidLocalPath(url: string): boolean {
-        return url.startsWith('file://') || 
-               path.isAbsolute(url) ||
-               url.startsWith('~/') ||
-               url.startsWith('./');
+        return (
+            url.startsWith('file://') ||
+            path.isAbsolute(url) ||
+            url.startsWith('~/') ||
+            url.startsWith('./')
+        );
     }
 
     /**
@@ -104,13 +109,13 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
         } catch (error) {
             const errorCode = (error as NodeJS.ErrnoException).code;
             let errorMessage = `Directory not accessible: ${localPath}`;
-            
+
             if (errorCode === 'ENOENT') {
                 errorMessage = `Directory does not exist: ${localPath}`;
             } else if (errorCode === 'EACCES') {
                 errorMessage = `Permission denied accessing directory: ${localPath}`;
             }
-            
+
             return {
                 valid: false,
                 errors: [errorMessage],
@@ -124,11 +129,13 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
         }
 
         const isValid = errors.length === 0;
-        
+
         if (isValid) {
             this.logger.debug(`[LocalSkillsAdapter] Directory structure validation passed`);
         } else {
-            this.logger.warn(`[LocalSkillsAdapter] Directory structure validation failed: ${errors.join(', ')}`);
+            this.logger.warn(
+                `[LocalSkillsAdapter] Directory structure validation failed: ${errors.join(', ')}`
+            );
         }
 
         return {
@@ -142,38 +149,41 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
      * Validate local skills source
      */
     async validate(): Promise<ValidationResult> {
-        const errors: string[] = [];
+        const _errors: string[] = [];
         const warnings: string[] = [];
-        
+
         try {
-            this.logger.info(`[LocalSkillsAdapter] Validating local skills source: ${this.source.url}`);
-            
+            this.logger.info(
+                `[LocalSkillsAdapter] Validating local skills source: ${this.source.url}`
+            );
+
             const structureValidation = await this.validateDirectoryStructure();
             if (!structureValidation.valid) {
                 return structureValidation;
             }
-            
+
             let skillCount = 0;
             try {
                 const skills = await this.scanSkillsDirectory();
                 skillCount = skills.length;
-                
+
                 if (skillCount === 0) {
-                    warnings.push('No valid skills found in skills/ directory (skills must have SKILL.md file)');
+                    warnings.push(
+                        'No valid skills found in skills/ directory (skills must have SKILL.md file)'
+                    );
                 } else {
                     this.logger.info(`[LocalSkillsAdapter] Found ${skillCount} valid skill(s)`);
                 }
             } catch (scanError) {
                 warnings.push(`Failed to scan skills: ${scanError}`);
             }
-            
+
             return {
                 valid: true,
                 errors: [],
                 warnings,
                 bundlesFound: skillCount,
             };
-            
         } catch (error) {
             return {
                 valid: false,
@@ -209,11 +219,11 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
      */
     async fetchBundles(): Promise<Bundle[]> {
         this.logger.info(`[LocalSkillsAdapter] Fetching skills from: ${this.source.url}`);
-        
+
         try {
             const skills = await this.scanSkillsDirectory();
             this.logger.info(`[LocalSkillsAdapter] Found ${skills.length} skills`);
-            
+
             const bundles: Bundle[] = [];
             for (const skill of skills) {
                 try {
@@ -221,13 +231,14 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
                     bundles.push(bundle);
                     this.logger.debug(`[LocalSkillsAdapter] Created bundle: ${bundle.id}`);
                 } catch (error) {
-                    this.logger.warn(`[LocalSkillsAdapter] Failed to create bundle from skill ${skill.id}: ${error}`);
+                    this.logger.warn(
+                        `[LocalSkillsAdapter] Failed to create bundle from skill ${skill.id}: ${error}`
+                    );
                 }
             }
-            
+
             this.logger.info(`[LocalSkillsAdapter] Successfully created ${bundles.length} bundles`);
             return bundles;
-            
         } catch (error) {
             this.logger.error(`[LocalSkillsAdapter] Failed to fetch skills: ${error}`);
             throw new Error(`Failed to fetch local skills: ${error}`);
@@ -240,16 +251,18 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
     private async scanSkillsDirectory(): Promise<SkillItem[]> {
         const localPath = this.getLocalPath();
         const skillsPath = path.join(localPath, 'skills');
-        
+
         this.logger.debug(`[LocalSkillsAdapter] Scanning skills directory: ${skillsPath}`);
-        
+
         try {
             const entries = await readdir(skillsPath, { withFileTypes: true });
             const skills: SkillItem[] = [];
-            
-            const directories = entries.filter(entry => entry.isDirectory());
-            this.logger.debug(`[LocalSkillsAdapter] Found ${directories.length} directories in skills/`);
-            
+
+            const directories = entries.filter((entry) => entry.isDirectory());
+            this.logger.debug(
+                `[LocalSkillsAdapter] Found ${directories.length} directories in skills/`
+            );
+
             for (const dir of directories) {
                 try {
                     const skill = await this.processSkillDirectory(dir.name, skillsPath);
@@ -257,12 +270,13 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
                         skills.push(skill);
                     }
                 } catch (error) {
-                    this.logger.warn(`[LocalSkillsAdapter] Failed to process skill directory ${dir.name}: ${error}`);
+                    this.logger.warn(
+                        `[LocalSkillsAdapter] Failed to process skill directory ${dir.name}: ${error}`
+                    );
                 }
             }
-            
+
             return skills;
-            
         } catch (error) {
             this.logger.error(`[LocalSkillsAdapter] Failed to scan skills directory: ${error}`);
             throw new Error(`Failed to scan skills directory: ${error}`);
@@ -272,24 +286,29 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
     /**
      * Process a skill directory
      */
-    private async processSkillDirectory(skillId: string, skillsPath: string): Promise<SkillItem | null> {
+    private async processSkillDirectory(
+        skillId: string,
+        skillsPath: string
+    ): Promise<SkillItem | null> {
         const skillPath = path.join(skillsPath, skillId);
         const skillMdPath = path.join(skillPath, 'SKILL.md');
-        
+
         this.logger.debug(`[LocalSkillsAdapter] Processing skill directory: ${skillId}`);
-        
+
         try {
             try {
                 await access(skillMdPath, fs.constants.R_OK);
             } catch {
-                this.logger.debug(`[LocalSkillsAdapter] Skill ${skillId} missing SKILL.md, skipping`);
+                this.logger.debug(
+                    `[LocalSkillsAdapter] Skill ${skillId} missing SKILL.md, skipping`
+                );
                 return null;
             }
-            
+
             const parsedSkillMd = await this.parseSkillMd(skillMdPath);
-            
+
             const entries = await readdir(skillPath);
-            const files = entries.filter(entry => {
+            const files = entries.filter((entry) => {
                 const entryPath = path.join(skillPath, entry);
                 try {
                     return fs.statSync(entryPath).isFile();
@@ -297,7 +316,7 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
                     return false;
                 }
             });
-            
+
             const skillItem: SkillItem = {
                 id: skillId,
                 name: parsedSkillMd.frontmatter.name || skillId,
@@ -308,10 +327,11 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
                 files,
                 parsedSkillMd,
             };
-            
-            this.logger.debug(`[LocalSkillsAdapter] Successfully processed skill: ${skillItem.name}`);
+
+            this.logger.debug(
+                `[LocalSkillsAdapter] Successfully processed skill: ${skillItem.name}`
+            );
             return skillItem;
-            
         } catch (error) {
             this.logger.error(`[LocalSkillsAdapter] Error processing skill ${skillId}: ${error}`);
             return null;
@@ -323,12 +343,12 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
      */
     private async parseSkillMd(skillMdPath: string): Promise<ParsedSkillFile> {
         this.logger.debug(`[LocalSkillsAdapter] Parsing SKILL.md: ${skillMdPath}`);
-        
+
         try {
             const raw = await readFile(skillMdPath, 'utf-8');
-            
+
             const frontmatterMatch = raw.match(/^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/);
-            
+
             if (!frontmatterMatch) {
                 this.logger.warn(`[LocalSkillsAdapter] SKILL.md missing valid frontmatter`);
                 return {
@@ -337,24 +357,28 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
                     raw,
                 };
             }
-            
+
             const frontmatterYaml = frontmatterMatch[1];
             const markdownContent = frontmatterMatch[2];
-            
+            if (!frontmatterYaml || !markdownContent) {
+                throw new Error('Invalid frontmatter format');
+            }
+
             let frontmatter: SkillFrontmatter;
             try {
                 frontmatter = yaml.load(frontmatterYaml) as SkillFrontmatter;
             } catch (yamlError) {
-                this.logger.warn(`[LocalSkillsAdapter] Failed to parse YAML frontmatter: ${yamlError}`);
+                this.logger.warn(
+                    `[LocalSkillsAdapter] Failed to parse YAML frontmatter: ${yamlError}`
+                );
                 frontmatter = { name: '', description: '' };
             }
-            
+
             return {
                 frontmatter,
                 content: markdownContent,
                 raw,
             };
-            
         } catch (error) {
             this.logger.error(`[LocalSkillsAdapter] Failed to parse SKILL.md: ${error}`);
             throw error;
@@ -367,9 +391,9 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
     private createBundleFromSkill(skill: SkillItem): Bundle {
         const localPath = this.getLocalPath();
         const sourceName = path.basename(localPath);
-        
+
         const bundleId = `local-skills-${sourceName}-${skill.id}`;
-        
+
         const bundle: Bundle = {
             id: bundleId,
             name: skill.name,
@@ -388,7 +412,7 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
             manifestUrl: this.getManifestUrl(bundleId),
             downloadUrl: this.getDownloadUrl(bundleId),
         };
-        
+
         return bundle;
     }
 
@@ -397,7 +421,7 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
      */
     private estimateSkillSize(files: string[]): string {
         const estimatedBytes = files.length * 4096;
-        
+
         if (estimatedBytes < 1024) {
             return `${estimatedBytes} B`;
         }
@@ -410,20 +434,20 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
     /**
      * Get manifest URL
      */
-    getManifestUrl(bundleId: string, version?: string): string {
+    getManifestUrl(_bundleId: string, _version?: string): string {
         const localPath = this.getLocalPath();
         const sourceName = path.basename(localPath);
-        const skillId = bundleId.replace(`local-skills-${sourceName}-`, '');
+        const skillId = _bundleId.replace(`local-skills-${sourceName}-`, '');
         return `file://${path.join(localPath, 'skills', skillId, 'SKILL.md')}`;
     }
 
     /**
      * Get download URL
      */
-    getDownloadUrl(bundleId: string, version?: string): string {
+    getDownloadUrl(_bundleId: string, _version?: string): string {
         const localPath = this.getLocalPath();
         const sourceName = path.basename(localPath);
-        const skillId = bundleId.replace(`local-skills-${sourceName}-`, '');
+        const skillId = _bundleId.replace(`local-skills-${sourceName}-`, '');
         return `file://${path.join(localPath, 'skills', skillId)}`;
     }
 
@@ -434,22 +458,23 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
         const localPath = this.getLocalPath();
         const sourceName = path.basename(localPath);
         const skillId = bundle.id.replace(`local-skills-${sourceName}-`, '');
-        
+
         this.logger.info(`[LocalSkillsAdapter] Downloading skill: ${skillId}`);
-        
+
         try {
             const skills = await this.scanSkillsDirectory();
-            const skill = skills.find(s => s.id === skillId);
-            
+            const skill = skills.find((s) => s.id === skillId);
+
             if (!skill) {
                 throw new Error(`Skill not found: ${skillId}`);
             }
-            
+
             const zipBuffer = await this.packageSkillAsZip(skill);
-            
-            this.logger.info(`[LocalSkillsAdapter] Successfully packaged skill ${skillId} (${zipBuffer.length} bytes)`);
+
+            this.logger.info(
+                `[LocalSkillsAdapter] Successfully packaged skill ${skillId} (${zipBuffer.length} bytes)`
+            );
             return zipBuffer;
-            
         } catch (error) {
             this.logger.error(`[LocalSkillsAdapter] Failed to download skill ${skillId}: ${error}`);
             throw new Error(`Failed to download skill ${skillId}: ${error}`);
@@ -486,23 +511,22 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
     private async packageSkillAsZip(skill: SkillItem): Promise<Buffer> {
         const localPath = this.getLocalPath();
         const skillPath = path.join(localPath, skill.path);
-        
+
         this.logger.debug(`[LocalSkillsAdapter] Packaging skill as ZIP: ${skill.id}`);
-        
+
         try {
             const zip = new AdmZip();
-            
+
             const deploymentManifest = this.generateDeploymentManifest(skill);
             const manifestYaml = yaml.dump(deploymentManifest);
             zip.addFile('deployment-manifest.yml', Buffer.from(manifestYaml, 'utf8'));
-            
+
             // Use skills/{skill-id}/ structure to match CopilotSyncService expectations
             await this.addDirectoryToZip(zip, skillPath, `skills/${skill.id}`);
-            
+
             const zipBuffer = zip.toBuffer();
             this.logger.debug(`[LocalSkillsAdapter] Created ZIP bundle: ${zipBuffer.length} bytes`);
             return zipBuffer;
-            
         } catch (error) {
             this.logger.error(`[LocalSkillsAdapter] Failed to package skill ${skill.id}: ${error}`);
             throw new Error(`Failed to package skill as ZIP: ${error}`);
@@ -515,11 +539,11 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
     private async addDirectoryToZip(zip: AdmZip, dirPath: string, zipPath: string): Promise<void> {
         try {
             const entries = await readdir(dirPath, { withFileTypes: true });
-            
+
             for (const entry of entries) {
                 const entryPath = path.join(dirPath, entry.name);
                 const entryZipPath = `${zipPath}/${entry.name}`;
-                
+
                 if (entry.isFile()) {
                     const content = await readFile(entryPath);
                     zip.addFile(entryZipPath, content);
@@ -529,22 +553,25 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
                 }
             }
         } catch (error) {
-            this.logger.warn(`[LocalSkillsAdapter] Failed to add directory ${dirPath} to ZIP: ${error}`);
+            this.logger.warn(
+                `[LocalSkillsAdapter] Failed to add directory ${dirPath} to ZIP: ${error}`
+            );
         }
     }
 
     /**
      * Generate deployment manifest
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     private generateDeploymentManifest(skill: SkillItem): any {
         const localPath = this.getLocalPath();
         const sourceName = path.basename(localPath);
-        
+
         return {
             id: `local-skills-${sourceName}-${skill.id}`,
             version: '1.0.0',
             name: skill.name,
-            
+
             metadata: {
                 manifest_version: '1.0',
                 description: skill.description,
@@ -553,28 +580,28 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
                 repository: {
                     type: 'local',
                     url: this.source.url,
-                    directory: skill.path
+                    directory: skill.path,
                 },
                 license: skill.license || 'Unknown',
-                keywords: ['skill', 'anthropic', 'local']
+                keywords: ['skill', 'anthropic', 'local'],
             },
-            
+
             common: {
                 directories: [`skills/${skill.id}`],
                 files: [],
                 include_patterns: ['**/*'],
-                exclude_patterns: []
+                exclude_patterns: [],
             },
-            
+
             bundle_settings: {
                 include_common_in_environment_bundles: true,
                 create_common_bundle: true,
                 compression: 'zip',
                 naming: {
-                    common_bundle: skill.id
-                }
+                    common_bundle: skill.id,
+                },
             },
-            
+
             prompts: [
                 {
                     id: skill.id,
@@ -582,9 +609,9 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
                     description: skill.description,
                     file: `skills/${skill.id}/SKILL.md`,
                     type: 'skill',
-                    tags: ['skill', 'anthropic', 'local']
-                }
-            ]
+                    tags: ['skill', 'anthropic', 'local'],
+                },
+            ],
         };
     }
 }

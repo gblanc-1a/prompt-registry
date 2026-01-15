@@ -3,11 +3,11 @@
  * Tests APM CLI command execution wrapper
  */
 
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+
 import * as sinon from 'sinon';
-import * as path from 'path';
-import * as os from 'os';
-import { ApmCliWrapper, ApmInstallResult } from '../../src/services/ApmCliWrapper';
+
+import { ApmCliWrapper } from '../../src/services/ApmCliWrapper';
 import { ApmRuntimeManager } from '../../src/services/ApmRuntimeManager';
 
 suite('ApmCliWrapper', () => {
@@ -17,16 +17,18 @@ suite('ApmCliWrapper', () => {
 
     setup(() => {
         sandbox = sinon.createSandbox();
-        
+
         // Mock runtime manager
         ApmRuntimeManager.resetInstance();
         mockRuntime = sandbox.createStubInstance(ApmRuntimeManager);
         mockRuntime.getStatus.resolves({ installed: true, version: '1.0.0' });
         mockRuntime.isAvailable.resolves(true);
-        
+
         // Replace getInstance to return mock
-        sandbox.stub(ApmRuntimeManager, 'getInstance').returns(mockRuntime as unknown as ApmRuntimeManager);
-        
+        sandbox
+            .stub(ApmRuntimeManager, 'getInstance')
+            .returns(mockRuntime as unknown as ApmRuntimeManager);
+
         wrapper = new ApmCliWrapper();
     });
 
@@ -44,46 +46,46 @@ suite('ApmCliWrapper', () => {
     suite('isRuntimeAvailable', () => {
         test('should return true when APM is installed', async () => {
             mockRuntime.getStatus.resolves({ installed: true, uvxAvailable: false });
-            
+
             const available = await wrapper.isRuntimeAvailable();
-            
+
             assert.strictEqual(available, true);
         });
 
         test('should return true when uvx is available even if APM is not installed', async () => {
             mockRuntime.getStatus.resolves({ installed: false, uvxAvailable: true });
-            
+
             const available = await wrapper.isRuntimeAvailable();
-            
+
             assert.strictEqual(available, true);
         });
 
         test('should return false when neither is available', async () => {
             mockRuntime.getStatus.resolves({ installed: false, uvxAvailable: false });
-            
+
             const available = await wrapper.isRuntimeAvailable();
-            
+
             assert.strictEqual(available, false);
         });
     });
 
     suite('getVersion', () => {
         test('should return version when APM is installed', async () => {
-            mockRuntime.getStatus.resolves({ 
-                installed: true, 
-                version: '2.0.0' 
+            mockRuntime.getStatus.resolves({
+                installed: true,
+                version: '2.0.0',
             });
-            
+
             const version = await wrapper.getVersion();
-            
+
             assert.strictEqual(version, '2.0.0');
         });
 
         test('should return undefined when APM is not installed', async () => {
             mockRuntime.getStatus.resolves({ installed: false });
-            
+
             const version = await wrapper.getVersion();
-            
+
             assert.strictEqual(version, undefined);
         });
     });
@@ -129,23 +131,23 @@ suite('ApmCliWrapper', () => {
     suite('install', () => {
         test('should return error when runtime not available', async () => {
             mockRuntime.getStatus.resolves({ installed: false, uvxAvailable: false });
-            
+
             const result = await wrapper.install('owner/repo', '/tmp/target');
-            
+
             assert.strictEqual(result.success, false);
             assert.ok(result.error?.includes('not installed'));
         });
 
         test('should reject invalid package reference', async () => {
             const result = await wrapper.install('invalid', '/tmp/target');
-            
+
             assert.strictEqual(result.success, false);
             assert.ok(result.error?.includes('Invalid package reference'));
         });
 
         test('should reject path traversal in target directory', async () => {
             const result = await wrapper.install('owner/repo', '/tmp/../etc/target');
-            
+
             assert.strictEqual(result.success, false);
             assert.ok(result.error?.includes('Invalid') || result.error?.includes('path'));
         });
@@ -162,19 +164,15 @@ suite('ApmCliWrapper', () => {
                 '$(cat /etc/passwd)',
                 'owner/repo\nmalicious',
             ];
-            
+
             for (const ref of dangerous) {
-                assert.strictEqual(
-                    wrapper.validatePackageRef(ref), 
-                    false, 
-                    `Should reject: ${ref}`
-                );
+                assert.strictEqual(wrapper.validatePackageRef(ref), false, `Should reject: ${ref}`);
             }
         });
 
         test('should not allow absolute paths as package refs', () => {
             assert.strictEqual(wrapper.validatePackageRef('/etc/passwd'), false);
-            assert.strictEqual(wrapper.validatePackageRef('C:\\Windows\\System32'), false);
+            assert.strictEqual(wrapper.validatePackageRef(String.raw`C:\Windows\System32`), false);
         });
 
         test('should not allow URLs as package refs', () => {
@@ -186,18 +184,18 @@ suite('ApmCliWrapper', () => {
     suite('Error Handling', () => {
         test('should handle runtime errors gracefully', async () => {
             mockRuntime.getStatus.rejects(new Error('Runtime error'));
-            
+
             const result = await wrapper.install('owner/repo', '/tmp/target');
-            
+
             assert.strictEqual(result.success, false);
             assert.ok(result.error);
         });
 
         test('should provide meaningful error messages', async () => {
             mockRuntime.getStatus.resolves({ installed: false, uvxAvailable: false });
-            
+
             const result = await wrapper.install('owner/repo', '/tmp/target');
-            
+
             assert.ok(result.error);
             assert.ok(result.error.length > 10); // Not just "error"
         });

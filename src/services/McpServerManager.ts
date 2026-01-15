@@ -1,12 +1,12 @@
-import { Logger } from '../utils/logger';
-import { McpConfigService } from './McpConfigService';
 import {
     McpServersManifest,
-    McpServerDefinition,
     McpInstallResult,
     McpUninstallResult,
-    McpInstallOptions
+    McpInstallOptions,
 } from '../types/mcp';
+import { Logger } from '../utils/logger';
+
+import { McpConfigService } from './McpConfigService';
 
 export class McpServerManager {
     private readonly logger: Logger;
@@ -29,7 +29,7 @@ export class McpServerManager {
             serversInstalled: 0,
             installedServers: [],
             errors: [],
-            warnings: []
+            warnings: [],
         };
 
         try {
@@ -39,16 +39,22 @@ export class McpServerManager {
                 return result;
             }
 
-            this.logger.info(`Installing ${Object.keys(serversManifest).length} MCP servers for bundle ${bundleId}`);
+            this.logger.info(
+                `Installing ${Object.keys(serversManifest).length} MCP servers for bundle ${bundleId}`
+            );
 
             const existingConfig = await this.configService.readMcpConfig(options.scope);
             const tracking = await this.configService.readTrackingMetadata(options.scope);
 
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
             const serversToInstall: Record<string, any> = {};
 
             for (const [serverName, definition] of Object.entries(serversManifest)) {
-                const prefixedName = this.configService.generatePrefixedServerName(bundleId, serverName);
-                
+                const prefixedName = this.configService.generatePrefixedServerName(
+                    bundleId,
+                    serverName
+                );
+
                 const serverConfig = this.configService.processServerDefinition(
                     serverName,
                     definition,
@@ -65,7 +71,7 @@ export class McpServerManager {
                     originalName: serverName,
                     originalConfig: definition,
                     installedAt: new Date().toISOString(),
-                    scope: options.scope
+                    scope: options.scope,
                 };
             }
 
@@ -83,19 +89,28 @@ export class McpServerManager {
                 return result;
             }
 
-            await this.configService.writeMcpConfig(mergeResult.config, options.scope, options.createBackup !== false);
+            await this.configService.writeMcpConfig(
+                mergeResult.config,
+                options.scope,
+                options.createBackup !== false
+            );
             await this.configService.writeTrackingMetadata(tracking, options.scope);
 
-            result.serversInstalled = Object.keys(serversToInstall).length - mergeResult.conflicts.length;
+            result.serversInstalled =
+                Object.keys(serversToInstall).length - mergeResult.conflicts.length;
             result.installedServers = Object.keys(serversToInstall).filter(
-                name => !mergeResult.conflicts.includes(name)
+                (name) => !mergeResult.conflicts.includes(name)
             );
             result.success = true;
 
-            this.logger.info(`Successfully installed ${result.serversInstalled} MCP servers for bundle ${bundleId}`);
-
+            this.logger.info(
+                `Successfully installed ${result.serversInstalled} MCP servers for bundle ${bundleId}`
+            );
         } catch (error) {
-            this.logger.error(`Failed to install MCP servers for bundle ${bundleId}`, error as Error);
+            this.logger.error(
+                `Failed to install MCP servers for bundle ${bundleId}`,
+                error as Error
+            );
             result.errors?.push((error as Error).message);
             result.success = false;
         }
@@ -111,7 +126,7 @@ export class McpServerManager {
             success: false,
             serversRemoved: 0,
             removedServers: [],
-            errors: []
+            errors: [],
         };
 
         try {
@@ -126,11 +141,15 @@ export class McpServerManager {
             if (removedServers.length === 0) {
                 this.logger.debug(`No MCP servers found for bundle ${bundleId}`);
             } else {
-                this.logger.info(`Successfully uninstalled ${removedServers.length} MCP servers for bundle ${bundleId}`);
+                this.logger.info(
+                    `Successfully uninstalled ${removedServers.length} MCP servers for bundle ${bundleId}`
+                );
             }
-
         } catch (error) {
-            this.logger.error(`Failed to uninstall MCP servers for bundle ${bundleId}`, error as Error);
+            this.logger.error(
+                `Failed to uninstall MCP servers for bundle ${bundleId}`,
+                error as Error
+            );
             result.errors?.push((error as Error).message);
             result.success = false;
         }
@@ -138,22 +157,24 @@ export class McpServerManager {
         return result;
     }
 
-    async listInstalledServers(scope: 'user' | 'workspace'): Promise<Array<{
-        serverName: string;
-        bundleId: string;
-        bundleVersion: string;
-        originalName: string;
-        installedAt: string;
-    }>> {
+    async listInstalledServers(scope: 'user' | 'workspace'): Promise<
+        Array<{
+            serverName: string;
+            bundleId: string;
+            bundleVersion: string;
+            originalName: string;
+            installedAt: string;
+        }>
+    > {
         try {
             const tracking = await this.configService.readTrackingMetadata(scope);
-            
+
             return Object.entries(tracking.managedServers).map(([serverName, metadata]) => ({
                 serverName,
                 bundleId: metadata.bundleId,
                 bundleVersion: metadata.bundleVersion,
                 originalName: metadata.originalName,
-                installedAt: metadata.installedAt
+                installedAt: metadata.installedAt,
             }));
         } catch (error) {
             this.logger.error(`Failed to list installed MCP servers`, error as Error);
@@ -164,7 +185,7 @@ export class McpServerManager {
     async getServersForBundle(bundleId: string, scope: 'user' | 'workspace'): Promise<string[]> {
         try {
             const tracking = await this.configService.readTrackingMetadata(scope);
-            
+
             return Object.entries(tracking.managedServers)
                 .filter(([_, metadata]) => metadata.bundleId === bundleId)
                 .map(([serverName, _]) => serverName);

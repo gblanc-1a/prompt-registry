@@ -1,6 +1,8 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import * as Ajv from 'ajv';
-import * as fs from 'fs';
-import * as path from 'path';
+
 import { Logger } from '../utils/logger';
 
 /**
@@ -32,15 +34,16 @@ export class SchemaValidator {
 
     constructor(extensionPath?: string) {
         // Use default export for AJV v6
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
         const AjvConstructor = (Ajv as any).default || Ajv;
         this.ajv = new AjvConstructor({
-            allErrors: true,  // Collect all errors, not just first
-            verbose: true    // Include validated data in errors
+            allErrors: true, // Collect all errors, not just first
+            verbose: true, // Include validated data in errors
         });
-        
+
         // Add custom format for semver
         this.ajv.addFormat('semver', /^\d+\.\d+\.\d+(-[a-zA-Z0-9.-]+)?$/);
-        
+
         this.schemaCache = new Map();
         this.logger = Logger.getInstance();
         this.extensionPath = extensionPath || process.cwd();
@@ -60,14 +63,17 @@ export class SchemaValidator {
         try {
             const schemaContent = fs.readFileSync(schemaPath, 'utf8');
             const schema = JSON.parse(schemaContent);
-            
+
             const validate = this.ajv.compile(schema);
             this.schemaCache.set(schemaPath, validate);
-            
+
             this.logger.info(`Loaded schema: ${schemaPath}`);
             return validate;
         } catch (error) {
-            this.logger.error(`Failed to load schema ${schemaPath}:`, error instanceof Error ? error : undefined);
+            this.logger.error(
+                `Failed to load schema ${schemaPath}:`,
+                error instanceof Error ? error : undefined
+            );
             throw error;
         }
     }
@@ -80,6 +86,7 @@ export class SchemaValidator {
      * @returns Validation result with errors and warnings
      */
     async validate(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
         data: any,
         schemaPath: string,
         options: ValidationOptions = {}
@@ -91,7 +98,7 @@ export class SchemaValidator {
             const result: ValidationResult = {
                 valid: valid === true,
                 errors: [],
-                warnings: []
+                warnings: [],
             };
 
             // Format validation errors
@@ -114,8 +121,10 @@ export class SchemaValidator {
             this.logger.error('Validation failed:', error instanceof Error ? error : undefined);
             return {
                 valid: false,
-                errors: [`Validation error: ${error instanceof Error ? error.message : String(error)}`],
-                warnings: []
+                errors: [
+                    `Validation error: ${error instanceof Error ? error.message : String(error)}`,
+                ],
+                warnings: [],
             };
         }
     }
@@ -127,6 +136,7 @@ export class SchemaValidator {
      * @returns Validation result
      */
     async validateCollection(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
         data: any,
         options: ValidationOptions = {}
     ): Promise<ValidationResult> {
@@ -140,10 +150,8 @@ export class SchemaValidator {
      * @param options Validation options
      * @returns Validation result
      */
-    async validateApm(
-        data: any,
-        options: ValidationOptions = {}
-    ): Promise<ValidationResult> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
+    async validateApm(data: any, options: ValidationOptions = {}): Promise<ValidationResult> {
         const schemaPath = path.join(this.extensionPath, 'schemas', 'apm.schema.json');
         return this.validate(data, schemaPath, options);
     }
@@ -154,9 +162,10 @@ export class SchemaValidator {
      * @returns Formatted error messages
      */
     private formatErrors(errors: Ajv.ErrorObject[]): string[] {
-        return errors.map(error => {
+        return errors.map((error) => {
             const dataPath = error.dataPath || '';
             const message = error.message || 'validation failed';
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
             const params: any = error.params;
 
             switch (error.keyword) {
@@ -190,7 +199,11 @@ export class SchemaValidator {
      * @param workspaceRoot Root directory for resolving paths
      * @returns Errors and warnings for missing files
      */
-    private validateFileReferences(data: any, workspaceRoot: string): { errors: string[]; warnings: string[] } {
+    private validateFileReferences(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
+        data: any,
+        workspaceRoot: string
+    ): { errors: string[]; warnings: string[] } {
         const errors: string[] = [];
         const warnings: string[] = [];
 
@@ -213,12 +226,15 @@ export class SchemaValidator {
      * @param data Collection data
      * @returns Warning messages
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     private generateWarnings(data: any): string[] {
         const warnings: string[] = [];
 
         // Warn about long descriptions
         if (data.description && data.description.length > 300) {
-            warnings.push('Description is quite long (>300 characters). Consider keeping it concise.');
+            warnings.push(
+                'Description is quite long (>300 characters). Consider keeping it concise.'
+            );
         }
 
         // Warn about empty collections
@@ -228,7 +244,9 @@ export class SchemaValidator {
 
         // Warn about too many items
         if (data.items && Array.isArray(data.items) && data.items.length > 30) {
-            warnings.push('Collection has many items (>30). Consider splitting into multiple collections.');
+            warnings.push(
+                'Collection has many items (>30). Consider splitting into multiple collections.'
+            );
         }
 
         // Warn about missing version

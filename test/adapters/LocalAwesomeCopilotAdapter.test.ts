@@ -3,14 +3,15 @@
  * Tests local filesystem-based awesome-copilot collection loading
  */
 
-import * as assert from 'assert';
-import * as path from 'path';
+import * as assert from 'node:assert';
+import * as path from 'node:path';
+
 import { LocalAwesomeCopilotAdapter } from '../../src/adapters/LocalAwesomeCopilotAdapter';
 import { RegistrySource } from '../../src/types/registry';
 
 suite('LocalAwesomeCopilotAdapter', () => {
     const fixturesPath = path.join(__dirname, '../fixtures/local-awesome-collections');
-    
+
     const mockSource: RegistrySource = {
         id: 'test-local-awesome',
         name: 'Test Local Awesome',
@@ -44,9 +45,9 @@ suite('LocalAwesomeCopilotAdapter', () => {
         });
 
         test('should accept custom collectionsPath config', () => {
-            const source = { 
-                ...mockSource, 
-                config: { collectionsPath: 'custom-collections' } 
+            const source = {
+                ...mockSource,
+                config: { collectionsPath: 'custom-collections' },
             };
             const adapter = new LocalAwesomeCopilotAdapter(source);
             assert.ok(adapter);
@@ -94,7 +95,7 @@ suite('LocalAwesomeCopilotAdapter', () => {
             assert.strictEqual(bundles.length, 2);
 
             // Check collection IDs
-            const bundleIds = bundles.map(b => b.id).sort();
+            const bundleIds = bundles.map((b) => b.id).sort();
             assert.deepStrictEqual(bundleIds, ['python-dev', 'test-collection']);
         });
 
@@ -102,7 +103,7 @@ suite('LocalAwesomeCopilotAdapter', () => {
             const adapter = new LocalAwesomeCopilotAdapter(mockSource);
             const bundles = await adapter.fetchBundles();
 
-            const testBundle = bundles.find(b => b.id === 'test-collection');
+            const testBundle = bundles.find((b) => b.id === 'test-collection');
             assert.ok(testBundle);
             assert.strictEqual(testBundle.name, 'Test Collection');
             assert.strictEqual(testBundle.version, '1.0.0');
@@ -148,7 +149,7 @@ suite('LocalAwesomeCopilotAdapter', () => {
             const adapter = new LocalAwesomeCopilotAdapter(mockSource);
             const bundles = await adapter.fetchBundles();
 
-            const testBundle = bundles.find(b => b.id === 'test-collection');
+            const testBundle = bundles.find((b) => b.id === 'test-collection');
             assert.ok(testBundle);
             // Should have 'cloud' environment from 'azure' tag
             assert.ok(testBundle.environments.includes('cloud'));
@@ -158,9 +159,9 @@ suite('LocalAwesomeCopilotAdapter', () => {
             const adapter = new LocalAwesomeCopilotAdapter(mockSource);
             const bundles = await adapter.fetchBundles();
 
-            const testBundle = bundles.find(b => b.id === 'test-collection');
+            const testBundle = bundles.find((b) => b.id === 'test-collection');
             assert.ok(testBundle);
-            
+
             // Check that breakdown metadata was added
             const breakdown = (testBundle as any).breakdown;
             assert.ok(breakdown);
@@ -170,7 +171,7 @@ suite('LocalAwesomeCopilotAdapter', () => {
 
         test('should cache results for performance', async () => {
             const adapter = new LocalAwesomeCopilotAdapter(mockSource);
-            
+
             const start1 = Date.now();
             const bundles1 = await adapter.fetchBundles();
             const time1 = Date.now() - start1;
@@ -189,7 +190,7 @@ suite('LocalAwesomeCopilotAdapter', () => {
             const bundles = await adapter.fetchBundles();
 
             // Only .collection.yml files should be processed
-            assert.ok(bundles.every(b => b.id && b.name));
+            assert.ok(bundles.every((b) => b.id && b.name));
         });
     });
 
@@ -259,8 +260,8 @@ suite('LocalAwesomeCopilotAdapter', () => {
         test('should create zip archive from collection', async () => {
             const adapter = new LocalAwesomeCopilotAdapter(mockSource);
             const bundles = await adapter.fetchBundles();
-            const testBundle = bundles.find(b => b.id === 'test-collection');
-            
+            const testBundle = bundles.find((b) => b.id === 'test-collection');
+
             assert.ok(testBundle);
             const buffer = await adapter.downloadBundle(testBundle);
 
@@ -271,8 +272,8 @@ suite('LocalAwesomeCopilotAdapter', () => {
         test('should include deployment manifest in archive', async () => {
             const adapter = new LocalAwesomeCopilotAdapter(mockSource);
             const bundles = await adapter.fetchBundles();
-            const testBundle = bundles.find(b => b.id === 'test-collection');
-            
+            const testBundle = bundles.find((b) => b.id === 'test-collection');
+
             assert.ok(testBundle);
             const buffer = await adapter.downloadBundle(testBundle);
 
@@ -298,7 +299,7 @@ suite('LocalAwesomeCopilotAdapter', () => {
                 license: 'MIT',
                 downloadUrl: 'file://test',
                 manifestUrl: 'file://test',
-                repository: 'test'
+                repository: 'test',
             };
 
             const buffer = await adapter.downloadBundle(testBundle);
@@ -322,7 +323,7 @@ suite('LocalAwesomeCopilotAdapter', () => {
         test('should normalize paths correctly', async () => {
             const source = { ...mockSource, url: fixturesPath + '//' };
             const adapter = new LocalAwesomeCopilotAdapter(source);
-            
+
             // Should still work despite extra slashes
             const bundles = await adapter.fetchBundles();
             assert.ok(bundles.length > 0);
@@ -334,7 +335,7 @@ suite('LocalAwesomeCopilotAdapter', () => {
             // Create a collection that references non-existent files
             const source = { ...mockSource };
             const adapter = new LocalAwesomeCopilotAdapter(source);
-            
+
             // This should work for fetchBundles (parsing only)
             const bundles = await adapter.fetchBundles();
             assert.ok(bundles.length > 0);

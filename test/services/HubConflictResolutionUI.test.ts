@@ -1,14 +1,15 @@
 /**
  * Test Suite: Hub Conflict Resolution UI
- * 
+ *
  * Tests UI formatting and interaction for profile change conflicts.
  * Covers change display, conflict resolution dialogs, and user choice handling.
  */
 
-import * as assert from 'assert';
-import * as path from 'path';
-import * as fs from 'fs';
-import * as os from 'os';
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+
 import { HubManager } from '../../src/services/HubManager';
 import { HubStorage } from '../../src/storage/HubStorage';
 import { HubConfig } from '../../src/types/hub';
@@ -25,7 +26,7 @@ suite('Hub Conflict Resolution UI', () => {
                 name: 'Test Hub',
                 description: 'Test hub for conflict resolution',
                 maintainer: 'test@example.com',
-                updatedAt: new Date().toISOString()
+                updatedAt: new Date().toISOString(),
             },
             sources: [
                 {
@@ -36,9 +37,9 @@ suite('Hub Conflict Resolution UI', () => {
                     enabled: true,
                     priority: 1,
                     metadata: {
-                        description: 'Test source'
-                    }
-                }
+                        description: 'Test source',
+                    },
+                },
             ],
             profiles: [
                 {
@@ -51,14 +52,14 @@ suite('Hub Conflict Resolution UI', () => {
                             id: 'bundle-1',
                             version: '1.0.0',
                             source: 'test-source',
-                            required: true
-                        }
+                            required: true,
+                        },
                     ],
                     active: false,
                     createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
-                }
-            ]
+                    updatedAt: new Date().toISOString(),
+                },
+            ],
         };
     }
 
@@ -87,13 +88,13 @@ suite('Hub Conflict Resolution UI', () => {
                 id: 'bundle-2',
                 version: '2.0.0',
                 source: 'test-source',
-                required: false
+                required: false,
             });
             await storage.saveHub('test-hub', updated.config, updated.reference);
 
             const changes = await hubManager.getProfileChanges('test-hub', 'profile-1');
             const summary = hubManager.formatChangeSummary(changes!);
-            
+
             assert.ok(summary.includes('bundle-2'));
             assert.ok(summary.includes('Added'));
             assert.ok(summary.includes('2.0.0'));
@@ -111,7 +112,7 @@ suite('Hub Conflict Resolution UI', () => {
 
             const changes = await hubManager.getProfileChanges('test-hub', 'profile-1');
             const summary = hubManager.formatChangeSummary(changes!);
-            
+
             assert.ok(summary.includes('bundle-1'));
             assert.ok(summary.includes('Removed'));
         });
@@ -121,7 +122,7 @@ suite('Hub Conflict Resolution UI', () => {
             await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
             await hubManager.activateProfile('test-hub', 'profile-1', { installBundles: false });
 
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             // Update bundle
             const updated = await storage.loadHub('test-hub');
@@ -131,7 +132,7 @@ suite('Hub Conflict Resolution UI', () => {
 
             const changes = await hubManager.getProfileChanges('test-hub', 'profile-1');
             const summary = hubManager.formatChangeSummary(changes!);
-            
+
             assert.ok(summary.includes('bundle-1'));
             assert.ok(summary.includes('Updated'));
             assert.ok(summary.includes('2.0.0'));
@@ -142,7 +143,7 @@ suite('Hub Conflict Resolution UI', () => {
             await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
             await hubManager.activateProfile('test-hub', 'profile-1', { installBundles: false });
 
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             // Update metadata
             const updated = await storage.loadHub('test-hub');
@@ -152,7 +153,7 @@ suite('Hub Conflict Resolution UI', () => {
 
             const changes = await hubManager.getProfileChanges('test-hub', 'profile-1');
             const summary = hubManager.formatChangeSummary(changes!);
-            
+
             assert.ok(summary.includes('Metadata'));
             assert.ok(summary.includes('name'));
         });
@@ -162,7 +163,7 @@ suite('Hub Conflict Resolution UI', () => {
             await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
             await hubManager.activateProfile('test-hub', 'profile-1', { installBundles: false });
 
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             // Make multiple changes
             const updated = await storage.loadHub('test-hub');
@@ -171,7 +172,7 @@ suite('Hub Conflict Resolution UI', () => {
                 id: 'bundle-2',
                 version: '1.0.0',
                 source: 'test-source',
-                required: false
+                required: false,
             });
             updated.config.profiles[0].bundles[0].version = '2.0.0';
             updated.config.profiles[0].updatedAt = new Date().toISOString();
@@ -179,7 +180,7 @@ suite('Hub Conflict Resolution UI', () => {
 
             const changes = await hubManager.getProfileChanges('test-hub', 'profile-1');
             const summary = hubManager.formatChangeSummary(changes!);
-            
+
             // Should include all change types
             assert.ok(summary.includes('Added'));
             assert.ok(summary.includes('Updated'));
@@ -199,15 +200,15 @@ suite('Hub Conflict Resolution UI', () => {
                 id: 'bundle-2',
                 version: '2.0.0',
                 source: 'test-source',
-                required: false
+                required: false,
             });
             await storage.saveHub('test-hub', updated.config, updated.reference);
 
             const changes = await hubManager.getProfileChanges('test-hub', 'profile-1');
             const items = hubManager.createChangeQuickPickItems(changes!);
-            
+
             assert.ok(items.length > 0);
-            const addedItem = items.find(item => item.label.includes('bundle-2'));
+            const addedItem = items.find((item) => item.label.includes('bundle-2'));
             assert.ok(addedItem);
             assert.ok(addedItem.description?.includes('Added'));
         });
@@ -223,16 +224,18 @@ suite('Hub Conflict Resolution UI', () => {
                 id: 'bundle-2',
                 version: '2.0.0',
                 source: 'test-source',
-                required: true
+                required: true,
             });
             await storage.saveHub('test-hub', updated.config, updated.reference);
 
             const changes = await hubManager.getProfileChanges('test-hub', 'profile-1');
             const items = hubManager.createChangeQuickPickItems(changes!);
-            
-            const requiredItem = items.find(item => item.label.includes('bundle-2'));
+
+            const requiredItem = items.find((item) => item.label.includes('bundle-2'));
             assert.ok(requiredItem);
-            assert.ok(requiredItem.description?.includes('required') || requiredItem.label.includes('*'));
+            assert.ok(
+                requiredItem.description?.includes('required') || requiredItem.label.includes('*')
+            );
         });
 
         test('should create items for all change types', async () => {
@@ -240,7 +243,7 @@ suite('Hub Conflict Resolution UI', () => {
             await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
             await hubManager.activateProfile('test-hub', 'profile-1', { installBundles: false });
 
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             // Make multiple changes
             const updated = await storage.loadHub('test-hub');
@@ -248,7 +251,7 @@ suite('Hub Conflict Resolution UI', () => {
                 id: 'bundle-2',
                 version: '1.0.0',
                 source: 'test-source',
-                required: false
+                required: false,
             });
             updated.config.profiles[0].bundles[0].version = '2.0.0';
             updated.config.profiles[0].updatedAt = new Date().toISOString();
@@ -256,7 +259,7 @@ suite('Hub Conflict Resolution UI', () => {
 
             const changes = await hubManager.getProfileChanges('test-hub', 'profile-1');
             const items = hubManager.createChangeQuickPickItems(changes!);
-            
+
             // Should have items for additions, updates, and metadata
             assert.ok(items.length >= 3);
         });
@@ -274,13 +277,13 @@ suite('Hub Conflict Resolution UI', () => {
                 id: 'bundle-2',
                 version: '2.0.0',
                 source: 'test-source',
-                required: false
+                required: false,
             });
             await storage.saveHub('test-hub', updated.config, updated.reference);
 
             const changes = await hubManager.getProfileChanges('test-hub', 'profile-1');
             const dialog = hubManager.createConflictResolutionDialog(changes!);
-            
+
             assert.ok(dialog);
             assert.ok(dialog.title);
             assert.ok(dialog.options);
@@ -298,14 +301,14 @@ suite('Hub Conflict Resolution UI', () => {
                 id: 'bundle-2',
                 version: '2.0.0',
                 source: 'test-source',
-                required: false
+                required: false,
             });
             await storage.saveHub('test-hub', updated.config, updated.reference);
 
             const changes = await hubManager.getProfileChanges('test-hub', 'profile-1');
             const dialog = hubManager.createConflictResolutionDialog(changes!);
-            
-            const syncOption = dialog.options.find(opt => opt.label.includes('Sync'));
+
+            const syncOption = dialog.options.find((opt) => opt.label.includes('Sync'));
             assert.ok(syncOption);
         });
 
@@ -320,14 +323,14 @@ suite('Hub Conflict Resolution UI', () => {
                 id: 'bundle-2',
                 version: '2.0.0',
                 source: 'test-source',
-                required: false
+                required: false,
             });
             await storage.saveHub('test-hub', updated.config, updated.reference);
 
             const changes = await hubManager.getProfileChanges('test-hub', 'profile-1');
             const dialog = hubManager.createConflictResolutionDialog(changes!);
-            
-            const reviewOption = dialog.options.find(opt => opt.label.includes('Review'));
+
+            const reviewOption = dialog.options.find((opt) => opt.label.includes('Review'));
             assert.ok(reviewOption);
         });
     });
@@ -344,13 +347,13 @@ suite('Hub Conflict Resolution UI', () => {
                 id: 'bundle-2',
                 version: '2.0.0',
                 source: 'test-source',
-                required: true
+                required: true,
             });
             await storage.saveHub('test-hub', updated.config, updated.reference);
 
             const changes = await hubManager.getProfileChanges('test-hub', 'profile-1');
             const detail = hubManager.formatBundleAdditionDetail(changes!.bundlesAdded![0]);
-            
+
             assert.ok(detail.includes('bundle-2'));
             assert.ok(detail.includes('2.0.0'));
             assert.ok(detail.includes('test-source'));
@@ -369,7 +372,7 @@ suite('Hub Conflict Resolution UI', () => {
 
             const changes = await hubManager.getProfileChanges('test-hub', 'profile-1');
             const detail = hubManager.formatBundleRemovalDetail(changes!.bundlesRemoved![0]);
-            
+
             assert.ok(detail.includes('bundle-1'));
         });
 
@@ -378,7 +381,7 @@ suite('Hub Conflict Resolution UI', () => {
             await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
             await hubManager.activateProfile('test-hub', 'profile-1', { installBundles: false });
 
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             // Update bundle
             const updated = await storage.loadHub('test-hub');
@@ -388,7 +391,7 @@ suite('Hub Conflict Resolution UI', () => {
 
             const changes = await hubManager.getProfileChanges('test-hub', 'profile-1');
             const detail = hubManager.formatBundleUpdateDetail(changes!.bundlesUpdated![0]);
-            
+
             assert.ok(detail.includes('bundle-1'));
             assert.ok(detail.includes('1.0.0')); // old version
             assert.ok(detail.includes('2.0.0')); // new version

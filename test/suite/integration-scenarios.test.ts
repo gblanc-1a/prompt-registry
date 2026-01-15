@@ -1,7 +1,6 @@
-import * as assert from 'assert';
-import * as vscode from 'vscode';
-import * as path from 'path';
-import * as fs from 'fs';
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 
 // JSON Schema for metadata validation
 const metadataSchema = {
@@ -20,27 +19,43 @@ const metadataSchema = {
                     filePath: { type: 'string' },
                     originalContent: { type: 'string' },
                     modifiedContent: { type: 'string' },
-                    backup: { type: 'string' }
-                }
-            }
-        }
-    }
+                    backup: { type: 'string' },
+                },
+            },
+        },
+    },
 };
 
 // Helper function to validate metadata against schema
 function validateMetadata(metadata: any): boolean {
-    if (!metadata || typeof metadata !== 'object') return false;
-    if (typeof metadata.projectName !== 'string') return false;
-    if (!['GLOBAL', 'PROJECT'].includes(metadata.scope)) return false;
-    if (typeof metadata.installDate !== 'string') return false;
-    if (!Array.isArray(metadata.files)) return false;
-    
-    for (const file of metadata.files) {
-        if (typeof file.filePath !== 'string') return false;
-        if (typeof file.originalContent !== 'string') return false;
-        if (typeof file.modifiedContent !== 'string') return false;
+    if (!metadata || typeof metadata !== 'object') {
+        return false;
     }
-    
+    if (typeof metadata.projectName !== 'string') {
+        return false;
+    }
+    if (!['GLOBAL', 'PROJECT'].includes(metadata.scope)) {
+        return false;
+    }
+    if (typeof metadata.installDate !== 'string') {
+        return false;
+    }
+    if (!Array.isArray(metadata.files)) {
+        return false;
+    }
+
+    for (const file of metadata.files) {
+        if (typeof file.filePath !== 'string') {
+            return false;
+        }
+        if (typeof file.originalContent !== 'string') {
+            return false;
+        }
+        if (typeof file.modifiedContent !== 'string') {
+            return false;
+        }
+    }
+
     return true;
 }
 
@@ -64,27 +79,27 @@ describe('Prompt Registry Integration Test Scenarios', () => {
     describe('Scenario 1: Basic PROJECT scope install/uninstall workflow', () => {
         let workspaceRoot: string;
         let testFiles: string[];
-        
+
         beforeEach(() => {
             workspaceRoot = setupMockWorkspace('scenario1');
-            
+
             // Create test files
             testFiles = [
                 path.join(workspaceRoot, 'config.json'),
                 path.join(workspaceRoot, 'src', 'main.ts'),
-                path.join(workspaceRoot, 'docs', 'README.md')
+                path.join(workspaceRoot, 'docs', 'README.md'),
             ];
-            
+
             // Create directory structure
             fs.mkdirSync(path.join(workspaceRoot, 'src'), { recursive: true });
             fs.mkdirSync(path.join(workspaceRoot, 'docs'), { recursive: true });
-            
+
             // Create initial file content
             fs.writeFileSync(testFiles[0], '{"name": "test-project"}');
             fs.writeFileSync(testFiles[1], 'console.log("Hello World");');
             fs.writeFileSync(testFiles[2], '# Test Project\nInitial documentation');
         });
-        
+
         afterEach(() => {
             cleanupTestWorkspace(workspaceRoot);
         });
@@ -105,20 +120,20 @@ describe('Prompt Registry Integration Test Scenarios', () => {
     describe('Scenario 2: Install with file modifications and selective uninstall', () => {
         let workspaceRoot: string;
         let testFiles: string[];
-        
+
         beforeEach(() => {
             workspaceRoot = setupMockWorkspace('scenario2');
-            
+
             testFiles = [
                 path.join(workspaceRoot, 'config.json'),
-                path.join(workspaceRoot, 'src', 'main.ts')
+                path.join(workspaceRoot, 'src', 'main.ts'),
             ];
-            
+
             fs.mkdirSync(path.join(workspaceRoot, 'src'), { recursive: true });
             fs.writeFileSync(testFiles[0], '{"name": "test-project"}');
             fs.writeFileSync(testFiles[1], 'console.log("Hello World");');
         });
-        
+
         afterEach(() => {
             cleanupTestWorkspace(workspaceRoot);
         });
@@ -133,15 +148,15 @@ describe('Prompt Registry Integration Test Scenarios', () => {
     describe('Scenario 3: File conflicts with overwrite option', () => {
         let workspaceRoot: string;
         let conflictFile: string;
-        
+
         beforeEach(() => {
             workspaceRoot = setupMockWorkspace('scenario3');
             conflictFile = path.join(workspaceRoot, 'config.json');
-            
+
             // Create conflicting file
             fs.writeFileSync(conflictFile, '{"name": "existing-project", "version": "1.0.0"}');
         });
-        
+
         afterEach(() => {
             cleanupTestWorkspace(workspaceRoot);
         });
@@ -156,15 +171,15 @@ describe('Prompt Registry Integration Test Scenarios', () => {
     describe('Scenario 4: File conflicts without overwrite', () => {
         let workspaceRoot: string;
         let conflictFile: string;
-        
+
         beforeEach(() => {
             workspaceRoot = setupMockWorkspace('scenario4');
             conflictFile = path.join(workspaceRoot, 'config.json');
-            
+
             // Create conflicting file
             fs.writeFileSync(conflictFile, '{"name": "protected-project", "protected": true}');
         });
-        
+
         afterEach(() => {
             cleanupTestWorkspace(workspaceRoot);
         });
@@ -185,11 +200,15 @@ describe('Prompt Registry Integration Test Scenarios', () => {
     describe('Cross-scenario cleanup validation', () => {
         it('should ensure complete cleanup across all scenarios', () => {
             const testWorkspaceRoot = path.join(__dirname, '..', 'test-workspace');
-            
+
             // Verify all test workspaces were cleaned up
             if (fs.existsSync(testWorkspaceRoot)) {
                 const remainingDirs = fs.readdirSync(testWorkspaceRoot);
-                assert.strictEqual(remainingDirs.length, 0, 'All test workspaces should be cleaned up');
+                assert.strictEqual(
+                    remainingDirs.length,
+                    0,
+                    'All test workspaces should be cleaned up'
+                );
             }
         });
     });

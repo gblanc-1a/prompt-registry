@@ -1,4 +1,5 @@
 import * as vscode from 'vscode';
+
 import { RegistryManager } from '../services/RegistryManager';
 import { Logger } from '../utils/logger';
 
@@ -14,14 +15,17 @@ export class GitHubAuthCommand {
     async execute(): Promise<void> {
         try {
             this.logger.info('Executing Force GitHub Authentication command');
-            
-            await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: 'Authenticating with GitHub...',
-                cancellable: false
-            }, async () => {
-                await this.registryManager.forceAuthentication();
-            });
+
+            await vscode.window.withProgress(
+                {
+                    location: vscode.ProgressLocation.Notification,
+                    title: 'Authenticating with GitHub...',
+                    cancellable: false,
+                },
+                async () => {
+                    await this.registryManager.forceAuthentication();
+                }
+            );
 
             vscode.window.showInformationMessage('GitHub authentication refreshed successfully');
         } catch (error) {

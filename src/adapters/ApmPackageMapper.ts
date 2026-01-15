@@ -36,14 +36,14 @@ export interface PackageContext {
  * Environment tag mapping
  */
 const ENV_TAG_MAP: Record<string, string> = {
-    'azure': 'cloud',
-    'aws': 'cloud',
-    'gcp': 'cloud',
-    'frontend': 'web',
-    'backend': 'server',
-    'devops': 'infrastructure',
-    'testing': 'testing',
-    'security': 'security',
+    azure: 'cloud',
+    aws: 'cloud',
+    gcp: 'cloud',
+    frontend: 'web',
+    backend: 'server',
+    devops: 'infrastructure',
+    testing: 'testing',
+    security: 'security',
 };
 
 /**
@@ -55,7 +55,6 @@ const MAX_ID_LENGTH = 200;
  * Maps APM package manifests to Prompt Registry Bundle format
  */
 export class ApmPackageMapper {
-
     /**
      * Convert APM manifest to Bundle
      * @param manifest APM manifest object
@@ -65,7 +64,7 @@ export class ApmPackageMapper {
     toBundle(manifest: ApmManifest, context: PackageContext): Bundle & { apmPackageRef: string } {
         const packageRef = this.buildPackageRef(context);
         const tags = this.buildTags(manifest.tags);
-        
+
         return {
             id: this.generateBundleId(manifest, context),
             name: manifest.name,
@@ -95,12 +94,12 @@ export class ApmPackageMapper {
         const sanitizedName = manifest.name
             .toLowerCase()
             .replace(/[^a-z0-9\s-]/g, '') // Remove special chars except space and hyphen
-            .replace(/\s+/g, '-')          // Replace spaces with hyphens
-            .replace(/-+/g, '-')           // Collapse multiple hyphens
+            .replace(/\s+/g, '-') // Replace spaces with hyphens
+            .replace(/-+/g, '-') // Collapse multiple hyphens
             .trim();
 
         const id = `${context.owner}-${sanitizedName}`;
-        
+
         // Limit length to prevent abuse
         return id.substring(0, MAX_ID_LENGTH);
     }
@@ -109,7 +108,7 @@ export class ApmPackageMapper {
      * Build package reference string
      */
     private buildPackageRef(context: PackageContext): string {
-        return context.path 
+        return context.path
             ? `${context.owner}/${context.repo}/${context.path}`
             : `${context.owner}/${context.repo}`;
     }
@@ -134,7 +133,7 @@ export class ApmPackageMapper {
         }
 
         const environments = new Set<string>();
-        
+
         for (const tag of tags) {
             const env = ENV_TAG_MAP[tag.toLowerCase()];
             if (env) {
@@ -157,7 +156,7 @@ export class ApmPackageMapper {
             return [];
         }
 
-        return apmDeps.map(dep => ({
+        return apmDeps.map((dep) => ({
             bundleId: dep,
             versionRange: '*',
             optional: false,

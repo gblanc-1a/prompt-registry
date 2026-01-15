@@ -2,7 +2,8 @@
  * Bundle Management Commands Unit Tests
  */
 
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 
@@ -104,7 +105,7 @@ suite('Bundle Management Commands', () => {
             };
 
             const backupPath = `/path/to/${bundle.id}.backup-${Date.now()}`;
-            
+
             assert.ok(backupPath.includes('backup'));
             assert.ok(backupPath.includes(bundle.id));
         });
@@ -121,8 +122,11 @@ suite('Bundle Management Commands', () => {
 
             for (const testCase of testCases) {
                 const hasUpdate = testCase.latest > testCase.current;
-                assert.strictEqual(hasUpdate, testCase.hasUpdate, 
-                    `Failed for ${testCase.current} vs ${testCase.latest}`);
+                assert.strictEqual(
+                    hasUpdate,
+                    testCase.hasUpdate,
+                    `Failed for ${testCase.current} vs ${testCase.latest}`
+                );
             }
         });
 
@@ -138,7 +142,7 @@ suite('Bundle Management Commands', () => {
 
         test('should handle network errors gracefully', async () => {
             const showErrorMessageStub = sandbox.stub(vscode.window, 'showErrorMessage');
-            
+
             const error = new Error('Network error');
             showErrorMessageStub.resolves();
 
@@ -190,7 +194,7 @@ suite('Bundle Management Commands', () => {
                 { id: 'bundle-2', name: 'Bundle 2' },
             ];
 
-            const afterUninstall = installedBundles.filter(b => b.id !== 'bundle-1');
+            const afterUninstall = installedBundles.filter((b) => b.id !== 'bundle-1');
 
             assert.strictEqual(afterUninstall.length, 1);
             assert.strictEqual(afterUninstall[0].id, 'bundle-2');
@@ -198,7 +202,7 @@ suite('Bundle Management Commands', () => {
 
         test('should handle uninstall errors', async () => {
             const showErrorMessageStub = sandbox.stub(vscode.window, 'showErrorMessage');
-            
+
             const error = new Error('Uninstall failed');
             showErrorMessageStub.resolves();
 
@@ -221,11 +225,9 @@ suite('Bundle Management Commands', () => {
 
         test('should check for conflicts with existing bundles', async () => {
             const newBundle = { id: 'test-bundle', name: 'Test Bundle' };
-            const installedBundles = [
-                { id: 'other-bundle', name: 'Other Bundle' },
-            ];
+            const installedBundles = [{ id: 'other-bundle', name: 'Other Bundle' }];
 
-            const hasConflict = installedBundles.some(b => b.id === newBundle.id);
+            const hasConflict = installedBundles.some((b) => b.id === newBundle.id);
             assert.strictEqual(hasConflict, false);
         });
 
@@ -258,15 +260,13 @@ suite('Bundle Management Commands', () => {
         });
 
         test('should update registry after successful install', async () => {
-            const installedBundles = [
-                { id: 'bundle-1', name: 'Bundle 1' },
-            ];
+            const installedBundles = [{ id: 'bundle-1', name: 'Bundle 1' }];
 
             const newBundle = { id: 'bundle-2', name: 'Bundle 2' };
             const afterInstall = [...installedBundles, newBundle];
 
             assert.strictEqual(afterInstall.length, 2);
-            assert.ok(afterInstall.find(b => b.id === 'bundle-2'));
+            assert.ok(afterInstall.find((b) => b.id === 'bundle-2'));
         });
     });
 
@@ -280,13 +280,13 @@ suite('Bundle Management Commands', () => {
             assert.strictEqual(installedBundles.length, 1);
 
             // Update
-            installedBundles = installedBundles.map(b => 
+            installedBundles = installedBundles.map((b) =>
                 b.id === 'test-bundle' ? { ...b, version: '1.1.0' } : b
             );
             assert.strictEqual(installedBundles[0].version, '1.1.0');
 
             // Uninstall
-            installedBundles = installedBundles.filter(b => b.id !== 'test-bundle');
+            installedBundles = installedBundles.filter((b) => b.id !== 'test-bundle');
             assert.strictEqual(installedBundles.length, 0);
         });
 

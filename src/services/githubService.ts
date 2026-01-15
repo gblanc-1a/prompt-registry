@@ -1,12 +1,14 @@
-import * as vscode from 'vscode';
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
+
 import axios, { AxiosResponse } from 'axios';
 import * as semver from 'semver';
-import { GitHubRelease, GitHubAsset, VersionInfo, BundleInfo } from '../types/github';
+import * as vscode from 'vscode';
+
+import { GitHubRelease, VersionInfo, BundleInfo } from '../types/github';
 import { Platform } from '../types/platform';
 import { Logger } from '../utils/logger';
 import { escapeRegex } from '../utils/regexUtils';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 
@@ -26,7 +28,7 @@ export class GitHubService {
 
     private constructor() {
         this.logger = Logger.getInstance();
-        
+
         // Read configuration from VSCode settings
         const config = vscode.workspace.getConfiguration('olaf');
         this.baseUrl = config.get<string>('githubApiUrl') || 'https://api.github.com';
@@ -38,10 +40,14 @@ export class GitHubService {
         this.defaultVersion = config.get<string>('defaultVersion') || 'latest';
 
         if (this.usePrivateRepo && !this.token && !this.useGitHubCli) {
-            this.logger.warn('Private repository access enabled but no GitHub token provided and GitHub CLI is disabled. Please set promptregistry.githubToken in settings or enable promptregistry.useGitHubCli.');
+            this.logger.warn(
+                'Private repository access enabled but no GitHub token provided and GitHub CLI is disabled. Please set promptregistry.githubToken in settings or enable promptregistry.useGitHubCli.'
+            );
         }
-        
-        this.logger.debug(`GitHubService initialized for ${this.owner}/${this.repo} (private: ${this.usePrivateRepo}, gh-cli: ${this.useGitHubCli}, default-version: ${this.defaultVersion})`);
+
+        this.logger.debug(
+            `GitHubService initialized for ${this.owner}/${this.repo} (private: ${this.usePrivateRepo}, gh-cli: ${this.useGitHubCli}, default-version: ${this.defaultVersion})`
+        );
     }
 
     public static getInstance(): GitHubService {
@@ -55,6 +61,7 @@ export class GitHubService {
      * Reset the singleton instance (for testing or config reload)
      */
     public static resetInstance(): void {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
         GitHubService.instance = undefined as any;
     }
 
@@ -63,17 +70,17 @@ export class GitHubService {
      */
     private async getAuthHeaders(): Promise<Record<string, string>> {
         const headers: Record<string, string> = {
-            'Accept': 'application/vnd.github.v3+json',
-            'User-Agent': 'Prompt Registry-VSCode-Extension/1.0.0'
+            Accept: 'application/vnd.github.v3+json',
+            'User-Agent': 'Prompt Registry-VSCode-Extension/1.0.0',
         };
 
         // Always try to use authentication if we have GitHub CLI enabled or a token configured
         // This handles cases where repositories might be private even if not explicitly configured
         const shouldUseAuth = this.usePrivateRepo || this.useGitHubCli;
-        
+
         if (shouldUseAuth) {
             let token = this.token;
-            
+
             if (this.useGitHubCli && !token) {
                 try {
                     token = await this.getGitHubCliToken();
@@ -81,13 +88,17 @@ export class GitHubService {
                     this.logger.error('Failed to get token from GitHub CLI', error as Error);
                     // Only throw if private repo is explicitly enabled, otherwise continue without auth
                     if (this.usePrivateRepo) {
-                        throw new Error('GitHub CLI authentication failed. Please run "gh auth login" or provide a manual token.');
+                        throw new Error(
+                            'GitHub CLI authentication failed. Please run "gh auth login" or provide a manual token.'
+                        );
                     } else {
-                        this.logger.warn('GitHub CLI authentication failed, continuing without authentication');
+                        this.logger.warn(
+                            'GitHub CLI authentication failed, continuing without authentication'
+                        );
                     }
                 }
             }
-            
+
             if (token) {
                 headers['Authorization'] = `token ${token}`;
                 this.logger.debug('Using authenticated GitHub API requests');
@@ -116,25 +127,31 @@ export class GitHubService {
      */
     private getGitHubCliInstallationInstructions(): string {
         const platform = process.platform;
-        
+
         switch (platform) {
             case 'win32':
-                return 'Install GitHub CLI on Windows:\n' +
-                       '1. Using winget: winget install --id GitHub.cli\n' +
-                       '2. Using Chocolatey: choco install gh\n' +
-                       '3. Using Scoop: scoop install gh\n' +
-                       '4. Download from: https://cli.github.com/';
+                return (
+                    'Install GitHub CLI on Windows:\n' +
+                    '1. Using winget: winget install --id GitHub.cli\n' +
+                    '2. Using Chocolatey: choco install gh\n' +
+                    '3. Using Scoop: scoop install gh\n' +
+                    '4. Download from: https://cli.github.com/'
+                );
             case 'darwin':
-                return 'Install GitHub CLI on macOS:\n' +
-                       '1. Using Homebrew: brew install gh\n' +
-                       '2. Using MacPorts: sudo port install gh\n' +
-                       '3. Download from: https://cli.github.com/';
+                return (
+                    'Install GitHub CLI on macOS:\n' +
+                    '1. Using Homebrew: brew install gh\n' +
+                    '2. Using MacPorts: sudo port install gh\n' +
+                    '3. Download from: https://cli.github.com/'
+                );
             case 'linux':
-                return 'Install GitHub CLI on Linux:\n' +
-                       '1. Using apt (Ubuntu/Debian): sudo apt install gh\n' +
-                       '2. Using yum (CentOS/RHEL): sudo yum install gh\n' +
-                       '3. Using snap: sudo snap install gh\n' +
-                       '4. Download from: https://cli.github.com/';
+                return (
+                    'Install GitHub CLI on Linux:\n' +
+                    '1. Using apt (Ubuntu/Debian): sudo apt install gh\n' +
+                    '2. Using yum (CentOS/RHEL): sudo yum install gh\n' +
+                    '3. Using snap: sudo snap install gh\n' +
+                    '4. Download from: https://cli.github.com/'
+                );
             default:
                 return 'Install GitHub CLI from: https://cli.github.com/';
         }
@@ -154,25 +171,32 @@ export class GitHubService {
             // Get the token using gh auth token
             const { stdout } = await execAsync('gh auth token');
             const token = stdout.trim();
-            
+
             if (!token) {
-                throw new Error('No GitHub token found. Please run "gh auth login" to authenticate with your GitHub account.');
+                throw new Error(
+                    'No GitHub token found. Please run "gh auth login" to authenticate with your GitHub account.'
+                );
             }
-            
+
             this.logger.debug('Successfully obtained token from GitHub CLI');
             return token;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
         } catch (error: any) {
             this.logger.error('Failed to get GitHub CLI token', error);
-            
+
             // Provide specific guidance based on the error
             if (error.message.includes('not logged into any GitHub hosts')) {
-                throw new Error('Not authenticated with GitHub CLI.\n\nPlease run:\n  gh auth login\n\nto authenticate with your GitHub account.');
+                throw new Error(
+                    'Not authenticated with GitHub CLI.\n\nPlease run:\n  gh auth login\n\nto authenticate with your GitHub account.'
+                );
             }
-            
+
             if (error.message.includes('could not prompt')) {
-                throw new Error('GitHub CLI authentication requires interactive prompt.\n\nPlease run:\n  gh auth login\n\nin a terminal to complete authentication.');
+                throw new Error(
+                    'GitHub CLI authentication requires interactive prompt.\n\nPlease run:\n  gh auth login\n\nin a terminal to complete authentication.'
+                );
             }
-            
+
             throw error;
         }
     }
@@ -184,20 +208,21 @@ export class GitHubService {
         try {
             const url = `${this.baseUrl}/repos/${this.owner}/${this.repo}`;
             const headers = await this.getAuthHeaders();
-            
+
             await axios.get(url, {
                 headers,
-                timeout: 10000
+                timeout: 10_000,
             });
 
-            return { 
-                valid: true, 
-                message: `Successfully validated access to ${this.owner}/${this.repo}` 
+            return {
+                valid: true,
+                message: `Successfully validated access to ${this.owner}/${this.repo}`,
             };
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
         } catch (error: any) {
             const status = error.response?.status;
             let message = `Failed to access repository ${this.owner}/${this.repo}`;
-            
+
             if (status === 401) {
                 message += ': Invalid or missing authentication token';
                 if (this.useGitHubCli) {
@@ -213,7 +238,8 @@ export class GitHubService {
                 }
             } else if (status === 403) {
                 message += ': Access forbidden - check token permissions';
-                message += '\n\nThe token may not have sufficient permissions to access this repository.';
+                message +=
+                    '\n\nThe token may not have sufficient permissions to access this repository.';
             } else if (status === 404) {
                 message += ': Repository not found or access denied';
                 message += '\n\nPlease verify:\n';
@@ -237,10 +263,10 @@ export class GitHubService {
             this.logger.debug('Fetching latest release from GitHub...');
             const url = `${this.baseUrl}/repos/${this.owner}/${this.repo}/releases/latest`;
             const headers = await this.getAuthHeaders();
-            
+
             const response: AxiosResponse<GitHubRelease> = await axios.get(url, {
                 headers,
-                timeout: 10000
+                timeout: 10_000,
             });
 
             this.logger.info(`Latest release found: ${response.data.tag_name}`);
@@ -259,13 +285,13 @@ export class GitHubService {
             this.logger.debug(`Fetching ${limit} releases from GitHub...`);
             const url = `${this.baseUrl}/repos/${this.owner}/${this.repo}/releases`;
             const headers = await this.getAuthHeaders();
-            
+
             const response: AxiosResponse<GitHubRelease[]> = await axios.get(url, {
                 headers,
                 params: {
-                    per_page: limit
+                    per_page: limit,
                 },
-                timeout: 10000
+                timeout: 10_000,
             });
 
             this.logger.info(`Found ${response.data.length} releases`);
@@ -284,10 +310,10 @@ export class GitHubService {
             this.logger.debug(`Fetching release by tag: ${tag}`);
             const url = `${this.baseUrl}/repos/${this.owner}/${this.repo}/releases/tags/${tag}`;
             const headers = await this.getAuthHeaders();
-            
+
             const response: AxiosResponse<GitHubRelease> = await axios.get(url, {
                 headers,
-                timeout: 10000
+                timeout: 10_000,
             });
 
             this.logger.info(`Release found for tag ${tag}`);
@@ -313,16 +339,19 @@ export class GitHubService {
             this.logger.debug(`Checking asset: ${asset.name}`);
             if (match) {
                 const version = match[1];
-                
+                if (!version) {
+                    continue;
+                }
+
                 this.logger.debug(`Found bundle for ${platform}: ${asset.name}`);
-                
+
                 return {
                     platform: platformPrefix,
                     version,
                     asset,
                     downloadUrl: asset.browser_download_url,
                     filename: asset.name,
-                    size: asset.size
+                    size: asset.size,
                 };
             }
         }
@@ -343,14 +372,17 @@ export class GitHubService {
             if (match) {
                 const platform = match[1];
                 const version = match[2];
-                
+                if (!platform || !version) {
+                    continue;
+                }
+
                 bundles.push({
                     platform,
                     version,
                     asset,
                     downloadUrl: asset.browser_download_url,
                     filename: asset.name,
-                    size: asset.size
+                    size: asset.size,
                 });
             }
         }
@@ -366,7 +398,7 @@ export class GitHubService {
         try {
             // Remove 'v' prefix if present
             const cleanTag = tag.startsWith('v') ? tag.substring(1) : tag;
-            
+
             const version = semver.parse(cleanTag);
             if (!version) {
                 this.logger.warn(`Failed to parse version: ${tag}`);
@@ -378,8 +410,9 @@ export class GitHubService {
                 major: version.major,
                 minor: version.minor,
                 patch: version.patch,
-                prerelease: version.prerelease.length > 0 ? version.prerelease.join('.') : undefined,
-                isPrerelease: version.prerelease.length > 0
+                prerelease:
+                    version.prerelease.length > 0 ? version.prerelease.join('.') : undefined,
+                isPrerelease: version.prerelease.length > 0,
             };
         } catch (error) {
             this.logger.error(`Error parsing version ${tag}`, error as Error);
@@ -409,47 +442,58 @@ export class GitHubService {
     /**
      * Download a bundle from GitHub using the universal strategy that works for both public and private repos
      */
-    public async downloadBundle(bundleInfo: BundleInfo, onProgress?: (progress: number) => void): Promise<Buffer> {
+    public async downloadBundle(
+        bundleInfo: BundleInfo,
+        onProgress?: (progress: number) => void
+    ): Promise<Buffer> {
         try {
             this.logger.info(`Downloading bundle: ${bundleInfo.filename}`);
-            
+
             // Always use the API asset download URL as it works for both public and private repos
             const downloadUrl = await this.getAssetDirectDownloadUrl(bundleInfo.asset.id);
-            
+
             this.logger.debug(`Download URL: ${downloadUrl}`);
             const headers = await this.getAuthHeaders();
 
             // Always set proper Accept header for binary asset downloads when using API
             headers['Accept'] = 'application/octet-stream';
-            
+
             const response = await axios.get(downloadUrl, {
                 responseType: 'arraybuffer',
                 headers,
-                timeout: 300000, // 5 minutes timeout for large files
+                timeout: 300_000, // 5 minutes timeout for large files
                 onDownloadProgress: (progressEvent) => {
                     if (onProgress && progressEvent.total) {
                         const progress = (progressEvent.loaded / progressEvent.total) * 100;
                         onProgress(progress);
                     }
-                }
+                },
             });
 
-            this.logger.info(`Bundle downloaded successfully: ${bundleInfo.filename} (${bundleInfo.size} bytes)`);
+            this.logger.info(
+                `Bundle downloaded successfully: ${bundleInfo.filename} (${bundleInfo.size} bytes)`
+            );
             return Buffer.from(response.data);
         } catch (error) {
             this.logger.error(`Failed to download bundle ${bundleInfo.filename}`, error as Error);
-            
+
             // Enhanced error messages based on common failure scenarios
             if (error instanceof Error) {
                 if (error.message.includes('401')) {
-                    throw new Error(`Authentication failed. ${this.useGitHubCli ? 'Please run "gh auth login" to authenticate with GitHub CLI.' : 'Please check your GitHub token.'}`);
+                    throw new Error(
+                        `Authentication failed. ${this.useGitHubCli ? 'Please run "gh auth login" to authenticate with GitHub CLI.' : 'Please check your GitHub token.'}`
+                    );
                 } else if (error.message.includes('403')) {
-                    throw new Error(`Access forbidden. Please verify that your token has the required permissions to access this repository.`);
+                    throw new Error(
+                        `Access forbidden. Please verify that your token has the required permissions to access this repository.`
+                    );
                 } else if (error.message.includes('404')) {
-                    throw new Error(`Bundle not found. Please verify that the release and asset exist in the repository.`);
+                    throw new Error(
+                        `Bundle not found. Please verify that the release and asset exist in the repository.`
+                    );
                 }
             }
-            
+
             throw new Error(`Failed to download bundle: ${error}`);
         }
     }
@@ -469,10 +513,10 @@ export class GitHubService {
             this.logger.debug('Checking GitHub API connectivity...');
             const url = `${this.baseUrl}/repos/${this.owner}/${this.repo}`;
             const headers = await this.getAuthHeaders();
-            
+
             await axios.get(url, {
                 headers,
-                timeout: 5000
+                timeout: 5000,
             });
 
             this.logger.debug('GitHub API connectivity check successful');
@@ -488,12 +532,10 @@ export class GitHubService {
      */
     public async getReleaseByVersionPreference(version?: string): Promise<GitHubRelease> {
         const targetVersion = version || this.defaultVersion;
-        
-        if (targetVersion === 'latest') {
-            return this.getLatestRelease();
-        } else {
-            return this.getReleaseByTagWithFallback(targetVersion);
-        }
+
+        return targetVersion === 'latest'
+            ? this.getLatestRelease()
+            : this.getReleaseByTagWithFallback(targetVersion);
     }
 
     /**
@@ -504,21 +546,30 @@ export class GitHubService {
         try {
             return await this.getReleaseByTag(version);
         } catch (error) {
-            this.logger.debug(`Failed to find release with tag "${version}", trying alternative format...`);
+            this.logger.debug(
+                `Failed to find release with tag "${version}", trying alternative format...`
+            );
         }
 
         // If that fails, try the alternative format (add/remove "v" prefix)
-        const alternativeVersion = version.startsWith('v') 
-            ? version.slice(1)  // Remove "v" prefix
-            : `v${version}`;    // Add "v" prefix
+        const alternativeVersion = version.startsWith('v')
+            ? version.slice(1) // Remove "v" prefix
+            : `v${version}`; // Add "v" prefix
 
         try {
-            this.logger.debug(`Attempting to find release with alternative tag: ${alternativeVersion}`);
+            this.logger.debug(
+                `Attempting to find release with alternative tag: ${alternativeVersion}`
+            );
             return await this.getReleaseByTag(alternativeVersion);
         } catch (error) {
             // If both attempts fail, throw an error with helpful information
-            this.logger.error(`Failed to find release with both "${version}" and "${alternativeVersion}"`, error as Error);
-            throw new Error(`Release not found for version "${version}". Please check that this version exists in the repository.`);
+            this.logger.error(
+                `Failed to find release with both "${version}" and "${alternativeVersion}"`,
+                error as Error
+            );
+            throw new Error(
+                `Release not found for version "${version}". Please check that this version exists in the repository.`
+            );
         }
     }
 
@@ -529,7 +580,7 @@ export class GitHubService {
         try {
             const releases = await this.getAllReleases(limit);
             const versions: VersionInfo[] = [];
-            
+
             for (const release of releases) {
                 const versionInfo = this.parseVersion(release.tag_name);
                 if (versionInfo) {
@@ -538,7 +589,7 @@ export class GitHubService {
                     versions.push(versionInfo);
                 }
             }
-            
+
             return versions;
         } catch (error) {
             this.logger.error('Failed to fetch available versions', error as Error);
@@ -552,9 +603,9 @@ export class GitHubService {
             [Platform.WINDSURF]: 'windsurf',
             [Platform.KIRO]: 'kiro',
             [Platform.CURSOR]: 'cursor',
-            [Platform.UNKNOWN]: 'vscode' // fallback
+            [Platform.UNKNOWN]: 'vscode', // fallback
         };
-        
+
         return prefixMap[platform];
     }
 }

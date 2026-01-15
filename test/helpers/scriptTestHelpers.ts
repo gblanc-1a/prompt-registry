@@ -1,17 +1,17 @@
 /**
  * Script Test Helpers
- * 
+ *
  * Common utilities for testing the GitHub scaffold scripts.
  * These helpers provide isolated test environments with git repos,
  * stub executables, and file management utilities.
- * 
+ *
  * Feature: workflow-bundle-scaffolding
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
-import { spawnSync, SpawnSyncReturns } from 'child_process';
+import { spawnSync } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
 /**
  * Result of running a command
@@ -91,13 +91,19 @@ export function copyDir(src: string, dest: string): void {
  */
 export function initGitRepo(root: string): void {
     const init = run('git', ['init', '-q'], root);
-    if (init.code !== 0) throw new Error(`git init failed: ${init.stderr}`);
-    
+    if (init.code !== 0) {
+        throw new Error(`git init failed: ${init.stderr}`);
+    }
+
     const email = run('git', ['config', 'user.email', 'test@example.com'], root);
-    if (email.code !== 0) throw new Error(`git config email failed: ${email.stderr}`);
-    
+    if (email.code !== 0) {
+        throw new Error(`git config email failed: ${email.stderr}`);
+    }
+
     const name = run('git', ['config', 'user.name', 'Test'], root);
-    if (name.code !== 0) throw new Error(`git config name failed: ${name.stderr}`);
+    if (name.code !== 0) {
+        throw new Error(`git config name failed: ${name.stderr}`);
+    }
 }
 
 /**
@@ -105,10 +111,14 @@ export function initGitRepo(root: string): void {
  */
 export function gitCommitAll(root: string, message: string): void {
     const add = run('git', ['add', '.'], root);
-    if (add.code !== 0) throw new Error(`git add failed: ${add.stderr}`);
-    
+    if (add.code !== 0) {
+        throw new Error(`git add failed: ${add.stderr}`);
+    }
+
     const commit = run('git', ['commit', '-q', '-m', message], root);
-    if (commit.code !== 0) throw new Error(`git commit failed: ${commit.stderr || commit.stdout}`);
+    if (commit.code !== 0) {
+        throw new Error(`git commit failed: ${commit.stderr || commit.stdout}`);
+    }
 }
 
 /**
@@ -116,7 +126,9 @@ export function gitCommitAll(root: string, message: string): void {
  */
 export function gitTag(root: string, tag: string): void {
     const res = run('git', ['tag', tag], root);
-    if (res.code !== 0) throw new Error(`git tag failed: ${res.stderr}`);
+    if (res.code !== 0) {
+        throw new Error(`git tag failed: ${res.stderr}`);
+    }
 }
 
 /**
@@ -136,14 +148,14 @@ export function createGhStub(root: string): GhStubResult {
         [
             '#!/usr/bin/env node',
             "const fs = require('node:fs');",
-            "const log = process.env.GH_STUB_LOG;",
+            'const log = process.env.GH_STUB_LOG;',
             'const args = process.argv.slice(2);',
-            'fs.appendFileSync(log, JSON.stringify(args) + "\\n");',
+            String.raw`fs.appendFileSync(log, JSON.stringify(args) + "\n");`,
             "if (args[0] === 'release' && args[1] === 'view') process.exit(1);",
             "if (args[0] === 'release' && args[1] === 'create') process.exit(0);",
             'process.exit(0);',
             '',
-        ].join('\n'),
+        ].join('\n')
     );
     fs.chmodSync(ghPath, 0o755);
 
@@ -157,9 +169,9 @@ export function readGhCalls(logPath: string): string[][] {
     return fs
         .readFileSync(logPath, 'utf8')
         .split(/\r?\n/)
-        .map(l => l.trim())
+        .map((l) => l.trim())
         .filter(Boolean)
-        .map(l => JSON.parse(l));
+        .map((l) => JSON.parse(l));
 }
 
 /**
@@ -167,7 +179,9 @@ export function readGhCalls(logPath: string): string[][] {
  */
 export function unzipList(zipAbsPath: string, cwd: string): string {
     const res = run('unzip', ['-l', zipAbsPath], cwd);
-    if (res.code !== 0) throw new Error(`unzip failed: ${res.stderr || res.stdout}`);
+    if (res.code !== 0) {
+        throw new Error(`unzip failed: ${res.stderr || res.stdout}`);
+    }
     return res.stdout;
 }
 
@@ -176,7 +190,9 @@ export function unzipList(zipAbsPath: string, cwd: string): string {
  */
 export function unzipFile(zipAbsPath: string, fileName: string, cwd: string): string {
     const res = run('unzip', ['-p', zipAbsPath, fileName], cwd);
-    if (res.code !== 0) throw new Error(`unzip failed: ${res.stderr || res.stdout}`);
+    if (res.code !== 0) {
+        throw new Error(`unzip failed: ${res.stderr || res.stdout}`);
+    }
     return res.stdout;
 }
 
@@ -193,7 +209,7 @@ export function makeMinimalPackageJson(root: string): void {
             license: 'MIT',
             repository: { url: 'https://example.com/x' },
             keywords: [],
-        }),
+        })
     );
 }
 
@@ -204,22 +220,22 @@ export function makeMinimalPackageJson(root: string): void {
 export function copyScriptsToProject(root: string): string {
     const scriptsDir = path.join(root, 'scripts');
     copyDir(TEMPLATE_SCRIPTS_DIR, scriptsDir);
-    
+
     // Symlink node_modules from prompt-registry so scripts can find dependencies
     // (archiver, semver, js-yaml, yauzl, etc.)
     const promptRegistryRoot = path.resolve(__dirname, '../..');
     const sourceNodeModules = path.join(promptRegistryRoot, 'node_modules');
     const targetNodeModules = path.join(root, 'node_modules');
-    
+
     if (fs.existsSync(sourceNodeModules) && !fs.existsSync(targetNodeModules)) {
         try {
             fs.symlinkSync(sourceNodeModules, targetNodeModules, 'dir');
-        } catch (e) {
+        } catch (error) {
             // Fallback: copy if symlink fails (e.g., on some Windows configs)
             // This is slower but more reliable
         }
     }
-    
+
     return scriptsDir;
 }
 
@@ -240,20 +256,20 @@ export function getNodeModulesPath(): string {
  */
 export function createTestProject(prefix: string, options: TestProjectOptions = {}): TestProject {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
-    
+
     if (options.withPackageJson !== false) {
         makeMinimalPackageJson(root);
     }
-    
+
     let scriptsDir = '';
     if (options.copyScripts !== false) {
         scriptsDir = copyScriptsToProject(root);
     }
-    
+
     if (options.initGit) {
         initGitRepo(root);
     }
-    
+
     return {
         root,
         scriptsDir,
@@ -261,39 +277,38 @@ export function createTestProject(prefix: string, options: TestProjectOptions = 
             if (fs.existsSync(root)) {
                 fs.rmSync(root, { recursive: true, force: true });
             }
-        }
+        },
     };
 }
 
 /**
  * Create a collection YAML file
  */
-export function createCollection(root: string, id: string, options: {
-    name?: string;
-    description?: string;
-    version?: string;
-    items?: Array<{ path: string; kind: string }>;
-} = {}): string {
+export function createCollection(
+    root: string,
+    id: string,
+    options: {
+        name?: string;
+        description?: string;
+        version?: string;
+        items?: Array<{ path: string; kind: string }>;
+    } = {}
+): string {
     const name = options.name || id.toUpperCase();
     const description = options.description || name;
     const items = options.items || [];
-    
-    const lines = [
-        `id: ${id}`,
-        `name: ${name}`,
-        `description: ${description}`,
-    ];
-    
+
+    const lines = [`id: ${id}`, `name: ${name}`, `description: ${description}`];
+
     if (options.version) {
         lines.push(`version: "${options.version}"`);
     }
-    
+
     lines.push('items:');
     for (const item of items) {
-        lines.push(`  - path: ${item.path}`);
-        lines.push(`    kind: ${item.kind}`);
+        lines.push(`  - path: ${item.path}`, `    kind: ${item.kind}`);
     }
-    
+
     return writeFile(root, `collections/${id}.collection.yml`, lines.join('\n') + '\n');
 }
 
@@ -338,29 +353,29 @@ export function assertReleaseCreateCalledWithAssets(options: {
     mustInclude: RegExp[];
 }): { zipArg: string; manifestArg: string; listing: string } {
     const { calls, tag, mustInclude } = options;
-    const creates = calls.filter(c => c[0] === 'release' && c[1] === 'create' && c[2] === tag);
-    
+    const creates = calls.filter((c) => c[0] === 'release' && c[1] === 'create' && c[2] === tag);
+
     if (creates.length !== 1) {
         throw new Error(`Expected one gh release create for ${tag}, got ${creates.length}`);
     }
 
     const args = creates[0];
-    const zipArg = args[args.length - 2];
-    const manifestArg = args[args.length - 1];
+    const zipArg = args.at(-2);
+    const manifestArg = args.at(-1);
 
-    if (!fs.existsSync(zipArg)) {
+    if (!zipArg || !fs.existsSync(zipArg)) {
         throw new Error(`Missing zip asset at ${zipArg}`);
     }
-    if (!fs.existsSync(manifestArg)) {
+    if (!manifestArg || !fs.existsSync(manifestArg)) {
         throw new Error(`Missing manifest asset at ${manifestArg}`);
     }
 
     const listing = unzipList(zipArg, path.dirname(zipArg));
-    
+
     if (!/deployment-manifest\.yml/.test(listing)) {
         throw new Error('Zip does not contain deployment-manifest.yml');
     }
-    
+
     for (const re of mustInclude) {
         if (!re.test(listing)) {
             throw new Error(`Zip listing does not match ${re}: ${listing}`);

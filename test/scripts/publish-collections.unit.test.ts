@@ -1,17 +1,17 @@
 /**
  * Publish Collections Unit Tests
- * 
+ *
  * Transposed from workflow-bundle/test/publish-collections.dry-run.test.js
  * Tests the publish-collections script unit functionality.
- * 
+ *
  * Feature: workflow-bundle-scaffolding
  * Requirements: 15.1
  */
 
-import * as assert from 'assert';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 
 // Import the publish-collections module
 const publishCollections = require('../../templates/scaffolds/github/scripts/publish-collections.js');
@@ -34,7 +34,9 @@ suite('Publish Collections Unit Tests', () => {
     /**
      * Create a zip file with given entries using archiver
      */
-    async function makeZipWithEntries(options: { entries: Array<{ name: string; content: string }> }): Promise<{ tmpDir: string; zipPath: string }> {
+    async function makeZipWithEntries(options: {
+        entries: Array<{ name: string; content: string }>;
+    }): Promise<{ tmpDir: string; zipPath: string }> {
         const archiver = require('archiver');
         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'publish-collections-'));
         const zipPath = path.join(tmpDir, 'test.bundle.zip');
@@ -58,9 +60,9 @@ suite('Publish Collections Unit Tests', () => {
     }
 
     suite('listZipEntries()', () => {
-        test('returns entry names', async function() {
-            this.timeout(10000);
-            
+        test('returns entry names', async function () {
+            this.timeout(10_000);
+
             const { zipPath, tmpDir } = await makeZipWithEntries({
                 entries: [
                     { name: 'a.txt', content: 'hello' },
@@ -78,8 +80,8 @@ suite('Publish Collections Unit Tests', () => {
     });
 
     suite('main() --dry-run', () => {
-        test('does not invoke gh release create and logs tag/version', async function() {
-            this.timeout(30000);
+        test('does not invoke gh release create and logs tag/version', async function () {
+            this.timeout(30_000);
 
             const { tmpDir, zipPath } = await makeZipWithEntries({
                 entries: [{ name: 'bundle.txt', content: 'x' }],
@@ -93,11 +95,25 @@ suite('Publish Collections Unit Tests', () => {
                 const spawnSync = (cmd: string, args: string[] | undefined, opts: any) => {
                     spawnCalls.push([cmd, ...(args || [])].join(' '));
 
-                    if (cmd === 'node' && args && args[0].endsWith('detect-affected-collections.js')) {
-                        return { status: 0, stdout: JSON.stringify({ affected: [{ id: 't1', file: 'collections/t1.collection.yml' }] }), stderr: '' };
+                    if (
+                        cmd === 'node' &&
+                        args &&
+                        args[0].endsWith('detect-affected-collections.js')
+                    ) {
+                        return {
+                            status: 0,
+                            stdout: JSON.stringify({
+                                affected: [{ id: 't1', file: 'collections/t1.collection.yml' }],
+                            }),
+                            stderr: '',
+                        };
                     }
 
-                    if (cmd === 'node' && args && args[0].endsWith('compute-collection-version.js')) {
+                    if (
+                        cmd === 'node' &&
+                        args &&
+                        args[0].endsWith('compute-collection-version.js')
+                    ) {
                         return {
                             status: 0,
                             stdout: JSON.stringify({ nextVersion: '1.2.3', tag: 't1-v1.2.3' }),
@@ -108,7 +124,10 @@ suite('Publish Collections Unit Tests', () => {
                     if (cmd === 'node' && args && args[0].endsWith('build-collection-bundle.js')) {
                         return {
                             status: 0,
-                            stdout: JSON.stringify({ manifestAsset: manifestPath, zipAsset: zipPath }),
+                            stdout: JSON.stringify({
+                                manifestAsset: manifestPath,
+                                zipAsset: zipPath,
+                            }),
                             stderr: '',
                         };
                     }
@@ -135,22 +154,22 @@ suite('Publish Collections Unit Tests', () => {
                 });
 
                 assert.strictEqual(
-                    spawnCalls.some(c => c.startsWith('gh release create')),
+                    spawnCalls.some((c) => c.startsWith('gh release create')),
                     false,
                     'gh release create should not be called in dry-run mode'
                 );
                 assert.strictEqual(
-                    lines.some(l => l.includes('release_tag: t1-v1.2.3')),
+                    lines.some((l) => l.includes('release_tag: t1-v1.2.3')),
                     true,
                     'Should log release tag'
                 );
                 assert.strictEqual(
-                    lines.some(l => l.includes('version: 1.2.3')),
+                    lines.some((l) => l.includes('version: 1.2.3')),
                     true,
                     'Should log version'
                 );
                 assert.strictEqual(
-                    lines.some(l => l.includes('zip_entries:')),
+                    lines.some((l) => l.includes('zip_entries:')),
                     true,
                     'Should log zip entries'
                 );
@@ -161,10 +180,14 @@ suite('Publish Collections Unit Tests', () => {
     });
 
     suite('computeChangedPathsFromGitDiff()', () => {
-        test('parses and de-dupes git output', function() {
+        test('parses and de-dupes git output', function () {
             const spawnSync = (cmd: string, args: string[]) => {
                 if (cmd === 'git' && args[0] === 'diff') {
-                    return { status: 0, stdout: 'a.txt\ncollections/x.collection.yml\ncollections/x.collection.yml\n', stderr: '' };
+                    return {
+                        status: 0,
+                        stdout: 'a.txt\ncollections/x.collection.yml\ncollections/x.collection.yml\n',
+                        stderr: '',
+                    };
                 }
                 return { status: 0, stdout: '', stderr: '' };
             };
@@ -182,7 +205,7 @@ suite('Publish Collections Unit Tests', () => {
             assert.deepStrictEqual(paths, ['a.txt', 'collections/x.collection.yml']);
         });
 
-        test('returns empty array and isInitialCommit=true when HEAD~1 does not exist (initial commit)', function() {
+        test('returns empty array and isInitialCommit=true when HEAD~1 does not exist (initial commit)', function () {
             const spawnSync = (cmd: string, args: string[]) => {
                 // Simulate commitExists check failing for HEAD~1
                 if (cmd === 'git' && args[0] === 'rev-parse' && args.includes('HEAD~1^{commit}')) {
@@ -206,17 +229,25 @@ suite('Publish Collections Unit Tests', () => {
 
             // The function returns { paths, isInitialCommit }
             if (Array.isArray(result)) {
-                assert.deepStrictEqual(result, [], 'Should return empty array when base commit does not exist');
+                assert.deepStrictEqual(
+                    result,
+                    [],
+                    'Should return empty array when base commit does not exist'
+                );
             } else {
-                assert.deepStrictEqual(result.paths, [], 'Should return empty paths when base commit does not exist');
+                assert.deepStrictEqual(
+                    result.paths,
+                    [],
+                    'Should return empty paths when base commit does not exist'
+                );
                 assert.strictEqual(result.isInitialCommit, true, 'Should indicate initial commit');
             }
         });
     });
 
     suite('main() with env base/head', () => {
-        test('uses env base/head to compute changed paths when none provided', async function() {
-            this.timeout(30000);
+        test('uses env base/head to compute changed paths when none provided', async function () {
+            this.timeout(30_000);
 
             const { tmpDir, zipPath } = await makeZipWithEntries({
                 entries: [{ name: 'bundle.txt', content: 'x' }],
@@ -235,7 +266,13 @@ suite('Publish Collections Unit Tests', () => {
                         return { status: 0, stdout: 'abc123', stderr: '' };
                     }
                     if (cmd === 'node' && args[0].endsWith('detect-affected-collections.js')) {
-                        return { status: 0, stdout: JSON.stringify({ affected: [{ id: 't1', file: 'collections/t1.collection.yml' }] }), stderr: '' };
+                        return {
+                            status: 0,
+                            stdout: JSON.stringify({
+                                affected: [{ id: 't1', file: 'collections/t1.collection.yml' }],
+                            }),
+                            stderr: '',
+                        };
                     }
                     if (cmd === 'node' && args[0].endsWith('compute-collection-version.js')) {
                         return {
@@ -247,7 +284,10 @@ suite('Publish Collections Unit Tests', () => {
                     if (cmd === 'node' && args[0].endsWith('build-collection-bundle.js')) {
                         return {
                             status: 0,
-                            stdout: JSON.stringify({ manifestAsset: manifestPath, zipAsset: zipPath }),
+                            stdout: JSON.stringify({
+                                manifestAsset: manifestPath,
+                                zipAsset: zipPath,
+                            }),
                             stderr: '',
                         };
                     }
@@ -274,7 +314,7 @@ suite('Publish Collections Unit Tests', () => {
                 });
 
                 assert.strictEqual(
-                    lines.some(l => l.includes('release_tag: t1-v1.2.3')),
+                    lines.some((l) => l.includes('release_tag: t1-v1.2.3')),
                     true,
                     'Should log release tag when using env vars'
                 );
@@ -295,8 +335,8 @@ suite('Publish Collections Unit Tests', () => {
          * and all collections are published.
          * Requirements: 14.1, 14.2, 14.5
          */
-        test('publishes all collections when initial commit is detected (all-zero base SHA, no HEAD~1)', async function() {
-            this.timeout(30000);
+        test('publishes all collections when initial commit is detected (all-zero base SHA, no HEAD~1)', async function () {
+            this.timeout(30_000);
 
             const { tmpDir, zipPath } = await makeZipWithEntries({
                 entries: [{ name: 'bundle.txt', content: 'x' }],
@@ -309,7 +349,7 @@ suite('Publish Collections Unit Tests', () => {
                 // Create collections directory with multiple collections
                 const collectionsDir = path.join(tmpDir, 'collections');
                 fs.mkdirSync(collectionsDir, { recursive: true });
-                
+
                 // Create collection files
                 fs.writeFileSync(
                     path.join(collectionsDir, 'collection-a.collection.yml'),
@@ -321,10 +361,14 @@ suite('Publish Collections Unit Tests', () => {
                 );
 
                 const publishedCollections: string[] = [];
-                
+
                 const spawnSync = (cmd: string, args: string[]) => {
                     // Simulate initial commit: all-zero base SHA and HEAD~1 doesn't exist
-                    if (cmd === 'git' && args[0] === 'rev-parse' && args.includes('HEAD~1^{commit}')) {
+                    if (
+                        cmd === 'git' &&
+                        args[0] === 'rev-parse' &&
+                        args.includes('HEAD~1^{commit}')
+                    ) {
                         return { status: 1, stdout: '', stderr: 'fatal: bad revision' };
                     }
                     // git fetch tags
@@ -334,21 +378,31 @@ suite('Publish Collections Unit Tests', () => {
                     // compute-collection-version
                     if (cmd === 'node' && args[0].endsWith('compute-collection-version.js')) {
                         const collectionFile = args[args.indexOf('--collection-file') + 1];
-                        const collectionId = collectionFile.includes('collection-a') ? 'collection-a' : 'collection-b';
+                        const collectionId = collectionFile.includes('collection-a')
+                            ? 'collection-a'
+                            : 'collection-b';
                         return {
                             status: 0,
-                            stdout: JSON.stringify({ nextVersion: '1.0.0', tag: `${collectionId}-v1.0.0` }),
+                            stdout: JSON.stringify({
+                                nextVersion: '1.0.0',
+                                tag: `${collectionId}-v1.0.0`,
+                            }),
                             stderr: '',
                         };
                     }
                     // build-collection-bundle
                     if (cmd === 'node' && args[0].endsWith('build-collection-bundle.js')) {
                         const collectionFile = args[args.indexOf('--collection-file') + 1];
-                        const collectionId = collectionFile.includes('collection-a') ? 'collection-a' : 'collection-b';
+                        const collectionId = collectionFile.includes('collection-a')
+                            ? 'collection-a'
+                            : 'collection-b';
                         publishedCollections.push(collectionId);
                         return {
                             status: 0,
-                            stdout: JSON.stringify({ manifestAsset: manifestPath, zipAsset: zipPath }),
+                            stdout: JSON.stringify({
+                                manifestAsset: manifestPath,
+                                zipAsset: zipPath,
+                            }),
                             stderr: '',
                         };
                     }
@@ -370,24 +424,34 @@ suite('Publish Collections Unit Tests', () => {
 
                 // Verify initial commit mode was detected
                 assert.strictEqual(
-                    lines.some(l => l.includes('Initial commit mode')),
+                    lines.some((l) => l.includes('Initial commit mode')),
                     true,
                     'Should log initial commit mode message'
                 );
 
                 // Verify all collections were published
-                assert.strictEqual(publishedCollections.length, 2, 'Should publish all 2 collections');
-                assert.ok(publishedCollections.includes('collection-a'), 'Should publish collection-a');
-                assert.ok(publishedCollections.includes('collection-b'), 'Should publish collection-b');
+                assert.strictEqual(
+                    publishedCollections.length,
+                    2,
+                    'Should publish all 2 collections'
+                );
+                assert.ok(
+                    publishedCollections.includes('collection-a'),
+                    'Should publish collection-a'
+                );
+                assert.ok(
+                    publishedCollections.includes('collection-b'),
+                    'Should publish collection-b'
+                );
 
                 // Verify release tags were logged for both collections
                 assert.strictEqual(
-                    lines.some(l => l.includes('release_tag: collection-a-v1.0.0')),
+                    lines.some((l) => l.includes('release_tag: collection-a-v1.0.0')),
                     true,
                     'Should log release tag for collection-a'
                 );
                 assert.strictEqual(
-                    lines.some(l => l.includes('release_tag: collection-b-v1.0.0')),
+                    lines.some((l) => l.includes('release_tag: collection-b-v1.0.0')),
                     true,
                     'Should log release tag for collection-b'
                 );
@@ -401,8 +465,8 @@ suite('Publish Collections Unit Tests', () => {
          * This is the actual behavior in GitHub Actions on initial push.
          * Requirements: 14.1, 14.2
          */
-        test('publishes all collections when initial commit is detected (empty string base SHA, no HEAD~1)', async function() {
-            this.timeout(30000);
+        test('publishes all collections when initial commit is detected (empty string base SHA, no HEAD~1)', async function () {
+            this.timeout(30_000);
 
             const { tmpDir, zipPath } = await makeZipWithEntries({
                 entries: [{ name: 'bundle.txt', content: 'x' }],
@@ -415,7 +479,7 @@ suite('Publish Collections Unit Tests', () => {
                 // Create collections directory with multiple collections
                 const collectionsDir = path.join(tmpDir, 'collections');
                 fs.mkdirSync(collectionsDir, { recursive: true });
-                
+
                 // Create collection files
                 fs.writeFileSync(
                     path.join(collectionsDir, 'collection-a.collection.yml'),
@@ -427,10 +491,14 @@ suite('Publish Collections Unit Tests', () => {
                 );
 
                 const publishedCollections: string[] = [];
-                
+
                 const spawnSync = (cmd: string, args: string[]) => {
                     // Simulate initial commit: empty base SHA and HEAD~1 doesn't exist
-                    if (cmd === 'git' && args[0] === 'rev-parse' && args.includes('HEAD~1^{commit}')) {
+                    if (
+                        cmd === 'git' &&
+                        args[0] === 'rev-parse' &&
+                        args.includes('HEAD~1^{commit}')
+                    ) {
                         return { status: 1, stdout: '', stderr: 'fatal: bad revision' };
                     }
                     // git fetch tags
@@ -440,21 +508,31 @@ suite('Publish Collections Unit Tests', () => {
                     // compute-collection-version
                     if (cmd === 'node' && args[0].endsWith('compute-collection-version.js')) {
                         const collectionFile = args[args.indexOf('--collection-file') + 1];
-                        const collectionId = collectionFile.includes('collection-a') ? 'collection-a' : 'collection-b';
+                        const collectionId = collectionFile.includes('collection-a')
+                            ? 'collection-a'
+                            : 'collection-b';
                         return {
                             status: 0,
-                            stdout: JSON.stringify({ nextVersion: '1.0.0', tag: `${collectionId}-v1.0.0` }),
+                            stdout: JSON.stringify({
+                                nextVersion: '1.0.0',
+                                tag: `${collectionId}-v1.0.0`,
+                            }),
                             stderr: '',
                         };
                     }
                     // build-collection-bundle
                     if (cmd === 'node' && args[0].endsWith('build-collection-bundle.js')) {
                         const collectionFile = args[args.indexOf('--collection-file') + 1];
-                        const collectionId = collectionFile.includes('collection-a') ? 'collection-a' : 'collection-b';
+                        const collectionId = collectionFile.includes('collection-a')
+                            ? 'collection-a'
+                            : 'collection-b';
                         publishedCollections.push(collectionId);
                         return {
                             status: 0,
-                            stdout: JSON.stringify({ manifestAsset: manifestPath, zipAsset: zipPath }),
+                            stdout: JSON.stringify({
+                                manifestAsset: manifestPath,
+                                zipAsset: zipPath,
+                            }),
                             stderr: '',
                         };
                     }
@@ -467,7 +545,7 @@ suite('Publish Collections Unit Tests', () => {
                     argv: ['--dry-run'],
                     env: {
                         GITHUB_REPOSITORY: 'acme/repo',
-                        GITHUB_BASE_SHA: '',  // Empty string - actual GitHub Actions behavior
+                        GITHUB_BASE_SHA: '', // Empty string - actual GitHub Actions behavior
                         GITHUB_HEAD_SHA: 'HEAD',
                     },
                     logger,
@@ -476,15 +554,25 @@ suite('Publish Collections Unit Tests', () => {
 
                 // Verify initial commit mode was detected
                 assert.strictEqual(
-                    lines.some(l => l.includes('Initial commit mode')),
+                    lines.some((l) => l.includes('Initial commit mode')),
                     true,
                     'Should log initial commit mode message'
                 );
 
                 // Verify all collections were published
-                assert.strictEqual(publishedCollections.length, 2, 'Should publish all 2 collections');
-                assert.ok(publishedCollections.includes('collection-a'), 'Should publish collection-a');
-                assert.ok(publishedCollections.includes('collection-b'), 'Should publish collection-b');
+                assert.strictEqual(
+                    publishedCollections.length,
+                    2,
+                    'Should publish all 2 collections'
+                );
+                assert.ok(
+                    publishedCollections.includes('collection-a'),
+                    'Should publish collection-a'
+                );
+                assert.ok(
+                    publishedCollections.includes('collection-b'),
+                    'Should publish collection-b'
+                );
             } finally {
                 fs.rmSync(tmpDir, { recursive: true, force: true });
             }
@@ -494,7 +582,7 @@ suite('Publish Collections Unit Tests', () => {
          * Test that initial commit detection logs the appropriate message.
          * Requirements: 14.3
          */
-        test('logs initial commit detection message when base SHA is all zeros and no HEAD~1', function() {
+        test('logs initial commit detection message when base SHA is all zeros and no HEAD~1', function () {
             const spawnSync = (cmd: string, args: string[]) => {
                 // Simulate commitExists check failing for HEAD~1
                 if (cmd === 'git' && args[0] === 'rev-parse' && args.includes('HEAD~1^{commit}')) {
@@ -525,7 +613,7 @@ suite('Publish Collections Unit Tests', () => {
 
                 // Verify the log message
                 assert.ok(
-                    logMessages.some(msg => msg.includes('Initial commit detected')),
+                    logMessages.some((msg) => msg.includes('Initial commit detected')),
                     `Should log initial commit detection message. Got: ${logMessages.join(', ')}`
                 );
             } finally {
@@ -538,7 +626,7 @@ suite('Publish Collections Unit Tests', () => {
          * This handles the case where user amends initial commit and force-pushes.
          * Requirements: 14.1, 14.2
          */
-        test('falls back to HEAD~1 when base commit does not exist (force-push scenario)', function() {
+        test('falls back to HEAD~1 when base commit does not exist (force-push scenario)', function () {
             const spawnSync = (cmd: string, args: string[]) => {
                 // Simulate base commit not existing (force-push after amend)
                 if (cmd === 'git' && args[0] === 'rev-parse' && args.includes('abc123^{commit}')) {
@@ -561,7 +649,7 @@ suite('Publish Collections Unit Tests', () => {
             try {
                 const result = computeChangedPathsFromGitDiff({
                     repoRoot: process.cwd(),
-                    base: 'abc123',  // Non-existent commit (was replaced by force-push)
+                    base: 'abc123', // Non-existent commit (was replaced by force-push)
                     head: 'HEAD',
                     env: {},
                     spawnSync,
@@ -573,7 +661,10 @@ suite('Publish Collections Unit Tests', () => {
 
                 // Verify the log message mentions the issue
                 assert.ok(
-                    logMessages.some(msg => msg.includes('Initial commit detected') || msg.includes('not found')),
+                    logMessages.some(
+                        (msg) =>
+                            msg.includes('Initial commit detected') || msg.includes('not found')
+                    ),
                     `Should log appropriate message. Got: ${logMessages.join(', ')}`
                 );
             } finally {
@@ -585,7 +676,7 @@ suite('Publish Collections Unit Tests', () => {
          * Test that force-push with non-existent base but existing HEAD~1 uses HEAD~1.
          * This handles the case where user force-pushes but there are multiple commits.
          */
-        test('uses HEAD~1 when base commit does not exist but HEAD~1 exists', function() {
+        test('uses HEAD~1 when base commit does not exist but HEAD~1 exists', function () {
             const spawnSync = (cmd: string, args: string[]) => {
                 // Simulate base commit not existing (force-push)
                 if (cmd === 'git' && args[0] === 'rev-parse' && args.includes('abc123^{commit}')) {
@@ -612,19 +703,29 @@ suite('Publish Collections Unit Tests', () => {
             try {
                 const result = computeChangedPathsFromGitDiff({
                     repoRoot: process.cwd(),
-                    base: 'abc123',  // Non-existent commit
+                    base: 'abc123', // Non-existent commit
                     head: 'HEAD',
                     env: {},
                     spawnSync,
                 });
 
                 // Should NOT be initial commit since HEAD~1 exists
-                assert.strictEqual(result.isInitialCommit, false, 'Should NOT indicate initial commit');
-                assert.deepStrictEqual(result.paths, ['collections/test.collection.yml'], 'Should return changed paths');
+                assert.strictEqual(
+                    result.isInitialCommit,
+                    false,
+                    'Should NOT indicate initial commit'
+                );
+                assert.deepStrictEqual(
+                    result.paths,
+                    ['collections/test.collection.yml'],
+                    'Should return changed paths'
+                );
 
                 // Verify the log message mentions fallback
                 assert.ok(
-                    logMessages.some(msg => msg.includes('not found') && msg.includes('falling back')),
+                    logMessages.some(
+                        (msg) => msg.includes('not found') && msg.includes('falling back')
+                    ),
                     `Should log fallback message. Got: ${logMessages.join(', ')}`
                 );
             } finally {

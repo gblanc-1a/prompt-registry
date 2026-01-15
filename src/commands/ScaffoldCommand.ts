@@ -1,12 +1,13 @@
-import * as path from 'path';
+import * as path from 'node:path';
+
 import * as vscode from 'vscode';
+
 import { SkillWizard } from '../commands/SkillWizard';
-import { Logger } from '../utils/logger';
 import { TemplateEngine, TemplateContext } from '../services/TemplateEngine';
 import { NpmCliWrapper } from '../utils/NpmCliWrapper';
-import { FileUtils } from '../utils/fileUtils';
 import { generateSanitizedId } from '../utils/bundleNameUtils';
-
+import { FileUtils } from '../utils/fileUtils';
+import { Logger } from '../utils/logger';
 
 export enum ScaffoldType {
     Skill = 'skill',
@@ -54,21 +55,22 @@ export class ScaffoldCommand {
     private readonly scaffoldType: ScaffoldType;
     private readonly npmWrapper: NpmCliWrapper;
 
-    constructor(extensionPathOrTemplateRoot?: string, scaffoldType: ScaffoldType = ScaffoldType.GitHub) {
+    constructor(
+        extensionPathOrTemplateRoot?: string,
+        scaffoldType: ScaffoldType = ScaffoldType.GitHub
+    ) {
         this.logger = Logger.getInstance();
         this.scaffoldType = scaffoldType;
         this.npmWrapper = NpmCliWrapper.getInstance();
-        
+
         // Initialize template engine with scaffold templates
         // If path includes 'templates/scaffolds', use it directly (for tests)
         // Otherwise treat as extensionPath and append templates/scaffolds path
         let templatesPath: string;
         if (extensionPathOrTemplateRoot) {
-            if (extensionPathOrTemplateRoot.includes('templates/scaffolds')) {
-                templatesPath = extensionPathOrTemplateRoot;
-            } else {
-                templatesPath = path.join(extensionPathOrTemplateRoot, 'templates/scaffolds', scaffoldType);
-            }
+            templatesPath = extensionPathOrTemplateRoot.includes('templates/scaffolds')
+                ? extensionPathOrTemplateRoot
+                : path.join(extensionPathOrTemplateRoot, 'templates/scaffolds', scaffoldType);
         } else {
             templatesPath = path.join(__dirname, '../templates/scaffolds', scaffoldType);
         }
@@ -77,15 +79,16 @@ export class ScaffoldCommand {
 
     /**
      * Execute the scaffold command
-     * 
+     *
      * @param targetPath - Target directory path or URI
      * @param options - Scaffold options
      */
     async execute(targetPath: string | vscode.Uri, options?: ScaffoldOptions): Promise<void> {
         try {
-            const targetUri = typeof targetPath === 'string' ? vscode.Uri.file(targetPath) : targetPath;
+            const targetUri =
+                typeof targetPath === 'string' ? vscode.Uri.file(targetPath) : targetPath;
             this.logger.info(`Scaffolding ${this.scaffoldType} structure at: ${targetUri.fsPath}`);
-            
+
             // Resolve project name from path if not provided
             const projectDirName = path.basename(targetUri.fsPath);
 
@@ -103,10 +106,9 @@ export class ScaffoldCommand {
             await this.templateEngine.scaffoldProject(targetUri, context);
 
             this.logger.info('Scaffold completed successfully');
-            
+
             // Note: npm install prompt is handled by the caller (extension.ts)
             // to ensure it runs AFTER the progress indicator closes
-
         } catch (error) {
             this.logger.error('Scaffold failed', error as Error);
             throw error;
@@ -116,25 +118,28 @@ export class ScaffoldCommand {
     /**
      * Detect migration scenario for an existing project
      * Checks for collections folder and determines what migration is needed
-     * 
+     *
      * @param targetPath - Directory path to check
      * @returns Migration scenario detected
      */
     static async detectMigrationScenario(targetPath: string): Promise<MigrationScenario> {
         try {
             const collectionsDir = path.join(targetPath, 'collections');
-            
+
             // Check if collections directory exists
-            if (!await FileUtils.exists(collectionsDir) || !await FileUtils.isDirectory(collectionsDir)) {
+            if (
+                !(await FileUtils.exists(collectionsDir)) ||
+                !(await FileUtils.isDirectory(collectionsDir))
+            ) {
                 return MigrationScenario.None;
             }
 
             // Check for collection files
             const entries = await FileUtils.listDirectory(collectionsDir);
-            const collectionFiles = entries.filter(f => 
-                f.endsWith('.collection.yml') || f.endsWith('.collection.yaml')
+            const collectionFiles = entries.filter(
+                (f) => f.endsWith('.collection.yml') || f.endsWith('.collection.yaml')
             );
-            
+
             if (collectionFiles.length === 0) {
                 return MigrationScenario.None;
             }
@@ -153,7 +158,7 @@ export class ScaffoldCommand {
 
             // Check if publish workflow exists
             const workflowPath = path.join(targetPath, '.github', 'workflows', 'publish.yml');
-            if (!await FileUtils.exists(workflowPath)) {
+            if (!(await FileUtils.exists(workflowPath))) {
                 return MigrationScenario.MissingWorkflow;
             }
 
@@ -166,19 +171,24 @@ export class ScaffoldCommand {
     /**
      * Get migration recommendation for a scenario
      */
-    static getMigrationRecommendation(scenario: MigrationScenario): MigrationRecommendation | undefined {
+    static getMigrationRecommendation(
+        scenario: MigrationScenario
+    ): MigrationRecommendation | undefined {
         switch (scenario) {
             case MigrationScenario.MissingWorkflow:
                 return {
                     scenario,
                     message: 'This project has collections but no GitHub publish workflow.',
-                    documentationUrl: 'https://github.com/prompt-registry/docs/blob/main/docs/migration-guide.md'
+                    documentationUrl:
+                        'https://github.com/prompt-registry/docs/blob/main/docs/migration-guide.md',
                 };
             case MigrationScenario.ChatmodeReferences:
                 return {
                     scenario,
-                    message: 'This project uses deprecated chatmode references. Please migrate to agent format.',
-                    documentationUrl: 'https://github.com/prompt-registry/docs/blob/main/docs/migration-guide.md#chatmode-to-agent'
+                    message:
+                        'This project uses deprecated chatmode references. Please migrate to agent format.',
+                    documentationUrl:
+                        'https://github.com/prompt-registry/docs/blob/main/docs/migration-guide.md#chatmode-to-agent',
                 };
             default:
                 return undefined;
@@ -187,16 +197,18 @@ export class ScaffoldCommand {
 
     /**
      * Show migration recommendation warning message
-     * 
+     *
      * @param recommendation - Migration recommendation to display
      */
-    static async showMigrationRecommendation(recommendation: MigrationRecommendation): Promise<void> {
+    static async showMigrationRecommendation(
+        recommendation: MigrationRecommendation
+    ): Promise<void> {
         const action = await vscode.window.showWarningMessage(
             recommendation.message,
             'View Migration Guide',
             'Dismiss'
         );
-        
+
         if (action === 'View Migration Guide') {
             await vscode.env.openExternal(vscode.Uri.parse(recommendation.documentationUrl));
         }
@@ -204,18 +216,20 @@ export class ScaffoldCommand {
 
     /**
      * Check for migration scenarios and show recommendation if needed
-     * 
+     *
      * @param targetPath - Directory path to check
      * @returns The detected scenario
      */
-    static async checkAndShowMigrationRecommendation(targetPath: string): Promise<MigrationScenario> {
+    static async checkAndShowMigrationRecommendation(
+        targetPath: string
+    ): Promise<MigrationScenario> {
         const scenario = await ScaffoldCommand.detectMigrationScenario(targetPath);
         const recommendation = ScaffoldCommand.getMigrationRecommendation(scenario);
-        
+
         if (recommendation) {
             await ScaffoldCommand.showMigrationRecommendation(recommendation);
         }
-        
+
         return scenario;
     }
 
@@ -228,24 +242,36 @@ export class ScaffoldCommand {
         try {
             // Step 1: Select scaffold type
             const scaffoldType = await ScaffoldCommand.promptForScaffoldType();
-            if (!scaffoldType) return;
+            if (!scaffoldType) {
+                return;
+            }
 
             // Step 2: Handle skill creation in existing project
-            if (scaffoldType.value === ScaffoldType.Skill && await ScaffoldCommand.handleSkillInExistingProject()) {
+            if (
+                scaffoldType.value === ScaffoldType.Skill &&
+                (await ScaffoldCommand.handleSkillInExistingProject())
+            ) {
                 return;
             }
 
             // Step 3: Select target directory
             const targetPath = await ScaffoldCommand.promptForTargetDirectory(scaffoldType.label);
-            if (!targetPath) return;
+            if (!targetPath) {
+                return;
+            }
 
             // Step 4: Collect project details
             const options = await ScaffoldCommand.promptForProjectDetails(scaffoldType.value);
-            if (!options) return;
+            if (!options) {
+                return;
+            }
 
             // Step 5: Execute scaffold with progress
             await vscode.window.withProgress(
-                { location: vscode.ProgressLocation.Notification, title: `Scaffolding ${scaffoldType.label}...` },
+                {
+                    location: vscode.ProgressLocation.Notification,
+                    title: `Scaffolding ${scaffoldType.label}...`,
+                },
                 async () => {
                     const cmd = new ScaffoldCommand(undefined, scaffoldType.value);
                     await cmd.execute(targetPath, options);
@@ -266,11 +292,18 @@ export class ScaffoldCommand {
      */
     private static async handleSkillInExistingProject(): Promise<boolean> {
         const workspaceFolders = vscode.workspace.workspaceFolders;
-        if (!workspaceFolders || workspaceFolders.length === 0) return false;
+        if (!workspaceFolders || workspaceFolders.length === 0) {
+            return false;
+        }
 
-        const workspaceRoot = workspaceFolders[0].uri.fsPath;
+        const firstFolder = workspaceFolders[0];
+        if (!firstFolder) {
+            return false;
+        }
+
+        const workspaceRoot = firstFolder.uri.fsPath;
         const skillWizard = new SkillWizard();
-        
+
         if (skillWizard.isAwesomeCopilotProject(workspaceRoot)) {
             await skillWizard.execute(workspaceRoot);
             return true;
@@ -281,29 +314,31 @@ export class ScaffoldCommand {
     /**
      * Prompt user to select scaffold type
      */
-    private static async promptForScaffoldType(): Promise<{ label: string; value: ScaffoldType } | undefined> {
+    private static async promptForScaffoldType(): Promise<
+        { label: string; value: ScaffoldType } | undefined
+    > {
         return vscode.window.showQuickPick(
             [
                 {
                     label: 'GitHub',
                     description: 'GitHub-based prompt library with CI/CD workflows',
-                    value: ScaffoldType.GitHub
+                    value: ScaffoldType.GitHub,
                 },
                 {
                     label: 'APM Package',
                     description: 'Distributable prompt package (apm.yml)',
-                    value: ScaffoldType.Apm
+                    value: ScaffoldType.Apm,
                 },
                 {
                     label: 'Agent Skill',
                     description: 'Create a new Agent Skill with SKILL.md',
-                    value: ScaffoldType.Skill
-                }
+                    value: ScaffoldType.Skill,
+                },
             ],
             {
                 placeHolder: 'Select project type',
                 title: 'Scaffold Project',
-                ignoreFocusOut: true
+                ignoreFocusOut: true,
             }
         );
     }
@@ -311,16 +346,18 @@ export class ScaffoldCommand {
     /**
      * Prompt user to select target directory
      */
-    private static async promptForTargetDirectory(typeLabel: string): Promise<vscode.Uri | undefined> {
+    private static async promptForTargetDirectory(
+        typeLabel: string
+    ): Promise<vscode.Uri | undefined> {
         // Default to first workspace folder if available
         const defaultUri = vscode.workspace.workspaceFolders?.[0]?.uri;
-        
+
         const targetPath = await vscode.window.showOpenDialog({
             canSelectFiles: false,
             canSelectFolders: true,
             canSelectMany: false,
             defaultUri,
-            title: `Select Target Directory for ${typeLabel}`
+            title: `Select Target Directory for ${typeLabel}`,
         });
         return targetPath?.[0];
     }
@@ -328,20 +365,22 @@ export class ScaffoldCommand {
     /**
      * Collect project details from user input
      */
-    private static async promptForProjectDetails(type: ScaffoldType): Promise<ScaffoldOptions | undefined> {
+    private static async promptForProjectDetails(
+        type: ScaffoldType
+    ): Promise<ScaffoldOptions | undefined> {
         // Get project name
         const projectName = await vscode.window.showInputBox({
             prompt: 'Enter project name (optional)',
             placeHolder: 'example',
             value: 'example',
-            ignoreFocusOut: true
+            ignoreFocusOut: true,
         });
 
         // Get GitHub runner choice
         const githubRunner = await ScaffoldCommand.promptForGitHubRunner();
         let details: { description?: string; author?: string; tags?: string[] } = {};
         // Collect additional details if needed
-        
+
         if (type === ScaffoldType.Apm) {
             const apmDetails = await ScaffoldCommand.promptForApmDetails();
             if (apmDetails) {
@@ -359,7 +398,7 @@ export class ScaffoldCommand {
         return {
             projectName,
             githubRunner,
-            ...details
+            ...details,
         };
     }
 
@@ -372,30 +411,30 @@ export class ScaffoldCommand {
                 {
                     label: 'GitHub-hosted (ubuntu-latest)',
                     description: 'Free GitHub-hosted runner',
-                    value: 'ubuntu-latest'
+                    value: 'ubuntu-latest',
                 },
                 {
                     label: 'Self-hosted',
                     description: 'Use self-hosted runner',
-                    value: 'self-hosted'
+                    value: 'self-hosted',
                 },
                 {
                     label: 'Custom',
                     description: 'Specify custom runner label',
-                    value: 'custom'
-                }
+                    value: 'custom',
+                },
             ],
             {
                 placeHolder: 'Select GitHub Actions runner type',
                 title: 'GitHub Actions Runner',
-                ignoreFocusOut: true
+                ignoreFocusOut: true,
             }
         );
 
         if (runnerChoice?.value === 'self-hosted') {
             return 'self-hosted';
         }
-        
+
         if (runnerChoice?.value === 'custom') {
             const customRunner = await vscode.window.showInputBox({
                 prompt: 'Enter custom runner label',
@@ -404,9 +443,9 @@ export class ScaffoldCommand {
                     if (!value || value.trim().length === 0) {
                         return 'Runner label cannot be empty';
                     }
-                    return undefined;
+                    return;
                 },
-                ignoreFocusOut: true
+                ignoreFocusOut: true,
             });
             return customRunner || 'ubuntu-latest';
         }
@@ -417,35 +456,40 @@ export class ScaffoldCommand {
     /**
      * Prompt for project metadata (description, author, tags)
      * Shared by APM and Skill scaffold types
-     * 
+     *
      * @param type - The scaffold type ('apm' or 'skill')
      */
-    private static async promptForProjectMetadata(type: 'apm' | 'skill'): Promise<{ description?: string; author?: string; tags?: string[] }> {
+    private static async promptForProjectMetadata(
+        type: 'apm' | 'skill'
+    ): Promise<{ description?: string; author?: string; tags?: string[] }> {
         const typeLabel = type === 'apm' ? 'package' : 'skill';
         const defaultTags = type === 'apm' ? 'apm, prompts' : 'skill, prompts';
-        
+
         const description = await vscode.window.showInputBox({
             prompt: `Enter ${typeLabel} description`,
             placeHolder: `A short description of your ${typeLabel}`,
-            ignoreFocusOut: true
+            ignoreFocusOut: true,
         });
 
         const author = await vscode.window.showInputBox({
             prompt: 'Enter author name',
             placeHolder: 'Your Name <email@example.com>',
             value: process.env.USER || 'user',
-            ignoreFocusOut: true
+            ignoreFocusOut: true,
         });
 
         const tagsInput = await vscode.window.showInputBox({
             prompt: 'Enter tags (comma separated)',
             placeHolder: 'ai, prompts, coding',
             value: defaultTags,
-            ignoreFocusOut: true
+            ignoreFocusOut: true,
         });
 
         const tags = tagsInput
-            ? tagsInput.split(',').map(t => t.trim()).filter(t => t.length > 0)
+            ? tagsInput
+                  .split(',')
+                  .map((t) => t.trim())
+                  .filter((t) => t.length > 0)
             : undefined;
 
         return { description, author, tags };
@@ -454,21 +498,32 @@ export class ScaffoldCommand {
     /**
      * Prompt for APM-specific project details
      */
-    private static async promptForApmDetails(): Promise<{ description?: string; author?: string; tags?: string[] }> {
+    private static async promptForApmDetails(): Promise<{
+        description?: string;
+        author?: string;
+        tags?: string[];
+    }> {
         return ScaffoldCommand.promptForProjectMetadata('apm');
     }
 
     /**
      * Prompt for Skill-specific project details
      */
-    private static async promptForSkillsDetails(): Promise<{ description?: string; author?: string; tags?: string[] }> {
+    private static async promptForSkillsDetails(): Promise<{
+        description?: string;
+        author?: string;
+        tags?: string[];
+    }> {
         return ScaffoldCommand.promptForProjectMetadata('skill');
     }
 
     /**
      * Handle post-scaffold actions: npm install and folder opening
      */
-    private static async handlePostScaffoldActions(typeLabel: string, targetPath: vscode.Uri): Promise<void> {
+    private static async handlePostScaffoldActions(
+        typeLabel: string,
+        targetPath: vscode.Uri
+    ): Promise<void> {
         // Prompt for npm install
         const npmWrapper = NpmCliWrapper.getInstance();
         const npmResult = await npmWrapper.promptAndInstall(targetPath.fsPath, false);

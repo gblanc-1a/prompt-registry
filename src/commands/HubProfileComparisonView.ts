@@ -78,7 +78,7 @@ export class HubProfileComparisonView {
 
         // Get hub and profile data
         const hub = await this.hubManager['storage'].loadHub(hubId);
-        const availableProfile = hub.config.profiles.find(p => p.id === profileId);
+        const availableProfile = hub.config.profiles.find((p) => p.id === profileId);
         if (!availableProfile) {
             return null;
         }
@@ -86,62 +86,63 @@ export class HubProfileComparisonView {
         // Parse changes
         const addedBundles = changes.bundlesAdded || [];
         const removedBundleIds = changes.bundlesRemoved || [];
-        const updatedBundles: BundleUpdate[] = (changes.bundlesUpdated || []).map(update => ({
+        const updatedBundles: BundleUpdate[] = (changes.bundlesUpdated || []).map((update) => ({
             id: update.id,
             oldVersion: update.oldVersion,
-            newVersion: update.newVersion
+            newVersion: update.newVersion,
         }));
 
         const availableBundles = availableProfile.bundles || [];
-        
+
         // Calculate current bundles by removing additions and using old versions for updates
         const currentBundles: HubProfileBundle[] = [];
-        availableBundles.forEach(bundle => {
-            const isAdded = addedBundles.some(b => b.id === bundle.id);
+        for (const bundle of availableBundles) {
+            const isAdded = addedBundles.some((b) => b.id === bundle.id);
             if (!isAdded) {
-                const update = updatedBundles.find(u => u.id === bundle.id);
+                const update = updatedBundles.find((u) => u.id === bundle.id);
                 if (update) {
                     // Use old version
                     currentBundles.push({
                         ...bundle,
-                        version: update.oldVersion
+                        version: update.oldVersion,
                     });
                 } else {
                     currentBundles.push(bundle);
                 }
             }
-        });
-        
+        }
+
         // Add removed bundles to current
-        removedBundleIds.forEach(bundleId => {
-            if (!currentBundles.some(b => b.id === bundleId)) {
+        for (const bundleId of removedBundleIds) {
+            if (!currentBundles.some((b) => b.id === bundleId)) {
                 // We don't have full info, but we know it was removed
                 currentBundles.push({
                     id: bundleId,
                     version: 'unknown',
                     source: 'unknown',
-                    required: false
+                    required: false,
                 });
             }
-        });
+        }
 
         // Get metadata
         const currentMetadata: ProfileMetadata = {
             name: availableProfile.name,
-            description: availableProfile.description
+            description: availableProfile.description,
         };
 
         const availableMetadata: ProfileMetadata = {
             name: availableProfile.name,
-            description: availableProfile.description
+            description: availableProfile.description,
         };
 
         // Check if metadata changed
-        const metadataChanged = !!(changes.metadataChanged && (
-            changes.metadataChanged.name ||
-            changes.metadataChanged.description ||
-            changes.metadataChanged.icon
-        ));
+        const metadataChanged = !!(
+            changes.metadataChanged &&
+            (changes.metadataChanged.name ||
+                changes.metadataChanged.description ||
+                changes.metadataChanged.icon)
+        );
 
         return {
             hubId,
@@ -153,7 +154,7 @@ export class HubProfileComparisonView {
             removedBundles: removedBundleIds,
             metadataChanged,
             currentMetadata,
-            availableMetadata
+            availableMetadata,
         };
     }
 
@@ -192,13 +193,11 @@ export class HubProfileComparisonView {
     generateComparisonSummary(comparison: ProfileComparisonData): string {
         const lines: string[] = [];
 
-        lines.push(`Profile Comparison: ${comparison.profileId}`);
-        lines.push('');
+        lines.push(`Profile Comparison: ${comparison.profileId}`, '');
 
         // Metadata changes
         if (comparison.metadataChanged && comparison.availableMetadata) {
-            lines.push('Metadata Changes:');
-            lines.push(`  Name: ${comparison.availableMetadata.name}`);
+            lines.push('Metadata Changes:', `  Name: ${comparison.availableMetadata.name}`);
             if (comparison.availableMetadata.description) {
                 lines.push(`  Description: ${comparison.availableMetadata.description}`);
             }
@@ -208,31 +207,33 @@ export class HubProfileComparisonView {
         // Bundle changes
         if (comparison.addedBundles.length > 0) {
             lines.push('Added Bundles:');
-            comparison.addedBundles.forEach(bundle => {
+            for (const bundle of comparison.addedBundles) {
                 lines.push(`  + ${this.formatBundleComparison(bundle, 'added')}`);
-            });
+            }
             lines.push('');
         }
 
         if (comparison.updatedBundles.length > 0) {
             lines.push('Updated Bundles:');
-            comparison.updatedBundles.forEach(update => {
+            for (const update of comparison.updatedBundles) {
                 const bundle: HubProfileBundle = {
                     id: update.id,
                     version: update.newVersion,
                     source: 'registry',
-                    required: false
+                    required: false,
                 };
-                lines.push(`  ~ ${this.formatBundleComparison(bundle, 'updated', update.oldVersion)}`);
-            });
+                lines.push(
+                    `  ~ ${this.formatBundleComparison(bundle, 'updated', update.oldVersion)}`
+                );
+            }
             lines.push('');
         }
 
         if (comparison.removedBundles.length > 0) {
             lines.push('Removed Bundles:');
-            comparison.removedBundles.forEach(bundleId => {
+            for (const bundleId of comparison.removedBundles) {
                 lines.push(`  - ${this.formatBundleComparison(bundleId, 'removed')}`);
-            });
+            }
             lines.push('');
         }
 
@@ -242,63 +243,61 @@ export class HubProfileComparisonView {
     /**
      * Create QuickPick items for bundle comparison
      */
-    createComparisonQuickPickItems(
-        comparison: ProfileComparisonData
-    ): ComparisonQuickPickItem[] {
+    createComparisonQuickPickItems(comparison: ProfileComparisonData): ComparisonQuickPickItem[] {
         const items: ComparisonQuickPickItem[] = [];
 
         // Added bundles
-        comparison.addedBundles.forEach(bundle => {
+        for (const bundle of comparison.addedBundles) {
             items.push({
                 label: `+ ${bundle.id}`,
                 description: `Added — ${bundle.version}`,
                 detail: bundle.source ? `Source: ${bundle.source}` : undefined,
                 bundleId: bundle.id,
-                status: 'added'
+                status: 'added',
             });
-        });
+        }
 
         // Updated bundles
-        comparison.updatedBundles.forEach(update => {
+        for (const update of comparison.updatedBundles) {
             items.push({
                 label: `~ ${update.id}`,
                 description: `${update.oldVersion} → ${update.newVersion}`,
                 detail: undefined,
                 bundleId: update.id,
-                status: 'updated'
+                status: 'updated',
             });
-        });
+        }
 
         // Removed bundles
-        comparison.removedBundles.forEach(bundleId => {
+        for (const bundleId of comparison.removedBundles) {
             items.push({
                 label: `- ${bundleId}`,
                 description: `Removed`,
                 detail: undefined,
                 bundleId: bundleId,
-                status: 'removed'
+                status: 'removed',
             });
-        });
+        }
 
         // Unchanged bundles (in both lists with same version)
-        const unchangedBundles = comparison.currentBundles.filter(current => {
+        const unchangedBundles = comparison.currentBundles.filter((current) => {
             const inAvailable = comparison.availableBundles.find(
-                a => a.id === current.id && a.version === current.version
+                (a) => a.id === current.id && a.version === current.version
             );
-            const isUpdated = comparison.updatedBundles.some(u => u.id === current.id);
-            const isRemoved = comparison.removedBundles.some(r => r === current.id);
+            const isUpdated = comparison.updatedBundles.some((u) => u.id === current.id);
+            const isRemoved = comparison.removedBundles.includes(current.id);
             return inAvailable && !isUpdated && !isRemoved;
         });
 
-        unchangedBundles.forEach(bundle => {
+        for (const bundle of unchangedBundles) {
             items.push({
                 label: `  ${bundle.id}`,
                 description: bundle.version,
                 detail: bundle.source ? `Source: ${bundle.source}` : undefined,
                 bundleId: bundle.id,
-                status: 'unchanged'
+                status: 'unchanged',
             });
-        });
+        }
 
         return items;
     }
@@ -314,28 +313,28 @@ export class HubProfileComparisonView {
         lines.push('═'.repeat(width * 2 + 5));
         lines.push(
             this.padRight('Current (Activated)', width) +
-            ' │ ' +
-            this.padRight('Available (Hub)', width)
+                ' │ ' +
+                this.padRight('Available (Hub)', width)
         );
         lines.push('═'.repeat(width * 2 + 5));
 
         // Collect all bundle IDs
         const allBundleIds = new Set<string>();
-        comparison.currentBundles.forEach(b => allBundleIds.add(b.id));
-        comparison.availableBundles.forEach(b => allBundleIds.add(b.id));
+        for (const b of comparison.currentBundles) {
+            allBundleIds.add(b.id);
+        }
+        for (const b of comparison.availableBundles) {
+            allBundleIds.add(b.id);
+        }
 
         // Display each bundle
-        Array.from(allBundleIds).sort().forEach(bundleId => {
-            const current = comparison.currentBundles.find(b => b.id === bundleId);
-            const available = comparison.availableBundles.find(b => b.id === bundleId);
+        for (const bundleId of Array.from(allBundleIds).sort()) {
+            const current = comparison.currentBundles.find((b) => b.id === bundleId);
+            const available = comparison.availableBundles.find((b) => b.id === bundleId);
 
-            const currentText = current 
-                ? `${current.id} (${current.version})`
-                : '—';
-            
-            const availableText = available
-                ? `${available.id} (${available.version})`
-                : '—';
+            const currentText = current ? `${current.id} (${current.version})` : '—';
+
+            const availableText = available ? `${available.id} (${available.version})` : '—';
 
             let statusMarker = ' ';
             if (!current && available) {
@@ -348,16 +347,16 @@ export class HubProfileComparisonView {
 
             lines.push(
                 this.padRight(currentText, width) +
-                ' │ ' +
-                this.padRight(availableText, width) +
-                ` ${statusMarker}`
+                    ' │ ' +
+                    this.padRight(availableText, width) +
+                    ` ${statusMarker}`
             );
-        });
+        }
 
         lines.push('─'.repeat(width * 2 + 5));
 
         // Summary
-        const changeCount = 
+        const changeCount =
             comparison.addedBundles.length +
             comparison.updatedBundles.length +
             comparison.removedBundles.length;

@@ -4,8 +4,9 @@
  */
 
 import * as vscode from 'vscode';
-import { PromptLoader } from '../services/PromptLoader';
+
 import { PromptExecutor } from '../services/PromptExecutor';
+import { PromptLoader } from '../services/PromptLoader';
 import { Logger } from '../utils/logger';
 
 export class CopilotIntegration implements vscode.Disposable {
@@ -40,10 +41,12 @@ export class CopilotIntegration implements vscode.Disposable {
             this.logger.info('Copilot integration activated: @prompts participant registered');
         } catch (error) {
             this.logger.error('Failed to activate Copilot integration', error as Error);
-            
+
             // Check if Chat API is available
             if (!vscode.chat) {
-                this.logger.warn('Chat API not available - GitHub Copilot may not be installed or enabled');
+                this.logger.warn(
+                    'Chat API not available - GitHub Copilot may not be installed or enabled'
+                );
                 vscode.window.showWarningMessage(
                     'GitHub Copilot Chat is required to use prompt commands. Please install GitHub Copilot extension.'
                 );
@@ -80,7 +83,6 @@ export class CopilotIntegration implements vscode.Disposable {
 
             // Execute prompt command
             await this.executePrompt(command, userInput, stream, token);
-
         } catch (error) {
             this.logger.error('Error handling chat request', error as Error);
             stream.markdown(`\n\n❌ **Error:** ${(error as Error).message}\n\n`);
@@ -96,9 +98,9 @@ export class CopilotIntegration implements vscode.Disposable {
 
         stream.markdown('# 📚 Prompt Registry\n\n');
         stream.markdown('Use installed prompts directly in Copilot Chat!\n\n');
-        
+
         stream.markdown('## Available Commands\n\n');
-        
+
         if (availablePrompts.length === 0) {
             stream.markdown('⚠️ No prompts installed yet.\n\n');
             stream.markdown('1. Install a bundle from the Prompt Registry view\n');
@@ -133,7 +135,9 @@ export class CopilotIntegration implements vscode.Disposable {
         stream.markdown('## 📋 Available Prompts\n\n');
 
         if (availablePrompts.length === 0) {
-            stream.markdown('No prompts installed. Install bundles from the Prompt Registry view.\n');
+            stream.markdown(
+                'No prompts installed. Install bundles from the Prompt Registry view.\n'
+            );
             return;
         }
 
@@ -168,7 +172,7 @@ export class CopilotIntegration implements vscode.Disposable {
 
         // Load prompt content
         const promptContent = await this.promptLoader.loadPrompt(command);
-        
+
         if (!promptContent) {
             stream.markdown(`\n\n❌ **Prompt not found:** \`${command}\`\n\n`);
             stream.markdown('Available prompts:\n\n');
@@ -177,7 +181,7 @@ export class CopilotIntegration implements vscode.Disposable {
         }
 
         this.logger.debug(`Executing prompt: ${command}`);
-        
+
         // DEBUG: Show what we're sending
         stream.markdown(`\n\n🔍 **DEBUG: Loading prompt "${command}"**\n\n`);
         stream.markdown(`- Prompt length: ${promptContent.content.length} chars\n`);
@@ -188,13 +192,13 @@ export class CopilotIntegration implements vscode.Disposable {
 
         // Execute prompt with language model
         stream.progress('Processing with AI...');
-        
+
         await this.promptExecutor.execute({
             promptContent: promptContent.content,
             userInput,
             context: contextInfo,
             stream,
-            token
+            token,
         });
     }
 
@@ -214,7 +218,7 @@ export class CopilotIntegration implements vscode.Disposable {
         return {
             selection: selection || undefined,
             fileName,
-            language
+            language,
         };
     }
 

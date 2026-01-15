@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
-import { ExtensionUpdateManager } from '../services/updateManager';
+
 import { InstallationManager } from '../services/installationManager';
+import { ExtensionUpdateManager } from '../services/updateManager';
 import { Logger } from '../utils/logger';
 
 /**
@@ -26,14 +27,16 @@ export class StatusCommand {
 
             const installedScopes = await this.installationManager.getInstalledScopes();
             if (installedScopes.length === 0) {
-                await vscode.window.showInformationMessage(
-                    'Prompt Registry is not installed. Would you like to install it now?',
-                    'Install Prompt Registry'
-                ).then((action) => {
-                    if (action === 'Install Prompt Registry') {
-                        vscode.commands.executeCommand('promptregistry.enhancedInstall');
-                    }
-                });
+                await vscode.window
+                    .showInformationMessage(
+                        'Prompt Registry is not installed. Would you like to install it now?',
+                        'Install Prompt Registry'
+                    )
+                    .then((action) => {
+                        if (action === 'Install Prompt Registry') {
+                            vscode.commands.executeCommand('promptregistry.enhancedInstall');
+                        }
+                    });
                 return;
             }
 
@@ -41,7 +44,7 @@ export class StatusCommand {
                 {
                     location: vscode.ProgressLocation.Notification,
                     title: 'Checking for updates...',
-                    cancellable: false
+                    cancellable: false,
                 },
                 async () => {
                     return await this.updateManager.checkForUpdates();
@@ -49,34 +52,31 @@ export class StatusCommand {
             );
 
             const message = this.updateManager.getUpdateNotificationMessage(updateChecks);
-            const updatesAvailable = updateChecks.filter(check => check.hasUpdate);
+            const updatesAvailable = updateChecks.filter((check) => check.hasUpdate);
 
-            if (updatesAvailable.length > 0) {
-                await vscode.window.showInformationMessage(
-                    message,
-                    'Update Now',
-                    'Show Details'
-                ).then((action) => {
-                    if (action === 'Update Now') {
-                        vscode.commands.executeCommand('promptregistry.update');
-                    } else if (action === 'Show Details') {
-                        this.showUpdateDetails(updateChecks);
-                    }
-                });
-            } else {
-                await vscode.window.showInformationMessage(message);
-            }
-
+            await (updatesAvailable.length > 0
+                ? vscode.window
+                      .showInformationMessage(message, 'Update Now', 'Show Details')
+                      .then((action) => {
+                          if (action === 'Update Now') {
+                              vscode.commands.executeCommand('promptregistry.update');
+                          } else if (action === 'Show Details') {
+                              this.showUpdateDetails(updateChecks);
+                          }
+                      })
+                : vscode.window.showInformationMessage(message));
         } catch (error) {
             this.logger.error('Failed to check for updates', error as Error);
-            await vscode.window.showErrorMessage(
-                `Failed to check for updates: ${(error as Error).message}`,
-                'Show Logs'
-            ).then((action) => {
-                if (action === 'Show Logs') {
-                    this.logger.show();
-                }
-            });
+            await vscode.window
+                .showErrorMessage(
+                    `Failed to check for updates: ${(error as Error).message}`,
+                    'Show Logs'
+                )
+                .then((action) => {
+                    if (action === 'Show Logs') {
+                        this.logger.show();
+                    }
+                });
         }
     }
 
@@ -89,19 +89,21 @@ export class StatusCommand {
 
             const installedScopes = await this.installationManager.getInstalledScopes();
             if (installedScopes.length === 0) {
-                await vscode.window.showInformationMessage(
-                    'Prompt Registry is not installed.',
-                    'Install Prompt Registry'
-                ).then((action) => {
-                    if (action === 'Install Prompt Registry') {
-                        vscode.commands.executeCommand('promptregistry.enhancedInstall');
-                    }
-                });
+                await vscode.window
+                    .showInformationMessage(
+                        'Prompt Registry is not installed.',
+                        'Install Prompt Registry'
+                    )
+                    .then((action) => {
+                        if (action === 'Install Prompt Registry') {
+                            vscode.commands.executeCommand('promptregistry.enhancedInstall');
+                        }
+                    });
                 return;
             }
 
             const versionInfo: string[] = [];
-            
+
             for (const scope of installedScopes) {
                 const installationInfo = await this.installationManager.getInstallationInfo(scope);
                 if (installationInfo) {
@@ -113,18 +115,15 @@ export class StatusCommand {
 
             const message = `Prompt Registry Installation Information:\n\n${versionInfo.join('\n')}`;
 
-            await vscode.window.showInformationMessage(
-                message,
-                'Check for Updates',
-                'Show Installation Folder'
-            ).then((action) => {
-                if (action === 'Check for Updates') {
-                    vscode.commands.executeCommand('promptregistry.checkUpdates');
-                } else if (action === 'Show Installation Folder') {
-                    this.showInstallationFolder(installedScopes[0]);
-                }
-            });
-
+            await vscode.window
+                .showInformationMessage(message, 'Check for Updates', 'Show Installation Folder')
+                .then((action) => {
+                    if (action === 'Check for Updates') {
+                        vscode.commands.executeCommand('promptregistry.checkUpdates');
+                    } else if (action === 'Show Installation Folder') {
+                        this.showInstallationFolder(installedScopes[0]);
+                    }
+                });
         } catch (error) {
             this.logger.error('Failed to show version information', error as Error);
             await vscode.window.showErrorMessage(
@@ -151,9 +150,10 @@ export class StatusCommand {
                 return; // User cancelled
             }
 
-            const confirmMessage = scopeToUninstall === 'all' 
-                ? 'Are you sure you want to uninstall Prompt Registry from all scopes? This action cannot be undone.'
-                : `Are you sure you want to uninstall Prompt Registry from ${scopeToUninstall} scope? This action cannot be undone.`;
+            const confirmMessage =
+                scopeToUninstall === 'all'
+                    ? 'Are you sure you want to uninstall Prompt Registry from all scopes? This action cannot be undone.'
+                    : `Are you sure you want to uninstall Prompt Registry from ${scopeToUninstall} scope? This action cannot be undone.`;
 
             const confirm = await vscode.window.showWarningMessage(
                 confirmMessage,
@@ -169,40 +169,41 @@ export class StatusCommand {
                 {
                     location: vscode.ProgressLocation.Notification,
                     title: 'Uninstalling Prompt Registry',
-                    cancellable: false
+                    cancellable: false,
                 },
                 async (progress) => {
                     if (scopeToUninstall === 'all') {
                         let successCount = 0;
                         for (const scope of installedScopes) {
-                            progress.report({ 
-                                increment: 0, 
-                                message: `Uninstalling from ${scope} scope...` 
+                            progress.report({
+                                increment: 0,
+                                message: `Uninstalling from ${scope} scope...`,
                             });
-                            
+
                             const success = await this.installationManager.uninstall(scope);
                             if (success) {
                                 successCount++;
                             }
                         }
 
-                        if (successCount === installedScopes.length) {
-                            await vscode.window.showInformationMessage(
-                                'Prompt Registry uninstalled successfully from all scopes!'
-                            );
-                        } else {
-                            await vscode.window.showWarningMessage(
-                                `Prompt Registry partially uninstalled: ${successCount}/${installedScopes.length} successful`
-                            );
-                        }
+                        await (successCount === installedScopes.length
+                            ? vscode.window.showInformationMessage(
+                                  'Prompt Registry uninstalled successfully from all scopes!'
+                              )
+                            : vscode.window.showWarningMessage(
+                                  `Prompt Registry partially uninstalled: ${successCount}/${installedScopes.length} successful`
+                              ));
                     } else {
-                        progress.report({ 
-                            increment: 0, 
-                            message: `Uninstalling from ${scopeToUninstall} scope...` 
+                        progress.report({
+                            increment: 0,
+                            message: `Uninstalling from ${scopeToUninstall} scope...`,
                         });
-                        
-                        const success = await this.installationManager.uninstall(scopeToUninstall as any);
-                        
+
+                        const success = await this.installationManager.uninstall(
+                            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
+                            scopeToUninstall as any
+                        );
+
                         if (success) {
                             await vscode.window.showInformationMessage(
                                 `Prompt Registry uninstalled successfully from ${scopeToUninstall} scope!`
@@ -213,17 +214,18 @@ export class StatusCommand {
                     }
                 }
             );
-
         } catch (error) {
             this.logger.error('Uninstallation failed', error as Error);
-            await vscode.window.showErrorMessage(
-                `Failed to uninstall Prompt Registry: ${(error as Error).message}`,
-                'Show Logs'
-            ).then((action) => {
-                if (action === 'Show Logs') {
-                    this.logger.show();
-                }
-            });
+            await vscode.window
+                .showErrorMessage(
+                    `Failed to uninstall Prompt Registry: ${(error as Error).message}`,
+                    'Show Logs'
+                )
+                .then((action) => {
+                    if (action === 'Show Logs') {
+                        this.logger.show();
+                    }
+                });
         }
     }
 
@@ -296,37 +298,42 @@ Configure Prompt Registry behavior in VS Code settings under "Prompt Registry" s
         `;
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     private async showUpdateDetails(updateChecks: any[]): Promise<void> {
-        const details = updateChecks.map(check => {
-            if (check.hasUpdate) {
-                return `${check.scope}: ${check.currentVersion} → ${check.latestVersion}`;
-            } else {
-                return `${check.scope}: ${check.currentVersion} (up to date)`;
-            }
-        }).join('\n');
+        const details = updateChecks
+            .map((check) => {
+                return check.hasUpdate
+                    ? `${check.scope}: ${check.currentVersion} → ${check.latestVersion}`
+                    : `${check.scope}: ${check.currentVersion} (up to date)`;
+            })
+            .join('\n');
 
-        await vscode.window.showInformationMessage(
-            `Prompt Registry Update Details:\n\n${details}`,
-            'Update Now'
-        ).then((action) => {
-            if (action === 'Update Now') {
-                vscode.commands.executeCommand('promptregistry.update');
-            }
-        });
+        await vscode.window
+            .showInformationMessage(`Prompt Registry Update Details:\n\n${details}`, 'Update Now')
+            .then((action) => {
+                if (action === 'Update Now') {
+                    vscode.commands.executeCommand('promptregistry.update');
+                }
+            });
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     private async showInstallationFolder(scope: any): Promise<void> {
         try {
             const installationInfo = await this.installationManager.getInstallationInfo(scope);
             if (installationInfo) {
                 // Implementation would show the installation folder
-                vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(installationInfo.installedPath || ''));
+                vscode.commands.executeCommand(
+                    'revealFileInOS',
+                    vscode.Uri.file(installationInfo.installedPath || '')
+                );
             }
         } catch (error) {
             this.logger.error('Failed to show installation folder', error as Error);
         }
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     private async selectUninstallScope(installedScopes: any[]): Promise<string | undefined> {
         if (installedScopes.length === 1) {
             return installedScopes[0];
@@ -336,19 +343,19 @@ Configure Prompt Registry behavior in VS Code settings under "Prompt Registry" s
             {
                 label: '🗑️ Uninstall All',
                 description: `Remove Prompt Registry from all ${installedScopes.length} scopes`,
-                detail: 'all'
+                detail: 'all',
             },
-            ...installedScopes.map(scope => ({
+            ...installedScopes.map((scope) => ({
                 label: `📁 Uninstall from ${scope}`,
                 description: `Remove Prompt Registry from ${scope} scope only`,
-                detail: scope
-            }))
+                detail: scope,
+            })),
         ];
 
         const selectedItem = await vscode.window.showQuickPick(quickPickItems, {
             title: 'Select Uninstall Scope',
             placeHolder: 'Choose which installation to remove',
-            ignoreFocusOut: true
+            ignoreFocusOut: true,
         });
 
         return selectedItem?.detail;

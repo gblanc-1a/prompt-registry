@@ -2,11 +2,13 @@
  * Unit tests for AutoUpdateService
  */
 
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+
 import * as sinon from 'sinon';
+
+import { BundleUpdateNotifications } from '../../src/notifications/BundleUpdateNotifications';
 import { AutoUpdateService } from '../../src/services/AutoUpdateService';
 import { RegistryManager } from '../../src/services/RegistryManager';
-import { BundleUpdateNotifications } from '../../src/notifications/BundleUpdateNotifications';
 import { RegistryStorage } from '../../src/storage/RegistryStorage';
 import { InstalledBundle } from '../../src/types/registry';
 import { Logger } from '../../src/utils/logger';
@@ -60,25 +62,27 @@ suite('AutoUpdateService', () => {
                 installedAt: new Date().toISOString(),
                 scope: 'user',
                 installPath: '/mock/path',
-                manifest: {} as any
+                manifest: {} as any,
             };
 
             const updatedBundle: InstalledBundle = {
                 ...installedBundle,
-                version: targetVersion
+                version: targetVersion,
             };
 
             // First call: before update, Second call: after update for verification
             mockRegistryManager.listInstalledBundles
-                .onFirstCall().resolves([installedBundle])
-                .onSecondCall().resolves([updatedBundle]);
+                .onFirstCall()
+                .resolves([installedBundle])
+                .onSecondCall()
+                .resolves([updatedBundle]);
             mockRegistryManager.updateBundle.resolves();
             mockBundleNotifications.showAutoUpdateComplete.resolves();
 
             await service.autoUpdateBundle({
                 bundleId,
                 targetVersion,
-                showProgress: false
+                showProgress: false,
             });
 
             assert.strictEqual(mockRegistryManager.updateBundle.callCount, 1);
@@ -97,31 +101,42 @@ suite('AutoUpdateService', () => {
                 installedAt: new Date().toISOString(),
                 scope: 'user',
                 installPath: '/mock/path',
-                manifest: {} as any
+                manifest: {} as any,
             };
 
             const updatedBundle: InstalledBundle = {
                 ...installedBundle,
-                version: targetVersion
+                version: targetVersion,
             };
 
             // First call: before update, Second call: after update for verification
             mockRegistryManager.listInstalledBundles
-                .onFirstCall().resolves([installedBundle])
-                .onSecondCall().resolves([updatedBundle]);
+                .onFirstCall()
+                .resolves([installedBundle])
+                .onSecondCall()
+                .resolves([updatedBundle]);
             mockRegistryManager.updateBundle.resolves();
             mockBundleNotifications.showAutoUpdateComplete.resolves();
 
             await service.autoUpdateBundle({
                 bundleId,
                 targetVersion,
-                showProgress: false
+                showProgress: false,
             });
 
             assert.strictEqual(mockBundleNotifications.showAutoUpdateComplete.callCount, 1);
-            assert.strictEqual(mockBundleNotifications.showAutoUpdateComplete.firstCall.args[0], bundleId);
-            assert.strictEqual(mockBundleNotifications.showAutoUpdateComplete.firstCall.args[1], oldVersion);
-            assert.strictEqual(mockBundleNotifications.showAutoUpdateComplete.firstCall.args[2], targetVersion);
+            assert.strictEqual(
+                mockBundleNotifications.showAutoUpdateComplete.firstCall.args[0],
+                bundleId
+            );
+            assert.strictEqual(
+                mockBundleNotifications.showAutoUpdateComplete.firstCall.args[1],
+                oldVersion
+            );
+            assert.strictEqual(
+                mockBundleNotifications.showAutoUpdateComplete.firstCall.args[2],
+                targetVersion
+            );
         });
 
         test('should show failure notification on error', async () => {
@@ -135,7 +150,7 @@ suite('AutoUpdateService', () => {
                 installedAt: new Date().toISOString(),
                 scope: 'user',
                 installPath: '/mock/path',
-                manifest: {} as any
+                manifest: {} as any,
             };
 
             // All calls return old version (update fails, rollback also fails)
@@ -147,7 +162,7 @@ suite('AutoUpdateService', () => {
                 await service.autoUpdateBundle({
                     bundleId,
                     targetVersion,
-                    showProgress: false
+                    showProgress: false,
                 });
                 assert.fail('Should have thrown an error');
             } catch (error) {
@@ -155,7 +170,10 @@ suite('AutoUpdateService', () => {
             }
 
             assert.strictEqual(mockBundleNotifications.showUpdateFailure.callCount, 1);
-            assert.strictEqual(mockBundleNotifications.showUpdateFailure.firstCall.args[0], bundleId);
+            assert.strictEqual(
+                mockBundleNotifications.showUpdateFailure.firstCall.args[0],
+                bundleId
+            );
             // Error message now includes rollback failure message
             const failureMessage = mockBundleNotifications.showUpdateFailure.firstCall.args[1];
             assert.ok(
@@ -174,22 +192,24 @@ suite('AutoUpdateService', () => {
                 installedAt: new Date().toISOString(),
                 scope: 'user',
                 installPath: '/mock/path',
-                manifest: {} as any
+                manifest: {} as any,
             };
 
             const updatedBundle: InstalledBundle = {
                 ...installedBundle,
-                version: targetVersion
+                version: targetVersion,
             };
 
             // First call: before update, Second call: after update for verification
             mockRegistryManager.listInstalledBundles
-                .onFirstCall().resolves([installedBundle])
-                .onSecondCall().resolves([updatedBundle]);
+                .onFirstCall()
+                .resolves([installedBundle])
+                .onSecondCall()
+                .resolves([updatedBundle]);
 
             // Make update slow
             let resolveUpdate: () => void;
-            const updatePromise = new Promise<void>(resolve => {
+            const updatePromise = new Promise<void>((resolve) => {
                 resolveUpdate = resolve;
             });
             mockRegistryManager.updateBundle.returns(updatePromise);
@@ -199,7 +219,7 @@ suite('AutoUpdateService', () => {
             const firstUpdate = service.autoUpdateBundle({
                 bundleId,
                 targetVersion,
-                showProgress: false
+                showProgress: false,
             });
 
             // Verify update is in progress
@@ -210,7 +230,7 @@ suite('AutoUpdateService', () => {
                 await service.autoUpdateBundle({
                     bundleId,
                     targetVersion,
-                    showProgress: false
+                    showProgress: false,
                 });
                 assert.fail('Should have thrown an error');
             } catch (error) {
@@ -236,7 +256,7 @@ suite('AutoUpdateService', () => {
                     latestVersion: '2.0.0',
                     releaseDate: new Date().toISOString(),
                     downloadUrl: 'https://example.com/bundle1.zip',
-                    autoUpdateEnabled: true
+                    autoUpdateEnabled: true,
                 },
                 {
                     bundleId: 'bundle2',
@@ -244,8 +264,8 @@ suite('AutoUpdateService', () => {
                     latestVersion: '2.0.0',
                     releaseDate: new Date().toISOString(),
                     downloadUrl: 'https://example.com/bundle2.zip',
-                    autoUpdateEnabled: false
-                }
+                    autoUpdateEnabled: false,
+                },
             ];
 
             const bundle1: InstalledBundle = {
@@ -254,7 +274,7 @@ suite('AutoUpdateService', () => {
                 installedAt: new Date().toISOString(),
                 scope: 'user',
                 installPath: '/mock/path1',
-                manifest: {} as any
+                manifest: {} as any,
             };
 
             const bundle2: InstalledBundle = {
@@ -263,18 +283,20 @@ suite('AutoUpdateService', () => {
                 installedAt: new Date().toISOString(),
                 scope: 'user',
                 installPath: '/mock/path2',
-                manifest: {} as any
+                manifest: {} as any,
             };
 
             const updatedBundle1: InstalledBundle = {
                 ...bundle1,
-                version: '2.0.0'
+                version: '2.0.0',
             };
 
             // First call: before update, Second call: after update for verification
             mockRegistryManager.listInstalledBundles
-                .onFirstCall().resolves([bundle1, bundle2])
-                .onSecondCall().resolves([updatedBundle1, bundle2]);
+                .onFirstCall()
+                .resolves([bundle1, bundle2])
+                .onSecondCall()
+                .resolves([updatedBundle1, bundle2]);
             mockRegistryManager.updateBundle.resolves();
             mockBundleNotifications.showAutoUpdateComplete.resolves();
             mockBundleNotifications.showBatchUpdateSummary.resolves();
@@ -294,8 +316,8 @@ suite('AutoUpdateService', () => {
                     latestVersion: '2.0.0',
                     releaseDate: new Date().toISOString(),
                     downloadUrl: 'https://example.com/bundle1.zip',
-                    autoUpdateEnabled: true
-                }
+                    autoUpdateEnabled: true,
+                },
             ];
 
             const installedBundle: InstalledBundle = {
@@ -304,18 +326,20 @@ suite('AutoUpdateService', () => {
                 installedAt: new Date().toISOString(),
                 scope: 'user',
                 installPath: '/mock/path',
-                manifest: {} as any
+                manifest: {} as any,
             };
 
             const updatedBundle: InstalledBundle = {
                 ...installedBundle,
-                version: '2.0.0'
+                version: '2.0.0',
             };
 
             // First call: before update, Second call: after update for verification
             mockRegistryManager.listInstalledBundles
-                .onFirstCall().resolves([installedBundle])
-                .onSecondCall().resolves([updatedBundle]);
+                .onFirstCall()
+                .resolves([installedBundle])
+                .onSecondCall()
+                .resolves([updatedBundle]);
             mockRegistryManager.updateBundle.resolves();
             mockBundleNotifications.showAutoUpdateComplete.resolves();
             mockBundleNotifications.showBatchUpdateSummary.resolves();
@@ -323,7 +347,8 @@ suite('AutoUpdateService', () => {
             await service.autoUpdateBundles(updates);
 
             assert.strictEqual(mockBundleNotifications.showBatchUpdateSummary.callCount, 1);
-            const [successful, failed] = mockBundleNotifications.showBatchUpdateSummary.firstCall.args;
+            const [successful, failed] =
+                mockBundleNotifications.showBatchUpdateSummary.firstCall.args;
             assert.deepStrictEqual(successful, ['bundle1']);
             assert.deepStrictEqual(failed, []);
         });
@@ -382,7 +407,7 @@ suite('AutoUpdateService', () => {
                 dependencies: [],
                 license: 'MIT',
                 manifestUrl: 'https://example.com/manifest.yml',
-                downloadUrl: 'https://example.com/bundle.zip'
+                downloadUrl: 'https://example.com/bundle.zip',
             };
 
             const source = {
@@ -391,7 +416,7 @@ suite('AutoUpdateService', () => {
                 type: 'github' as const,
                 url: 'https://github.com/owner/repo',
                 enabled: true,
-                priority: 1
+                priority: 1,
             };
 
             const installedBundle: InstalledBundle = {
@@ -400,27 +425,29 @@ suite('AutoUpdateService', () => {
                 installedAt: new Date().toISOString(),
                 scope: 'user',
                 installPath: '/mock/path',
-                manifest: {} as any
+                manifest: {} as any,
             };
 
             const updatedBundle: InstalledBundle = {
                 ...installedBundle,
-                version: targetVersion
+                version: targetVersion,
             };
 
             mockRegistryManager.getBundleDetails.resolves(bundle as any);
             mockRegistryManager.listSources.resolves([source]);
             mockRegistryManager.syncSource.resolves();
             mockRegistryManager.listInstalledBundles
-                .onFirstCall().resolves([installedBundle])
-                .onSecondCall().resolves([updatedBundle]);
+                .onFirstCall()
+                .resolves([installedBundle])
+                .onSecondCall()
+                .resolves([updatedBundle]);
             mockRegistryManager.updateBundle.resolves();
             mockBundleNotifications.showAutoUpdateComplete.resolves();
 
             await service.autoUpdateBundle({
                 bundleId,
                 targetVersion,
-                showProgress: false
+                showProgress: false,
             });
 
             // Verify syncSource was called for GitHub source
@@ -447,7 +474,7 @@ suite('AutoUpdateService', () => {
                 dependencies: [],
                 license: 'MIT',
                 manifestUrl: 'https://example.com/manifest.yml',
-                downloadUrl: 'https://example.com/bundle.zip'
+                downloadUrl: 'https://example.com/bundle.zip',
             };
 
             const source = {
@@ -456,7 +483,7 @@ suite('AutoUpdateService', () => {
                 type: 'awesome-copilot' as const,
                 url: 'https://github.com/owner/awesome-copilot',
                 enabled: true,
-                priority: 1
+                priority: 1,
             };
 
             const installedBundle: InstalledBundle = {
@@ -465,26 +492,28 @@ suite('AutoUpdateService', () => {
                 installedAt: new Date().toISOString(),
                 scope: 'user',
                 installPath: '/mock/path',
-                manifest: {} as any
+                manifest: {} as any,
             };
 
             const updatedBundle: InstalledBundle = {
                 ...installedBundle,
-                version: targetVersion
+                version: targetVersion,
             };
 
             mockRegistryManager.getBundleDetails.resolves(bundle as any);
             mockRegistryManager.listSources.resolves([source]);
             mockRegistryManager.listInstalledBundles
-                .onFirstCall().resolves([installedBundle])
-                .onSecondCall().resolves([updatedBundle]);
+                .onFirstCall()
+                .resolves([installedBundle])
+                .onSecondCall()
+                .resolves([updatedBundle]);
             mockRegistryManager.updateBundle.resolves();
             mockBundleNotifications.showAutoUpdateComplete.resolves();
 
             await service.autoUpdateBundle({
                 bundleId,
                 targetVersion,
-                showProgress: false
+                showProgress: false,
             });
 
             // Verify syncSource was NOT called for awesome-copilot source
@@ -510,7 +539,7 @@ suite('AutoUpdateService', () => {
                 dependencies: [],
                 license: 'MIT',
                 manifestUrl: 'file:///local/manifest.yml',
-                downloadUrl: 'file:///local/bundle.zip'
+                downloadUrl: 'file:///local/bundle.zip',
             };
 
             const source = {
@@ -519,7 +548,7 @@ suite('AutoUpdateService', () => {
                 type: 'local' as const,
                 url: 'file:///local/bundles',
                 enabled: true,
-                priority: 1
+                priority: 1,
             };
 
             const installedBundle: InstalledBundle = {
@@ -528,26 +557,28 @@ suite('AutoUpdateService', () => {
                 installedAt: new Date().toISOString(),
                 scope: 'user',
                 installPath: '/mock/path',
-                manifest: {} as any
+                manifest: {} as any,
             };
 
             const updatedBundle: InstalledBundle = {
                 ...installedBundle,
-                version: targetVersion
+                version: targetVersion,
             };
 
             mockRegistryManager.getBundleDetails.resolves(bundle as any);
             mockRegistryManager.listSources.resolves([source]);
             mockRegistryManager.listInstalledBundles
-                .onFirstCall().resolves([installedBundle])
-                .onSecondCall().resolves([updatedBundle]);
+                .onFirstCall()
+                .resolves([installedBundle])
+                .onSecondCall()
+                .resolves([updatedBundle]);
             mockRegistryManager.updateBundle.resolves();
             mockBundleNotifications.showAutoUpdateComplete.resolves();
 
             await service.autoUpdateBundle({
                 bundleId,
                 targetVersion,
-                showProgress: false
+                showProgress: false,
             });
 
             // Verify syncSource was NOT called for local source
@@ -573,7 +604,7 @@ suite('AutoUpdateService', () => {
                 dependencies: [],
                 license: 'MIT',
                 manifestUrl: 'https://example.com/manifest.yml',
-                downloadUrl: 'https://example.com/bundle.zip'
+                downloadUrl: 'https://example.com/bundle.zip',
             };
 
             const source = {
@@ -582,7 +613,7 @@ suite('AutoUpdateService', () => {
                 type: 'github' as const,
                 url: 'https://github.com/owner/repo',
                 enabled: true,
-                priority: 1
+                priority: 1,
             };
 
             const installedBundle: InstalledBundle = {
@@ -591,20 +622,22 @@ suite('AutoUpdateService', () => {
                 installedAt: new Date().toISOString(),
                 scope: 'user',
                 installPath: '/mock/path',
-                manifest: {} as any
+                manifest: {} as any,
             };
 
             const updatedBundle: InstalledBundle = {
                 ...installedBundle,
-                version: targetVersion
+                version: targetVersion,
             };
 
             mockRegistryManager.getBundleDetails.resolves(bundle as any);
             mockRegistryManager.listSources.resolves([source]);
             mockRegistryManager.syncSource.rejects(new Error('Sync failed'));
             mockRegistryManager.listInstalledBundles
-                .onFirstCall().resolves([installedBundle])
-                .onSecondCall().resolves([updatedBundle]);
+                .onFirstCall()
+                .resolves([installedBundle])
+                .onSecondCall()
+                .resolves([updatedBundle]);
             mockRegistryManager.updateBundle.resolves();
             mockBundleNotifications.showAutoUpdateComplete.resolves();
 
@@ -612,7 +645,7 @@ suite('AutoUpdateService', () => {
             await service.autoUpdateBundle({
                 bundleId,
                 targetVersion,
-                showProgress: false
+                showProgress: false,
             });
 
             // Verify update was still called despite sync failure
@@ -639,7 +672,7 @@ suite('AutoUpdateService', () => {
                 dependencies: [],
                 license: 'MIT',
                 manifestUrl: 'https://example.com/manifest.yml',
-                downloadUrl: 'https://example.com/bundle.zip'
+                downloadUrl: 'https://example.com/bundle.zip',
             };
 
             const installedBundle: InstalledBundle = {
@@ -648,19 +681,21 @@ suite('AutoUpdateService', () => {
                 installedAt: new Date().toISOString(),
                 scope: 'user',
                 installPath: '/mock/path',
-                manifest: {} as any
+                manifest: {} as any,
             };
 
             const updatedBundle: InstalledBundle = {
                 ...installedBundle,
-                version: targetVersion
+                version: targetVersion,
             };
 
             mockRegistryManager.getBundleDetails.resolves(bundle as any);
             mockRegistryManager.listSources.resolves([]); // No sources found
             mockRegistryManager.listInstalledBundles
-                .onFirstCall().resolves([installedBundle])
-                .onSecondCall().resolves([updatedBundle]);
+                .onFirstCall()
+                .resolves([installedBundle])
+                .onSecondCall()
+                .resolves([updatedBundle]);
             mockRegistryManager.updateBundle.resolves();
             mockBundleNotifications.showAutoUpdateComplete.resolves();
 
@@ -668,7 +703,7 @@ suite('AutoUpdateService', () => {
             await service.autoUpdateBundle({
                 bundleId,
                 targetVersion,
-                showProgress: false
+                showProgress: false,
             });
 
             // Verify update was still called despite missing source

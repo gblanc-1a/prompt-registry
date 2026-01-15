@@ -1,7 +1,9 @@
-import * as assert from 'assert';
-import * as path from 'path';
+import * as assert from 'node:assert';
+import * as os from 'node:os';
+import * as path from 'node:path';
+
 import * as fs from 'fs-extra';
-import * as os from 'os';
+
 import { McpServerManager } from '../../src/services/McpServerManager';
 import { McpServersManifest } from '../../src/types/mcp';
 
@@ -41,9 +43,9 @@ suite('McpServerManager Test Suite', () => {
                 command: 'node',
                 args: ['${bundlePath}/server.js'],
                 env: {
-                    LOG_LEVEL: 'info'
-                }
-            }
+                    LOG_LEVEL: 'info',
+                },
+            },
         };
 
         const result = await manager.installServers(
@@ -57,7 +59,7 @@ suite('McpServerManager Test Suite', () => {
         // If mcp.json exists and has syntax errors, operation may fail
         // This is expected and tests the error handling
         assert.ok(result.success === true || result.success === false);
-        
+
         if (result.success) {
             assert.strictEqual(result.serversInstalled, 1);
             assert.strictEqual(result.installedServers.length, 1);
@@ -74,7 +76,7 @@ suite('McpServerManager Test Suite', () => {
         // If mcp.json exists and has syntax errors, operation may fail
         // This is expected and tests the error handling
         assert.ok(result.success === true || result.success === false);
-        
+
         if (result.success) {
             assert.strictEqual(result.serversRemoved, 0);
             assert.strictEqual(result.removedServers.length, 0);

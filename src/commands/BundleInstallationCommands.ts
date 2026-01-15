@@ -4,10 +4,11 @@
  */
 
 import * as vscode from 'vscode';
+
 import { RegistryManager } from '../services/RegistryManager';
-import { Bundle, InstallOptions } from '../types/registry';
-import { Logger } from '../utils/logger';
+import { InstallOptions } from '../types/registry';
 import { ErrorHandler } from '../utils/errorHandler';
+import { Logger } from '../utils/logger';
 
 /**
  * Bundle Installation Commands Handler
@@ -40,18 +41,18 @@ export class BundleInstallationCommands {
                     {
                         label: '$(account) User',
                         description: 'Install for current user (all workspaces)',
-                        value: 'user' as const
+                        value: 'user' as const,
                     },
                     {
                         label: '$(folder) Workspace',
                         description: 'Install for current workspace only',
-                        value: 'workspace' as const
-                    }
+                        value: 'workspace' as const,
+                    },
                 ],
                 {
                     placeHolder: 'Select installation scope',
                     title: `Install ${bundle.name}`,
-                    ignoreFocusOut: true
+                    ignoreFocusOut: true,
                 }
             );
 
@@ -66,19 +67,19 @@ export class BundleInstallationCommands {
                         label: '$(sync) Enable auto-update',
                         description: 'Automatically install updates when available',
                         detail: 'Recommended for staying up-to-date with the latest features and fixes',
-                        value: true
+                        value: true,
                     },
                     {
                         label: '$(circle-slash) Manual updates only',
                         description: 'You will be notified but updates must be installed manually',
                         detail: 'Choose this if you prefer to review changes before updating',
-                        value: false
-                    }
+                        value: false,
+                    },
                 ],
                 {
                     placeHolder: 'Enable auto-update for this bundle?',
                     title: `Install ${bundle.name} - Auto-Update Preference`,
-                    ignoreFocusOut: true
+                    ignoreFocusOut: true,
                 }
             );
 
@@ -88,7 +89,7 @@ export class BundleInstallationCommands {
 
             const options: InstallOptions = {
                 scope: scope.value,
-                version: 'latest'
+                version: 'latest',
             };
 
             // Install with progress
@@ -96,7 +97,7 @@ export class BundleInstallationCommands {
                 {
                     location: vscode.ProgressLocation.Notification,
                     title: `Installing ${bundle.name}...`,
-                    cancellable: false
+                    cancellable: false,
                 },
                 async (progress) => {
                     progress.report({ message: 'Downloading...' });
@@ -108,27 +109,29 @@ export class BundleInstallationCommands {
             // Store auto-update preference after successful installation
             const storage = this.registryManager.getStorage();
             await storage.setUpdatePreference(bundleId, autoUpdateChoice.value);
-            
+
             this.logger.info(
                 `Auto-update preference for '${bundleId}' set to: ${autoUpdateChoice.value}`
             );
 
-            vscode.window.showInformationMessage(
-                `✓ ${bundle.name} installed successfully!`,
-                'View Bundle', 'Install More'
-            ).then(action => {
-                if (action === 'View Bundle') {
-                    vscode.commands.executeCommand('promptRegistry.viewBundle', bundleId);
-                } else if (action === 'Install More') {
-                    this.searchAndInstall();
-                }
-            });
-
+            vscode.window
+                .showInformationMessage(
+                    `✓ ${bundle.name} installed successfully!`,
+                    'View Bundle',
+                    'Install More'
+                )
+                .then((action) => {
+                    if (action === 'View Bundle') {
+                        vscode.commands.executeCommand('promptRegistry.viewBundle', bundleId);
+                    } else if (action === 'Install More') {
+                        this.searchAndInstall();
+                    }
+                });
         } catch (error) {
             await ErrorHandler.handle(error, {
                 operation: 'install bundle',
                 showUserMessage: true,
-                userMessagePrefix: 'Installation failed'
+                userMessagePrefix: 'Installation failed',
             });
         }
     }
@@ -142,7 +145,7 @@ export class BundleInstallationCommands {
             const searchQuery = await vscode.window.showInputBox({
                 prompt: 'Search for bundles',
                 placeHolder: 'e.g., python developer',
-                ignoreFocusOut: true
+                ignoreFocusOut: true,
             });
 
             if (!searchQuery) {
@@ -153,11 +156,11 @@ export class BundleInstallationCommands {
                 {
                     location: vscode.ProgressLocation.Notification,
                     title: 'Searching bundles...',
-                    cancellable: false
+                    cancellable: false,
                 },
                 async () => {
                     const bundles = await this.registryManager.searchBundles({
-                        text: searchQuery
+                        text: searchQuery,
                     });
 
                     if (bundles.length === 0) {
@@ -169,16 +172,16 @@ export class BundleInstallationCommands {
 
                     // Show results
                     const selected = await vscode.window.showQuickPick(
-                        bundles.map(b => ({
+                        bundles.map((b) => ({
                             label: b.name,
                             description: `v${b.version} • ${b.author}`,
                             detail: b.description,
-                            bundle: b
+                            bundle: b,
                         })),
                         {
                             placeHolder: `Found ${bundles.length} bundle(s)`,
                             title: 'Select Bundle to Install',
-                            ignoreFocusOut: true
+                            ignoreFocusOut: true,
                         }
                     );
 
@@ -187,12 +190,11 @@ export class BundleInstallationCommands {
                     }
                 }
             );
-
         } catch (error) {
             await ErrorHandler.handle(error, {
                 operation: 'search bundles',
                 showUserMessage: true,
-                userMessagePrefix: 'Search failed'
+                userMessagePrefix: 'Search failed',
             });
         }
     }
@@ -212,28 +214,32 @@ export class BundleInstallationCommands {
                 }
 
                 const selected = await vscode.window.showQuickPick(
-                    await Promise.all(installed.map(async ib => {
-                        try {
-                            const bundle = await this.registryManager.getBundleDetails(ib.bundleId);
-                            return {
-                                label: bundle.name,
-                                description: `v${ib.version} • ${ib.scope}`,
-                                detail: bundle.description,
-                                bundleId: ib.bundleId
-                            };
-                        } catch {
-                            return {
-                                label: ib.bundleId,
-                                description: `v${ib.version} • ${ib.scope}`,
-                                detail: 'Bundle details not available',
-                                bundleId: ib.bundleId
-                            };
-                        }
-                    })),
+                    await Promise.all(
+                        installed.map(async (ib) => {
+                            try {
+                                const bundle = await this.registryManager.getBundleDetails(
+                                    ib.bundleId
+                                );
+                                return {
+                                    label: bundle.name,
+                                    description: `v${ib.version} • ${ib.scope}`,
+                                    detail: bundle.description,
+                                    bundleId: ib.bundleId,
+                                };
+                            } catch {
+                                return {
+                                    label: ib.bundleId,
+                                    description: `v${ib.version} • ${ib.scope}`,
+                                    detail: 'Bundle details not available',
+                                    bundleId: ib.bundleId,
+                                };
+                            }
+                        })
+                    ),
                     {
                         placeHolder: 'Select bundle to uninstall',
                         title: 'Uninstall Bundle',
-                        ignoreFocusOut: true
+                        ignoreFocusOut: true,
                     }
                 );
 
@@ -257,7 +263,8 @@ export class BundleInstallationCommands {
             const confirmation = await vscode.window.showWarningMessage(
                 `Are you sure you want to uninstall "${bundleName}"?`,
                 { modal: true },
-                'Uninstall', 'Cancel'
+                'Uninstall',
+                'Cancel'
             );
 
             if (confirmation !== 'Uninstall') {
@@ -269,22 +276,19 @@ export class BundleInstallationCommands {
                 {
                     location: vscode.ProgressLocation.Notification,
                     title: `Uninstalling ${bundleName}...`,
-                    cancellable: false
+                    cancellable: false,
                 },
                 async () => {
                     await this.registryManager.uninstallBundle(bundleId!);
                 }
             );
 
-            vscode.window.showInformationMessage(
-                `✓ ${bundleName} uninstalled successfully`
-            );
-
+            vscode.window.showInformationMessage(`✓ ${bundleName} uninstalled successfully`);
         } catch (error) {
             await ErrorHandler.handle(error, {
                 operation: 'uninstall bundle',
                 showUserMessage: true,
-                userMessagePrefix: 'Uninstall failed'
+                userMessagePrefix: 'Uninstall failed',
             });
         }
     }

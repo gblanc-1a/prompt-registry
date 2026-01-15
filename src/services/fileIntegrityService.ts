@@ -1,6 +1,6 @@
-import * as crypto from 'crypto';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as crypto from 'node:crypto';
+import * as fs from 'node:fs';
+
 import { FileIntegrityInfo, ModificationInfo, IntegrityReport } from '../types/integrityTypes';
 
 /**
@@ -16,10 +16,10 @@ export class FileIntegrityService {
      */
     async calculateFileIntegrity(filePath: string): Promise<FileIntegrityInfo> {
         const stats = await fs.promises.stat(filePath);
-        
+
         // Calculate both hash algorithms efficiently in a single pass
         const hashes = await this.calculateFileHashes(filePath);
-        
+
         return {
             path: filePath,
             sha256: hashes.sha256,
@@ -29,14 +29,19 @@ export class FileIntegrityService {
             permissions: stats.mode.toString(8),
             isExecutable: !!(stats.mode & fs.constants.S_IXUSR),
             isSymlink: stats.isSymbolicLink(),
-            symlinkTarget: stats.isSymbolicLink() ? await fs.promises.readlink(filePath) : undefined
+            symlinkTarget: stats.isSymbolicLink()
+                ? await fs.promises.readlink(filePath)
+                : undefined,
         };
     }
 
     /**
      * Calculate integrity information for multiple files in parallel
      */
-    async calculateFilesIntegrity(filePaths: string[], concurrency: number = 5): Promise<FileIntegrityInfo[]> {
+    async calculateFilesIntegrity(
+        filePaths: string[],
+        concurrency: number = 5
+    ): Promise<FileIntegrityInfo[]> {
         const results: FileIntegrityInfo[] = [];
         const semaphore = new Semaphore(concurrency);
 
@@ -62,25 +67,28 @@ export class FileIntegrityService {
      * Calculate both SHA256 and secondary hash in a single file pass for efficiency
      * Uses SHA-512 as fallback if BLAKE2b is not available in the extension environment
      */
-    private async calculateFileHashes(filePath: string): Promise<{ sha256: string; blake2b256: string }> {
+    private async calculateFileHashes(
+        filePath: string
+    ): Promise<{ sha256: string; blake2b256: string }> {
         return new Promise((resolve, reject) => {
             const sha256Hash = crypto.createHash('sha256');
-            
+
             // Try BLAKE2b first, fallback to SHA-512 if not supported
             let secondaryHash: crypto.Hash;
-            let useBlake2b = true;
-            
+
             try {
                 secondaryHash = crypto.createHash('blake2b512');
-            } catch (error) {
+            } catch {
                 // Fallback to SHA-512 if BLAKE2b is not supported in this environment
                 secondaryHash = crypto.createHash('sha512');
-                useBlake2b = false;
+                // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
                 console.log('Prompt Registry: BLAKE2b not available, using SHA-512 fallback');
             }
-            
-            const stream = fs.createReadStream(filePath, { highWaterMark: FileIntegrityService.CHUNK_SIZE });
-            
+
+            const stream = fs.createReadStream(filePath, {
+                highWaterMark: FileIntegrityService.CHUNK_SIZE,
+            });
+
             stream.on('data', (chunk: Buffer) => {
                 sha256Hash.update(chunk);
                 secondaryHash.update(chunk);
@@ -101,22 +109,24 @@ export class FileIntegrityService {
     /**
      * Verify file integrity against expected values
      */
-    async verifyFileIntegrity(filePath: string, expectedIntegrity: FileIntegrityInfo): Promise<ModificationInfo> {
+    async verifyFileIntegrity(
+        filePath: string,
+        expectedIntegrity: FileIntegrityInfo
+    ): Promise<ModificationInfo> {
         try {
             const currentIntegrity = await this.calculateFileIntegrity(filePath);
-            
-            const isUnmodified = (
+
+            const isUnmodified =
                 currentIntegrity.sha256 === expectedIntegrity.sha256 &&
                 currentIntegrity.xxhash64 === expectedIntegrity.xxhash64 &&
-                currentIntegrity.size === expectedIntegrity.size
-            );
+                currentIntegrity.size === expectedIntegrity.size;
 
             return {
                 isModified: !isUnmodified,
                 modifiedAt: isUnmodified ? undefined : new Date().toISOString(),
                 verificationType: isUnmodified ? 'hash' : 'hash',
                 originalIntegrity: expectedIntegrity,
-                currentState: isUnmodified ? undefined : currentIntegrity
+                currentState: isUnmodified ? undefined : currentIntegrity,
             };
         } catch (error) {
             return {
@@ -124,7 +134,7 @@ export class FileIntegrityService {
                 modifiedAt: new Date().toISOString(),
                 verificationType: 'missing',
                 originalIntegrity: expectedIntegrity,
-                currentState: undefined
+                currentState: undefined,
             };
         }
     }
@@ -132,7 +142,10 @@ export class FileIntegrityService {
     /**
      * Generate comprehensive integrity report for files
      */
-    async generateIntegrityReport(files: FileIntegrityInfo[], existingFiles: FileIntegrityInfo[]): Promise<IntegrityReport> {
+    async generateIntegrityReport(
+        files: FileIntegrityInfo[],
+        existingFiles: FileIntegrityInfo[]
+    ): Promise<IntegrityReport> {
         const modifications: Array<{
             file: string;
             type: 'modified' | 'deleted' | 'corrupted' | 'intact';
@@ -142,13 +155,13 @@ export class FileIntegrityService {
 
         let modifiedFiles = 0;
         let deletedFiles = 0;
-        let corruptedFiles = 0;
+        const corruptedFiles = 0;
         let intactFiles = 0;
 
         // Check each original file
         for (const originalFile of files) {
-            const currentFile = existingFiles.find(f => f.path === originalFile.path);
-            
+            const currentFile = existingFiles.find((f) => f.path === originalFile.path);
+
             if (!currentFile) {
                 deletedFiles++;
                 modifications.push({
@@ -158,20 +171,20 @@ export class FileIntegrityService {
                         isModified: true,
                         modifiedAt: new Date().toISOString(),
                         verificationType: 'missing',
-                        originalIntegrity: originalFile
+                        originalIntegrity: originalFile,
                     },
-                    recommendation: 'ignore'
+                    recommendation: 'ignore',
                 });
             } else {
                 const modInfo = await this.verifyFileIntegrity(originalFile.path, originalFile);
-                
+
                 if (!modInfo.isModified) {
                     intactFiles++;
                     modifications.push({
                         file: originalFile.path,
                         type: 'intact',
                         details: modInfo,
-                        recommendation: 'remove'
+                        recommendation: 'remove',
                     });
                 } else if (modInfo.verificationType === 'missing') {
                     deletedFiles++;
@@ -179,7 +192,7 @@ export class FileIntegrityService {
                         file: originalFile.path,
                         type: 'deleted',
                         details: modInfo,
-                        recommendation: 'ignore'
+                        recommendation: 'ignore',
                     });
                 } else {
                     modifiedFiles++;
@@ -187,7 +200,7 @@ export class FileIntegrityService {
                         file: originalFile.path,
                         type: 'modified',
                         details: modInfo,
-                        recommendation: 'preserve'
+                        recommendation: 'preserve',
                     });
                 }
             }
@@ -195,10 +208,18 @@ export class FileIntegrityService {
 
         const totalFiles = files.length;
         let summary = `Integrity check completed: ${totalFiles} files tracked.`;
-        if (intactFiles > 0) {summary += ` ${intactFiles} intact,`;}
-        if (modifiedFiles > 0) {summary += ` ${modifiedFiles} modified,`;}
-        if (deletedFiles > 0) {summary += ` ${deletedFiles} deleted,`;}
-        if (corruptedFiles > 0) {summary += ` ${corruptedFiles} corrupted.`;}
+        if (intactFiles > 0) {
+            summary += ` ${intactFiles} intact,`;
+        }
+        if (modifiedFiles > 0) {
+            summary += ` ${modifiedFiles} modified,`;
+        }
+        if (deletedFiles > 0) {
+            summary += ` ${deletedFiles} deleted,`;
+        }
+        if (corruptedFiles > 0) {
+            summary += ` ${corruptedFiles} corrupted.`;
+        }
 
         return {
             totalFiles,
@@ -208,7 +229,7 @@ export class FileIntegrityService {
             intactFiles,
             modifications,
             summary,
-            generatedAt: new Date().toISOString()
+            generatedAt: new Date().toISOString(),
         };
     }
 
@@ -216,10 +237,14 @@ export class FileIntegrityService {
      * Quick integrity verification using fast hash comparison
      * Uses BLAKE2b instead of xxhash for better portability
      */
-    async quickVerifyFile(filePath: string, expectedSha256: string, expectedBlake2b?: string): Promise<boolean> {
+    async quickVerifyFile(
+        filePath: string,
+        expectedSha256: string,
+        expectedBlake2b?: string
+    ): Promise<boolean> {
         try {
             const buffer = await fs.promises.readFile(filePath);
-            
+
             // Primary verification with SHA256
             const currentSha256 = crypto.createHash('sha256').update(buffer).digest('hex');
             if (currentSha256 !== expectedSha256) {
@@ -228,7 +253,11 @@ export class FileIntegrityService {
 
             // Secondary verification with BLAKE2b if provided (replaces xxhash)
             if (expectedBlake2b) {
-                const currentBlake2b = crypto.createHash('blake2b512').update(buffer).digest('hex').substring(0, 64);
+                const currentBlake2b = crypto
+                    .createHash('blake2b512')
+                    .update(buffer)
+                    .digest('hex')
+                    .substring(0, 64);
                 if (currentBlake2b !== expectedBlake2b) {
                     return false;
                 }
@@ -253,10 +282,10 @@ export class FileIntegrityService {
                 files.push(...matches);
             }
         } else {
-            const matches = await glob.glob('**/*', { 
-                cwd: directoryPath, 
-                absolute: true, 
-                nodir: true 
+            const matches = await glob.glob('**/*', {
+                cwd: directoryPath,
+                absolute: true,
+                nodir: true,
             });
             files.push(...matches);
         }
@@ -283,7 +312,7 @@ export class FileIntegrityService {
             try {
                 const stats = await fs.promises.stat(filePath);
                 totalSize += stats.size;
-                
+
                 if (stats.size > largestFileSize) {
                     largestFileSize = stats.size;
                     largestFile = filePath;
@@ -299,7 +328,7 @@ export class FileIntegrityService {
             totalSize,
             largestFile,
             largestFileSize,
-            averageFileSize: files.length > 0 ? Math.round(totalSize / files.length) : 0
+            averageFileSize: files.length > 0 ? Math.round(totalSize / files.length) : 0,
         };
     }
 }

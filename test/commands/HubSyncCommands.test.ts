@@ -1,13 +1,14 @@
 /**
  * Test Suite: Hub Sync Commands
- * 
+ *
  * Tests VS Code commands for manual profile synchronization.
  * Covers checkForUpdates, viewChanges, syncProfile commands.
  */
 
-import * as assert from 'assert';
-import * as path from 'path';
-import * as fs from 'fs';
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import { HubSyncCommands } from '../../src/commands/HubSyncCommands';
 import { HubManager } from '../../src/services/HubManager';
 import { HubStorage } from '../../src/storage/HubStorage';
@@ -25,7 +26,7 @@ suite('Hub Sync Commands', () => {
             name: 'Test Hub',
             description: 'Test hub',
             maintainer: 'Test',
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
         },
         sources: [
             {
@@ -36,9 +37,9 @@ suite('Hub Sync Commands', () => {
                 enabled: true,
                 priority: 1,
                 metadata: {
-                    description: 'Test source'
-                }
-            }
+                    description: 'Test source',
+                },
+            },
         ],
         profiles: [
             {
@@ -51,14 +52,14 @@ suite('Hub Sync Commands', () => {
                         id: 'bundle-1',
                         version: '1.0.0',
                         source: 'test-source',
-                        required: true
-                    }
+                        required: true,
+                    },
                 ],
                 active: false,
                 createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
-            }
-        ]
+                updatedAt: new Date().toISOString(),
+            },
+        ],
     });
 
     setup(() => {
@@ -83,7 +84,7 @@ suite('Hub Sync Commands', () => {
             await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
             await hubManager.activateProfile('test-hub', 'test-profile', { installBundles: false });
 
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             // Update profile
             const updated = await storage.loadHub('test-hub');
@@ -91,7 +92,7 @@ suite('Hub Sync Commands', () => {
                 id: 'bundle-2',
                 version: '1.0.0',
                 source: 'test-source',
-                required: false
+                required: false,
             });
             await storage.saveHub('test-hub', updated.config, updated.reference);
 
@@ -125,7 +126,7 @@ suite('Hub Sync Commands', () => {
             await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
             await hubManager.activateProfile('test-hub', 'test-profile', { installBundles: false });
 
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             // Update profile
             const updated = await storage.loadHub('test-hub');
@@ -133,7 +134,7 @@ suite('Hub Sync Commands', () => {
                 id: 'bundle-2',
                 version: '1.0.0',
                 source: 'test-source',
-                required: false
+                required: false,
             });
             await storage.saveHub('test-hub', updated.config, updated.reference);
 
@@ -160,7 +161,7 @@ suite('Hub Sync Commands', () => {
             await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
             await hubManager.activateProfile('test-hub', 'test-profile', { installBundles: false });
 
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             // Update profile
             const updated = await storage.loadHub('test-hub');
@@ -168,7 +169,7 @@ suite('Hub Sync Commands', () => {
                 id: 'bundle-2',
                 version: '1.0.0',
                 source: 'test-source',
-                required: false
+                required: false,
             });
             await storage.saveHub('test-hub', updated.config, updated.reference);
 
@@ -201,7 +202,7 @@ suite('Hub Sync Commands', () => {
             await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
             await hubManager.activateProfile('test-hub', 'test-profile', { installBundles: false });
 
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             // Update profile
             const updated = await storage.loadHub('test-hub');
@@ -209,7 +210,7 @@ suite('Hub Sync Commands', () => {
                 id: 'bundle-2',
                 version: '1.0.0',
                 source: 'test-source',
-                required: false
+                required: false,
             });
             await storage.saveHub('test-hub', updated.config, updated.reference);
 
@@ -242,7 +243,7 @@ suite('Hub Sync Commands', () => {
             await storage.saveHub('hub-2', hub2, { type: 'github', location: 'test/repo' });
             await hubManager.activateProfile('hub-2', 'profile-2', { installBundles: false });
 
-            await new Promise(resolve => setTimeout(resolve, 10));
+            await new Promise((resolve) => setTimeout(resolve, 10));
 
             // Update hub-1 profile
             const updated = await storage.loadHub('hub-1');
@@ -250,15 +251,15 @@ suite('Hub Sync Commands', () => {
                 id: 'bundle-2',
                 version: '1.0.0',
                 source: 'test-source',
-                required: false
+                required: false,
             });
             await storage.saveHub('hub-1', updated.config, updated.reference);
 
             const results = await commands.checkAllHubsForUpdates();
             // Only hub-2 is active (single active profile enforcement deactivated hub-1)
             assert.strictEqual(results.length, 1);
-            
-            const hub2Result = results.find(r => r.hubId === 'hub-2');
+
+            const hub2Result = results.find((r) => r.hubId === 'hub-2');
             assert.ok(hub2Result);
             assert.strictEqual(hub2Result.hasUpdates, false);
         });

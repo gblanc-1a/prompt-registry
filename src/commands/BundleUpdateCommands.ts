@@ -4,14 +4,15 @@
  */
 
 import * as vscode from 'vscode';
+
+import { BundleUpdateNotifications } from '../notifications/BundleUpdateNotifications';
 import { RegistryManager } from '../services/RegistryManager';
 import { BundleUpdate } from '../types/registry';
+import { getBundleDisplayName } from '../utils/bundleNameUtils';
+import { CONCURRENCY_CONSTANTS } from '../utils/constants';
+import { ErrorHandler } from '../utils/errorHandler';
 import { Logger } from '../utils/logger';
 import { toError } from '../utils/typeGuards';
-import { ErrorHandler } from '../utils/errorHandler';
-import { CONCURRENCY_CONSTANTS } from '../utils/constants';
-import { getBundleDisplayName } from '../utils/bundleNameUtils';
-import { BundleUpdateNotifications } from '../notifications/BundleUpdateNotifications';
 
 /**
  * Bundle Update Commands Handler
@@ -38,12 +39,12 @@ export class BundleUpdateCommands {
                 {
                     location: vscode.ProgressLocation.Notification,
                     title: 'Checking for updates...',
-                    cancellable: false
+                    cancellable: false,
                 },
                 async () => {
                     // Check for updates for all bundles, then filter for the specific one
                     const allUpdates = await this.registryManager.checkUpdates();
-                    const bundleUpdate = allUpdates.find(u => u.bundleId === bundleId);
+                    const bundleUpdate = allUpdates.find((u) => u.bundleId === bundleId);
 
                     const bundleName = await this.getBundleDisplayName(bundleId);
 
@@ -57,7 +58,7 @@ export class BundleUpdateCommands {
                         `Update available for ${bundleName}`,
                         {
                             detail: `Current: ${bundleUpdate.currentVersion}\nLatest: ${bundleUpdate.latestVersion}`,
-                            modal: true
+                            modal: true,
                         },
                         'Update Now',
                         'View Details'
@@ -83,7 +84,7 @@ export class BundleUpdateCommands {
                 {
                     location: vscode.ProgressLocation.Notification,
                     title: 'Checking for updates...',
-                    cancellable: false
+                    cancellable: false,
                 },
                 async () => {
                     const updates = await this.registryManager.checkUpdates();
@@ -94,26 +95,25 @@ export class BundleUpdateCommands {
                     }
 
                     // Show available updates with bundle names
-                    const updateItems = await Promise.all(updates.map(async u => {
-                        const name = await this.getBundleDisplayName(u.bundleId);
-                        return {
-                            label: name,
-                            description: `${u.currentVersion} → ${u.latestVersion}`,
-                            detail: 'Update available',
-                            update: u,
-                            name
-                        };
-                    }));
-
-                    const selected = await vscode.window.showQuickPick(
-                        updateItems,
-                        {
-                            placeHolder: `${updates.length} update(s) available`,
-                            title: 'Bundle Updates',
-                            canPickMany: true,
-                            ignoreFocusOut: true
-                        }
+                    const updateItems = await Promise.all(
+                        updates.map(async (u) => {
+                            const name = await this.getBundleDisplayName(u.bundleId);
+                            return {
+                                label: name,
+                                description: `${u.currentVersion} → ${u.latestVersion}`,
+                                detail: 'Update available',
+                                update: u,
+                                name,
+                            };
+                        })
                     );
+
+                    const selected = await vscode.window.showQuickPick(updateItems, {
+                        placeHolder: `${updates.length} update(s) available`,
+                        title: 'Bundle Updates',
+                        canPickMany: true,
+                        ignoreFocusOut: true,
+                    });
 
                     if (!selected || selected.length === 0) {
                         return;
@@ -129,9 +129,7 @@ export class BundleUpdateCommands {
                         }
                     }
 
-                    vscode.window.showInformationMessage(
-                        `✓ Updated ${selected.length} bundle(s)`
-                    );
+                    vscode.window.showInformationMessage(`✓ Updated ${selected.length} bundle(s)`);
                 }
             );
         }, 'check updates');
@@ -148,7 +146,9 @@ export class BundleUpdateCommands {
                 const bundle = await this.registryManager.getBundleDetails(bundleId);
                 bundleName = bundle.name;
             } catch (error) {
-                this.logger.debug(`Could not get bundle details for '${bundleId}', using ID as name`);
+                this.logger.debug(
+                    `Could not get bundle details for '${bundleId}', using ID as name`
+                );
             }
 
             // Update with progress
@@ -156,7 +156,7 @@ export class BundleUpdateCommands {
                 {
                     location: vscode.ProgressLocation.Notification,
                     title: `Updating ${bundleName}...`,
-                    cancellable: false
+                    cancellable: false,
                 },
                 async (progress) => {
                     progress.report({ message: 'Downloading...' });
@@ -165,9 +165,7 @@ export class BundleUpdateCommands {
                 }
             );
 
-            vscode.window.showInformationMessage(
-                `✓ ${bundleName} updated successfully!`
-            );
+            vscode.window.showInformationMessage(`✓ ${bundleName} updated successfully!`);
         }, 'update bundle');
     }
 
@@ -186,7 +184,7 @@ export class BundleUpdateCommands {
             }
 
             // Confirm batch update
-            if (!await this.confirmBatchUpdate(updates.length)) {
+            if (!(await this.confirmBatchUpdate(updates.length))) {
                 return;
             }
 
@@ -216,9 +214,11 @@ export class BundleUpdateCommands {
 
             // Check current status
             const currentStatus = await this.registryManager.isAutoUpdateEnabled(bundleId);
-            
+
             if (currentStatus) {
-                vscode.window.showInformationMessage(`Auto-update is already enabled for ${bundleId}`);
+                vscode.window.showInformationMessage(
+                    `Auto-update is already enabled for ${bundleId}`
+                );
                 return;
             }
 
@@ -243,9 +243,11 @@ export class BundleUpdateCommands {
 
             // Check current status
             const currentStatus = await this.registryManager.isAutoUpdateEnabled(bundleId);
-            
+
             if (!currentStatus) {
-                vscode.window.showInformationMessage(`Auto-update is already disabled for ${bundleId}`);
+                vscode.window.showInformationMessage(
+                    `Auto-update is already disabled for ${bundleId}`
+                );
                 return;
             }
 
@@ -279,9 +281,9 @@ export class BundleUpdateCommands {
             operation: operationName,
             showUserMessage: true,
             logLevel: 'error',
-            fallbackValue
+            fallbackValue,
         });
-        
+
         // For command handlers, errors are surfaced to the user via
         // ErrorHandler and should not be rethrown to avoid breaking
         // the command pipeline.
@@ -296,7 +298,7 @@ export class BundleUpdateCommands {
             {
                 location: vscode.ProgressLocation.Notification,
                 title: 'Checking for updates...',
-                cancellable: false
+                cancellable: false,
             },
             async () => {
                 return await this.registryManager.checkUpdates();
@@ -311,7 +313,8 @@ export class BundleUpdateCommands {
         const confirmation = await vscode.window.showInformationMessage(
             `${updateCount} bundle update(s) available. Update all now?`,
             { modal: true },
-            'Update All', 'Cancel'
+            'Update All',
+            'Cancel'
         );
         return confirmation === 'Update All';
     }
@@ -330,7 +333,7 @@ export class BundleUpdateCommands {
             {
                 location: vscode.ProgressLocation.Notification,
                 title: 'Updating bundles...',
-                cancellable: false
+                cancellable: false,
             },
             async (progress) => {
                 const totalUpdates = updates.length;
@@ -343,14 +346,22 @@ export class BundleUpdateCommands {
                     // Update progress
                     progress.report({
                         message: `Processing batch ${Math.floor(i / CONCURRENCY_CONSTANTS.BATCH_SIZE) + 1}...`,
-                        increment: 0
+                        increment: 0,
                     });
 
                     // Process batch in parallel
                     const results = await this.processBatch(batch);
 
                     // Collect results and update progress
-                    this.collectBatchResults(results, batch, successful, failed, progress, completed, totalUpdates);
+                    this.collectBatchResults(
+                        results,
+                        batch,
+                        successful,
+                        failed,
+                        progress,
+                        completed,
+                        totalUpdates
+                    );
                     completed += batch.length;
                 }
             }
@@ -362,19 +373,23 @@ export class BundleUpdateCommands {
     /**
      * Process a batch of updates in parallel
      */
-    private async processBatch(batch: BundleUpdate[]): Promise<PromiseSettledResult<{
-        bundleId: string;
-        bundleName: string;
-        success: boolean;
-        error?: string;
-    }>[]> {
+    private async processBatch(batch: BundleUpdate[]): Promise<
+        PromiseSettledResult<{
+            bundleId: string;
+            bundleName: string;
+            success: boolean;
+            error?: string;
+        }>[]
+    > {
         return await Promise.allSettled(
             batch.map(async (update) => {
                 try {
                     // Get bundle name for better logging
                     const bundleName = await this.getBundleDisplayName(update.bundleId);
 
-                    this.logger.info(`Updating ${bundleName} (${update.currentVersion} → ${update.latestVersion})`);
+                    this.logger.info(
+                        `Updating ${bundleName} (${update.currentVersion} → ${update.latestVersion})`
+                    );
 
                     // Perform update using RegistryManager
                     await this.registryManager.updateBundle(update.bundleId, update.latestVersion);
@@ -387,7 +402,7 @@ export class BundleUpdateCommands {
                         bundleId: update.bundleId,
                         bundleName: update.bundleId,
                         success: false,
-                        error: errorObj.message
+                        error: errorObj.message,
                     };
                 }
             })
@@ -411,30 +426,34 @@ export class BundleUpdateCommands {
         completed: number,
         totalUpdates: number
     ): void {
-        results.forEach((result, index) => {
+        for (const [index, result] of results.entries()) {
             const update = batch[index];
+            if (!update) {
+                continue; // Skip if update is undefined
+            }
             const currentCompleted = completed + index + 1;
 
             if (result.status === 'fulfilled' && result.value.success) {
                 successful.push(result.value.bundleName);
                 progress.report({
                     message: `✓ ${result.value.bundleName} (${currentCompleted}/${totalUpdates})`,
-                    increment: (100 / totalUpdates)
+                    increment: 100 / totalUpdates,
                 });
             } else {
-                const errorMsg = result.status === 'fulfilled'
-                    ? result.value.error
-                    : result.reason?.message || 'Unknown error';
+                const errorMsg =
+                    result.status === 'fulfilled'
+                        ? result.value.error
+                        : result.reason?.message || 'Unknown error';
                 failed.push({
                     bundleId: update.bundleId,
-                    error: errorMsg!
+                    error: errorMsg!,
                 });
                 progress.report({
                     message: `✗ ${update.bundleId} (${currentCompleted}/${totalUpdates})`,
-                    increment: (100 / totalUpdates)
+                    increment: 100 / totalUpdates,
                 });
             }
-        });
+        }
     }
 
     /**

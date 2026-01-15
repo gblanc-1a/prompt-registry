@@ -1,7 +1,8 @@
-import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import * as yaml from 'js-yaml';
+import * as vscode from 'vscode';
 
 interface CollectionTemplate {
     id: string;
@@ -20,7 +21,7 @@ interface CollectionTemplate {
 
 /**
  * Command to create new collection files interactively
- * 
+ *
  * Attribution: Inspired by github/awesome-copilot collection creation workflow
  * https://github.com/github/awesome-copilot/blob/main/collections/TEMPLATE.md#creating-a-new-collection
  */
@@ -33,13 +34,18 @@ export class CreateCollectionCommand {
 
     async execute(): Promise<void> {
         const workspaceFolders = vscode.workspace.workspaceFolders;
-        
+
         if (!workspaceFolders || workspaceFolders.length === 0) {
             vscode.window.showErrorMessage('No workspace folder open. Please open a folder first.');
             return;
         }
 
-        const workspaceRoot = workspaceFolders[0].uri.fsPath;
+        const firstFolder = workspaceFolders[0];
+        if (!firstFolder) {
+            vscode.window.showErrorMessage('Workspace folder is invalid');
+            return;
+        }
+        const workspaceRoot = firstFolder.uri.fsPath;
         const collectionsDir = path.join(workspaceRoot, 'collections');
 
         // Ensure collections directory exists
@@ -60,8 +66,8 @@ export class CreateCollectionCommand {
                     if (!/^[a-z0-9-]+$/.test(value)) {
                         return 'ID must contain only lowercase letters, numbers, and hyphens';
                     }
-                    return undefined;
-                }
+                    return;
+                },
             });
 
             if (!collectionId) {
@@ -74,9 +80,10 @@ export class CreateCollectionCommand {
                 const overwrite = await vscode.window.showWarningMessage(
                     `Collection '${collectionId}' already exists. Overwrite?`,
                     { modal: true },
-                    'Yes', 'No'
+                    'Yes',
+                    'No'
                 );
-                
+
                 if (overwrite !== 'Yes') {
                     vscode.window.showInformationMessage('Collection creation cancelled');
                     return;
@@ -89,7 +96,7 @@ export class CreateCollectionCommand {
                 prompt: 'Collection name',
                 placeHolder: defaultName,
                 value: defaultName,
-                ignoreFocusOut: true
+                ignoreFocusOut: true,
             });
 
             if (collectionName === undefined) {
@@ -101,7 +108,7 @@ export class CreateCollectionCommand {
                 prompt: 'Collection description',
                 placeHolder: 'A collection of prompts, instructions, and chat modes',
                 value: 'A collection of prompts, instructions, and chat modes.',
-                ignoreFocusOut: true
+                ignoreFocusOut: true,
             });
 
             if (description === undefined) {
@@ -113,7 +120,7 @@ export class CreateCollectionCommand {
                 prompt: 'Tags (comma-separated)',
                 placeHolder: 'example',
                 value: 'example',
-                ignoreFocusOut: true
+                ignoreFocusOut: true,
             });
 
             if (tagsInput === undefined) {
@@ -121,7 +128,10 @@ export class CreateCollectionCommand {
             }
 
             const tags = tagsInput
-                ? tagsInput.split(',').map(t => t.trim()).filter(t => t.length > 0)
+                ? tagsInput
+                      .split(',')
+                      .map((t) => t.trim())
+                      .filter((t) => t.length > 0)
                 : ['example'];
 
             // Generate template
@@ -136,7 +146,7 @@ export class CreateCollectionCommand {
             const yamlContent = yaml.dump(template, {
                 indent: 2,
                 lineWidth: 120,
-                noRefs: true
+                noRefs: true,
             });
 
             fs.writeFileSync(collectionFile, yamlContent, 'utf8');
@@ -162,21 +172,27 @@ export class CreateCollectionCommand {
             );
 
             if (action === 'Open File') {
-                const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(collectionFile));
+                const doc = await vscode.workspace.openTextDocument(
+                    vscode.Uri.file(collectionFile)
+                );
                 await vscode.window.showTextDocument(doc);
             } else if (action === 'Validate') {
                 await vscode.commands.executeCommand('promptRegistry.validateCollections');
             }
-
         } catch (error) {
-            vscode.window.showErrorMessage(`Failed to create collection: ${(error as Error).message}`);
+            vscode.window.showErrorMessage(
+                `Failed to create collection: ${(error as Error).message}`
+            );
         }
     }
 
     private generateDefaultName(id: string): string {
-        return id.split('-')
-            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-            .join(' ') + ' Collection';
+        return (
+            id
+                .split('-')
+                .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+                .join(' ') + ' Collection'
+        );
     }
 
     private generateTemplate(
@@ -193,13 +209,13 @@ export class CreateCollectionCommand {
             items: [
                 {
                     path: `prompts/${id}-example.prompt.md`,
-                    kind: 'prompt'
-                }
+                    kind: 'prompt',
+                },
             ],
             display: {
                 ordering: 'manual',
-                show_badge: true
-            }
+                show_badge: true,
+            },
         };
     }
 

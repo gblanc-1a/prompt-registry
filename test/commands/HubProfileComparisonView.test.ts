@@ -1,9 +1,10 @@
-import * as assert from 'assert';
-import * as path from 'path';
-import * as fs from 'fs';
-import { HubStorage } from '../../src/storage/HubStorage';
-import { HubManager } from '../../src/services/HubManager';
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import { HubProfileComparisonView } from '../../src/commands/HubProfileComparisonView';
+import { HubManager } from '../../src/services/HubManager';
+import { HubStorage } from '../../src/storage/HubStorage';
 import { HubConfig, HubReference } from '../../src/types/hub';
 
 suite('Hub Profile Comparison View', () => {
@@ -37,7 +38,7 @@ suite('Hub Profile Comparison View', () => {
                 name: `Test Hub ${hubId}`,
                 description: 'Test hub for comparison view',
                 maintainer: 'test',
-                updatedAt: new Date().toISOString()
+                updatedAt: new Date().toISOString(),
             },
             sources: [
                 {
@@ -48,9 +49,9 @@ suite('Hub Profile Comparison View', () => {
                     enabled: true,
                     priority: 1,
                     metadata: {
-                        description: 'Test source'
-                    }
-                }
+                        description: 'Test source',
+                    },
+                },
             ],
             profiles: [
                 {
@@ -63,19 +64,19 @@ suite('Hub Profile Comparison View', () => {
                             id: 'bundle-1',
                             version: '1.0.0',
                             source: 'test-source',
-                            required: false
-                        }
+                            required: false,
+                        },
                     ],
                     active: false,
                     createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
-                }
-            ]
+                    updatedAt: new Date().toISOString(),
+                },
+            ],
         };
 
         const reference: HubReference = {
             type: 'local',
-            location: testDir
+            location: testDir,
         };
 
         await storage.saveHub(hubId, config, reference);
@@ -85,23 +86,26 @@ suite('Hub Profile Comparison View', () => {
         test('should generate comparison data for active profile with changes', async () => {
             await createTestHub('test-hub');
             await hubManager.activateProfile('test-hub', 'test-profile', { installBundles: false });
-            
+
             // Wait to ensure timestamp difference
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
+            await new Promise((resolve) => setTimeout(resolve, 100));
+
             // Update hub config
             const updated = await storage.loadHub('test-hub');
             updated.config.profiles[0].bundles.push({
                 id: 'bundle-2',
                 version: '1.0.0',
                 source: 'test-source',
-                required: false
+                required: false,
             });
             updated.config.profiles[0].bundles[0].version = '2.0.0';
             updated.config.profiles[0].updatedAt = new Date().toISOString();
             await storage.saveHub('test-hub', updated.config, updated.reference);
 
-            const comparison = await comparisonView.getProfileComparisonData('test-hub', 'test-profile');
+            const comparison = await comparisonView.getProfileComparisonData(
+                'test-hub',
+                'test-profile'
+            );
 
             assert.ok(comparison);
             assert.strictEqual(comparison.hubId, 'test-hub');
@@ -116,7 +120,10 @@ suite('Hub Profile Comparison View', () => {
             await createTestHub('test-hub');
             await hubManager.activateProfile('test-hub', 'test-profile', { installBundles: false });
 
-            const comparison = await comparisonView.getProfileComparisonData('test-hub', 'test-profile');
+            const comparison = await comparisonView.getProfileComparisonData(
+                'test-hub',
+                'test-profile'
+            );
 
             assert.strictEqual(comparison, null);
         });
@@ -124,7 +131,10 @@ suite('Hub Profile Comparison View', () => {
         test('should return null for non-active profile', async () => {
             await createTestHub('test-hub');
 
-            const comparison = await comparisonView.getProfileComparisonData('test-hub', 'test-profile');
+            const comparison = await comparisonView.getProfileComparisonData(
+                'test-hub',
+                'test-profile'
+            );
 
             assert.strictEqual(comparison, null);
         });
@@ -136,7 +146,7 @@ suite('Hub Profile Comparison View', () => {
                 id: 'bundle-1',
                 version: '1.0.0',
                 source: 'test-source',
-                required: false
+                required: false,
             };
 
             const formatted = comparisonView.formatBundleComparison(bundle, 'added');
@@ -151,7 +161,7 @@ suite('Hub Profile Comparison View', () => {
                 id: 'bundle-1',
                 version: '2.0.0',
                 source: 'test-source',
-                required: false
+                required: false,
             };
 
             const formatted = comparisonView.formatBundleComparison(bundle, 'updated', '1.0.0');
@@ -167,7 +177,7 @@ suite('Hub Profile Comparison View', () => {
                 id: 'bundle-1',
                 version: '1.0.0',
                 source: 'test-source',
-                required: false
+                required: false,
             };
 
             const formatted = comparisonView.formatBundleComparison(bundle, 'removed');
@@ -182,7 +192,7 @@ suite('Hub Profile Comparison View', () => {
                 id: 'bundle-1',
                 version: '1.0.0',
                 source: 'test-source',
-                required: false
+                required: false,
             };
 
             const formatted = comparisonView.formatBundleComparison(bundle, 'unchanged');
@@ -196,28 +206,31 @@ suite('Hub Profile Comparison View', () => {
         test('should generate summary with all change types', async () => {
             await createTestHub('test-hub');
             await hubManager.activateProfile('test-hub', 'test-profile', { installBundles: false });
-            
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
+
+            await new Promise((resolve) => setTimeout(resolve, 100));
+
             const updated = await storage.loadHub('test-hub');
             updated.config.profiles[0].bundles = [
                 {
                     id: 'bundle-1',
                     version: '2.0.0',
                     source: 'test-source',
-                    required: false
+                    required: false,
                 },
                 {
                     id: 'bundle-2',
                     version: '1.0.0',
                     source: 'test-source',
-                    required: false
-                }
+                    required: false,
+                },
             ];
             updated.config.profiles[0].updatedAt = new Date().toISOString();
             await storage.saveHub('test-hub', updated.config, updated.reference);
 
-            const comparison = await comparisonView.getProfileComparisonData('test-hub', 'test-profile');
+            const comparison = await comparisonView.getProfileComparisonData(
+                'test-hub',
+                'test-profile'
+            );
             assert.ok(comparison);
 
             const summary = comparisonView.generateComparisonSummary(comparison);
@@ -231,16 +244,19 @@ suite('Hub Profile Comparison View', () => {
         test('should generate summary with metadata changes', async () => {
             await createTestHub('test-hub');
             await hubManager.activateProfile('test-hub', 'test-profile', { installBundles: false });
-            
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
+
+            await new Promise((resolve) => setTimeout(resolve, 100));
+
             const updated = await storage.loadHub('test-hub');
             updated.config.profiles[0].name = 'Updated Profile Name';
             updated.config.profiles[0].description = 'Updated description';
             updated.config.profiles[0].updatedAt = new Date().toISOString();
             await storage.saveHub('test-hub', updated.config, updated.reference);
 
-            const comparison = await comparisonView.getProfileComparisonData('test-hub', 'test-profile');
+            const comparison = await comparisonView.getProfileComparisonData(
+                'test-hub',
+                'test-profile'
+            );
             assert.ok(comparison);
 
             const summary = comparisonView.generateComparisonSummary(comparison);
@@ -251,15 +267,18 @@ suite('Hub Profile Comparison View', () => {
         test('should handle comparison with no bundle changes', async () => {
             await createTestHub('test-hub');
             await hubManager.activateProfile('test-hub', 'test-profile', { installBundles: false });
-            
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
+
+            await new Promise((resolve) => setTimeout(resolve, 100));
+
             const updated = await storage.loadHub('test-hub');
             updated.config.profiles[0].description = 'Updated description only';
             updated.config.profiles[0].updatedAt = new Date().toISOString();
             await storage.saveHub('test-hub', updated.config, updated.reference);
 
-            const comparison = await comparisonView.getProfileComparisonData('test-hub', 'test-profile');
+            const comparison = await comparisonView.getProfileComparisonData(
+                'test-hub',
+                'test-profile'
+            );
             assert.ok(comparison);
 
             const summary = comparisonView.generateComparisonSummary(comparison);
@@ -273,79 +292,90 @@ suite('Hub Profile Comparison View', () => {
         test('should create QuickPick items for all bundles', async () => {
             await createTestHub('test-hub');
             await hubManager.activateProfile('test-hub', 'test-profile', { installBundles: false });
-            
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
+
+            await new Promise((resolve) => setTimeout(resolve, 100));
+
             const updated = await storage.loadHub('test-hub');
             updated.config.profiles[0].bundles.push({
                 id: 'bundle-2',
                 version: '1.0.0',
                 source: 'test-source',
-                required: false
+                required: false,
             });
             updated.config.profiles[0].bundles[0].version = '2.0.0';
             updated.config.profiles[0].updatedAt = new Date().toISOString();
             await storage.saveHub('test-hub', updated.config, updated.reference);
 
-            const comparison = await comparisonView.getProfileComparisonData('test-hub', 'test-profile');
+            const comparison = await comparisonView.getProfileComparisonData(
+                'test-hub',
+                'test-profile'
+            );
             assert.ok(comparison);
 
             const items = comparisonView.createComparisonQuickPickItems(comparison);
 
             assert.ok(items.length >= 2); // At least 2 bundles
-            assert.ok(items.some(item => item.label.includes('bundle-1')));
-            assert.ok(items.some(item => item.label.includes('bundle-2')));
+            assert.ok(items.some((item) => item.label.includes('bundle-1')));
+            assert.ok(items.some((item) => item.label.includes('bundle-2')));
         });
 
         test('should include change status in QuickPick item descriptions', async () => {
             await createTestHub('test-hub');
             await hubManager.activateProfile('test-hub', 'test-profile', { installBundles: false });
-            
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
+
+            await new Promise((resolve) => setTimeout(resolve, 100));
+
             const updated = await storage.loadHub('test-hub');
             updated.config.profiles[0].bundles[0].version = '2.0.0';
             updated.config.profiles[0].updatedAt = new Date().toISOString();
             await storage.saveHub('test-hub', updated.config, updated.reference);
 
-            const comparison = await comparisonView.getProfileComparisonData('test-hub', 'test-profile');
+            const comparison = await comparisonView.getProfileComparisonData(
+                'test-hub',
+                'test-profile'
+            );
             assert.ok(comparison);
 
             const items = comparisonView.createComparisonQuickPickItems(comparison);
 
-            const updatedItem = items.find(item => item.label.includes('bundle-1'));
+            const updatedItem = items.find((item) => item.label.includes('bundle-1'));
             assert.ok(updatedItem);
             assert.ok(updatedItem.description);
             assert.ok(
-                updatedItem.description.includes('1.0.0') && 
-                updatedItem.description.includes('2.0.0')
+                updatedItem.description.includes('1.0.0') &&
+                    updatedItem.description.includes('2.0.0')
             );
         });
 
         test('should mark added bundles distinctly in QuickPick items', async () => {
             await createTestHub('test-hub');
             await hubManager.activateProfile('test-hub', 'test-profile', { installBundles: false });
-            
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
+
+            await new Promise((resolve) => setTimeout(resolve, 100));
+
             const updated = await storage.loadHub('test-hub');
             updated.config.profiles[0].bundles.push({
                 id: 'bundle-new',
                 version: '1.0.0',
                 source: 'test-source',
-                required: false
+                required: false,
             });
             updated.config.profiles[0].updatedAt = new Date().toISOString();
             await storage.saveHub('test-hub', updated.config, updated.reference);
 
-            const comparison = await comparisonView.getProfileComparisonData('test-hub', 'test-profile');
+            const comparison = await comparisonView.getProfileComparisonData(
+                'test-hub',
+                'test-profile'
+            );
             assert.ok(comparison);
 
             const items = comparisonView.createComparisonQuickPickItems(comparison);
 
-            const newItem = items.find(item => item.label.includes('bundle-new'));
+            const newItem = items.find((item) => item.label.includes('bundle-new'));
             assert.ok(newItem);
-            assert.ok(newItem.description?.includes('Added') || newItem.description?.includes('NEW'));
+            assert.ok(
+                newItem.description?.includes('Added') || newItem.description?.includes('NEW')
+            );
         });
     });
 
@@ -353,20 +383,23 @@ suite('Hub Profile Comparison View', () => {
         test('should generate side-by-side comparison text', async () => {
             await createTestHub('test-hub');
             await hubManager.activateProfile('test-hub', 'test-profile', { installBundles: false });
-            
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
+
+            await new Promise((resolve) => setTimeout(resolve, 100));
+
             const updated = await storage.loadHub('test-hub');
             updated.config.profiles[0].bundles.push({
                 id: 'bundle-2',
                 version: '1.0.0',
                 source: 'test-source',
-                required: false
+                required: false,
             });
             updated.config.profiles[0].updatedAt = new Date().toISOString();
             await storage.saveHub('test-hub', updated.config, updated.reference);
 
-            const comparison = await comparisonView.getProfileComparisonData('test-hub', 'test-profile');
+            const comparison = await comparisonView.getProfileComparisonData(
+                'test-hub',
+                'test-profile'
+            );
             assert.ok(comparison);
 
             const sideBySide = comparisonView.getSideBySideComparison(comparison);
@@ -380,15 +413,18 @@ suite('Hub Profile Comparison View', () => {
         test('should show version differences in side-by-side view', async () => {
             await createTestHub('test-hub');
             await hubManager.activateProfile('test-hub', 'test-profile', { installBundles: false });
-            
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
+
+            await new Promise((resolve) => setTimeout(resolve, 100));
+
             const updated = await storage.loadHub('test-hub');
             updated.config.profiles[0].bundles[0].version = '2.0.0';
             updated.config.profiles[0].updatedAt = new Date().toISOString();
             await storage.saveHub('test-hub', updated.config, updated.reference);
 
-            const comparison = await comparisonView.getProfileComparisonData('test-hub', 'test-profile');
+            const comparison = await comparisonView.getProfileComparisonData(
+                'test-hub',
+                'test-profile'
+            );
             assert.ok(comparison);
 
             const sideBySide = comparisonView.getSideBySideComparison(comparison);
@@ -399,36 +435,43 @@ suite('Hub Profile Comparison View', () => {
 
         test('should handle removed bundles in side-by-side view', async () => {
             await createTestHub('test-hub');
-            
+
             // Add extra bundle to activate
             const hub = await storage.loadHub('test-hub');
             hub.config.profiles[0].bundles.push({
                 id: 'bundle-to-remove',
                 version: '1.0.0',
                 source: 'test-source',
-                required: false
+                required: false,
             });
             await storage.saveHub('test-hub', hub.config, hub.reference);
-            
+
             await hubManager.activateProfile('test-hub', 'test-profile', { installBundles: false });
-            
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
+
+            await new Promise((resolve) => setTimeout(resolve, 100));
+
             // Remove the bundle from hub
             const updated = await storage.loadHub('test-hub');
             updated.config.profiles[0].bundles = updated.config.profiles[0].bundles.filter(
-                b => b.id !== 'bundle-to-remove'
+                (b) => b.id !== 'bundle-to-remove'
             );
             updated.config.profiles[0].updatedAt = new Date().toISOString();
             await storage.saveHub('test-hub', updated.config, updated.reference);
 
-            const comparison = await comparisonView.getProfileComparisonData('test-hub', 'test-profile');
+            const comparison = await comparisonView.getProfileComparisonData(
+                'test-hub',
+                'test-profile'
+            );
             assert.ok(comparison);
 
             const sideBySide = comparisonView.getSideBySideComparison(comparison);
 
             assert.ok(sideBySide.includes('bundle-to-remove'));
-            assert.ok(sideBySide.includes('Removed') || sideBySide.includes('—') || sideBySide.includes('(none)'));
+            assert.ok(
+                sideBySide.includes('Removed') ||
+                    sideBySide.includes('—') ||
+                    sideBySide.includes('(none)')
+            );
         });
     });
 });

@@ -1,11 +1,12 @@
 /**
  * Process Test Helpers
- * 
+ *
  * Utilities for mocking child_process.spawn in tests.
  * Provides realistic event sequencing for process lifecycle simulation.
  */
 
-import { EventEmitter } from 'events';
+import { EventEmitter } from 'node:events';
+
 import * as sinon from 'sinon';
 
 /**
@@ -38,17 +39,17 @@ export interface MockProcessOptions {
 
 /**
  * Create a mock process that behaves like a real child process.
- * 
+ *
  * Event sequence follows real process behavior:
  * 1. stdout.data (if provided)
- * 2. stderr.data (if provided)  
+ * 2. stderr.data (if provided)
  * 3. close OR error (mutually exclusive)
- * 
+ *
  * @example
  * ```typescript
  * const { process, emitEvents } = createMockProcess({ exitCode: 0, stdoutData: '10.2.3\n' });
  * sandbox.stub(childProcess, 'spawn').returns(process);
- * 
+ *
  * const resultPromise = npmWrapper.getVersion();
  * emitEvents(); // Triggers stdout then close
  * const result = await resultPromise;
@@ -58,14 +59,7 @@ export function createMockProcess(options: MockProcessOptions = {}): {
     process: MockProcess;
     emitEvents: () => void;
 } {
-    const {
-        exitCode = 0,
-        stdoutData,
-        stderrData,
-        error,
-        delay = 0,
-        pid = 12345
-    } = options;
+    const { exitCode = 0, stdoutData, stderrData, error, delay = 0, pid = 12_345 } = options;
 
     const process = new EventEmitter() as MockProcess;
     process.stdout = new EventEmitter();
@@ -117,7 +111,10 @@ export function createSuccessProcess(stdout: string = ''): {
 /**
  * Create a mock process that fails with given exit code and stderr
  */
-export function createFailureProcess(exitCode: number = 1, stderr: string = ''): {
+export function createFailureProcess(
+    exitCode: number = 1,
+    stderr: string = ''
+): {
     process: MockProcess;
     emitEvents: () => void;
 } {

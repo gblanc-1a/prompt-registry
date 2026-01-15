@@ -1,6 +1,7 @@
+import * as vscode from 'vscode';
+
 import { HubManager } from '../services/HubManager';
 import { HubProfileBundle } from '../types/hub';
-import * as vscode from 'vscode';
 
 /**
  * History entry for a sync operation
@@ -66,7 +67,7 @@ export class HubSyncHistory {
             status,
             changes,
             previousState,
-            ...(error && { error })
+            ...(error && { error }),
         };
 
         history.unshift(entry); // Add to beginning (most recent first)
@@ -77,7 +78,11 @@ export class HubSyncHistory {
      * Get sync history for a profile
      * @param limit Maximum number of entries to return (default: all)
      */
-    async getHistory(hubId: string, profileId: string, limit?: number): Promise<SyncHistoryEntry[]> {
+    async getHistory(
+        hubId: string,
+        profileId: string,
+        limit?: number
+    ): Promise<SyncHistoryEntry[]> {
         const key = this.getHistoryKey(hubId, profileId);
         const history = this.historyMap.get(key) || [];
 
@@ -95,39 +100,36 @@ export class HubSyncHistory {
         const lines: string[] = [];
         const timestamp = new Date(entry.timestamp).toLocaleString();
 
-        lines.push(`Synced at: ${timestamp}`);
-        lines.push(`Status: ${entry.status}`);
+        lines.push(`Synced at: ${timestamp}`, `Status: ${entry.status}`);
 
         if (entry.error) {
             lines.push(`Error: ${entry.error}`);
         }
 
-        lines.push('');
-        lines.push('Changes:');
+        lines.push('', 'Changes:');
 
         if (entry.changes.metadataChanged) {
             lines.push('  Metadata: Changed');
         }
 
         if (entry.changes.added.length > 0) {
-            lines.push('');
-            lines.push('  Added Bundles:');
+            lines.push('', '  Added Bundles:');
             for (const bundle of entry.changes.added) {
                 lines.push(`    ${bundle.id} (${bundle.version}) — Added [NEW]`);
             }
         }
 
         if (entry.changes.updated.length > 0) {
-            lines.push('');
-            lines.push('  Updated Bundles:');
+            lines.push('', '  Updated Bundles:');
             for (const update of entry.changes.updated) {
-                lines.push(`    ${update.id} — Updated (${update.oldVersion} → ${update.newVersion})`);
+                lines.push(
+                    `    ${update.id} — Updated (${update.oldVersion} → ${update.newVersion})`
+                );
             }
         }
 
         if (entry.changes.removed.length > 0) {
-            lines.push('');
-            lines.push('  Removed Bundles:');
+            lines.push('', '  Removed Bundles:');
             for (const bundleId of entry.changes.removed) {
                 lines.push(`    ${bundleId} — Removed [DELETED]`);
             }
@@ -149,7 +151,7 @@ export class HubSyncHistory {
      * Create QuickPick items from history entries
      */
     createHistoryQuickPickItems(entries: SyncHistoryEntry[]): HistoryQuickPickItem[] {
-        return entries.map(entry => {
+        return entries.map((entry) => {
             const timestamp = new Date(entry.timestamp);
             const dateStr = timestamp.toISOString().split('T')[0]; // YYYY-MM-DD
             const timeStr = timestamp.toLocaleTimeString();
@@ -185,7 +187,7 @@ export class HubSyncHistory {
                 label,
                 description,
                 detail: `Status: ${entry.status}`,
-                entry
+                entry,
             };
         });
     }
@@ -206,7 +208,10 @@ export class HubSyncHistory {
         }
 
         // Get current state for history
-        const currentState = await this.hubManager['storage'].getProfileActivationState(hubId, profileId);
+        const currentState = await this.hubManager['storage'].getProfileActivationState(
+            hubId,
+            profileId
+        );
         if (!currentState) {
             throw new Error(`Could not load current state for profile ${profileId}`);
         }
@@ -223,10 +228,14 @@ export class HubSyncHistory {
 
         // Calculate changes for rollback history entry
         const currentBundleIds = new Set(currentBundles.map((b: HubProfileBundle) => b.id));
-        const targetBundleIds = new Set(entry.previousState.bundles.map((b: HubProfileBundle) => b.id));
+        const targetBundleIds = new Set(
+            entry.previousState.bundles.map((b: HubProfileBundle) => b.id)
+        );
 
         const rollbackChanges = {
-            added: entry.previousState.bundles.filter((b: HubProfileBundle) => !currentBundleIds.has(b.id)),
+            added: entry.previousState.bundles.filter(
+                (b: HubProfileBundle) => !currentBundleIds.has(b.id)
+            ),
             updated: entry.previousState.bundles
                 .filter((b: HubProfileBundle) => {
                     const current = currentBundles.find((cb: HubProfileBundle) => cb.id === b.id);
@@ -237,11 +246,13 @@ export class HubSyncHistory {
                     return {
                         id: b.id,
                         oldVersion: current.version,
-                        newVersion: b.version
+                        newVersion: b.version,
                     };
                 }),
-            removed: currentBundles.filter((b: HubProfileBundle) => !targetBundleIds.has(b.id)).map((b: HubProfileBundle) => b.id),
-            metadataChanged: false
+            removed: currentBundles
+                .filter((b: HubProfileBundle) => !targetBundleIds.has(b.id))
+                .map((b: HubProfileBundle) => b.id),
+            metadataChanged: false,
         };
 
         // Restore the state
@@ -249,7 +260,7 @@ export class HubSyncHistory {
             hubId,
             profileId,
             activatedAt: new Date().toISOString(),
-            syncedBundles: entry.previousState.bundles.map((b: HubProfileBundle) => b.id)
+            syncedBundles: entry.previousState.bundles.map((b: HubProfileBundle) => b.id),
         };
 
         await this.hubManager['storage'].saveProfileActivationState(hubId, profileId, newState);
@@ -261,7 +272,7 @@ export class HubSyncHistory {
             rollbackChanges,
             {
                 bundles: currentBundles,
-                activatedAt: currentState.activatedAt
+                activatedAt: currentState.activatedAt,
             },
             'rollback'
         );

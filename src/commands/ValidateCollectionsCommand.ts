@@ -1,7 +1,9 @@
-import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import * as yaml from 'js-yaml';
+import * as vscode from 'vscode';
+
 import { SchemaValidator } from '../services/SchemaValidator';
 
 interface CollectionItem {
@@ -31,7 +33,7 @@ interface ValidationResult {
 
 /**
  * Command to validate collection files in the workspace
- * 
+ *
  * Attribution: Validation logic inspired by github/awesome-copilot
  * https://github.com/github/awesome-copilot
  */
@@ -48,13 +50,18 @@ export class ValidateCollectionsCommand {
 
     async execute(options?: { listOnly?: boolean }): Promise<void> {
         const workspaceFolders = vscode.workspace.workspaceFolders;
-        
+
         if (!workspaceFolders || workspaceFolders.length === 0) {
             vscode.window.showErrorMessage('No workspace folder open. Please open a folder first.');
             return;
         }
 
-        const workspaceRoot = workspaceFolders[0].uri.fsPath;
+        const firstFolder = workspaceFolders[0];
+        if (!firstFolder) {
+            vscode.window.showErrorMessage('Workspace folder is invalid');
+            return;
+        }
+        const workspaceRoot = firstFolder.uri.fsPath;
         const collectionsDir = path.join(workspaceRoot, 'collections');
 
         if (!fs.existsSync(collectionsDir)) {
@@ -69,8 +76,9 @@ export class ValidateCollectionsCommand {
         this.log('Attribution: Inspired by github/awesome-copilot');
         this.log('https://github.com/github/awesome-copilot\n');
 
-        const files = fs.readdirSync(collectionsDir)
-            .filter(f => f.endsWith('.collection.yml'))
+        const files = fs
+            .readdirSync(collectionsDir)
+            .filter((f) => f.endsWith('.collection.yml'))
             .sort();
 
         if (files.length === 0) {
@@ -86,7 +94,7 @@ export class ValidateCollectionsCommand {
         let validCollections = 0;
 
         const diagnostics: vscode.Diagnostic[] = [];
-        
+
         // Track IDs and names for duplicate detection
         const seenIds = new Map<string, string>();
         const seenNames = new Map<string, string>();
@@ -95,28 +103,34 @@ export class ValidateCollectionsCommand {
             const filePath = path.join(collectionsDir, file);
             // Always check file references
             const result = await this.validateCollection(filePath, workspaceRoot, true);
-            
+
             // Check for duplicate IDs and names
             if (result.collection) {
                 const { id, name } = result.collection;
-                
+
                 if (id && seenIds.has(id)) {
-                    result.errors.push(`Duplicate collection ID '${id}' (also in ${seenIds.get(id)})`);
+                    result.errors.push(
+                        `Duplicate collection ID '${id}' (also in ${seenIds.get(id)})`
+                    );
                 } else if (id) {
                     seenIds.set(id, file);
                 }
 
                 if (name && seenNames.has(name)) {
-                    result.errors.push(`Duplicate collection name '${name}' (also in ${seenNames.get(name)})`);
+                    result.errors.push(
+                        `Duplicate collection name '${name}' (also in ${seenNames.get(name)})`
+                    );
                 } else if (name) {
                     seenNames.set(name, file);
                 }
             }
-            
+
             if (options?.listOnly && result.collection) {
                 this.log(`📦 ${result.collection.name} (id: ${result.collection.id})`);
                 this.log(`   Description: ${result.collection.description}`);
-                this.log(`   Items: ${result.collection.items ? result.collection.items.length : 0}`);
+                this.log(
+                    `   Items: ${result.collection.items ? result.collection.items.length : 0}`
+                );
                 if (result.collection.tags && result.collection.tags.length > 0) {
                     this.log(`   Tags: ${result.collection.tags.join(', ')}`);
                 }
@@ -129,7 +143,7 @@ export class ValidateCollectionsCommand {
                     validCollections++;
                 } else {
                     if (result.errors.length > 0) {
-                        result.errors.forEach(err => {
+                        for (const err of result.errors) {
                             this.log(`  ❌ Error: ${err}`, 'error');
                             // Create diagnostic for VS Code Problems panel
                             const diagnostic = new vscode.Diagnostic(
@@ -139,12 +153,12 @@ export class ValidateCollectionsCommand {
                             );
                             diagnostic.source = 'Collection Validator';
                             diagnostics.push(diagnostic);
-                        });
+                        }
                         totalErrors += result.errors.length;
                     }
 
                     if (result.warnings.length > 0) {
-                        result.warnings.forEach(warn => {
+                        for (const warn of result.warnings) {
                             this.log(`  ⚠️  Warning: ${warn}`, 'warning');
                             // Create diagnostic for warnings
                             const diagnostic = new vscode.Diagnostic(
@@ -154,7 +168,7 @@ export class ValidateCollectionsCommand {
                             );
                             diagnostic.source = 'Collection Validator';
                             diagnostics.push(diagnostic);
-                        });
+                        }
                         totalWarnings += result.warnings.length;
                     }
 
@@ -177,9 +191,13 @@ export class ValidateCollectionsCommand {
 
             if (totalErrors === 0 && totalWarnings === 0) {
                 this.log('🎉 All collections are valid!', 'success');
-                vscode.window.showInformationMessage(`All ${files.length} collection(s) validated successfully!`);
+                vscode.window.showInformationMessage(
+                    `All ${files.length} collection(s) validated successfully!`
+                );
             } else if (totalErrors === 0) {
-                vscode.window.showWarningMessage(`Validation complete with ${totalWarnings} warning(s)`);
+                vscode.window.showWarningMessage(
+                    `Validation complete with ${totalWarnings} warning(s)`
+                );
             } else {
                 vscode.window.showErrorMessage(`Validation failed with ${totalErrors} error(s)`);
             }
@@ -205,17 +223,14 @@ export class ValidateCollectionsCommand {
             }
 
             // Use SchemaValidator for validation - always check file references
-            const validationResult = await this.schemaValidator.validateCollection(
-                collection,
-                {
-                    checkFileReferences: true,
-                    workspaceRoot: workspaceRoot
-                }
-            );
+            const validationResult = await this.schemaValidator.validateCollection(collection, {
+                checkFileReferences: true,
+                workspaceRoot: workspaceRoot,
+            });
 
             // Add schema validation errors
             errors.push(...validationResult.errors);
-            
+
             // Add schema validation warnings
             warnings.push(...validationResult.warnings);
 
@@ -227,6 +242,7 @@ export class ValidateCollectionsCommand {
                     if (collection.tags.length > 10) {
                         warnings.push('More than 10 tags (recommended max)');
                     }
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
                     collection.tags.forEach((tag: any, index: number) => {
                         if (typeof tag !== 'string') {
                             errors.push(`Tag ${index + 1}: Must be a string`);
@@ -238,7 +254,6 @@ export class ValidateCollectionsCommand {
             }
 
             return { errors, warnings, collection };
-
         } catch (error) {
             if (error instanceof yaml.YAMLException) {
                 errors.push(`Failed to parse YAML: ${error.message}`);

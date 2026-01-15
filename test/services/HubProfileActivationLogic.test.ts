@@ -3,11 +3,12 @@
  * Tests for activating hub profiles and syncing bundles
  */
 
-import * as assert from 'assert';
-import * as path from 'path';
-import * as fs from 'fs';
-import { HubStorage } from '../../src/storage/HubStorage';
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import { HubManager } from '../../src/services/HubManager';
+import { HubStorage } from '../../src/storage/HubStorage';
 import { HubConfig } from '../../src/types/hub';
 
 suite('Hub Profile Activation Logic', () => {
@@ -21,7 +22,7 @@ suite('Hub Profile Activation Logic', () => {
             name: 'Test Hub',
             description: 'Test hub for activation',
             maintainer: 'Test',
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
         },
         sources: [
             {
@@ -32,9 +33,9 @@ suite('Hub Profile Activation Logic', () => {
                 enabled: true,
                 priority: 1,
                 metadata: {
-                    description: 'Test source'
-                }
-            }
+                    description: 'Test source',
+                },
+            },
         ],
         profiles: [
             {
@@ -46,19 +47,19 @@ suite('Hub Profile Activation Logic', () => {
                         id: 'bundle-1',
                         version: '1.0.0',
                         source: 'test-source',
-                        required: true
+                        required: true,
                     },
                     {
                         id: 'bundle-2',
                         version: '1.0.0',
                         source: 'test-source',
-                        required: false
-                    }
+                        required: false,
+                    },
                 ],
                 icon: '📦',
                 active: false,
                 createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
+                updatedAt: new Date().toISOString(),
             },
             {
                 id: 'profile-2',
@@ -69,15 +70,15 @@ suite('Hub Profile Activation Logic', () => {
                         id: 'bundle-3',
                         version: '1.0.0',
                         source: 'test-source',
-                        required: true
-                    }
+                        required: true,
+                    },
                 ],
                 icon: '📦',
                 active: false,
                 createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
-            }
-        ]
+                updatedAt: new Date().toISOString(),
+            },
+        ],
     });
 
     setup(() => {
@@ -102,7 +103,7 @@ suite('Hub Profile Activation Logic', () => {
 
             // Mock bundle installation (we'll test actual installation separately)
             const result = await hubManager.activateProfile('test-hub', 'test-profile', {
-                installBundles: false
+                installBundles: false,
             });
 
             assert.ok(result.success);
@@ -120,11 +121,11 @@ suite('Hub Profile Activation Logic', () => {
             await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
 
             await hubManager.activateProfile('test-hub', 'test-profile', {
-                installBundles: false
+                installBundles: false,
             });
 
             const updated = await storage.loadHub('test-hub');
-            const profile = updated.config.profiles.find(p => p.id === 'test-profile');
+            const profile = updated.config.profiles.find((p) => p.id === 'test-profile');
             assert.strictEqual(profile?.active, true);
         });
 
@@ -133,7 +134,7 @@ suite('Hub Profile Activation Logic', () => {
             await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
 
             await hubManager.activateProfile('test-hub', 'test-profile', {
-                installBundles: false
+                installBundles: false,
             });
 
             const state = await storage.getProfileActivationState('test-hub', 'test-profile');
@@ -147,7 +148,7 @@ suite('Hub Profile Activation Logic', () => {
             await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
 
             const result = await hubManager.activateProfile('test-hub', 'non-existent', {
-                installBundles: false
+                installBundles: false,
             });
 
             assert.strictEqual(result.success, false);
@@ -157,7 +158,7 @@ suite('Hub Profile Activation Logic', () => {
 
         test('should return failure for non-existent hub', async () => {
             const result = await hubManager.activateProfile('non-existent', 'test-profile', {
-                installBundles: false
+                installBundles: false,
             });
 
             assert.strictEqual(result.success, false);
@@ -173,18 +174,18 @@ suite('Hub Profile Activation Logic', () => {
 
             // Activate first profile
             await hubManager.activateProfile('test-hub', 'test-profile', {
-                installBundles: false
+                installBundles: false,
             });
 
             // Activate second profile should deactivate first
             await hubManager.activateProfile('test-hub', 'profile-2', {
-                installBundles: false
+                installBundles: false,
             });
 
             // Check that only profile-2 is active
             const updated = await storage.loadHub('test-hub');
-            const profile1 = updated.config.profiles.find(p => p.id === 'test-profile');
-            const profile2 = updated.config.profiles.find(p => p.id === 'profile-2');
+            const profile1 = updated.config.profiles.find((p) => p.id === 'test-profile');
+            const profile2 = updated.config.profiles.find((p) => p.id === 'profile-2');
 
             assert.strictEqual(profile1?.active, false);
             assert.strictEqual(profile2?.active, true);
@@ -204,10 +205,10 @@ suite('Hub Profile Activation Logic', () => {
             await storage.saveHub('hub-2', hub2, { type: 'github', location: 'test/repo2' });
 
             await hubManager.activateProfile('hub-1', 'test-profile', {
-                installBundles: false
+                installBundles: false,
             });
             await hubManager.activateProfile('hub-2', 'test-profile', {
-                installBundles: false
+                installBundles: false,
             });
 
             const states = await storage.listActiveProfiles();
@@ -221,7 +222,7 @@ suite('Hub Profile Activation Logic', () => {
             await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
 
             const result1 = await hubManager.activateProfile('test-hub', 'test-profile', {
-                installBundles: false
+                installBundles: false,
             });
 
             assert.ok(result1.success);
@@ -233,7 +234,7 @@ suite('Hub Profile Activation Logic', () => {
             await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
 
             const result = await hubManager.activateProfile('test-hub', 'test-profile', {
-                installBundles: false
+                installBundles: false,
             });
 
             assert.ok(result.success);
@@ -249,7 +250,7 @@ suite('Hub Profile Activation Logic', () => {
 
             const beforeActivation = new Date();
             await hubManager.activateProfile('test-hub', 'test-profile', {
-                installBundles: false
+                installBundles: false,
             });
 
             const state = await storage.getProfileActivationState('test-hub', 'test-profile');
@@ -264,7 +265,7 @@ suite('Hub Profile Activation Logic', () => {
             await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
 
             await hubManager.activateProfile('test-hub', 'test-profile', {
-                installBundles: false
+                installBundles: false,
             });
 
             const state = await storage.getProfileActivationState('test-hub', 'test-profile');
@@ -279,7 +280,7 @@ suite('Hub Profile Activation Logic', () => {
             await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
 
             const result = await hubManager.activateProfile('test-hub', 'test-profile', {
-                installBundles: false
+                installBundles: false,
             });
 
             assert.ok(result.success);
@@ -293,7 +294,7 @@ suite('Hub Profile Activation Logic', () => {
             await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
 
             const result = await hubManager.activateProfile('test-hub', 'test-profile', {
-                installBundles: false
+                installBundles: false,
             });
 
             assert.ok(result.resolvedBundles);
@@ -310,13 +311,16 @@ suite('Hub Profile Activation Logic', () => {
 
             // Try to activate with invalid hub that should fail
             const result = await hubManager.activateProfile('non-existent-hub', 'test-profile', {
-                installBundles: false
+                installBundles: false,
             });
 
             assert.strictEqual(result.success, false);
 
             // Verify no activation state was created
-            const state = await storage.getProfileActivationState('non-existent-hub', 'test-profile');
+            const state = await storage.getProfileActivationState(
+                'non-existent-hub',
+                'test-profile'
+            );
             assert.strictEqual(state, null);
         });
 
@@ -326,7 +330,7 @@ suite('Hub Profile Activation Logic', () => {
             await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
 
             const result = await hubManager.activateProfile('test-hub', 'test-profile', {
-                installBundles: false
+                installBundles: false,
             });
 
             assert.ok(result.success);
@@ -340,11 +344,11 @@ suite('Hub Profile Activation Logic', () => {
             await storage.saveHub('test-hub', hub, { type: 'github', location: 'test/repo' });
 
             const result = await hubManager.activateProfile('test-hub', 'test-profile', {
-                installBundles: false
+                installBundles: false,
             });
 
-            const required = result.resolvedBundles.filter(b => b.bundle.required);
-            const optional = result.resolvedBundles.filter(b => !b.bundle.required);
+            const required = result.resolvedBundles.filter((b) => b.bundle.required);
+            const optional = result.resolvedBundles.filter((b) => !b.bundle.required);
 
             assert.strictEqual(required.length, 1);
             assert.strictEqual(optional.length, 1);

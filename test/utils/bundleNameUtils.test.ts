@@ -2,13 +2,14 @@
  * Bundle Name Utilities Tests
  */
 
-import * as assert from 'assert';
-import { 
-    generateSanitizedId, 
+import * as assert from 'node:assert';
+
+import {
+    generateSanitizedId,
     formatByteSize,
     isManifestIdMatch,
     generateGitHubBundleId,
-    generateBuildScriptBundleId
+    generateBuildScriptBundleId,
 } from '../../src/utils/bundleNameUtils';
 
 suite('bundleNameUtils', () => {
@@ -70,7 +71,7 @@ suite('bundleNameUtils', () => {
         test('should format kilobytes', () => {
             assert.strictEqual(formatByteSize(1024), '1.0 KB');
             assert.strictEqual(formatByteSize(1536), '1.5 KB');
-            assert.strictEqual(formatByteSize(10240), '10.0 KB');
+            assert.strictEqual(formatByteSize(10_240), '10.0 KB');
         });
 
         test('should format megabytes', () => {

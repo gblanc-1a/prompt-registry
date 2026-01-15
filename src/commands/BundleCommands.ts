@@ -3,11 +3,12 @@
  * Orchestrates bundle operations through specialized command handlers
  */
 
+import { BundleUpdateNotifications } from '../notifications/BundleUpdateNotifications';
 import { RegistryManager } from '../services/RegistryManager';
+
+import { BundleBrowsingCommands } from './BundleBrowsingCommands';
 import { BundleInstallationCommands } from './BundleInstallationCommands';
 import { BundleUpdateCommands } from './BundleUpdateCommands';
-import { BundleBrowsingCommands } from './BundleBrowsingCommands';
-import { BundleUpdateNotifications } from '../notifications/BundleUpdateNotifications';
 
 /**
  * Bundle Commands Handler
@@ -20,11 +21,12 @@ export class BundleCommands {
 
     constructor(registryManager: RegistryManager) {
         this.installationCommands = new BundleInstallationCommands(registryManager);
-        
-        const bundleNameResolver = async (bundleId: string) => await registryManager.getBundleName(bundleId);
+
+        const bundleNameResolver = async (bundleId: string) =>
+            await registryManager.getBundleName(bundleId);
         const bundleNotifications = new BundleUpdateNotifications(bundleNameResolver);
         this.updateCommands = new BundleUpdateCommands(registryManager, bundleNotifications);
-        
+
         this.browsingCommands = new BundleBrowsingCommands(registryManager);
     }
 

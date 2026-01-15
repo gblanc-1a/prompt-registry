@@ -4,8 +4,10 @@
  */
 
 import * as vscode from 'vscode';
+
 import { HubManager } from '../services/HubManager';
-import { HubSyncHistory, HistoryQuickPickItem } from './HubSyncHistory';
+
+import { HubSyncHistory } from './HubSyncHistory';
 
 /**
  * Commands for hub sync history management
@@ -23,9 +25,15 @@ export class HubHistoryCommands {
 
     private registerCommands(context: vscode.ExtensionContext): void {
         context.subscriptions.push(
-            vscode.commands.registerCommand('promptregistry.viewSyncHistory', () => this.viewSyncHistory()),
-            vscode.commands.registerCommand('promptregistry.rollbackProfile', () => this.rollbackProfile()),
-            vscode.commands.registerCommand('promptregistry.clearSyncHistory', () => this.clearSyncHistory())
+            vscode.commands.registerCommand('promptregistry.viewSyncHistory', () =>
+                this.viewSyncHistory()
+            ),
+            vscode.commands.registerCommand('promptregistry.rollbackProfile', () =>
+                this.rollbackProfile()
+            ),
+            vscode.commands.registerCommand('promptregistry.clearSyncHistory', () =>
+                this.clearSyncHistory()
+            )
         );
     }
 
@@ -36,23 +44,25 @@ export class HubHistoryCommands {
         try {
             // Get active profiles
             const activeProfiles = await this.hubManager.listAllActiveProfiles();
-            
+
             if (activeProfiles.length === 0) {
-                vscode.window.showInformationMessage('No active profiles found. Activate a profile first.');
+                vscode.window.showInformationMessage(
+                    'No active profiles found. Activate a profile first.'
+                );
                 return;
             }
 
             // Let user select a profile
-            const profileItems = activeProfiles.map(profile => ({
+            const profileItems = activeProfiles.map((profile) => ({
                 label: profile.profileId,
                 description: `Hub: ${profile.hubId}`,
-                profile
+                profile,
             }));
 
             const selectedProfile = await vscode.window.showQuickPick(profileItems, {
                 placeHolder: 'Select a profile to view sync history',
                 title: 'View Sync History',
-                ignoreFocusOut: true
+                ignoreFocusOut: true,
             });
 
             if (!selectedProfile) {
@@ -80,21 +90,21 @@ export class HubHistoryCommands {
             const selectedEntry = await vscode.window.showQuickPick(historyItems, {
                 placeHolder: 'Select a history entry to view details',
                 title: `Sync History: ${selectedProfile.profile.profileId}`,
-                ignoreFocusOut: true
+                ignoreFocusOut: true,
             });
 
             if (selectedEntry) {
                 // Show detailed view
                 const formatted = this.syncHistory.formatHistoryEntry(selectedEntry.entry);
-                
+
                 const document = await vscode.workspace.openTextDocument({
                     content: formatted,
-                    language: 'plaintext'
+                    language: 'plaintext',
                 });
-                
+
                 await vscode.window.showTextDocument(document, {
                     preview: true,
-                    viewColumn: vscode.ViewColumn.Beside
+                    viewColumn: vscode.ViewColumn.Beside,
                 });
             }
         } catch (error) {
@@ -111,23 +121,25 @@ export class HubHistoryCommands {
         try {
             // Get active profiles
             const activeProfiles = await this.hubManager.listAllActiveProfiles();
-            
+
             if (activeProfiles.length === 0) {
-                vscode.window.showInformationMessage('No active profiles found. Activate a profile first.');
+                vscode.window.showInformationMessage(
+                    'No active profiles found. Activate a profile first.'
+                );
                 return;
             }
 
             // Let user select a profile
-            const profileItems = activeProfiles.map(profile => ({
+            const profileItems = activeProfiles.map((profile) => ({
                 label: profile.profileId,
                 description: `Hub: ${profile.hubId}`,
-                profile
+                profile,
             }));
 
             const selectedProfile = await vscode.window.showQuickPick(profileItems, {
                 placeHolder: 'Select a profile to rollback',
                 title: 'Rollback Profile',
-                ignoreFocusOut: true
+                ignoreFocusOut: true,
             });
 
             if (!selectedProfile) {
@@ -155,7 +167,7 @@ export class HubHistoryCommands {
             const selectedEntry = await vscode.window.showQuickPick(historyItems, {
                 placeHolder: 'Select a history entry to rollback to',
                 title: `Rollback: ${selectedProfile.profile.profileId}`,
-                ignoreFocusOut: true
+                ignoreFocusOut: true,
             });
 
             if (!selectedEntry) {
@@ -179,7 +191,7 @@ export class HubHistoryCommands {
                 {
                     location: vscode.ProgressLocation.Notification,
                     title: `Rolling back profile ${selectedProfile.profile.profileId}...`,
-                    cancellable: false
+                    cancellable: false,
                 },
                 async () => {
                     await this.syncHistory.rollbackToEntry(
@@ -208,24 +220,25 @@ export class HubHistoryCommands {
         try {
             // Get active profiles
             const activeProfiles = await this.hubManager.listAllActiveProfiles();
-            
+
             if (activeProfiles.length === 0) {
                 vscode.window.showInformationMessage('No active profiles found.');
                 return;
             }
 
             // Let user select a profile
-            const profileItems = activeProfiles.map(profile => ({
+            const profileItems = activeProfiles.map((profile) => ({
                 label: profile.profileId,
                 description: `Hub: ${profile.hubId}`,
-                profile
+                profile,
             }));
 
             // Add "All Profiles" option
             const allOption = {
                 label: '$(trash) Clear All History',
                 description: 'Clear history for all profiles',
-                profile: null as any
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
+                profile: null as any,
             };
 
             const items = [allOption, ...profileItems];
@@ -233,7 +246,7 @@ export class HubHistoryCommands {
             const selected = await vscode.window.showQuickPick(items, {
                 placeHolder: 'Select a profile to clear history',
                 title: 'Clear Sync History',
-                ignoreFocusOut: true
+                ignoreFocusOut: true,
             });
 
             if (!selected) {

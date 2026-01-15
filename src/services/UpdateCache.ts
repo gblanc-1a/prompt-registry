@@ -55,9 +55,9 @@ export class UpdateCache {
         const cached: CachedUpdateResult = {
             results,
             timestamp: new Date(),
-            ttl: ttl ?? this.defaultTTL
+            ttl: ttl ?? this.defaultTTL,
         };
-        
+
         await this.storage.update(CACHE_CONSTANTS.CACHE_KEY, cached);
     }
 
@@ -67,7 +67,7 @@ export class UpdateCache {
      */
     async get(): Promise<UpdateCheckResult[] | null> {
         const cached = this.storage.get<CachedUpdateResult>(CACHE_CONSTANTS.CACHE_KEY);
-        
+
         if (!cached) {
             return null;
         }
@@ -91,18 +91,19 @@ export class UpdateCache {
         }
 
         const now = Date.now();
-        const cacheTime = typeof entry.timestamp === 'number'
-            ? entry.timestamp
-            : new Date(entry.timestamp).getTime();
-        
-        return (now - cacheTime) < entry.ttl;
+        const cacheTime =
+            typeof entry.timestamp === 'number'
+                ? entry.timestamp
+                : new Date(entry.timestamp).getTime();
+
+        return now - cacheTime < entry.ttl;
     }
 
     /**
      * Clear the cache
      */
     async clear(): Promise<void> {
-        await this.storage.update(CACHE_CONSTANTS.CACHE_KEY, undefined);
+        await this.storage.update(CACHE_CONSTANTS.CACHE_KEY, null);
     }
 
     /**
@@ -112,16 +113,17 @@ export class UpdateCache {
      */
     getCacheAge(): number {
         const cached = this.storage.get<CachedUpdateResult>(CACHE_CONSTANTS.CACHE_KEY);
-        
+
         if (!cached) {
             return -1;
         }
 
         const now = Date.now();
-        const cacheTime = typeof cached.timestamp === 'number'
-            ? cached.timestamp
-            : new Date(cached.timestamp).getTime();
-        
+        const cacheTime =
+            typeof cached.timestamp === 'number'
+                ? cached.timestamp
+                : new Date(cached.timestamp).getTime();
+
         return now - cacheTime;
     }
 }

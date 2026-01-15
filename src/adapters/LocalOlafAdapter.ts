@@ -3,18 +3,26 @@
  * Handles local filesystem directories containing OLAF skills organized in bundle-based structure
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import { promisify } from 'util';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { promisify } from 'node:util';
+
 import AdmZip = require('adm-zip');
 import * as yaml from 'js-yaml';
 import * as vscode from 'vscode';
-import { RepositoryAdapter } from './RepositoryAdapter';
-import { Bundle, SourceMetadata, ValidationResult, RegistrySource } from '../types/registry';
-import { BundleDefinition, BundleDefinitionInfo, LocalOlafSkillManifest, SkillInfo, SkillReference } from '../types/olaf';
-import { Logger } from '../utils/logger';
-import { generateSanitizedId } from '../utils/bundleNameUtils';
+
 import { OlafRuntimeManager } from '../services/OlafRuntimeManager';
+import {
+    BundleDefinition,
+    BundleDefinitionInfo,
+    LocalOlafSkillManifest,
+    SkillInfo,
+} from '../types/olaf';
+import { Bundle, SourceMetadata, ValidationResult, RegistrySource } from '../types/registry';
+import { generateSanitizedId } from '../utils/bundleNameUtils';
+import { Logger } from '../utils/logger';
+
+import { RepositoryAdapter } from './RepositoryAdapter';
 
 // Promisified fs functions
 const readdir = promisify(fs.readdir);
@@ -35,7 +43,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
         super(source);
         this.logger = Logger.getInstance();
         this.runtimeManager = OlafRuntimeManager.getInstance();
-        
+
         if (!this.isValidLocalPath(source.url)) {
             throw new Error(`Invalid local OLAF path: ${source.url}`);
         }
@@ -46,18 +54,18 @@ export class LocalOlafAdapter extends RepositoryAdapter {
      */
     private getLocalPath(): string {
         let localPath = this.source.url;
-        
+
         // Handle file:// URL
         if (localPath.startsWith('file://')) {
             localPath = localPath.substring(7);
         }
-        
+
         // Expand home directory
         if (localPath.startsWith('~/')) {
-            const os = require('os');
+            const os = require('node:os');
             localPath = path.join(os.homedir(), localPath.slice(2));
         }
-        
+
         // Normalize path
         return path.normalize(localPath);
     }
@@ -67,10 +75,12 @@ export class LocalOlafAdapter extends RepositoryAdapter {
      */
     private isValidLocalPath(url: string): boolean {
         // Accept file:// URLs or absolute paths
-        return url.startsWith('file://') || 
-               path.isAbsolute(url) ||
-               url.startsWith('~/') ||
-               url.startsWith('./');
+        return (
+            url.startsWith('file://') ||
+            path.isAbsolute(url) ||
+            url.startsWith('~/') ||
+            url.startsWith('./')
+        );
     }
 
     /**
@@ -112,7 +122,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
         } catch (error) {
             const errorCode = (error as NodeJS.ErrnoException).code;
             let errorMessage = `Directory not accessible: ${localPath}`;
-            
+
             if (errorCode === 'ENOENT') {
                 errorMessage = `Directory does not exist: ${localPath}`;
             } else if (errorCode === 'EACCES') {
@@ -120,7 +130,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
             } else if (errorCode === 'ENOTDIR') {
                 errorMessage = `Path is not a directory: ${localPath}`;
             }
-            
+
             return {
                 valid: false,
                 errors: [errorMessage],
@@ -160,14 +170,18 @@ export class LocalOlafAdapter extends RepositoryAdapter {
                 const entries = await readdir(localPath);
                 const hasGitDir = entries.includes('.git');
                 const hasPackageJson = entries.includes('package.json');
-                const hasReadme = entries.some(entry => entry.toLowerCase().startsWith('readme'));
-                
+                const hasReadme = entries.some((entry) => entry.toLowerCase().startsWith('readme'));
+
                 if (hasGitDir && !hasReadme) {
-                    warnings.push('Directory appears to be a Git repository but lacks documentation. Verify this is the correct OLAF source directory.');
+                    warnings.push(
+                        'Directory appears to be a Git repository but lacks documentation. Verify this is the correct OLAF source directory.'
+                    );
                 }
-                
+
                 if (hasPackageJson) {
-                    warnings.push('Directory contains package.json. Verify this is an OLAF source directory and not a Node.js project.');
+                    warnings.push(
+                        'Directory contains package.json. Verify this is an OLAF source directory and not a Node.js project.'
+                    );
                 }
             } catch (error) {
                 // Ignore errors in additional checks
@@ -175,11 +189,15 @@ export class LocalOlafAdapter extends RepositoryAdapter {
         }
 
         const isValid = errors.length === 0;
-        
+
         if (isValid) {
-            this.logger.debug(`[LocalOlafAdapter] Directory structure validation passed: ${localPath}`);
+            this.logger.debug(
+                `[LocalOlafAdapter] Directory structure validation passed: ${localPath}`
+            );
         } else {
-            this.logger.warn(`[LocalOlafAdapter] Directory structure validation failed: ${errors.join(', ')}`);
+            this.logger.warn(
+                `[LocalOlafAdapter] Directory structure validation failed: ${errors.join(', ')}`
+            );
         }
 
         return {
@@ -193,78 +211,82 @@ export class LocalOlafAdapter extends RepositoryAdapter {
      * Validate local OLAF source accessibility and structure with comprehensive reporting
      * Checks if the directory exists and contains required bundles/ and skills/ directories
      * Provides detailed validation reporting for source configuration
-     * 
+     *
      * @returns Promise resolving to ValidationResult with detailed status and any warnings
      */
     async validate(): Promise<ValidationResult> {
         const errors: string[] = [];
         const warnings: string[] = [];
-        
+
         try {
             this.logger.info(`[LocalOlafAdapter] Validating local OLAF source: ${this.source.url}`);
-            
+
             // Validate directory structure
             const structureValidation = await this.validateDirectoryStructure();
             if (!structureValidation.valid) {
                 errors.push(...structureValidation.errors);
                 warnings.push(...structureValidation.warnings);
-                
+
                 return {
                     valid: false,
                     errors,
                     warnings,
                 };
             }
-            
+
             // Validate bundle definitions and skills
             let bundleCount = 0;
             let skillCount = 0;
-            let bundleErrors = 0;
-            let skillErrors = 0;
-            
+            const _bundleErrors = 0;
+            const _skillErrors = 0;
+
             try {
                 const bundleDefinitions = await this.scanBundleDefinitions();
                 bundleCount = bundleDefinitions.length;
-                
+
                 // Count total skills and track errors
                 for (const bundleInfo of bundleDefinitions) {
                     skillCount += bundleInfo.validatedSkills.length;
                 }
-                
+
                 if (bundleCount === 0) {
                     warnings.push('No valid bundle definitions found in bundles/ directory');
                 } else {
-                    this.logger.info(`[LocalOlafAdapter] Found ${bundleCount} valid bundle(s) with ${skillCount} total skill(s)`);
+                    this.logger.info(
+                        `[LocalOlafAdapter] Found ${bundleCount} valid bundle(s) with ${skillCount} total skill(s)`
+                    );
                 }
-                
             } catch (scanError) {
                 // scanBundleDefinitions already handles individual bundle errors gracefully
                 // If it throws, it means the bundles directory is completely inaccessible
                 errors.push(`Failed to scan bundle definitions: ${scanError}`);
             }
-            
+
             // Additional validation checks
             await this.performAdditionalValidation(warnings);
-            
+
             // Determine overall validation result
             const isValid = errors.length === 0;
-            
+
             if (isValid) {
-                this.logger.info(`[LocalOlafAdapter] Validation successful: ${bundleCount} bundle(s), ${skillCount} skill(s)`);
+                this.logger.info(
+                    `[LocalOlafAdapter] Validation successful: ${bundleCount} bundle(s), ${skillCount} skill(s)`
+                );
             } else {
-                this.logger.warn(`[LocalOlafAdapter] Validation failed with ${errors.length} error(s) and ${warnings.length} warning(s)`);
+                this.logger.warn(
+                    `[LocalOlafAdapter] Validation failed with ${errors.length} error(s) and ${warnings.length} warning(s)`
+                );
             }
-            
+
             return {
                 valid: isValid,
                 errors,
                 warnings,
             };
-            
         } catch (error) {
             const errorMsg = `Local OLAF source validation failed: ${error}`;
             this.logger.error(`[LocalOlafAdapter] ${errorMsg}`);
-            
+
             return {
                 valid: false,
                 errors: [errorMsg],
@@ -278,45 +300,48 @@ export class LocalOlafAdapter extends RepositoryAdapter {
      */
     private async performAdditionalValidation(warnings: string[]): Promise<void> {
         const localPath = this.getLocalPath();
-        
+
         try {
             // Check if path is too long (Windows limitation)
             if (localPath.length > 260) {
-                warnings.push('Path length exceeds Windows maximum (260 characters). This may cause issues on Windows systems.');
+                warnings.push(
+                    'Path length exceeds Windows maximum (260 characters). This may cause issues on Windows systems.'
+                );
             }
-            
+
             // Check for common directory structure issues
             const bundlesPath = path.join(localPath, 'bundles');
             const skillsPath = path.join(localPath, 'skills');
-            
+
             // Check if directories are empty
             try {
                 const bundleFiles = await readdir(bundlesPath);
-                const jsonFiles = bundleFiles.filter(file => file.endsWith('.json'));
+                const jsonFiles = bundleFiles.filter((file) => file.endsWith('.json'));
                 if (jsonFiles.length === 0) {
                     warnings.push('bundles/ directory contains no JSON files');
                 }
             } catch (error) {
                 // Already handled in directory structure validation
             }
-            
+
             try {
                 const skillDirs = await readdir(skillsPath, { withFileTypes: true });
-                const directories = skillDirs.filter(entry => entry.isDirectory());
+                const directories = skillDirs.filter((entry) => entry.isDirectory());
                 if (directories.length === 0) {
                     warnings.push('skills/ directory contains no subdirectories');
                 }
             } catch (error) {
                 // Already handled in directory structure validation
             }
-            
+
             // Check for write permissions (needed for competency index updates)
             try {
                 await access(localPath, fs.constants.W_OK);
             } catch (error) {
-                warnings.push('Source directory is not writable. This may prevent competency index updates.');
+                warnings.push(
+                    'Source directory is not writable. This may prevent competency index updates.'
+                );
             }
-            
         } catch (error) {
             this.logger.debug(`[LocalOlafAdapter] Additional validation checks failed: ${error}`);
             // Don't add to warnings as these are optional checks
@@ -325,7 +350,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
 
     /**
      * Fetch repository metadata from local OLAF filesystem
-     * 
+     *
      * @returns Promise resolving to SourceMetadata with directory info
      * @throws Error if directory doesn't exist or is not accessible
      */
@@ -341,7 +366,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
             // Count bundles by scanning bundles directory
             const bundlesPath = path.join(localPath, 'bundles');
             const bundleFiles = await readdir(bundlesPath);
-            const jsonFiles = bundleFiles.filter(file => file.endsWith('.json'));
+            const jsonFiles = bundleFiles.filter((file) => file.endsWith('.json'));
 
             // Get directory modification time
             const stats = await stat(localPath);
@@ -361,13 +386,16 @@ export class LocalOlafAdapter extends RepositoryAdapter {
     /**
      * Read and parse JSON file with detailed error reporting
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     private async readJsonFile(filePath: string): Promise<any> {
         try {
             const content = await readFile(filePath, 'utf-8');
             return JSON.parse(content);
         } catch (error) {
             if (error instanceof SyntaxError) {
-                throw new Error(`Invalid JSON syntax in ${path.basename(filePath)}: ${error.message}`);
+                throw new TypeError(
+                    `Invalid JSON syntax in ${path.basename(filePath)}: ${error.message}`
+                );
             } else if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
                 throw new Error(`File not found: ${path.basename(filePath)}`);
             } else if ((error as NodeJS.ErrnoException).code === 'EACCES') {
@@ -385,25 +413,26 @@ export class LocalOlafAdapter extends RepositoryAdapter {
         try {
             const data = await this.readJsonFile(skillPath);
             const fileName = path.basename(skillPath);
-            
+
             // Handle different manifest structures
             let name: string;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
             let entryPoints: any[];
             let description: string | undefined;
             let version: string | undefined;
             let author: string | undefined;
-            
+
             // Check if this is the new structure with metadata and bom
             if (data.metadata && data.bom) {
                 // New structure: metadata.name and bom.entry_points
                 if (!data.metadata.name || typeof data.metadata.name !== 'string') {
                     throw new Error(`Missing or invalid metadata.name field in ${fileName}`);
                 }
-                
+
                 if (!data.bom.entry_points || !Array.isArray(data.bom.entry_points)) {
                     throw new Error(`Missing or invalid bom.entry_points array in ${fileName}`);
                 }
-                
+
                 name = data.metadata.name;
                 entryPoints = data.bom.entry_points;
                 description = data.metadata.description || data.metadata.shortDescription;
@@ -414,27 +443,26 @@ export class LocalOlafAdapter extends RepositoryAdapter {
                 if (!data.name || typeof data.name !== 'string') {
                     throw new Error(`Missing or invalid name field in ${fileName}`);
                 }
-                
+
                 if (!data.entry_points || !Array.isArray(data.entry_points)) {
                     throw new Error(`Missing or invalid entry_points array in ${fileName}`);
                 }
-                
+
                 name = data.name;
                 entryPoints = data.entry_points;
                 description = data.description;
                 version = data.version;
                 author = data.author;
             }
-            
+
             if (entryPoints.length === 0) {
                 throw new Error(`No entry points defined in ${fileName}`);
             }
-            
+
             // Validate each entry point with detailed error messages
-            for (let i = 0; i < entryPoints.length; i++) {
-                const entryPoint = entryPoints[i];
+            for (const [i, entryPoint] of entryPoints.entries()) {
                 const entryContext = `entry point ${i + 1} in ${fileName}`;
-                
+
                 if (!entryPoint.protocol || typeof entryPoint.protocol !== 'string') {
                     throw new Error(`Missing or invalid protocol field for ${entryContext}`);
                 }
@@ -448,20 +476,22 @@ export class LocalOlafAdapter extends RepositoryAdapter {
                     throw new Error(`Empty patterns array for ${entryContext}`);
                 }
             }
-            
+
             // Return normalized manifest structure
             const normalizedManifest: LocalOlafSkillManifest = {
                 name,
                 description,
                 version,
                 author,
-                entry_points: entryPoints
+                entry_points: entryPoints,
             };
-            
+
             return normalizedManifest;
         } catch (error) {
             if (error instanceof SyntaxError) {
-                throw new Error(`Invalid JSON syntax in ${path.basename(skillPath)}: ${error.message}`);
+                throw new TypeError(
+                    `Invalid JSON syntax in ${path.basename(skillPath)}: ${error.message}`
+                );
             }
             throw error;
         }
@@ -471,20 +501,28 @@ export class LocalOlafAdapter extends RepositoryAdapter {
      * Validate that all skills referenced in bundle definition exist and are valid
      * Provides detailed error messages for validation failures
      */
-    private async validateSkillReferences(bundleDefinition: BundleDefinition): Promise<SkillInfo[]> {
+    private async validateSkillReferences(
+        bundleDefinition: BundleDefinition
+    ): Promise<SkillInfo[]> {
         const localPath = this.getLocalPath();
         const validatedSkills: SkillInfo[] = [];
         const errors: string[] = [];
 
         for (let i = 0; i < bundleDefinition.skills.length; i++) {
             const skillRef = bundleDefinition.skills[i];
+            if (!skillRef) {
+                errors.push(`Skill at index ${i} is undefined`);
+                continue;
+            }
             const skillContext = `skill "${skillRef.name}" (${i + 1}/${bundleDefinition.skills.length})`;
-            
+
             try {
                 // Check if skill directory exists
                 const skillPath = path.join(localPath, skillRef.path);
                 if (!(await this.directoryExists(skillPath))) {
-                    errors.push(`${skillContext}: Directory does not exist at path "${skillRef.path}"`);
+                    errors.push(
+                        `${skillContext}: Directory does not exist at path "${skillRef.path}"`
+                    );
                     continue;
                 }
 
@@ -493,7 +531,9 @@ export class LocalOlafAdapter extends RepositoryAdapter {
                 try {
                     await access(manifestPath, fs.constants.R_OK);
                 } catch {
-                    errors.push(`${skillContext}: Manifest file does not exist at path "${skillRef.manifest}"`);
+                    errors.push(
+                        `${skillContext}: Manifest file does not exist at path "${skillRef.manifest}"`
+                    );
                     continue;
                 }
 
@@ -505,7 +545,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
                     errors.push(`${skillContext}: Invalid manifest file - ${manifestError}`);
                     continue;
                 }
-                
+
                 // Get list of files in skill directory
                 let files: string[];
                 try {
@@ -514,7 +554,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
                     errors.push(`${skillContext}: Failed to read skill files - ${filesError}`);
                     continue;
                 }
-                
+
                 // Create SkillInfo object
                 const skillInfo: SkillInfo = {
                     id: generateSanitizedId(skillRef.name),
@@ -523,10 +563,11 @@ export class LocalOlafAdapter extends RepositoryAdapter {
                     manifest,
                     files,
                 };
-                
+
                 validatedSkills.push(skillInfo);
-                this.logger.debug(`[LocalOlafAdapter] Validated ${skillContext}: ${files.length} files, ${manifest.entry_points?.length || 0} entry points`);
-                
+                this.logger.debug(
+                    `[LocalOlafAdapter] Validated ${skillContext}: ${files.length} files, ${manifest.entry_points?.length || 0} entry points`
+                );
             } catch (error) {
                 const errorMsg = `${skillContext}: Unexpected validation error - ${error}`;
                 errors.push(errorMsg);
@@ -535,7 +576,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
         }
 
         if (errors.length > 0) {
-            const errorSummary = `Skill validation failed for bundle "${bundleDefinition.metadata.name}": ${errors.length} error(s):\n${errors.map(e => `  - ${e}`).join('\n')}`;
+            const errorSummary = `Skill validation failed for bundle "${bundleDefinition.metadata.name}": ${errors.length} error(s):\n${errors.map((e) => `  - ${e}`).join('\n')}`;
             throw new Error(errorSummary);
         }
 
@@ -551,15 +592,15 @@ export class LocalOlafAdapter extends RepositoryAdapter {
      */
     private async getSkillFiles(skillPath: string): Promise<string[]> {
         const files: string[] = [];
-        
+
         const scanDirectory = async (dirPath: string, relativePath: string = ''): Promise<void> => {
             try {
                 const entries = await readdir(dirPath, { withFileTypes: true });
-                
+
                 for (const entry of entries) {
                     const fullPath = path.join(dirPath, entry.name);
                     const relativeFilePath = path.join(relativePath, entry.name);
-                    
+
                     if (entry.isFile()) {
                         files.push(relativeFilePath);
                     } else if (entry.isDirectory()) {
@@ -570,7 +611,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
                 // Ignore errors for inaccessible directories
             }
         };
-        
+
         await scanDirectory(skillPath);
         return files;
     }
@@ -584,24 +625,23 @@ export class LocalOlafAdapter extends RepositoryAdapter {
         const bundlesPath = path.join(localPath, 'bundles');
         const bundleDefinitions: BundleDefinitionInfo[] = [];
         const errors: string[] = [];
-        const warnings: string[] = [];
 
         try {
             const entries = await readdir(bundlesPath, { withFileTypes: true });
-            
+
             for (const entry of entries) {
                 if (entry.isFile() && entry.name.endsWith('.json')) {
                     const filePath = path.join(bundlesPath, entry.name);
-                    
+
                     try {
                         const definition = await this.parseBundleDefinition(filePath);
                         const fileName = path.basename(entry.name, '.json');
                         const bundleId = `local-olaf-${fileName}`;
-                        
+
                         // Validate skill references with detailed error handling
                         try {
                             const validatedSkills = await this.validateSkillReferences(definition);
-                            
+
                             bundleDefinitions.push({
                                 id: bundleId,
                                 fileName,
@@ -609,8 +649,10 @@ export class LocalOlafAdapter extends RepositoryAdapter {
                                 definition,
                                 validatedSkills,
                             });
-                            
-                            this.logger.info(`[LocalOlafAdapter] Successfully processed bundle: ${fileName} (${validatedSkills.length} skills)`);
+
+                            this.logger.info(
+                                `[LocalOlafAdapter] Successfully processed bundle: ${fileName} (${validatedSkills.length} skills)`
+                            );
                         } catch (skillError) {
                             const errorMsg = `Bundle ${fileName}: ${skillError}`;
                             errors.push(errorMsg);
@@ -625,31 +667,38 @@ export class LocalOlafAdapter extends RepositoryAdapter {
                     }
                 }
             }
-            
+
             // Log summary of processing results
             if (bundleDefinitions.length > 0) {
-                this.logger.info(`[LocalOlafAdapter] Successfully processed ${bundleDefinitions.length} bundle(s)`);
+                this.logger.info(
+                    `[LocalOlafAdapter] Successfully processed ${bundleDefinitions.length} bundle(s)`
+                );
             }
-            
+
             if (errors.length > 0) {
-                this.logger.warn(`[LocalOlafAdapter] Encountered ${errors.length} error(s) while processing bundles:`);
-                errors.forEach(error => this.logger.warn(`[LocalOlafAdapter] - ${error}`));
-                
+                this.logger.warn(
+                    `[LocalOlafAdapter] Encountered ${errors.length} error(s) while processing bundles:`
+                );
+                for (const error of errors) {
+                    this.logger.warn(`[LocalOlafAdapter] - ${error}`);
+                }
+
                 // Show user-friendly notification for bundle processing errors
-                vscode.window.showWarningMessage(
-                    `Some bundle definitions could not be processed (${errors.length} errors). Check the output for details.`,
-                    'Show Details'
-                ).then(selection => {
-                    if (selection === 'Show Details') {
-                        const errorDetails = errors.join('\n\n');
-                        vscode.window.showInformationMessage(
-                            `Bundle Processing Errors:\n\n${errorDetails}`,
-                            { modal: true }
-                        );
-                    }
-                });
+                vscode.window
+                    .showWarningMessage(
+                        `Some bundle definitions could not be processed (${errors.length} errors). Check the output for details.`,
+                        'Show Details'
+                    )
+                    .then((selection) => {
+                        if (selection === 'Show Details') {
+                            const errorDetails = errors.join('\n\n');
+                            vscode.window.showInformationMessage(
+                                `Bundle Processing Errors:\n\n${errorDetails}`,
+                                { modal: true }
+                            );
+                        }
+                    });
             }
-            
         } catch (error) {
             const errorMsg = `Failed to scan bundle definitions directory: ${error}`;
             this.logger.error(`[LocalOlafAdapter] ${errorMsg}`);
@@ -665,33 +714,37 @@ export class LocalOlafAdapter extends RepositoryAdapter {
     private async parseBundleDefinition(bundlePath: string): Promise<BundleDefinition> {
         try {
             const data = await this.readJsonFile(bundlePath);
-            
+
             // Validate required structure with specific error messages
             if (!data.metadata || typeof data.metadata !== 'object') {
-                throw new Error(`Missing or invalid metadata section in ${path.basename(bundlePath)}`);
+                throw new Error(
+                    `Missing or invalid metadata section in ${path.basename(bundlePath)}`
+                );
             }
-            
+
             if (!data.metadata.name || typeof data.metadata.name !== 'string') {
                 throw new Error(`Missing or invalid metadata.name in ${path.basename(bundlePath)}`);
             }
-            
+
             if (!data.metadata.description || typeof data.metadata.description !== 'string') {
-                throw new Error(`Missing or invalid metadata.description in ${path.basename(bundlePath)}`);
+                throw new Error(
+                    `Missing or invalid metadata.description in ${path.basename(bundlePath)}`
+                );
             }
-            
+
             if (!data.skills || !Array.isArray(data.skills)) {
                 throw new Error(`Missing or invalid skills array in ${path.basename(bundlePath)}`);
             }
-            
+
             if (data.skills.length === 0) {
                 throw new Error(`Bundle ${path.basename(bundlePath)} contains no skills`);
             }
-            
+
             // Validate each skill reference with detailed error messages
             for (let i = 0; i < data.skills.length; i++) {
                 const skill = data.skills[i];
                 const skillContext = `skill ${i + 1} in ${path.basename(bundlePath)}`;
-                
+
                 if (!skill.name || typeof skill.name !== 'string') {
                     throw new Error(`Missing or invalid name field for ${skillContext}`);
                 }
@@ -705,11 +758,13 @@ export class LocalOlafAdapter extends RepositoryAdapter {
                     throw new Error(`Missing or invalid manifest field for ${skillContext}`);
                 }
             }
-            
+
             return data as BundleDefinition;
         } catch (error) {
             if (error instanceof SyntaxError) {
-                throw new Error(`Invalid JSON syntax in ${path.basename(bundlePath)}: ${error.message}`);
+                throw new TypeError(
+                    `Invalid JSON syntax in ${path.basename(bundlePath)}: ${error.message}`
+                );
             }
             throw error;
         }
@@ -721,10 +776,10 @@ export class LocalOlafAdapter extends RepositoryAdapter {
     private createBundleFromDefinition(bundleInfo: BundleDefinitionInfo): Bundle {
         const { definition, validatedSkills } = bundleInfo;
         const localPath = this.getLocalPath();
-        
+
         // Generate unique bundle ID
         const bundleId = bundleInfo.id;
-        
+
         // Map bundle definition properties to Bundle properties with defaults
         const bundle: Bundle = {
             id: bundleId,
@@ -734,12 +789,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
             author: definition.metadata.author || 'Unknown',
             sourceId: this.source.id,
             environments: ['copilot'], // Local OLAF bundles are for Copilot environment
-            tags: [
-                ...(definition.metadata.tags || []),
-                'local-olaf',
-                'bundle',
-                'skills'
-            ],
+            tags: [...(definition.metadata.tags || []), 'local-olaf', 'bundle', 'skills'],
             downloads: 0, // Not applicable for local sources
             rating: 0, // Not applicable for local sources
             lastUpdated: new Date().toISOString(), // Use current time for local bundles
@@ -754,15 +804,16 @@ export class LocalOlafAdapter extends RepositoryAdapter {
             hubName: undefined,
             checksum: undefined,
         };
-        
+
         // Add skill information for marketplace display
         // This allows the marketplace to show skill count in the content breakdown
-        (bundle as any).skills = validatedSkills.map(skill => ({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
+        (bundle as any).skills = validatedSkills.map((skill) => ({
             name: skill.manifest.name || skill.folderName,
             description: skill.manifest.description || 'No description available',
-            path: skill.path
+            path: skill.path,
         }));
-        
+
         return bundle;
     }
 
@@ -819,27 +870,31 @@ export class LocalOlafAdapter extends RepositoryAdapter {
      * Scans bundle definitions, validates skills, and creates Bundle objects
      * Continues processing valid bundles when some are invalid
      * Respects source enable/disable state
-     * 
+     *
      * @returns Promise resolving to array of Bundle objects found in local directory
      * @throws Error only if directory is not accessible or no valid bundles found
      */
     async fetchBundles(): Promise<Bundle[]> {
         // Check if source is enabled
         if (!this.isEnabled()) {
-            this.logger.info(`[LocalOlafAdapter] Source is disabled, returning empty bundle list: ${this.source.url}`);
+            this.logger.info(
+                `[LocalOlafAdapter] Source is disabled, returning empty bundle list: ${this.source.url}`
+            );
             return [];
         }
-        
+
         try {
             const bundleDefinitions = await this.scanBundleDefinitions();
             const bundles: Bundle[] = [];
             const errors: string[] = [];
-            
+
             for (const bundleInfo of bundleDefinitions) {
                 try {
                     const bundle = this.createBundleFromDefinition(bundleInfo);
                     bundles.push(bundle);
-                    this.logger.debug(`[LocalOlafAdapter] Created bundle: ${bundle.name} (${bundle.size})`);
+                    this.logger.debug(
+                        `[LocalOlafAdapter] Created bundle: ${bundle.name} (${bundle.size})`
+                    );
                 } catch (error) {
                     const errorMsg = `Failed to create bundle from ${bundleInfo.fileName}: ${error}`;
                     errors.push(errorMsg);
@@ -847,22 +902,28 @@ export class LocalOlafAdapter extends RepositoryAdapter {
                     // Continue processing other bundles
                 }
             }
-            
+
             // Log summary
             if (bundles.length > 0) {
-                this.logger.info(`[LocalOlafAdapter] Successfully created ${bundles.length} bundle(s) from local OLAF registry`);
+                this.logger.info(
+                    `[LocalOlafAdapter] Successfully created ${bundles.length} bundle(s) from local OLAF registry`
+                );
             }
-            
+
             if (errors.length > 0) {
-                this.logger.warn(`[LocalOlafAdapter] Encountered ${errors.length} error(s) while creating bundles`);
+                this.logger.warn(
+                    `[LocalOlafAdapter] Encountered ${errors.length} error(s) while creating bundles`
+                );
                 // Don't show user notification here as it was already shown in scanBundleDefinitions
             }
-            
+
             // Only throw error if no bundles were successfully processed
             if (bundles.length === 0 && bundleDefinitions.length > 0) {
-                throw new Error(`No valid bundles could be created from ${bundleDefinitions.length} bundle definition(s)`);
+                throw new Error(
+                    `No valid bundles could be created from ${bundleDefinitions.length} bundle definition(s)`
+                );
             }
-            
+
             return bundles;
         } catch (error) {
             const errorMsg = `Failed to fetch bundles from local OLAF registry: ${error}`;
@@ -875,64 +936,64 @@ export class LocalOlafAdapter extends RepositoryAdapter {
      * Generate deployment manifest for a local OLAF bundle
      * Creates manifest from bundle definition information with all skills
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     private generateDeploymentManifest(bundleInfo: BundleDefinitionInfo): any {
         const { definition, validatedSkills } = bundleInfo;
         const localPath = this.getLocalPath();
-        
+
         // Create deployment manifest structure with required root-level fields
         const deploymentManifest = {
             // Required root-level fields for BundleInstaller validation
             id: bundleInfo.id,
             version: definition.metadata.version || '1.0.0',
             name: definition.metadata.name,
-            
+
             metadata: {
-                manifest_version: "1.0",
+                manifest_version: '1.0',
                 description: `Local OLAF Bundle: ${definition.metadata.name}`,
                 author: definition.metadata.author || 'Unknown',
                 last_updated: new Date().toISOString(),
                 repository: {
-                    type: "local",
+                    type: 'local',
                     url: `file://${localPath}`,
-                    directory: "bundles"
+                    directory: 'bundles',
                 },
                 license: 'Unknown',
-                keywords: [
-                    ...(definition.metadata.tags || []),
-                    'local-olaf',
-                    'bundle',
-                    'skills'
-                ]
+                keywords: [...(definition.metadata.tags || []), 'local-olaf', 'bundle', 'skills'],
             },
-            
+
             common: {
-                directories: validatedSkills.map(skill => skill.folderName),
+                directories: validatedSkills.map((skill) => skill.folderName),
                 files: [],
-                include_patterns: ["**/*"],
-                exclude_patterns: []
+                include_patterns: ['**/*'],
+                exclude_patterns: [],
             },
-            
+
             bundle_settings: {
                 include_common_in_environment_bundles: true,
                 create_common_bundle: true,
-                compression: "zip" as any,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
+                compression: 'zip' as any,
                 naming: {
-                    common_bundle: bundleInfo.fileName
-                }
+                    common_bundle: bundleInfo.fileName,
+                },
             },
-            
-            prompts: validatedSkills.map(skill => ({
+
+            prompts: validatedSkills.map((skill) => ({
                 id: skill.id,
                 name: skill.manifest.name,
                 description: skill.manifest.description || 'Local OLAF Skill',
                 file: `${skill.folderName}/manifest.json`,
-                type: "agent" as any,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
+                type: 'agent' as any,
                 tags: skill.manifest.tags || ['local-olaf', 'skill'],
-                entry_points: skill.manifest.entry_points || []
-            }))
+                entry_points: skill.manifest.entry_points || [],
+            })),
         };
-        
-        this.logger.debug(`[LocalOlafAdapter] Generated deployment manifest for bundle: ${bundleInfo.id}`);
+
+        this.logger.debug(
+            `[LocalOlafAdapter] Generated deployment manifest for bundle: ${bundleInfo.id}`
+        );
         return deploymentManifest;
     }
 
@@ -942,34 +1003,37 @@ export class LocalOlafAdapter extends RepositoryAdapter {
      */
     private async packageBundleAsZip(bundleInfo: BundleDefinitionInfo): Promise<Buffer> {
         const localPath = this.getLocalPath();
-        
+
         this.logger.debug(`[LocalOlafAdapter] Packaging bundle as ZIP: ${bundleInfo.fileName}`);
-        
+
         try {
             // Create new ZIP archive
             const zip = new AdmZip();
-            
+
             // Generate and add deployment manifest
             const deploymentManifest = this.generateDeploymentManifest(bundleInfo);
             const manifestYaml = yaml.dump(deploymentManifest);
             zip.addFile('deployment-manifest.yml', Buffer.from(manifestYaml, 'utf8'));
-            
+
             // Add each skill to the ZIP
             for (const skill of bundleInfo.validatedSkills) {
                 const skillPath = path.join(localPath, skill.path);
-                
+
                 // Add all files in the skill directory recursively
                 await this.addDirectoryToZip(zip, skillPath, skill.folderName);
             }
-            
+
             // Generate ZIP buffer
             const zipBuffer = zip.toBuffer();
-            
-            this.logger.debug(`[LocalOlafAdapter] Created ZIP bundle for ${bundleInfo.fileName}: ${zipBuffer.length} bytes`);
+
+            this.logger.debug(
+                `[LocalOlafAdapter] Created ZIP bundle for ${bundleInfo.fileName}: ${zipBuffer.length} bytes`
+            );
             return zipBuffer;
-            
         } catch (error) {
-            this.logger.error(`[LocalOlafAdapter] Failed to package bundle ${bundleInfo.fileName}: ${error}`);
+            this.logger.error(
+                `[LocalOlafAdapter] Failed to package bundle ${bundleInfo.fileName}: ${error}`
+            );
             throw new Error(`Failed to package bundle as ZIP: ${error}`);
         }
     }
@@ -978,22 +1042,30 @@ export class LocalOlafAdapter extends RepositoryAdapter {
      * Recursively add directory contents to ZIP archive
      * Preserves folder structure and copies all files
      */
-    private async addDirectoryToZip(zip: AdmZip, sourcePath: string, zipPath: string): Promise<void> {
+    private async addDirectoryToZip(
+        zip: AdmZip,
+        sourcePath: string,
+        zipPath: string
+    ): Promise<void> {
         try {
             const entries = await readdir(sourcePath, { withFileTypes: true });
-            
+
             for (const entry of entries) {
                 const fullPath = path.join(sourcePath, entry.name);
                 const entryZipPath = path.join(zipPath, entry.name).replace(/\\/g, '/'); // Normalize path separators
-                
+
                 if (entry.isFile()) {
                     try {
                         const fileContent = await readFile(fullPath);
                         zip.addFile(entryZipPath, fileContent);
-                        
-                        this.logger.debug(`[LocalOlafAdapter] Added file to ZIP: ${entryZipPath} (${fileContent.length} bytes)`);
+
+                        this.logger.debug(
+                            `[LocalOlafAdapter] Added file to ZIP: ${entryZipPath} (${fileContent.length} bytes)`
+                        );
                     } catch (error) {
-                        this.logger.warn(`[LocalOlafAdapter] Failed to add file ${fullPath}: ${error}`);
+                        this.logger.warn(
+                            `[LocalOlafAdapter] Failed to add file ${fullPath}: ${error}`
+                        );
                         // Continue with other files
                     }
                 } else if (entry.isDirectory()) {
@@ -1002,31 +1074,36 @@ export class LocalOlafAdapter extends RepositoryAdapter {
                 }
             }
         } catch (error) {
-            this.logger.warn(`[LocalOlafAdapter] Failed to process directory ${sourcePath}: ${error}`);
+            this.logger.warn(
+                `[LocalOlafAdapter] Failed to process directory ${sourcePath}: ${error}`
+            );
         }
     }
 
     async downloadBundle(bundle: Bundle): Promise<Buffer> {
         this.logger.info(`[LocalOlafAdapter] Preparing bundle for installation: ${bundle.name}`);
-        
+
         try {
             // Find the bundle definition info for this bundle
             const bundleDefinitions = await this.scanBundleDefinitions();
-            const bundleInfo = bundleDefinitions.find(info => info.id === bundle.id);
-            
+            const bundleInfo = bundleDefinitions.find((info) => info.id === bundle.id);
+
             if (!bundleInfo) {
                 throw new Error(`Bundle definition not found: ${bundle.id}`);
             }
-            
+
             // For local OLAF bundles, we only need to create a minimal ZIP with deployment manifest
             // The actual skills will be linked symbolically in postInstall
             const zipBuffer = await this.createMinimalBundle(bundleInfo);
-            
-            this.logger.info(`[LocalOlafAdapter] Successfully prepared bundle ${bundle.name} (${zipBuffer.length} bytes)`);
+
+            this.logger.info(
+                `[LocalOlafAdapter] Successfully prepared bundle ${bundle.name} (${zipBuffer.length} bytes)`
+            );
             return zipBuffer;
-            
         } catch (error) {
-            this.logger.error(`[LocalOlafAdapter] Failed to prepare bundle ${bundle.name}: ${error}`);
+            this.logger.error(
+                `[LocalOlafAdapter] Failed to prepare bundle ${bundle.name}: ${error}`
+            );
             throw new Error(`Failed to prepare local OLAF bundle ${bundle.name}: ${error}`);
         }
     }
@@ -1037,55 +1114,66 @@ export class LocalOlafAdapter extends RepositoryAdapter {
      */
     private async ensureRuntimeInstalled(): Promise<void> {
         this.logger.info(`[LocalOlafAdapter] Ensuring OLAF runtime is installed`);
-        
+
         try {
             // Get current workspace path
             const workspaceFolders = vscode.workspace.workspaceFolders;
             if (!workspaceFolders || workspaceFolders.length === 0) {
                 throw new Error('No workspace found. OLAF runtime requires an active workspace.');
             }
-            
-            const workspacePath = workspaceFolders[0].uri.fsPath;
-            
+
+            const firstFolder = workspaceFolders[0];
+            if (!firstFolder) {
+                throw new Error('No workspace folder available');
+            }
+            const workspacePath = firstFolder.uri.fsPath;
+
             // Check if runtime is already installed
             const runtimeInfo = await this.runtimeManager.getRuntimeInfo();
             if (runtimeInfo.isInstalled) {
-                this.logger.info(`[LocalOlafAdapter] OLAF runtime v${runtimeInfo.version} already installed`);
+                this.logger.info(
+                    `[LocalOlafAdapter] OLAF runtime v${runtimeInfo.version} already installed`
+                );
                 return;
             }
-            
+
             // Install runtime
             this.logger.info(`[LocalOlafAdapter] Installing OLAF runtime...`);
             const success = await this.runtimeManager.ensureRuntimeInstalled(workspacePath);
-            
+
             if (!success) {
-                throw new Error('OLAF runtime installation failed. Please check your network connection and try again.');
+                throw new Error(
+                    'OLAF runtime installation failed. Please check your network connection and try again.'
+                );
             }
-            
+
             // Verify installation was successful
             const updatedInfo = await this.runtimeManager.getRuntimeInfo('latest', true);
             if (!updatedInfo.isInstalled) {
                 throw new Error('OLAF runtime installation verification failed');
             }
-            
+
             this.logger.info(`[LocalOlafAdapter] OLAF runtime installed successfully`);
-            
         } catch (error) {
             this.logger.error(`[LocalOlafAdapter] Runtime installation failed: ${error}`);
-            
+
             // Provide user-friendly error message
             const errorMessage = error instanceof Error ? error.message : String(error);
-            vscode.window.showErrorMessage(
-                `Failed to install OLAF runtime: ${errorMessage}. Local OLAF bundles require the runtime to function properly.`,
-                'Retry',
-                'Cancel'
-            ).then(selection => {
-                if (selection === 'Retry') {
-                    // User can retry the bundle installation which will trigger runtime installation again
-                    vscode.window.showInformationMessage('Please try installing the bundle again.');
-                }
-            });
-            
+            vscode.window
+                .showErrorMessage(
+                    `Failed to install OLAF runtime: ${errorMessage}. Local OLAF bundles require the runtime to function properly.`,
+                    'Retry',
+                    'Cancel'
+                )
+                .then((selection) => {
+                    if (selection === 'Retry') {
+                        // User can retry the bundle installation which will trigger runtime installation again
+                        vscode.window.showInformationMessage(
+                            'Please try installing the bundle again.'
+                        );
+                    }
+                });
+
             throw new Error(`OLAF runtime installation failed: ${errorMessage}`);
         }
     }
@@ -1096,45 +1184,50 @@ export class LocalOlafAdapter extends RepositoryAdapter {
      */
     private async createWorkspaceLinks(): Promise<void> {
         this.logger.info(`[LocalOlafAdapter] Creating workspace symbolic links`);
-        
+
         try {
             // Get current workspace path
             const workspaceFolders = vscode.workspace.workspaceFolders;
             if (!workspaceFolders || workspaceFolders.length === 0) {
                 throw new Error('No workspace found for creating symbolic links');
             }
-            
-            const workspacePath = workspaceFolders[0].uri.fsPath;
-            
+
+            const firstFolder = workspaceFolders[0];
+            if (!firstFolder) {
+                throw new Error('No workspace folder available');
+            }
+            const workspacePath = firstFolder.uri.fsPath;
+
             // Check if links already exist
             const hasLinks = await this.runtimeManager.hasWorkspaceLinks(workspacePath);
             if (hasLinks) {
                 this.logger.info(`[LocalOlafAdapter] Workspace links already exist`);
                 return;
             }
-            
+
             // Create symbolic links
             await this.runtimeManager.createWorkspaceLinks(workspacePath);
-            
+
             // Verify links were created
             const linksCreated = await this.runtimeManager.hasWorkspaceLinks(workspacePath);
             if (!linksCreated) {
                 throw new Error('Workspace link creation verification failed');
             }
-            
+
             this.logger.info(`[LocalOlafAdapter] Workspace symbolic links created successfully`);
-            
         } catch (error) {
             this.logger.error(`[LocalOlafAdapter] Failed to create workspace links: ${error}`);
-            
+
             // Provide user-friendly error message but don't fail the installation
             const errorMessage = error instanceof Error ? error.message : String(error);
             vscode.window.showWarningMessage(
                 `Warning: Failed to create workspace symbolic links: ${errorMessage}. The bundle was installed but may not function properly.`
             );
-            
+
             // Don't throw error here - symbolic link creation is not critical for basic functionality
-            this.logger.warn(`[LocalOlafAdapter] Continuing without workspace links due to error: ${errorMessage}`);
+            this.logger.warn(
+                `[LocalOlafAdapter] Continuing without workspace links due to error: ${errorMessage}`
+            );
         }
     }
 
@@ -1145,20 +1238,20 @@ export class LocalOlafAdapter extends RepositoryAdapter {
      */
     async postInstall(bundleId: string, installPath: string): Promise<void> {
         this.logger.info(`[LocalOlafAdapter] Post-installation hook for bundle: ${bundleId}`);
-        
+
         try {
             // Ensure OLAF runtime is installed before first local OLAF bundle installation
             await this.ensureRuntimeInstalled();
-            
+
             // Create workspace symbolic links during bundle installation
             await this.createWorkspaceLinks();
-            
+
             // Create symbolic links for each skill in the bundle
             await this.createSkillSymbolicLinks(bundleId);
-            
+
             // Register bundle skills in competency index
             await this.registerBundleInCompetencyIndex(bundleId, installPath);
-            
+
             this.logger.info(`[LocalOlafAdapter] Post-installation completed successfully`);
         } catch (error) {
             this.logger.error(`[LocalOlafAdapter] Post-installation failed: ${error}`);
@@ -1172,14 +1265,14 @@ export class LocalOlafAdapter extends RepositoryAdapter {
      */
     async postUninstall(bundleId: string, installPath: string): Promise<void> {
         this.logger.info(`[LocalOlafAdapter] Post-uninstallation hook for bundle: ${bundleId}`);
-        
+
         try {
             // Remove symbolic links for each skill in the bundle
             await this.removeSkillSymbolicLinks(bundleId);
-            
+
             // Remove bundle skills from competency index
             await this.unregisterBundleFromCompetencyIndex(bundleId, installPath);
-            
+
             this.logger.info(`[LocalOlafAdapter] Post-uninstallation completed successfully`);
         } catch (error) {
             this.logger.error(`[LocalOlafAdapter] Post-uninstallation failed: ${error}`);
@@ -1191,98 +1284,145 @@ export class LocalOlafAdapter extends RepositoryAdapter {
      * Register local OLAF bundle skills in competency index
      * Updates .olaf/olaf-core/reference/competency-index.json with all skill information
      */
-    private async registerBundleInCompetencyIndex(bundleId: string, installPath: string): Promise<void> {
-        this.logger.info(`[LocalOlafAdapter] Registering bundle skills in competency index: ${bundleId}`);
+    private async registerBundleInCompetencyIndex(
+        bundleId: string,
+        installPath: string
+    ): Promise<void> {
+        this.logger.info(
+            `[LocalOlafAdapter] Registering bundle skills in competency index: ${bundleId}`
+        );
         this.logger.info(`[LocalOlafAdapter] Install path: ${installPath}`);
-        
+
         try {
             // Get workspace path
             const workspaceFolders = vscode.workspace.workspaceFolders;
             if (!workspaceFolders || workspaceFolders.length === 0) {
-                this.logger.warn('[LocalOlafAdapter] No workspace found, skipping competency index registration');
+                this.logger.warn(
+                    '[LocalOlafAdapter] No workspace found, skipping competency index registration'
+                );
                 return;
             }
-            
-            const workspacePath = workspaceFolders[0].uri.fsPath;
+
+            const firstFolder = workspaceFolders[0];
+            if (!firstFolder) {
+                this.logger.warn('[LocalOlafAdapter] No workspace folder available');
+                return;
+            }
+            const workspacePath = firstFolder.uri.fsPath;
             this.logger.info(`[LocalOlafAdapter] Workspace path: ${workspacePath}`);
-            
-            const competencyIndexPath = path.join(workspacePath, '.olaf', 'olaf-core', 'reference', 'competency-index.json');
+
+            const competencyIndexPath = path.join(
+                workspacePath,
+                '.olaf',
+                'olaf-core',
+                'reference',
+                'competency-index.json'
+            );
             this.logger.info(`[LocalOlafAdapter] Competency index path: ${competencyIndexPath}`);
-            
+
             // Ensure the directory exists
             const competencyIndexDir = path.dirname(competencyIndexPath);
-            this.logger.info(`[LocalOlafAdapter] Creating directory if needed: ${competencyIndexDir}`);
-            
+            this.logger.info(
+                `[LocalOlafAdapter] Creating directory if needed: ${competencyIndexDir}`
+            );
+
             if (!fs.existsSync(competencyIndexDir)) {
-                this.logger.info(`[LocalOlafAdapter] Directory does not exist, creating: ${competencyIndexDir}`);
+                this.logger.info(
+                    `[LocalOlafAdapter] Directory does not exist, creating: ${competencyIndexDir}`
+                );
                 fs.mkdirSync(competencyIndexDir, { recursive: true });
                 this.logger.info(`[LocalOlafAdapter] Directory created successfully`);
             } else {
                 this.logger.info(`[LocalOlafAdapter] Directory already exists`);
             }
-            
+
             // Read existing competency index or create new one
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
             let competencyIndex: any[] = [];
             if (fs.existsSync(competencyIndexPath)) {
                 this.logger.info(`[LocalOlafAdapter] Reading existing competency index`);
                 const content = fs.readFileSync(competencyIndexPath, 'utf-8');
                 const parsed = JSON.parse(content);
-                
+
                 // Handle both array format and legacy object format
                 if (Array.isArray(parsed)) {
                     competencyIndex = parsed;
-                    this.logger.info(`[LocalOlafAdapter] Found ${competencyIndex.length} existing skills`);
+                    this.logger.info(
+                        `[LocalOlafAdapter] Found ${competencyIndex.length} existing skills`
+                    );
                 } else if (parsed.skills && Array.isArray(parsed.skills)) {
                     // Legacy format with skills property - migrate to flat array
                     competencyIndex = parsed.skills;
-                    this.logger.info(`[LocalOlafAdapter] Found legacy format, migrating ${competencyIndex.length} existing skills`);
+                    this.logger.info(
+                        `[LocalOlafAdapter] Found legacy format, migrating ${competencyIndex.length} existing skills`
+                    );
                 } else {
-                    this.logger.warn(`[LocalOlafAdapter] Invalid competency index format, creating new array`);
+                    this.logger.warn(
+                        `[LocalOlafAdapter] Invalid competency index format, creating new array`
+                    );
                     competencyIndex = [];
                 }
             } else {
-                this.logger.info(`[LocalOlafAdapter] Competency index does not exist, will create new one`);
+                this.logger.info(
+                    `[LocalOlafAdapter] Competency index does not exist, will create new one`
+                );
             }
-            
+
             // Find the bundle definition to get skill information
             const bundleDefinitions = await this.scanBundleDefinitions();
-            const bundleInfo = bundleDefinitions.find(info => info.id === bundleId);
-            
+            const bundleInfo = bundleDefinitions.find((info) => info.id === bundleId);
+
             if (!bundleInfo) {
-                this.logger.warn(`[LocalOlafAdapter] Bundle definition not found for ${bundleId}, skipping competency index registration`);
+                this.logger.warn(
+                    `[LocalOlafAdapter] Bundle definition not found for ${bundleId}, skipping competency index registration`
+                );
                 return;
             }
-            
+
             // Process each skill in the bundle
             for (const skill of bundleInfo.validatedSkills) {
                 await this.registerSkillInCompetencyIndex(skill, installPath, competencyIndex);
             }
-            
+
             // Write updated competency index
-            this.logger.info(`[LocalOlafAdapter] Writing updated competency index with ${competencyIndex.length} skills`);
+            this.logger.info(
+                `[LocalOlafAdapter] Writing updated competency index with ${competencyIndex.length} skills`
+            );
             const competencyIndexContent = JSON.stringify(competencyIndex, null, 2);
-            
+
             fs.writeFileSync(competencyIndexPath, competencyIndexContent, 'utf-8');
             this.logger.info(`[LocalOlafAdapter] File write completed`);
-            
+
             // Verify the file was written correctly
             if (fs.existsSync(competencyIndexPath)) {
                 const verifyContent = fs.readFileSync(competencyIndexPath, 'utf-8');
                 const verifyIndex = JSON.parse(verifyContent);
-                
-                if (Array.isArray(verifyIndex) && verifyIndex.length >= bundleInfo.validatedSkills.length) {
-                    this.logger.info(`[LocalOlafAdapter] Competency index verification successful: ${verifyIndex.length} total skills`);
+
+                if (
+                    Array.isArray(verifyIndex) &&
+                    verifyIndex.length >= bundleInfo.validatedSkills.length
+                ) {
+                    this.logger.info(
+                        `[LocalOlafAdapter] Competency index verification successful: ${verifyIndex.length} total skills`
+                    );
                 } else {
-                    this.logger.error(`[LocalOlafAdapter] Competency index verification failed: expected at least ${bundleInfo.validatedSkills.length} skills, found ${Array.isArray(verifyIndex) ? verifyIndex.length : 'invalid format'}`);
+                    this.logger.error(
+                        `[LocalOlafAdapter] Competency index verification failed: expected at least ${bundleInfo.validatedSkills.length} skills, found ${Array.isArray(verifyIndex) ? verifyIndex.length : 'invalid format'}`
+                    );
                 }
             } else {
-                this.logger.error(`[LocalOlafAdapter] Competency index file does not exist after write`);
+                this.logger.error(
+                    `[LocalOlafAdapter] Competency index file does not exist after write`
+                );
             }
-            
-            this.logger.info(`[LocalOlafAdapter] Successfully registered ${bundleInfo.validatedSkills.length} skills in competency index`);
-            
+
+            this.logger.info(
+                `[LocalOlafAdapter] Successfully registered ${bundleInfo.validatedSkills.length} skills in competency index`
+            );
         } catch (error) {
-            this.logger.error(`[LocalOlafAdapter] Failed to register bundle in competency index: ${error}`);
+            this.logger.error(
+                `[LocalOlafAdapter] Failed to register bundle in competency index: ${error}`
+            );
             if (error instanceof Error) {
                 this.logger.error(`[LocalOlafAdapter] Error stack: ${error.stack}`);
             }
@@ -1301,50 +1441,67 @@ export class LocalOlafAdapter extends RepositoryAdapter {
     /**
      * Register a single skill in the competency index
      */
-    private async registerSkillInCompetencyIndex(skill: SkillInfo, installPath: string, competencyIndex: any[]): Promise<void> {
+    private async registerSkillInCompetencyIndex(
+        skill: SkillInfo,
+        installPath: string,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
+        competencyIndex: any[]
+    ): Promise<void> {
         try {
             // Extract entry points from skill manifest
             const entryPoints = skill.manifest.entry_points || [];
-            
+
             if (entryPoints.length === 0) {
-                this.logger.warn(`[LocalOlafAdapter] Skill ${skill.id} has no entry points, skipping competency index registration`);
+                this.logger.warn(
+                    `[LocalOlafAdapter] Skill ${skill.id} has no entry points, skipping competency index registration`
+                );
                 return;
             }
-            
+
             // Get the actual source name instead of hardcoded "olaf-local"
             const sourceName = this.getSourceName();
-            
+
             // Process each entry point
             for (const entryPoint of entryPoints) {
                 // Construct the file path for the competency index
                 // Format: external-skills/{sourceName}/{skillName}/prompts/{fileName}
                 const promptFilePath = `external-skills/${sourceName}/${skill.folderName}${entryPoint.path}`;
-                
-                this.logger.info(`[LocalOlafAdapter] Processing entry point for skill ${skill.id}: ${promptFilePath}`);
-                
+
+                this.logger.info(
+                    `[LocalOlafAdapter] Processing entry point for skill ${skill.id}: ${promptFilePath}`
+                );
+
                 // Create skill entry for competency index in the correct format
                 const skillEntry = {
                     patterns: entryPoint.patterns || [],
                     file: promptFilePath,
-                    protocol: entryPoint.protocol || 'Propose-Act'
+                    protocol: entryPoint.protocol || 'Propose-Act',
                 };
-                
+
                 // Check if skill already exists in index (match by file path)
-                const existingIndex = competencyIndex.findIndex((s: any) => s.file === skillEntry.file);
-                
-                if (existingIndex >= 0) {
+                const existingIndex = competencyIndex.findIndex(
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
+                    (s: any) => s.file === skillEntry.file
+                );
+
+                if (existingIndex !== -1) {
                     // Update existing entry
-                    this.logger.info(`[LocalOlafAdapter] Updating existing skill entry in competency index: ${skillEntry.file}`);
+                    this.logger.info(
+                        `[LocalOlafAdapter] Updating existing skill entry in competency index: ${skillEntry.file}`
+                    );
                     competencyIndex[existingIndex] = skillEntry;
                 } else {
                     // Add new entry
-                    this.logger.info(`[LocalOlafAdapter] Adding new skill entry to competency index: ${skillEntry.file}`);
+                    this.logger.info(
+                        `[LocalOlafAdapter] Adding new skill entry to competency index: ${skillEntry.file}`
+                    );
                     competencyIndex.push(skillEntry);
                 }
             }
-            
         } catch (error) {
-            this.logger.error(`[LocalOlafAdapter] Failed to register skill ${skill.id} in competency index: ${error}`);
+            this.logger.error(
+                `[LocalOlafAdapter] Failed to register skill ${skill.id} in competency index: ${error}`
+            );
             throw error;
         }
     }
@@ -1353,92 +1510,128 @@ export class LocalOlafAdapter extends RepositoryAdapter {
      * Unregister local OLAF bundle from competency index
      * Removes all skill entries from .olaf/olaf-core/reference/competency-index.json
      */
-    private async unregisterBundleFromCompetencyIndex(bundleId: string, installPath: string): Promise<void> {
-        this.logger.info(`[LocalOlafAdapter] Unregistering bundle from competency index: ${bundleId}`);
+    private async unregisterBundleFromCompetencyIndex(
+        bundleId: string,
+        installPath: string
+    ): Promise<void> {
+        this.logger.info(
+            `[LocalOlafAdapter] Unregistering bundle from competency index: ${bundleId}`
+        );
         this.logger.info(`[LocalOlafAdapter] Install path: ${installPath}`);
-        
+
         try {
             // Get workspace path
             const workspaceFolders = vscode.workspace.workspaceFolders;
             if (!workspaceFolders || workspaceFolders.length === 0) {
-                this.logger.warn('[LocalOlafAdapter] No workspace found, skipping competency index unregistration');
+                this.logger.warn(
+                    '[LocalOlafAdapter] No workspace found, skipping competency index unregistration'
+                );
                 return;
             }
-            
-            const workspacePath = workspaceFolders[0].uri.fsPath;
+
+            const firstFolder = workspaceFolders[0];
+            if (!firstFolder) {
+                this.logger.warn('[LocalOlafAdapter] No workspace folder available');
+                return;
+            }
+            const workspacePath = firstFolder.uri.fsPath;
             this.logger.info(`[LocalOlafAdapter] Workspace path: ${workspacePath}`);
-            
-            const competencyIndexPath = path.join(workspacePath, '.olaf', 'olaf-core', 'reference', 'competency-index.json');
+
+            const competencyIndexPath = path.join(
+                workspacePath,
+                '.olaf',
+                'olaf-core',
+                'reference',
+                'competency-index.json'
+            );
             this.logger.info(`[LocalOlafAdapter] Competency index path: ${competencyIndexPath}`);
-            
+
             // Check if competency index exists
             if (!fs.existsSync(competencyIndexPath)) {
-                this.logger.warn(`[LocalOlafAdapter] Competency index does not exist, nothing to unregister`);
+                this.logger.warn(
+                    `[LocalOlafAdapter] Competency index does not exist, nothing to unregister`
+                );
                 return;
             }
-            
+
             // Read existing competency index
             this.logger.info(`[LocalOlafAdapter] Reading existing competency index`);
             const content = fs.readFileSync(competencyIndexPath, 'utf-8');
             let competencyIndex = JSON.parse(content);
-            
+
             // Handle both array format and legacy object format
             if (!Array.isArray(competencyIndex)) {
                 if (competencyIndex.skills && Array.isArray(competencyIndex.skills)) {
                     competencyIndex = competencyIndex.skills;
                 } else {
-                    this.logger.warn(`[LocalOlafAdapter] Invalid competency index format, cannot unregister`);
+                    this.logger.warn(
+                        `[LocalOlafAdapter] Invalid competency index format, cannot unregister`
+                    );
                     return;
                 }
             }
-            
+
             this.logger.info(`[LocalOlafAdapter] Found ${competencyIndex.length} existing skills`);
-            
+
             // Find the bundle definition to get skill information
             const bundleDefinitions = await this.scanBundleDefinitions();
-            const bundleInfo = bundleDefinitions.find(info => info.id === bundleId);
-            
+            const bundleInfo = bundleDefinitions.find((info) => info.id === bundleId);
+
             if (!bundleInfo) {
-                this.logger.warn(`[LocalOlafAdapter] Bundle definition not found for ${bundleId}, cannot determine skills to unregister`);
+                this.logger.warn(
+                    `[LocalOlafAdapter] Bundle definition not found for ${bundleId}, cannot determine skills to unregister`
+                );
                 return;
             }
-            
+
             // Remove entries for all skills in the bundle
             // Use the actual source name to ensure consistency with installation
             let removedCount = 0;
             const sourceName = this.getSourceName();
-            
+
             for (const skill of bundleInfo.validatedSkills) {
                 const entryPoints = skill.manifest.entry_points || [];
-                
+
                 for (const entryPoint of entryPoints) {
                     const promptFilePath = `external-skills/${sourceName}/${skill.folderName}${entryPoint.path}`;
-                    
+
                     // Find and remove entries matching this skill's file path
                     const initialLength = competencyIndex.length;
-                    competencyIndex = competencyIndex.filter((entry: any) => entry.file !== promptFilePath);
+                    competencyIndex = competencyIndex.filter(
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
+                        (entry: any) => entry.file !== promptFilePath
+                    );
                     const removed = initialLength - competencyIndex.length;
-                    
+
                     if (removed > 0) {
-                        this.logger.info(`[LocalOlafAdapter] Removed ${removed} entries for skill: ${promptFilePath}`);
+                        this.logger.info(
+                            `[LocalOlafAdapter] Removed ${removed} entries for skill: ${promptFilePath}`
+                        );
                         removedCount += removed;
                     }
                 }
             }
-            
+
             if (removedCount > 0) {
                 // Write updated competency index
-                this.logger.info(`[LocalOlafAdapter] Writing updated competency index after removing ${removedCount} entries`);
+                this.logger.info(
+                    `[LocalOlafAdapter] Writing updated competency index after removing ${removedCount} entries`
+                );
                 const competencyIndexContent = JSON.stringify(competencyIndex, null, 2);
                 fs.writeFileSync(competencyIndexPath, competencyIndexContent, 'utf-8');
-                
-                this.logger.info(`[LocalOlafAdapter] Successfully removed ${removedCount} skill entries from competency index`);
+
+                this.logger.info(
+                    `[LocalOlafAdapter] Successfully removed ${removedCount} skill entries from competency index`
+                );
             } else {
-                this.logger.info(`[LocalOlafAdapter] No entries found to remove for bundle: ${bundleId}`);
+                this.logger.info(
+                    `[LocalOlafAdapter] No entries found to remove for bundle: ${bundleId}`
+                );
             }
-            
         } catch (error) {
-            this.logger.error(`[LocalOlafAdapter] Failed to unregister bundle from competency index: ${error}`);
+            this.logger.error(
+                `[LocalOlafAdapter] Failed to unregister bundle from competency index: ${error}`
+            );
             if (error instanceof Error) {
                 this.logger.error(`[LocalOlafAdapter] Error stack: ${error.stack}`);
             }
@@ -1446,12 +1639,12 @@ export class LocalOlafAdapter extends RepositoryAdapter {
         }
     }
 
-    getManifestUrl(bundleId: string, version?: string): string {
+    getManifestUrl(_bundleId: string, _version?: string): string {
         // Will be implemented in task 3
         throw new Error('getManifestUrl not yet implemented');
     }
 
-    getDownloadUrl(bundleId: string, version?: string): string {
+    getDownloadUrl(_bundleId: string, _version?: string): string {
         // Will be implemented in task 3
         throw new Error('getDownloadUrl not yet implemented');
     }
@@ -1463,20 +1656,23 @@ export class LocalOlafAdapter extends RepositoryAdapter {
     private async createMinimalBundle(bundleInfo: BundleDefinitionInfo): Promise<Buffer> {
         try {
             const zip = new AdmZip();
-            
+
             // Generate and add deployment manifest only
             const deploymentManifest = this.generateDeploymentManifest(bundleInfo);
             const manifestYaml = yaml.dump(deploymentManifest);
             zip.addFile('deployment-manifest.yml', Buffer.from(manifestYaml, 'utf8'));
-            
+
             // Generate ZIP buffer
             const zipBuffer = zip.toBuffer();
-            
-            this.logger.debug(`[LocalOlafAdapter] Created minimal bundle for ${bundleInfo.fileName}: ${zipBuffer.length} bytes`);
+
+            this.logger.debug(
+                `[LocalOlafAdapter] Created minimal bundle for ${bundleInfo.fileName}: ${zipBuffer.length} bytes`
+            );
             return zipBuffer;
-            
         } catch (error) {
-            this.logger.error(`[LocalOlafAdapter] Failed to create minimal bundle ${bundleInfo.fileName}: ${error}`);
+            this.logger.error(
+                `[LocalOlafAdapter] Failed to create minimal bundle ${bundleInfo.fileName}: ${error}`
+            );
             throw new Error(`Failed to create minimal bundle: ${error}`);
         }
     }
@@ -1487,73 +1683,94 @@ export class LocalOlafAdapter extends RepositoryAdapter {
      */
     private async createSkillSymbolicLinks(bundleId: string): Promise<void> {
         this.logger.info(`[LocalOlafAdapter] Creating symbolic links for bundle: ${bundleId}`);
-        
+
         try {
             // Get workspace path
             const workspaceFolders = vscode.workspace.workspaceFolders;
             if (!workspaceFolders || workspaceFolders.length === 0) {
-                this.logger.warn('[LocalOlafAdapter] No workspace found, skipping symbolic link creation');
+                this.logger.warn(
+                    '[LocalOlafAdapter] No workspace found, skipping symbolic link creation'
+                );
                 return;
             }
-            
-            const workspacePath = workspaceFolders[0].uri.fsPath;
+
+            const firstFolder = workspaceFolders[0];
+            if (!firstFolder) {
+                this.logger.warn('[LocalOlafAdapter] No workspace folder available');
+                return;
+            }
+            const workspacePath = firstFolder.uri.fsPath;
             const localPath = this.getLocalPath();
-            
+
             // Create external-skills directory structure
             const externalSkillsPath = path.join(workspacePath, '.olaf', 'external-skills');
             const sourceName = this.getSourceName();
             const sourceSkillsPath = path.join(externalSkillsPath, sourceName);
-            
+
             // Ensure directories exist
             if (!fs.existsSync(externalSkillsPath)) {
                 fs.mkdirSync(externalSkillsPath, { recursive: true });
-                this.logger.info(`[LocalOlafAdapter] Created external-skills directory: ${externalSkillsPath}`);
+                this.logger.info(
+                    `[LocalOlafAdapter] Created external-skills directory: ${externalSkillsPath}`
+                );
             }
-            
+
             if (!fs.existsSync(sourceSkillsPath)) {
                 fs.mkdirSync(sourceSkillsPath, { recursive: true });
-                this.logger.info(`[LocalOlafAdapter] Created source skills directory: ${sourceSkillsPath}`);
+                this.logger.info(
+                    `[LocalOlafAdapter] Created source skills directory: ${sourceSkillsPath}`
+                );
             }
-            
+
             // Find the bundle definition to get skill information
             const bundleDefinitions = await this.scanBundleDefinitions();
-            const bundleInfo = bundleDefinitions.find(info => info.id === bundleId);
-            
+            const bundleInfo = bundleDefinitions.find((info) => info.id === bundleId);
+
             if (!bundleInfo) {
-                this.logger.warn(`[LocalOlafAdapter] Bundle definition not found for ${bundleId}, skipping symbolic link creation`);
+                this.logger.warn(
+                    `[LocalOlafAdapter] Bundle definition not found for ${bundleId}, skipping symbolic link creation`
+                );
                 return;
             }
-            
+
             // Create symbolic links for each skill
             for (const skill of bundleInfo.validatedSkills) {
                 const skillSourcePath = path.join(localPath, skill.path);
                 const skillLinkPath = path.join(sourceSkillsPath, skill.folderName);
-                
+
                 try {
                     // Remove existing link if it exists
                     if (fs.existsSync(skillLinkPath)) {
                         const stats = fs.lstatSync(skillLinkPath);
                         if (stats.isSymbolicLink()) {
                             fs.unlinkSync(skillLinkPath);
-                            this.logger.info(`[LocalOlafAdapter] Removed existing symbolic link: ${skillLinkPath}`);
+                            this.logger.info(
+                                `[LocalOlafAdapter] Removed existing symbolic link: ${skillLinkPath}`
+                            );
                         } else {
-                            this.logger.warn(`[LocalOlafAdapter] Path exists but is not a symbolic link: ${skillLinkPath}`);
+                            this.logger.warn(
+                                `[LocalOlafAdapter] Path exists but is not a symbolic link: ${skillLinkPath}`
+                            );
                             continue;
                         }
                     }
-                    
+
                     // Create symbolic link
                     fs.symlinkSync(skillSourcePath, skillLinkPath, 'dir');
-                    this.logger.info(`[LocalOlafAdapter] Created symbolic link: ${skillLinkPath} -> ${skillSourcePath}`);
-                    
+                    this.logger.info(
+                        `[LocalOlafAdapter] Created symbolic link: ${skillLinkPath} -> ${skillSourcePath}`
+                    );
                 } catch (error) {
-                    this.logger.error(`[LocalOlafAdapter] Failed to create symbolic link for skill ${skill.folderName}: ${error}`);
+                    this.logger.error(
+                        `[LocalOlafAdapter] Failed to create symbolic link for skill ${skill.folderName}: ${error}`
+                    );
                     // Continue with other skills
                 }
             }
-            
-            this.logger.info(`[LocalOlafAdapter] Successfully created symbolic links for ${bundleInfo.validatedSkills.length} skills`);
-            
+
+            this.logger.info(
+                `[LocalOlafAdapter] Successfully created symbolic links for ${bundleInfo.validatedSkills.length} skills`
+            );
         } catch (error) {
             this.logger.error(`[LocalOlafAdapter] Failed to create symbolic links: ${error}`);
             throw error;
@@ -1565,54 +1782,77 @@ export class LocalOlafAdapter extends RepositoryAdapter {
      */
     private async removeSkillSymbolicLinks(bundleId: string): Promise<void> {
         this.logger.info(`[LocalOlafAdapter] Removing symbolic links for bundle: ${bundleId}`);
-        
+
         try {
             // Get workspace path
             const workspaceFolders = vscode.workspace.workspaceFolders;
             if (!workspaceFolders || workspaceFolders.length === 0) {
-                this.logger.warn('[LocalOlafAdapter] No workspace found, skipping symbolic link removal');
+                this.logger.warn(
+                    '[LocalOlafAdapter] No workspace found, skipping symbolic link removal'
+                );
                 return;
             }
-            
-            const workspacePath = workspaceFolders[0].uri.fsPath;
+
+            const firstFolder = workspaceFolders[0];
+            if (!firstFolder) {
+                this.logger.warn('[LocalOlafAdapter] No workspace folder available');
+                return;
+            }
+            const workspacePath = firstFolder.uri.fsPath;
             const sourceName = this.getSourceName();
-            const sourceSkillsPath = path.join(workspacePath, '.olaf', 'external-skills', sourceName);
-            
+            const sourceSkillsPath = path.join(
+                workspacePath,
+                '.olaf',
+                'external-skills',
+                sourceName
+            );
+
             // Find the bundle definition to get skill information
             const bundleDefinitions = await this.scanBundleDefinitions();
-            const bundleInfo = bundleDefinitions.find(info => info.id === bundleId);
-            
+            const bundleInfo = bundleDefinitions.find((info) => info.id === bundleId);
+
             if (!bundleInfo) {
-                this.logger.warn(`[LocalOlafAdapter] Bundle definition not found for ${bundleId}, skipping symbolic link removal`);
+                this.logger.warn(
+                    `[LocalOlafAdapter] Bundle definition not found for ${bundleId}, skipping symbolic link removal`
+                );
                 return;
             }
-            
+
             // Remove symbolic links for each skill
             let removedCount = 0;
             for (const skill of bundleInfo.validatedSkills) {
                 const skillLinkPath = path.join(sourceSkillsPath, skill.folderName);
-                
+
                 try {
                     if (fs.existsSync(skillLinkPath)) {
                         const stats = fs.lstatSync(skillLinkPath);
                         if (stats.isSymbolicLink()) {
                             fs.unlinkSync(skillLinkPath);
                             removedCount++;
-                            this.logger.info(`[LocalOlafAdapter] Removed symbolic link: ${skillLinkPath}`);
+                            this.logger.info(
+                                `[LocalOlafAdapter] Removed symbolic link: ${skillLinkPath}`
+                            );
                         } else {
-                            this.logger.warn(`[LocalOlafAdapter] Path exists but is not a symbolic link: ${skillLinkPath}`);
+                            this.logger.warn(
+                                `[LocalOlafAdapter] Path exists but is not a symbolic link: ${skillLinkPath}`
+                            );
                         }
                     } else {
-                        this.logger.debug(`[LocalOlafAdapter] Symbolic link does not exist: ${skillLinkPath}`);
+                        this.logger.debug(
+                            `[LocalOlafAdapter] Symbolic link does not exist: ${skillLinkPath}`
+                        );
                     }
                 } catch (error) {
-                    this.logger.error(`[LocalOlafAdapter] Failed to remove symbolic link for skill ${skill.folderName}: ${error}`);
+                    this.logger.error(
+                        `[LocalOlafAdapter] Failed to remove symbolic link for skill ${skill.folderName}: ${error}`
+                    );
                     // Continue with other skills
                 }
             }
-            
-            this.logger.info(`[LocalOlafAdapter] Successfully removed ${removedCount} symbolic links`);
-            
+
+            this.logger.info(
+                `[LocalOlafAdapter] Successfully removed ${removedCount} symbolic links`
+            );
         } catch (error) {
             this.logger.error(`[LocalOlafAdapter] Failed to remove symbolic links: ${error}`);
             throw error;

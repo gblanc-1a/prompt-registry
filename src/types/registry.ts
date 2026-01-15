@@ -6,7 +6,19 @@ import { McpServersManifest } from './mcp';
 /**
  * Registry source types
  */
-export type SourceType = 'github' | 'gitlab' | 'http' | 'local' | 'awesome-copilot' | 'local-awesome-copilot' | 'apm' | 'local-apm' | 'olaf' | 'local-olaf' | 'skills' | 'local-skills';
+export type SourceType =
+    | 'github'
+    | 'gitlab'
+    | 'http'
+    | 'local'
+    | 'awesome-copilot'
+    | 'local-awesome-copilot'
+    | 'apm'
+    | 'local-apm'
+    | 'olaf'
+    | 'local-olaf'
+    | 'skills'
+    | 'local-skills';
 
 /**
  * Installation scope
@@ -29,18 +41,19 @@ export interface RegistrySource {
     enabled: boolean;
     priority: number;
     private?: boolean;
-    token?: string;  // Environment variable or secure storage key
-    hubId?: string;  // Hub identifier if this source is from a curated hub
+    token?: string; // Environment variable or secure storage key
+    hubId?: string; // Hub identifier if this source is from a curated hub
     metadata?: {
         description?: string;
         homepage?: string;
         contact?: string;
     };
     config?: {
-        branch?: string;          // Git branch (for git-based sources)
-        collectionsPath?: string;  // Collections directory (for awesome-copilot)
-        indexFile?: string;        // Index file name (for awesome-copilot)
-        [key: string]: any;        // Allow additional source-specific config
+        branch?: string; // Git branch (for git-based sources)
+        collectionsPath?: string; // Collections directory (for awesome-copilot)
+        indexFile?: string; // Index file name (for awesome-copilot)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
+        [key: string]: any; // Allow additional source-specific config
     };
 }
 
@@ -66,8 +79,8 @@ export interface Bundle {
     license: string;
     manifestUrl: string;
     downloadUrl: string;
-    isCurated?: boolean;  // True if bundle is from a curated hub
-    hubName?: string;  // Name of the curated hub
+    isCurated?: boolean; // True if bundle is from a curated hub
+    hubName?: string; // Name of the curated hub
     checksum?: {
         algorithm: string;
         hash: string;
@@ -94,8 +107,8 @@ export interface InstalledBundle {
     profileId?: string;
     installPath: string;
     manifest: DeploymentManifest;
-    sourceId?: string;  // Source ID for identity matching
-    sourceType?: string;  // Source type for identity matching (github, local, etc.)
+    sourceId?: string; // Source ID for identity matching
+    sourceType?: string; // Source type for identity matching (github, local, etc.)
 }
 
 /**
@@ -121,8 +134,8 @@ export interface Profile {
  */
 export interface ProfileBundle {
     id: string;
-    version: string;  // Semantic version or 'latest'
-    sourceId?: string;  // Optional source identifier for disambiguation
+    version: string; // Semantic version or 'latest'
+    sourceId?: string; // Optional source identifier for disambiguation
     required: boolean;
 }
 
@@ -131,7 +144,7 @@ export interface ProfileBundle {
  */
 export interface RegistrySettings {
     autoUpdate: boolean;
-    updateCheckInterval: number;  // hours
+    updateCheckInterval: number; // hours
     telemetry: boolean;
     installationScope: InstallationScope;
     preferredEnvironment: string;
@@ -172,7 +185,7 @@ export interface InstallOptions {
     version?: string;
     scope: InstallationScope;
     profileId?: string;
-    force?: boolean;  // Overwrite existing
+    force?: boolean; // Overwrite existing
 }
 
 /**
@@ -244,6 +257,7 @@ export interface DeploymentManifest {
                 preserve_paths: boolean;
                 root_folder: string;
             };
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
             metadata?: Record<string, any>;
         };
     };
@@ -256,8 +270,8 @@ export interface DeploymentManifest {
             environment_bundle: string;
             full_bundle?: string;
         };
-    isCurated?: boolean;  // True if bundle is from a curated hub
-    hubName?: string;  // Name of the curated hub
+        isCurated?: boolean; // True if bundle is from a curated hub
+        hubName?: string; // Name of the curated hub
         checksum?: {
             enabled: boolean;
             algorithms: string[];

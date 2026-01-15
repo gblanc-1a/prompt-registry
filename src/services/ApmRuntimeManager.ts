@@ -1,22 +1,24 @@
 /**
  * ApmRuntimeManager
- * 
+ *
  * Manages APM CLI runtime detection and provides installation guidance.
  * Uses singleton pattern for shared state across the extension.
- * 
+ *
  * Security considerations:
  * - Only executes known safe commands (apm --version)
  * - Sanitizes command output
  * - Does not auto-install without user consent
  */
 
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import * as os from 'os';
-import * as path from 'path';
-import * as fs from 'fs';
-import * as https from 'https';
+import { exec } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as https from 'node:https';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import { promisify } from 'node:util';
+
 import * as vscode from 'vscode';
+
 import { Logger } from '../utils/logger';
 
 const execAsync = promisify(exec);
@@ -72,11 +74,11 @@ export class ApmRuntimeManager {
     private logger: Logger;
     private statusCache: StatusCache | null = null;
     private context: vscode.ExtensionContext | undefined;
-    
+
     private constructor() {
         this.logger = Logger.getInstance();
     }
-    
+
     /**
      * Get singleton instance
      */
@@ -93,7 +95,7 @@ export class ApmRuntimeManager {
     initialize(context: vscode.ExtensionContext): void {
         this.context = context;
     }
-    
+
     /**
      * Setup runtime (install if missing)
      * Shows progress in UI
@@ -106,40 +108,48 @@ export class ApmRuntimeManager {
 
         // If we have context, try automatic installation
         if (this.context) {
-            return await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: 'Installing APM Runtime...',
-                cancellable: false
-            }, async (progress) => {
-                try {
-                    progress.report({ message: 'Checking compatibility...' });
-                    this.logger.info('[ApmRuntime] Starting automatic runtime installation...');
-                    
-                    await this.installLocalUv(progress);
-                    
-                    // Refresh status
-                    this.clearCache();
-                    const newStatus = await this.getStatus(true);
-                    
-                    if (newStatus.uvxAvailable) {
-                        vscode.window.showInformationMessage('APM Runtime installed successfully.');
-                        return true;
+            return await vscode.window.withProgress(
+                {
+                    location: vscode.ProgressLocation.Notification,
+                    title: 'Installing APM Runtime...',
+                    cancellable: false,
+                },
+                async (progress) => {
+                    try {
+                        progress.report({ message: 'Checking compatibility...' });
+                        this.logger.info('[ApmRuntime] Starting automatic runtime installation...');
+
+                        await this.installLocalUv(progress);
+
+                        // Refresh status
+                        this.clearCache();
+                        const newStatus = await this.getStatus(true);
+
+                        if (newStatus.uvxAvailable) {
+                            vscode.window.showInformationMessage(
+                                'APM Runtime installed successfully.'
+                            );
+                            return true;
+                        }
+                    } catch (error) {
+                        this.logger.error(
+                            '[ApmRuntime] Automatic installation failed',
+                            error as Error
+                        );
+                        // Fall through to manual instructions
                     }
-                } catch (error) {
-                    this.logger.error('[ApmRuntime] Automatic installation failed', error as Error);
-                    // Fall through to manual instructions
+
+                    // If automatic install failed or wasn't sufficient
+                    const selection = await vscode.window.showErrorMessage(
+                        'APM Runtime could not be installed automatically.',
+                        'View Instructions'
+                    );
+                    if (selection === 'View Instructions') {
+                        this.showInstallInstructions();
+                    }
+                    return false;
                 }
-                
-                // If automatic install failed or wasn't sufficient
-                const selection = await vscode.window.showErrorMessage(
-                    'APM Runtime could not be installed automatically.',
-                    'View Instructions'
-                );
-                if (selection === 'View Instructions') {
-                    this.showInstallInstructions();
-                }
-                return false;
-            });
+            );
         }
 
         this.showInstallInstructions();
@@ -152,7 +162,7 @@ export class ApmRuntimeManager {
     private async showInstallInstructions(): Promise<void> {
         const doc = await vscode.workspace.openTextDocument({
             content: this.getInstallInstructions(),
-            language: 'markdown'
+            language: 'markdown',
         });
         await vscode.window.showTextDocument(doc);
     }
@@ -191,7 +201,7 @@ export class ApmRuntimeManager {
             if (process.platform !== 'win32') {
                 await fs.promises.chmod(uvPath, 0o755);
             }
-            
+
             this.logger.info('[ApmRuntime] uv installed successfully');
         } finally {
             // Cleanup
@@ -207,9 +217,9 @@ export class ApmRuntimeManager {
     private getUvDownloadUrl(): string {
         const platform = process.platform;
         const arch = process.arch;
-        
+
         const baseUrl = 'https://github.com/astral-sh/uv/releases/latest/download';
-        
+
         if (platform === 'darwin') {
             if (arch === 'arm64') {
                 return `${baseUrl}/uv-aarch64-apple-darwin.tar.gz`;
@@ -225,7 +235,7 @@ export class ApmRuntimeManager {
         if (platform === 'win32') {
             return `${baseUrl}/uv-x86_64-pc-windows-msvc.zip`;
         }
-        
+
         throw new Error(`Unsupported platform: ${platform}-${arch}`);
     }
 
@@ -235,27 +245,31 @@ export class ApmRuntimeManager {
     private downloadFile(url: string, dest: string): Promise<void> {
         return new Promise((resolve, reject) => {
             const file = fs.createWriteStream(dest);
-            https.get(url, (response) => {
-                if (response.statusCode === 302 || response.statusCode === 301) {
-                    // Handle redirect
-                    this.downloadFile(response.headers.location!, dest).then(resolve).catch(reject);
-                    return;
-                }
-                
-                if (response.statusCode !== 200) {
-                    reject(new Error(`Download failed: HTTP ${response.statusCode}`));
-                    return;
-                }
-                
-                response.pipe(file);
-                file.on('finish', () => {
-                    file.close();
-                    resolve();
+            https
+                .get(url, (response) => {
+                    if (response.statusCode === 302 || response.statusCode === 301) {
+                        // Handle redirect
+                        this.downloadFile(response.headers.location!, dest)
+                            .then(resolve)
+                            .catch(reject);
+                        return;
+                    }
+
+                    if (response.statusCode !== 200) {
+                        reject(new Error(`Download failed: HTTP ${response.statusCode}`));
+                        return;
+                    }
+
+                    response.pipe(file);
+                    file.on('finish', () => {
+                        file.close();
+                        resolve();
+                    });
+                })
+                .on('error', (err) => {
+                    fs.unlink(dest, () => {});
+                    reject(err);
                 });
-            }).on('error', (err) => {
-                fs.unlink(dest, () => {});
-                reject(err);
-            });
         });
     }
 
@@ -272,13 +286,15 @@ export class ApmRuntimeManager {
                 await execAsync(`tar -xf "${archivePath}" -C "${destDir}"`);
             } catch {
                 // Fallback to PowerShell
-                await execAsync(`powershell -command "Expand-Archive -Path '${archivePath}' -DestinationPath '${destDir}' -Force"`);
+                await execAsync(
+                    `powershell -command "Expand-Archive -Path '${archivePath}' -DestinationPath '${destDir}' -Force"`
+                );
             }
         } else {
             // Tar.gz
             await execAsync(`tar -xzf "${archivePath}" -C "${destDir}"`);
         }
-        
+
         // Flatten directory if needed (archives usually contain a top-level folder)
         // uv archives usually contain `uv-platform/uv`
         // We want `uv` in `destDir`
@@ -291,7 +307,7 @@ export class ApmRuntimeManager {
                 const binName = process.platform === 'win32' ? 'uv.exe' : 'uv';
                 const srcBin = path.join(fullPath, binName);
                 const dstBin = path.join(destDir, binName);
-                
+
                 if (fs.existsSync(srcBin)) {
                     // Move file (copy then unlink to avoid cross-device link error, though typically same device)
                     await fs.promises.rename(srcBin, dstBin);
@@ -301,25 +317,28 @@ export class ApmRuntimeManager {
             }
         }
     }
-    
+
     /**
      * Reset singleton instance (for testing)
      */
     static resetInstance(): void {
         ApmRuntimeManager.instance = null;
     }
-    
+
     /**
      * Get current APM runtime status
      * @param forceRefresh Force refresh ignoring cache
      */
     async getStatus(forceRefresh = false): Promise<ApmRuntimeStatus> {
         // Check cache
-        if (!forceRefresh && this.statusCache && 
-            Date.now() - this.statusCache.timestamp < CACHE_TTL) {
+        if (
+            !forceRefresh &&
+            this.statusCache &&
+            Date.now() - this.statusCache.timestamp < CACHE_TTL
+        ) {
             return this.statusCache.status;
         }
-        
+
         try {
             const status = await this.detectRuntime();
             this.statusCache = { status, timestamp: Date.now() };
@@ -331,7 +350,7 @@ export class ApmRuntimeManager {
             return status;
         }
     }
-    
+
     /**
      * Check if APM is available
      */
@@ -339,22 +358,22 @@ export class ApmRuntimeManager {
         const status = await this.getStatus();
         return status.installed;
     }
-    
+
     /**
      * Clear cached status
      */
     clearCache(): void {
         this.statusCache = null;
     }
-    
+
     /**
      * Get platform-appropriate installation instructions
      */
     getInstallInstructions(): string {
         const platform = process.platform;
-        
+
         let instructions = '# APM CLI Installation\n\n';
-        
+
         if (platform === 'darwin') {
             instructions += '## macOS (Homebrew recommended)\n';
             instructions += '```bash\nbrew install danielmeppiel/tap/apm-cli\n```\n\n';
@@ -367,13 +386,13 @@ export class ApmRuntimeManager {
             instructions += '## Windows (pip)\n';
             instructions += '```bash\npip install apm-cli\n```\n\n';
         }
-        
+
         instructions += '## More information\n';
         instructions += 'Visit: https://github.com/danielmeppiel/apm\n';
-        
+
         return instructions;
     }
-    
+
     /**
      * Get local uv path if exists
      */
@@ -392,31 +411,31 @@ export class ApmRuntimeManager {
      */
     private async detectRuntime(): Promise<ApmRuntimeStatus> {
         this.logger.debug('[ApmRuntime] Detecting APM installation...');
-        
+
         const localUvPath = this.getLocalUvPath();
-        
+
         // Try to run `apm --version`
         try {
-            const { stdout } = await execAsync('apm --version', { 
+            const { stdout } = await execAsync('apm --version', {
                 timeout: COMMAND_TIMEOUT,
                 // Security: Don't pass user-controlled environment
                 env: this.getSafeEnvironment(),
             });
-            
+
             const version = this.sanitizeVersion(stdout.trim());
-            
+
             if (!version) {
                 // Fallback to checking uvx/uv
                 const uvxAvailable = await this.checkUvx();
-                return { 
+                return {
                     installed: false,
                     uvxAvailable: uvxAvailable || !!localUvPath,
-                    localUvPath
+                    localUvPath,
                 };
             }
-            
+
             this.logger.info(`[ApmRuntime] APM CLI found: ${version}`);
-            
+
             // Detect additional info
             const [installMethod, pythonVersion, uvxAvailable, apmPath] = await Promise.all([
                 this.detectInstallMethod(),
@@ -424,7 +443,7 @@ export class ApmRuntimeManager {
                 this.checkUvx(),
                 this.getApmPath(),
             ]);
-            
+
             return {
                 installed: true,
                 version,
@@ -432,19 +451,19 @@ export class ApmRuntimeManager {
                 pythonVersion,
                 uvxAvailable: uvxAvailable || !!localUvPath,
                 path: apmPath,
-                localUvPath
+                localUvPath,
             };
         } catch (error) {
             this.logger.debug('[ApmRuntime] APM CLI not found');
             const uvxAvailable = await this.checkUvx();
-            return { 
+            return {
                 installed: false,
                 uvxAvailable: uvxAvailable || !!localUvPath,
-                localUvPath
+                localUvPath,
             };
         }
     }
-    
+
     /**
      * Get safe environment for command execution
      * Security: Removes potentially dangerous environment variables
@@ -457,7 +476,7 @@ export class ApmRuntimeManager {
         delete env.DYLD_INSERT_LIBRARIES;
         return env;
     }
-    
+
     /**
      * Sanitize version string
      * Security: Prevents injection via version output
@@ -472,7 +491,7 @@ export class ApmRuntimeManager {
         sanitized = sanitized.replace(/[\u0000-\u001F\u007F]/g, '');
         return sanitized.trim();
     }
-    
+
     /**
      * Detect how APM was installed
      */
@@ -486,11 +505,11 @@ export class ApmRuntimeManager {
                 // Not installed via brew
             }
         }
-        
+
         // Check pip
         try {
-            const { stdout } = await execAsync('pip show apm-cli 2>/dev/null', { 
-                timeout: COMMAND_TIMEOUT 
+            const { stdout } = await execAsync('pip show apm-cli 2>/dev/null', {
+                timeout: COMMAND_TIMEOUT,
             });
             if (stdout.toLowerCase().includes('apm')) {
                 return 'pip';
@@ -498,23 +517,23 @@ export class ApmRuntimeManager {
         } catch {
             // Not installed via pip
         }
-        
+
         // Check common binary locations
         const binaryPaths = [
             '/usr/local/bin/apm',
             '/usr/local/lib/apm/apm',
             path.join(os.homedir(), '.local/bin/apm'),
         ];
-        
+
         for (const p of binaryPaths) {
             if (fs.existsSync(p)) {
                 return 'binary';
             }
         }
-        
+
         return 'unknown';
     }
-    
+
     /**
      * Get Python version
      */
@@ -530,7 +549,7 @@ export class ApmRuntimeManager {
         }
         return undefined;
     }
-    
+
     /**
      * Check if uvx is available
      */
@@ -542,7 +561,7 @@ export class ApmRuntimeManager {
             return false;
         }
     }
-    
+
     /**
      * Get APM executable path
      */

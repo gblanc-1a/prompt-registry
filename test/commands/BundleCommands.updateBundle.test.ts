@@ -3,12 +3,13 @@
  * Reproduces bug where updating a bundle with versioned ID fails after consolidation
  */
 
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
+
 import { BundleCommands } from '../../src/commands/BundleCommands';
 import { RegistryManager } from '../../src/services/RegistryManager';
-import { Bundle } from '../../src/types/registry';
 
 suite('BundleCommands - updateBundle() Integration', () => {
     let sandbox: sinon.SinonSandbox;
@@ -20,10 +21,10 @@ suite('BundleCommands - updateBundle() Integration', () => {
 
     setup(() => {
         sandbox = sinon.createSandbox();
-        
+
         // Create mock context with in-memory storage
         const globalStateData: Map<string, any> = new Map();
-        
+
         mockContext = {
             globalState: {
                 get: (key: string, defaultValue?: any) => {
@@ -34,13 +35,13 @@ suite('BundleCommands - updateBundle() Integration', () => {
                     globalStateData.set(key, value);
                 },
                 keys: () => Array.from(globalStateData.keys()),
-                setKeysForSync: sandbox.stub()
+                setKeysForSync: sandbox.stub(),
             } as any,
             workspaceState: {
                 get: sandbox.stub(),
                 update: sandbox.stub(),
                 keys: sandbox.stub().returns([]),
-                setKeysForSync: sandbox.stub()
+                setKeysForSync: sandbox.stub(),
             } as any,
             subscriptions: [],
             extensionPath: '/mock/extension/path',
@@ -56,12 +57,12 @@ suite('BundleCommands - updateBundle() Integration', () => {
             storagePath: '/mock/storage',
             globalStoragePath: '/mock/global/storage',
             logPath: '/mock/log',
-            extension: {} as any
+            extension: {} as any,
         } as vscode.ExtensionContext;
 
         // Initialize real RegistryManager
         registryManager = RegistryManager.getInstance(mockContext);
-        
+
         // Create BundleCommands with real RegistryManager
         bundleCommands = new BundleCommands(registryManager);
 
@@ -91,7 +92,7 @@ suite('BundleCommands - updateBundle() Integration', () => {
             updateBundleStub.withArgs(installedBundleId).resolves();
 
             // Mock success notification
-            showInformationMessageStub.resolves(undefined);
+            showInformationMessageStub.resolves();
 
             // EXECUTE: Try to update the bundle using the versioned ID
             await bundleCommands.updateBundle(installedBundleId);
@@ -128,11 +129,7 @@ suite('BundleCommands - updateBundle() Integration', () => {
             await bundleCommands.updateBundle(bundleId);
 
             // VERIFY: Should show error message
-            assert.strictEqual(
-                showErrorMessageStub.called,
-                true,
-                'Should show error message'
-            );
+            assert.strictEqual(showErrorMessageStub.called, true, 'Should show error message');
 
             const errorCall = showErrorMessageStub.getCall(0);
             assert.ok(

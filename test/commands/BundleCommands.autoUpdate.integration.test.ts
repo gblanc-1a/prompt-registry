@@ -1,20 +1,22 @@
 /**
  * Integration test for auto-update preference storage during bundle installation
- * 
+ *
  * Tests the integration between:
  * - RegistryManager (provides getStorage() method)
  * - RegistryStorage (stores auto-update preferences)
  * - AutoUpdateService (reads auto-update preferences)
- * 
+ *
  * Validates Requirement 3.1: Auto-update preference storage after installation
  */
 
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
+
+import { AutoUpdateService } from '../../src/services/AutoUpdateService';
 import { RegistryManager } from '../../src/services/RegistryManager';
 import { RegistryStorage } from '../../src/storage/RegistryStorage';
-import { AutoUpdateService } from '../../src/services/AutoUpdateService';
 
 suite('Auto-Update Preference Storage - Integration', () => {
     let sandbox: sinon.SinonSandbox;
@@ -25,10 +27,10 @@ suite('Auto-Update Preference Storage - Integration', () => {
 
     setup(async () => {
         sandbox = sinon.createSandbox();
-        
+
         // Create mock context with real storage behavior
         const globalStateData: Map<string, any> = new Map();
-        
+
         mockContext = {
             globalState: {
                 get: (key: string, defaultValue?: any) => {
@@ -39,13 +41,13 @@ suite('Auto-Update Preference Storage - Integration', () => {
                     globalStateData.set(key, value);
                 },
                 keys: () => Array.from(globalStateData.keys()),
-                setKeysForSync: sandbox.stub()
+                setKeysForSync: sandbox.stub(),
             } as any,
             workspaceState: {
                 get: sandbox.stub(),
                 update: sandbox.stub(),
                 keys: sandbox.stub().returns([]),
-                setKeysForSync: sandbox.stub()
+                setKeysForSync: sandbox.stub(),
             } as any,
             subscriptions: [],
             extensionPath: '/mock/extension/path',
@@ -61,24 +63,24 @@ suite('Auto-Update Preference Storage - Integration', () => {
             storagePath: '/mock/storage',
             globalStoragePath: '/mock/global/storage',
             logPath: '/mock/log',
-            extension: {} as any
+            extension: {} as any,
         } as vscode.ExtensionContext;
 
         // Initialize real RegistryManager and RegistryStorage
         registryManager = RegistryManager.getInstance(mockContext);
         storage = new RegistryStorage(mockContext);
-        
+
         // Stub file system operations to avoid creating real directories/files
         sandbox.stub(storage as any, 'ensureDirectories').resolves();
         sandbox.stub(storage as any, 'loadConfig').resolves({ sources: [], profiles: [] });
         sandbox.stub(storage as any, 'saveConfig').resolves();
-        
+
         // Initialize storage (won't create directories due to stub)
         await storage.initialize();
-        
+
         // Replace RegistryManager's storage with our test storage
         (registryManager as any).storage = storage;
-        
+
         // Create AutoUpdateService with real storage
         autoUpdateService = new AutoUpdateService(
             registryManager, // BundleOperations
@@ -99,12 +101,16 @@ suite('Auto-Update Preference Storage - Integration', () => {
 
             // Verify: Storage is accessible
             assert.ok(storageFromManager, 'Should return storage instance');
-            assert.strictEqual(storageFromManager, storage, 'Should return the same storage instance');
+            assert.strictEqual(
+                storageFromManager,
+                storage,
+                'Should return the same storage instance'
+            );
         });
 
         test('should allow storing and retrieving auto-update preference', async () => {
             const bundleId = 'test-bundle';
-            
+
             // Execute: Store auto-update preference via RegistryManager's storage
             const storageFromManager = registryManager.getStorage();
             await storageFromManager.setUpdatePreference(bundleId, true);
@@ -116,7 +122,7 @@ suite('Auto-Update Preference Storage - Integration', () => {
 
         test('should integrate with AutoUpdateService', async () => {
             const bundleId = 'test-bundle-auto';
-            
+
             // Execute: Store preference via RegistryManager's storage
             const storageFromManager = registryManager.getStorage();
             await storageFromManager.setUpdatePreference(bundleId, true);
@@ -128,19 +134,23 @@ suite('Auto-Update Preference Storage - Integration', () => {
 
         test('should default to false for bundles without stored preference', async () => {
             const bundleId = 'new-bundle-without-preference';
-            
+
             // Execute: Check preference for bundle that hasn't been configured
             const storageFromManager = registryManager.getStorage();
             const preference = await storageFromManager.getUpdatePreference(bundleId);
 
             // Verify: Defaults to false (opt-in model)
-            assert.strictEqual(preference, false, 'Should default to false for unconfigured bundles');
+            assert.strictEqual(
+                preference,
+                false,
+                'Should default to false for unconfigured bundles'
+            );
         });
 
         test('should allow updating existing preference', async () => {
             const bundleId = 'test-bundle-update';
             const storageFromManager = registryManager.getStorage();
-            
+
             // Execute: Set initial preference
             await storageFromManager.setUpdatePreference(bundleId, true);
             let preference = await storageFromManager.getUpdatePreference(bundleId);
@@ -156,7 +166,7 @@ suite('Auto-Update Preference Storage - Integration', () => {
 
         test('should store preferences for multiple bundles independently', async () => {
             const storageFromManager = registryManager.getStorage();
-            
+
             // Execute: Store different preferences for different bundles
             await storageFromManager.setUpdatePreference('bundle-1', true);
             await storageFromManager.setUpdatePreference('bundle-2', false);
@@ -189,7 +199,11 @@ suite('Auto-Update Preference Storage - Integration', () => {
 
             // Verify: Event was fired with correct data
             assert.strictEqual(eventFired, true, 'Event should be fired');
-            assert.strictEqual(eventData.bundleId, bundleId, 'Event should contain correct bundleId');
+            assert.strictEqual(
+                eventData.bundleId,
+                bundleId,
+                'Event should contain correct bundleId'
+            );
             assert.strictEqual(eventData.enabled, true, 'Event should indicate enabled = true');
         });
 
@@ -217,7 +231,11 @@ suite('Auto-Update Preference Storage - Integration', () => {
 
             // Verify: Event was fired with correct data
             assert.strictEqual(eventFired, true, 'Event should be fired');
-            assert.strictEqual(eventData.bundleId, bundleId, 'Event should contain correct bundleId');
+            assert.strictEqual(
+                eventData.bundleId,
+                bundleId,
+                'Event should contain correct bundleId'
+            );
             assert.strictEqual(eventData.enabled, false, 'Event should indicate enabled = false');
         });
 
@@ -236,7 +254,11 @@ suite('Auto-Update Preference Storage - Integration', () => {
             await autoUpdateService.setAutoUpdate(bundleId, true);
 
             // Verify: Event should NOT be fired (because we bypassed RegistryManager)
-            assert.strictEqual(eventFired, false, 'Event should not be fired when bypassing RegistryManager');
+            assert.strictEqual(
+                eventFired,
+                false,
+                'Event should not be fired when bypassing RegistryManager'
+            );
         });
 
         test('should allow multiple components to listen to auto-update changes independently', async () => {

@@ -1,20 +1,20 @@
 /**
  * Publish Collections Integration Tests
- * 
+ *
  * Transposed from workflow-bundle/test/publish-collections.integration.test.js
  * Tests the publish-collections script end-to-end functionality.
- * 
+ *
  * Feature: workflow-bundle-scaffolding
  * Requirements: 15.1
  */
 
-import * as assert from 'assert';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
-import { spawnSync } from 'child_process';
+import * as assert from 'node:assert';
+import { spawnSync } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+
 import {
-    run,
     writeFile,
     initGitRepo,
     gitCommitAll,
@@ -23,30 +23,36 @@ import {
     unzipList,
     makeMinimalPackageJson,
     copyScriptsToProject,
-    getNodeModulesPath
+    getNodeModulesPath,
 } from '../helpers/scriptTestHelpers';
 
 suite('Publish Collections Integration Tests', () => {
-
     function assertReleaseCreateCalledWithAssets(options: {
         calls: string[][];
         tag: string;
         mustInclude: RegExp[];
     }): { zipArg: string; manifestArg: string; listing: string } {
         const { calls, tag, mustInclude } = options;
-        const creates = calls.filter(c => c[0] === 'release' && c[1] === 'create' && c[2] === tag);
+        const creates = calls.filter(
+            (c) => c[0] === 'release' && c[1] === 'create' && c[2] === tag
+        );
         assert.strictEqual(creates.length, 1, `Expected one gh release create for ${tag}`);
 
         const args = creates[0];
-        const zipArg = args[args.length - 2];
-        const manifestArg = args[args.length - 1];
+        const zipArg = args.at(-2);
+        const manifestArg = args.at(-1);
 
-        assert.ok(fs.existsSync(zipArg), `Missing zip asset at ${zipArg}`);
-        assert.ok(fs.existsSync(manifestArg), `Missing manifest asset at ${manifestArg}`);
+        assert.ok(zipArg && fs.existsSync(zipArg), `Missing zip asset at ${zipArg}`);
+        assert.ok(
+            manifestArg && fs.existsSync(manifestArg),
+            `Missing manifest asset at ${manifestArg}`
+        );
 
         const listing = unzipList(zipArg, path.dirname(zipArg));
         assert.match(listing, /deployment-manifest\.yml/);
-        mustInclude.forEach(re => assert.match(listing, re));
+        for (const re of mustInclude) {
+            assert.match(listing, re);
+        }
 
         return { zipArg, manifestArg, listing };
     }
@@ -61,14 +67,14 @@ suite('Publish Collections Integration Tests', () => {
         env: NodeJS.ProcessEnv
     ): { code: number | null; stdout: string; stderr: string } {
         const argv: string[] = [];
-        changedPaths.forEach(p => {
+        for (const p of changedPaths) {
             argv.push('--changed-path', p);
-        });
+        }
         argv.push('--repo-slug', repoSlug);
 
         const scriptsDir = path.join(root, 'scripts');
         const publishScript = path.join(scriptsDir, 'publish-collections.js');
-        
+
         const res = spawnSync('node', [publishScript, ...argv], {
             cwd: root,
             env,
@@ -77,11 +83,11 @@ suite('Publish Collections Integration Tests', () => {
         return { code: res.status, stdout: res.stdout || '', stderr: res.stderr || '' };
     }
 
-    test('shared referenced file change publishes two releases (one per bundle)', async function() {
-        this.timeout(60000);
+    test('shared referenced file change publishes two releases (one per bundle)', async function () {
+        this.timeout(60_000);
 
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wf-publish-'));
-        
+
         try {
             initGitRepo(root);
             makeMinimalPackageJson(root);
@@ -105,7 +111,7 @@ suite('Publish Collections Integration Tests', () => {
                     '    kind: prompt',
                     'version: "1.0.0"',
                     '',
-                ].join('\n'),
+                ].join('\n')
             );
 
             writeFile(
@@ -122,7 +128,7 @@ suite('Publish Collections Integration Tests', () => {
                     '    kind: prompt',
                     'version: "1.0.0"',
                     '',
-                ].join('\n'),
+                ].join('\n')
             );
 
             gitCommitAll(root, 'init');
@@ -144,7 +150,10 @@ suite('Publish Collections Integration Tests', () => {
             assert.strictEqual(res.code, 0, res.stderr || res.stdout);
 
             const calls = readGhCalls(ghStub.logPath);
-            assert.strictEqual(calls.filter(c => c[0] === 'release' && c[1] === 'create').length, 2);
+            assert.strictEqual(
+                calls.filter((c) => c[0] === 'release' && c[1] === 'create').length,
+                2
+            );
 
             const a = assertReleaseCreateCalledWithAssets({
                 calls,
@@ -166,11 +175,11 @@ suite('Publish Collections Integration Tests', () => {
         }
     });
 
-    test('two per-collection file changes publish both releases with correct assets', async function() {
-        this.timeout(60000);
+    test('two per-collection file changes publish both releases with correct assets', async function () {
+        this.timeout(60_000);
 
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wf-publish-'));
-        
+
         try {
             initGitRepo(root);
             makeMinimalPackageJson(root);
@@ -191,7 +200,7 @@ suite('Publish Collections Integration Tests', () => {
                     '    kind: prompt',
                     'version: "1.0.0"',
                     '',
-                ].join('\n'),
+                ].join('\n')
             );
 
             writeFile(
@@ -206,7 +215,7 @@ suite('Publish Collections Integration Tests', () => {
                     '    kind: prompt',
                     'version: "1.0.0"',
                     '',
-                ].join('\n'),
+                ].join('\n')
             );
 
             gitCommitAll(root, 'init');
@@ -228,7 +237,10 @@ suite('Publish Collections Integration Tests', () => {
             assert.strictEqual(res.code, 0, res.stderr || res.stdout);
 
             const calls = readGhCalls(ghStub.logPath);
-            assert.strictEqual(calls.filter(c => c[0] === 'release' && c[1] === 'create').length, 2);
+            assert.strictEqual(
+                calls.filter((c) => c[0] === 'release' && c[1] === 'create').length,
+                2
+            );
 
             const a = assertReleaseCreateCalledWithAssets({
                 calls,
@@ -250,11 +262,11 @@ suite('Publish Collections Integration Tests', () => {
         }
     });
 
-    test('skill items include entire skill directory contents in bundle', async function() {
-        this.timeout(60000);
+    test('skill items include entire skill directory contents in bundle', async function () {
+        this.timeout(60_000);
 
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wf-publish-skill-'));
-        
+
         try {
             initGitRepo(root);
             makeMinimalPackageJson(root);
@@ -265,7 +277,7 @@ suite('Publish Collections Integration Tests', () => {
             writeFile(root, 'skills/my-skill/assets/diagram.png', 'fake-png-content');
             writeFile(root, 'skills/my-skill/references/doc.md', '# Reference Doc');
             writeFile(root, 'skills/my-skill/scripts/helper.js', 'console.log("helper")');
-            
+
             // Create a regular prompt
             writeFile(root, 'prompts/simple.prompt.md', '# Simple Prompt');
 
@@ -283,7 +295,7 @@ suite('Publish Collections Integration Tests', () => {
                     '    kind: prompt',
                     'version: "1.0.0"',
                     '',
-                ].join('\n'),
+                ].join('\n')
             );
 
             gitCommitAll(root, 'init');
@@ -305,7 +317,10 @@ suite('Publish Collections Integration Tests', () => {
             assert.strictEqual(res.code, 0, res.stderr || res.stdout);
 
             const calls = readGhCalls(ghStub.logPath);
-            assert.strictEqual(calls.filter(c => c[0] === 'release' && c[1] === 'create').length, 1);
+            assert.strictEqual(
+                calls.filter((c) => c[0] === 'release' && c[1] === 'create').length,
+                1
+            );
 
             // Verify the bundle includes ALL skill directory contents, not just SKILL.md
             const result = assertReleaseCreateCalledWithAssets({
@@ -322,9 +337,21 @@ suite('Publish Collections Integration Tests', () => {
 
             // Verify the listing contains all expected files
             assert.match(result.listing, /skills\/my-skill\/SKILL\.md/, 'Should include SKILL.md');
-            assert.match(result.listing, /skills\/my-skill\/assets\/diagram\.png/, 'Should include assets');
-            assert.match(result.listing, /skills\/my-skill\/references\/doc\.md/, 'Should include references');
-            assert.match(result.listing, /skills\/my-skill\/scripts\/helper\.js/, 'Should include scripts');
+            assert.match(
+                result.listing,
+                /skills\/my-skill\/assets\/diagram\.png/,
+                'Should include assets'
+            );
+            assert.match(
+                result.listing,
+                /skills\/my-skill\/references\/doc\.md/,
+                'Should include references'
+            );
+            assert.match(
+                result.listing,
+                /skills\/my-skill\/scripts\/helper\.js/,
+                'Should include scripts'
+            );
         } finally {
             if (fs.existsSync(root)) {
                 fs.rmSync(root, { recursive: true, force: true });

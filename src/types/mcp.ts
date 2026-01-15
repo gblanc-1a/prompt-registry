@@ -3,7 +3,7 @@
  */
 
 export interface McpServerConfig {
-    type?: string;  // e.g., "stdio" - optional, defaults to stdio
+    type?: string; // e.g., "stdio" - optional, defaults to stdio
     command: string;
     args?: string[];
     env?: Record<string, string>;
@@ -23,7 +23,8 @@ export interface McpTaskDefinition {
 export interface McpConfiguration {
     servers: Record<string, McpServerConfig>;
     tasks?: Record<string, McpTaskDefinition>;
-    inputs?: any[];  // Legacy field, preserved for compatibility
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
+    inputs?: any[]; // Legacy field, preserved for compatibility
 }
 
 export interface McpServerDefinition {
@@ -37,14 +38,17 @@ export interface McpServerDefinition {
 export type McpServersManifest = Record<string, McpServerDefinition>;
 
 export interface McpTrackingMetadata {
-    managedServers: Record<string, {
-        bundleId: string;
-        bundleVersion: string;
-        originalName: string;
-        originalConfig: McpServerDefinition;
-        installedAt: string;
-        scope: 'user' | 'workspace';
-    }>;
+    managedServers: Record<
+        string,
+        {
+            bundleId: string;
+            bundleVersion: string;
+            originalName: string;
+            originalConfig: McpServerDefinition;
+            installedAt: string;
+            scope: 'user' | 'workspace';
+        }
+    >;
     lastUpdated: string;
     version: string;
 }

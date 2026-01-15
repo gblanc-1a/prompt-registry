@@ -3,13 +3,15 @@
  * Loads prompts from installed bundles
  */
 
-import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
-import { promisify } from 'util';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { promisify } from 'node:util';
+
 import * as yaml from 'js-yaml';
+import * as vscode from 'vscode';
+
+import { DeploymentManifest } from '../types/registry';
 import { Logger } from '../utils/logger';
-import { InstalledBundle, DeploymentManifest } from '../types/registry';
 
 const readFile = promisify(fs.readFile);
 const readdir = promisify(fs.readdir);
@@ -48,7 +50,7 @@ export class PromptLoader {
         try {
             // Get bundles directory
             const bundlesDir = path.join(this.context.globalStorageUri.fsPath, 'bundles');
-            
+
             if (!fs.existsSync(bundlesDir)) {
                 this.logger.debug('Bundles directory does not exist');
                 return [];
@@ -59,7 +61,7 @@ export class PromptLoader {
 
             for (const bundleId of bundleDirs) {
                 const bundlePath = path.join(bundlesDir, bundleId);
-                
+
                 // Check if it's a directory
                 const stat = fs.statSync(bundlePath);
                 if (!stat.isDirectory()) {
@@ -73,7 +75,6 @@ export class PromptLoader {
 
             this.logger.debug(`Found ${prompts.length} available prompts`);
             return prompts;
-
         } catch (error) {
             this.logger.error('Failed to get available prompts', error as Error);
             return [];
@@ -83,13 +84,16 @@ export class PromptLoader {
     /**
      * Get prompts from a specific bundle
      */
-    private async getPromptsFromBundle(bundleId: string, bundlePath: string): Promise<PromptInfo[]> {
+    private async getPromptsFromBundle(
+        bundleId: string,
+        bundlePath: string
+    ): Promise<PromptInfo[]> {
         const prompts: PromptInfo[] = [];
 
         try {
             // Read deployment manifest
             const manifestPath = path.join(bundlePath, 'deployment-manifest.yml');
-            
+
             if (!fs.existsSync(manifestPath)) {
                 this.logger.warn(`No manifest found for bundle: ${bundleId}`);
                 return [];
@@ -106,7 +110,7 @@ export class PromptLoader {
             // Create PromptInfo for each prompt
             for (const promptDef of manifest.prompts) {
                 const promptFilePath = path.join(bundlePath, promptDef.file);
-                
+
                 if (!fs.existsSync(promptFilePath)) {
                     this.logger.warn(`Prompt file not found: ${promptFilePath}`);
                     continue;
@@ -118,12 +122,11 @@ export class PromptLoader {
                     description: promptDef.description,
                     bundleId,
                     filePath: promptFilePath,
-                    tags: promptDef.tags || []
+                    tags: promptDef.tags || [],
                 });
             }
 
             return prompts;
-
         } catch (error) {
             this.logger.error(`Failed to load prompts from bundle ${bundleId}`, error as Error);
             return [];
@@ -143,7 +146,7 @@ export class PromptLoader {
 
             // Find prompt in available prompts
             const availablePrompts = await this.getAvailablePrompts();
-            const promptInfo = availablePrompts.find(p => p.id === promptId);
+            const promptInfo = availablePrompts.find((p) => p.id === promptId);
 
             if (!promptInfo) {
                 this.logger.warn(`Prompt not found: ${promptId}`);
@@ -155,7 +158,7 @@ export class PromptLoader {
 
             const promptContent: PromptContent = {
                 info: promptInfo,
-                content
+                content,
             };
 
             // Cache it
@@ -163,7 +166,6 @@ export class PromptLoader {
 
             this.logger.debug(`Loaded prompt: ${promptId} (${content.length} chars)`);
             return promptContent;
-
         } catch (error) {
             this.logger.error(`Failed to load prompt: ${promptId}`, error as Error);
             return null;
@@ -183,7 +185,7 @@ export class PromptLoader {
      */
     async searchByTag(tag: string): Promise<PromptInfo[]> {
         const allPrompts = await this.getAvailablePrompts();
-        return allPrompts.filter(p => p.tags.includes(tag));
+        return allPrompts.filter((p) => p.tags.includes(tag));
     }
 
     /**
@@ -192,11 +194,12 @@ export class PromptLoader {
     async search(keyword: string): Promise<PromptInfo[]> {
         const allPrompts = await this.getAvailablePrompts();
         const lowerKeyword = keyword.toLowerCase();
-        
-        return allPrompts.filter(p => 
-            p.name.toLowerCase().includes(lowerKeyword) ||
-            p.description.toLowerCase().includes(lowerKeyword) ||
-            p.id.toLowerCase().includes(lowerKeyword)
+
+        return allPrompts.filter(
+            (p) =>
+                p.name.toLowerCase().includes(lowerKeyword) ||
+                p.description.toLowerCase().includes(lowerKeyword) ||
+                p.id.toLowerCase().includes(lowerKeyword)
         );
     }
 }

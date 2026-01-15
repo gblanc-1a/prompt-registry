@@ -1,19 +1,21 @@
 /**
  * Property-based tests for Auto-Update Toggle functionality
  * Tests universal properties for auto-update toggle functionality
- * 
+ *
  * **Feature: bundle-update-notifications, Property 15: Auto-update toggle for existing bundles**
  * **Validates: Requirements 3.5**
  */
 
-import * as assert from 'assert';
-import * as sinon from 'sinon';
+import * as assert from 'node:assert';
+
 import * as fc from 'fast-check';
+import * as sinon from 'sinon';
+
 import { AutoUpdateService } from '../../src/services/AutoUpdateService';
 import { RegistryStorage } from '../../src/storage/RegistryStorage';
 import { Logger } from '../../src/utils/logger';
-import { BundleGenerators, PropertyTestConfig } from '../helpers/propertyTestHelpers';
 import { AutoUpdateTestHelpers } from '../helpers/autoUpdateTestHelpers';
+import { BundleGenerators, PropertyTestConfig } from '../helpers/propertyTestHelpers';
 
 suite('Auto-Update Toggle - Property Tests', () => {
     let sandbox: sinon.SinonSandbox;
@@ -61,32 +63,34 @@ suite('Auto-Update Toggle - Property Tests', () => {
     /**
      * Property 15: Auto-update toggle for existing bundles
      * Validates: Requirements 3.5
-     * 
+     *
      * For any installed bundle, users should be able to toggle auto-update
      * on/off through the UI, and the change should persist.
      */
     suite('Property 15: Auto-update toggle for existing bundles', () => {
         test('should toggle auto-update state for any installed bundle', async () => {
             await fc.assert(
-                fc.asyncProperty(
-                    bundleIdArb,
-                    booleanArb,
-                    async (bundleId, initialState) => {
-                        AutoUpdateTestHelpers.resetAutoUpdateMocks(mockStorage, loggerStub);
+                fc.asyncProperty(bundleIdArb, booleanArb, async (bundleId, initialState) => {
+                    AutoUpdateTestHelpers.resetAutoUpdateMocks(mockStorage, loggerStub);
 
-                        const finalState = !initialState;
-                        AutoUpdateTestHelpers.setupStorageMock(mockStorage, bundleId, [initialState, finalState]);
+                    const finalState = !initialState;
+                    AutoUpdateTestHelpers.setupStorageMock(mockStorage, bundleId, [
+                        initialState,
+                        finalState,
+                    ]);
 
-                        // Test auto-update toggle functionality
-                        await mockAutoUpdateService.setAutoUpdate(bundleId, finalState);
+                    // Test auto-update toggle functionality
+                    await mockAutoUpdateService.setAutoUpdate(bundleId, finalState);
 
-                        // Verify setUpdatePreference was called with correct parameters
-                        AutoUpdateTestHelpers.assertPreferenceStored(mockStorage, bundleId, finalState);
+                    // Verify setUpdatePreference was called with correct parameters
+                    AutoUpdateTestHelpers.assertPreferenceStored(mockStorage, bundleId, finalState);
 
-                        return true;
-                    }
-                ),
-                { ...PropertyTestConfig.FAST_CHECK_OPTIONS, numRuns: PropertyTestConfig.RUNS.STANDARD }
+                    return true;
+                }),
+                {
+                    ...PropertyTestConfig.FAST_CHECK_OPTIONS,
+                    numRuns: PropertyTestConfig.RUNS.STANDARD,
+                }
             );
         });
 
@@ -99,7 +103,12 @@ suite('Auto-Update Toggle - Property Tests', () => {
                     async (bundleId, enabled, errorMessage) => {
                         AutoUpdateTestHelpers.resetAutoUpdateMocks(mockStorage, loggerStub);
 
-                        AutoUpdateTestHelpers.setupStorageError(mockStorage, bundleId, enabled, errorMessage);
+                        AutoUpdateTestHelpers.setupStorageError(
+                            mockStorage,
+                            bundleId,
+                            enabled,
+                            errorMessage
+                        );
 
                         // Test error handling in AutoUpdateService
                         try {
@@ -122,81 +131,78 @@ suite('Auto-Update Toggle - Property Tests', () => {
 
         test('should retrieve auto-update status correctly', async () => {
             await fc.assert(
-                fc.asyncProperty(
-                    bundleIdArb,
-                    booleanArb,
-                    async (bundleId, enabled) => {
-                        AutoUpdateTestHelpers.resetAutoUpdateMocks(mockStorage, loggerStub);
+                fc.asyncProperty(bundleIdArb, booleanArb, async (bundleId, enabled) => {
+                    AutoUpdateTestHelpers.resetAutoUpdateMocks(mockStorage, loggerStub);
 
-                        AutoUpdateTestHelpers.setupStorageMock(mockStorage, bundleId, enabled);
+                    AutoUpdateTestHelpers.setupStorageMock(mockStorage, bundleId, enabled);
 
-                        // Test auto-update status retrieval
-                        const result = await mockAutoUpdateService.isAutoUpdateEnabled(bundleId);
+                    // Test auto-update status retrieval
+                    const result = await mockAutoUpdateService.isAutoUpdateEnabled(bundleId);
 
-                        // Verify correct status was returned
-                        assert.strictEqual(result, enabled);
-                        AutoUpdateTestHelpers.assertPreferenceRetrieved(mockStorage, bundleId);
+                    // Verify correct status was returned
+                    assert.strictEqual(result, enabled);
+                    AutoUpdateTestHelpers.assertPreferenceRetrieved(mockStorage, bundleId);
 
-                        return true;
-                    }
-                ),
+                    return true;
+                }),
                 { ...PropertyTestConfig.FAST_CHECK_OPTIONS, numRuns: PropertyTestConfig.RUNS.QUICK }
             );
         });
 
         test('should handle state transitions correctly', async () => {
             await fc.assert(
-                fc.asyncProperty(
-                    bundleIdArb,
-                    booleanArb,
-                    async (bundleId, initialState) => {
-                        AutoUpdateTestHelpers.resetAutoUpdateMocks(mockStorage, loggerStub);
+                fc.asyncProperty(bundleIdArb, booleanArb, async (bundleId, initialState) => {
+                    AutoUpdateTestHelpers.resetAutoUpdateMocks(mockStorage, loggerStub);
 
-                        const finalState = !initialState;
-                        AutoUpdateTestHelpers.setupStorageMock(mockStorage, bundleId, [initialState, finalState]);
+                    const finalState = !initialState;
+                    AutoUpdateTestHelpers.setupStorageMock(mockStorage, bundleId, [
+                        initialState,
+                        finalState,
+                    ]);
 
-                        // Test initial state
-                        const initialResult = await mockAutoUpdateService.isAutoUpdateEnabled(bundleId);
-                        assert.strictEqual(initialResult, initialState);
+                    // Test initial state
+                    const initialResult = await mockAutoUpdateService.isAutoUpdateEnabled(bundleId);
+                    assert.strictEqual(initialResult, initialState);
 
-                        // Test state change
-                        await mockAutoUpdateService.setAutoUpdate(bundleId, finalState);
+                    // Test state change
+                    await mockAutoUpdateService.setAutoUpdate(bundleId, finalState);
 
-                        // Test final state
-                        const finalResult = await mockAutoUpdateService.isAutoUpdateEnabled(bundleId);
-                        assert.strictEqual(finalResult, finalState);
+                    // Test final state
+                    const finalResult = await mockAutoUpdateService.isAutoUpdateEnabled(bundleId);
+                    assert.strictEqual(finalResult, finalState);
 
-                        // Verify storage interactions
-                        assert.strictEqual(mockStorage.getUpdatePreference.callCount, 2);
-                        assert.strictEqual(mockStorage.setUpdatePreference.callCount, 1);
+                    // Verify storage interactions
+                    assert.strictEqual(mockStorage.getUpdatePreference.callCount, 2);
+                    assert.strictEqual(mockStorage.setUpdatePreference.callCount, 1);
 
-                        return true;
-                    }
-                ),
-                { ...PropertyTestConfig.FAST_CHECK_OPTIONS, numRuns: PropertyTestConfig.RUNS.STANDARD }
+                    return true;
+                }),
+                {
+                    ...PropertyTestConfig.FAST_CHECK_OPTIONS,
+                    numRuns: PropertyTestConfig.RUNS.STANDARD,
+                }
             );
         });
 
         test('should persist auto-update preference changes', async () => {
             await fc.assert(
-                fc.asyncProperty(
-                    bundleIdArb,
-                    booleanArb,
-                    async (bundleId, newState) => {
-                        AutoUpdateTestHelpers.resetAutoUpdateMocks(mockStorage, loggerStub);
+                fc.asyncProperty(bundleIdArb, booleanArb, async (bundleId, newState) => {
+                    AutoUpdateTestHelpers.resetAutoUpdateMocks(mockStorage, loggerStub);
 
-                        AutoUpdateTestHelpers.setupStorageMock(mockStorage, bundleId, newState);
+                    AutoUpdateTestHelpers.setupStorageMock(mockStorage, bundleId, newState);
 
-                        // Test persistence operation
-                        await mockAutoUpdateService.setAutoUpdate(bundleId, newState);
+                    // Test persistence operation
+                    await mockAutoUpdateService.setAutoUpdate(bundleId, newState);
 
-                        // Verify persistence call was made with correct parameters
-                        AutoUpdateTestHelpers.assertPreferenceStored(mockStorage, bundleId, newState);
+                    // Verify persistence call was made with correct parameters
+                    AutoUpdateTestHelpers.assertPreferenceStored(mockStorage, bundleId, newState);
 
-                        return true;
-                    }
-                ),
-                { ...PropertyTestConfig.FAST_CHECK_OPTIONS, numRuns: PropertyTestConfig.RUNS.STANDARD }
+                    return true;
+                }),
+                {
+                    ...PropertyTestConfig.FAST_CHECK_OPTIONS,
+                    numRuns: PropertyTestConfig.RUNS.STANDARD,
+                }
             );
         });
     });

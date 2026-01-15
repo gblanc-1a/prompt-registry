@@ -3,11 +3,13 @@
  * Tests for local filesystem Anthropic-style skills repository adapter
  */
 
-import * as assert from 'assert';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as os from 'os';
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+
 import * as sinon from 'sinon';
+
 import { LocalSkillsAdapter } from '../../src/adapters/LocalSkillsAdapter';
 import { RegistrySource } from '../../src/types/registry';
 
@@ -28,12 +30,15 @@ suite('LocalSkillsAdapter Tests', () => {
     /**
      * Create a skill in the temporary directory
      */
-    function createSkill(skillId: string, options: {
-        name?: string;
-        description?: string;
-        license?: string;
-        additionalFiles?: string[];
-    } = {}): void {
+    function createSkill(
+        skillId: string,
+        options: {
+            name?: string;
+            description?: string;
+            license?: string;
+            additionalFiles?: string[];
+        } = {}
+    ): void {
         const skillPath = path.join(skillsDir, skillId);
         fs.mkdirSync(skillPath, { recursive: true });
 
@@ -128,7 +133,7 @@ Instructions for ${name}
                 name: 'algorithmic-art',
                 description: 'Creating algorithmic art using p5.js',
                 license: 'Apache-2.0',
-                additionalFiles: ['README.md']
+                additionalFiles: ['README.md'],
             });
 
             const source: RegistrySource = {
@@ -169,11 +174,11 @@ Instructions for ${name}
             const bundles = await adapter.fetchBundles();
 
             assert.strictEqual(bundles.length, 3);
-            
-            const skillOne = bundles.find(b => b.name === 'skill-one');
-            const skillTwo = bundles.find(b => b.name === 'skill-two');
-            const skillThree = bundles.find(b => b.name === 'skill-three');
-            
+
+            const skillOne = bundles.find((b) => b.name === 'skill-one');
+            const skillTwo = bundles.find((b) => b.name === 'skill-two');
+            const skillThree = bundles.find((b) => b.name === 'skill-three');
+
             assert.ok(skillOne);
             assert.ok(skillTwo);
             assert.ok(skillThree);
@@ -181,7 +186,7 @@ Instructions for ${name}
 
         test('should skip directories without SKILL.md', async () => {
             createSkill('valid-skill', { description: 'Valid skill' });
-            
+
             // Create invalid skill directory without SKILL.md
             const invalidSkillPath = path.join(skillsDir, 'invalid-skill');
             fs.mkdirSync(invalidSkillPath);
@@ -258,7 +263,7 @@ Instructions for ${name}
             const result = await adapter.validate();
 
             assert.strictEqual(result.valid, false);
-            assert.ok(result.errors.some(e => e.includes('skills')));
+            assert.ok(result.errors.some((e) => e.includes('skills')));
         });
 
         test('should fail validation when directory does not exist', async () => {
@@ -275,7 +280,9 @@ Instructions for ${name}
             const result = await adapter.validate();
 
             assert.strictEqual(result.valid, false);
-            assert.ok(result.errors.some(e => e.includes('not exist') || e.includes('not accessible')));
+            assert.ok(
+                result.errors.some((e) => e.includes('not exist') || e.includes('not accessible'))
+            );
         });
 
         test('should warn when no valid skills found', async () => {
@@ -293,7 +300,7 @@ Instructions for ${name}
             const result = await adapter.validate();
 
             assert.strictEqual(result.valid, true);
-            assert.ok(result.warnings.some(w => w.includes('No valid skills')));
+            assert.ok(result.warnings.some((w) => w.includes('No valid skills')));
         });
     });
 
@@ -335,7 +342,7 @@ Instructions for ${name}
             const adapter = new LocalSkillsAdapter(source);
             const sourceName = path.basename(tempDir);
             const url = adapter.getManifestUrl(`local-skills-${sourceName}-test-skill`);
-            
+
             assert.ok(url.startsWith('file://'));
             assert.ok(url.includes('SKILL.md'));
         });
@@ -355,7 +362,7 @@ Instructions for ${name}
             const adapter = new LocalSkillsAdapter(source);
             const sourceName = path.basename(tempDir);
             const url = adapter.getDownloadUrl(`local-skills-${sourceName}-test-skill`);
-            
+
             assert.ok(url.startsWith('file://'));
             assert.ok(url.includes('test-skill'));
         });
@@ -365,7 +372,7 @@ Instructions for ${name}
         test('should package skill as ZIP buffer', async () => {
             createSkill('test-skill', {
                 description: 'Test skill for download',
-                additionalFiles: ['helper.md']
+                additionalFiles: ['helper.md'],
             });
 
             const source: RegistrySource = {
@@ -379,17 +386,17 @@ Instructions for ${name}
 
             const adapter = new LocalSkillsAdapter(source);
             const bundles = await adapter.fetchBundles();
-            
+
             assert.strictEqual(bundles.length, 1);
-            
+
             const zipBuffer = await adapter.downloadBundle(bundles[0]);
-            
+
             assert.ok(Buffer.isBuffer(zipBuffer));
             assert.ok(zipBuffer.length > 0);
-            
+
             // Verify it's a valid ZIP (starts with PK signature)
             assert.strictEqual(zipBuffer[0], 0x50); // 'P'
-            assert.strictEqual(zipBuffer[1], 0x4B); // 'K'
+            assert.strictEqual(zipBuffer[1], 0x4b); // 'K'
         });
 
         test('should throw error for non-existent skill', async () => {
@@ -403,7 +410,7 @@ Instructions for ${name}
             };
 
             const adapter = new LocalSkillsAdapter(source);
-            
+
             const fakeBundle = {
                 id: `local-skills-${path.basename(tempDir)}-nonexistent`,
                 name: 'nonexistent',
@@ -419,10 +426,7 @@ Instructions for ${name}
                 license: 'Unknown',
             };
 
-            await assert.rejects(
-                adapter.downloadBundle(fakeBundle as any),
-                /Skill not found/
-            );
+            await assert.rejects(adapter.downloadBundle(fakeBundle as any), /Skill not found/);
         });
     });
 
@@ -441,7 +445,7 @@ Instructions for ${name}
 
             const adapter = new LocalSkillsAdapter(source);
             const sourceName = path.basename(tempDir);
-            
+
             const mockBundle = {
                 id: `local-skills-${sourceName}-test-skill`,
                 name: 'test-skill',
@@ -458,7 +462,7 @@ Instructions for ${name}
             };
 
             const skillPath = adapter.getSkillSourcePath(mockBundle as any);
-            
+
             assert.ok(path.isAbsolute(skillPath));
             assert.ok(skillPath.includes('test-skill'));
             assert.strictEqual(skillPath, path.join(tempDir, 'skills', 'test-skill'));
@@ -478,7 +482,7 @@ Instructions for ${name}
 
             const adapter = new LocalSkillsAdapter(source);
             const sourceName = path.basename(tempDir);
-            
+
             const mockBundle = {
                 id: `local-skills-${sourceName}-my-awesome-skill`,
                 name: 'my-awesome-skill',
@@ -495,7 +499,7 @@ Instructions for ${name}
             };
 
             const skillName = adapter.getSkillName(mockBundle as any);
-            
+
             assert.strictEqual(skillName, 'my-awesome-skill');
         });
     });

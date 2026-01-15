@@ -4,14 +4,16 @@
  * are properly integrated in the extension
  */
 
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
-import { UpdateScheduler } from '../../src/services/UpdateScheduler';
-import { UpdateChecker } from '../../src/services/UpdateChecker';
+
 import { BundleUpdateNotifications } from '../../src/notifications/BundleUpdateNotifications';
 import { AutoUpdateService } from '../../src/services/AutoUpdateService';
 import { RegistryManager } from '../../src/services/RegistryManager';
+import { UpdateChecker } from '../../src/services/UpdateChecker';
+import { UpdateScheduler } from '../../src/services/UpdateScheduler';
 import { RegistryStorage } from '../../src/storage/RegistryStorage';
 
 suite('Update System Integration', () => {
@@ -35,7 +37,7 @@ suite('Update System Integration', () => {
                     storage.set(key, value);
                 }
             },
-            keys: () => []
+            keys: () => [],
         } as any;
 
         // Create mock context
@@ -57,10 +59,14 @@ suite('Update System Integration', () => {
         const mockConfig = sandbox.stub(vscode.workspace, 'getConfiguration');
         mockConfig.withArgs('promptregistry.updateCheck').returns({
             get: sandbox.stub().callsFake((key: string, defaultValue?: any) => {
-                if (key === 'enabled') {return true;}
-                if (key === 'frequency') {return 'daily';}
+                if (key === 'enabled') {
+                    return true;
+                }
+                if (key === 'frequency') {
+                    return 'daily';
+                }
                 return defaultValue;
-            })
+            }),
         } as any);
 
         // Create mock RegistryManager
@@ -70,7 +76,7 @@ suite('Update System Integration', () => {
             bundleId: 'test-bundle',
             version: '1.0.0',
             lastUpdated: new Date().toISOString(),
-            downloadUrl: 'https://example.com/bundle.zip'
+            downloadUrl: 'https://example.com/bundle.zip',
         } as any);
 
         // Create mock RegistryStorage
@@ -102,10 +108,14 @@ suite('Update System Integration', () => {
         const mockConfig = sandbox.stub(vscode.workspace, 'getConfiguration');
         mockConfig.withArgs('promptregistry.updateCheck').returns({
             get: sandbox.stub().callsFake((key: string, defaultValue?: any) => {
-                if (key === 'enabled') {return true;}
-                if (key === 'frequency') {return 'daily';}
+                if (key === 'enabled') {
+                    return true;
+                }
+                if (key === 'frequency') {
+                    return 'daily';
+                }
                 return defaultValue;
-            })
+            }),
         } as any);
 
         // Create mock RegistryManager
@@ -116,7 +126,7 @@ suite('Update System Integration', () => {
             bundleId: 'test-bundle',
             version: '1.0.0',
             lastUpdated: new Date().toISOString(),
-            downloadUrl: 'https://example.com/bundle.zip'
+            downloadUrl: 'https://example.com/bundle.zip',
         } as any);
 
         // Create mock RegistryStorage
@@ -157,10 +167,14 @@ suite('Update System Integration', () => {
         const mockConfig = sandbox.stub(vscode.workspace, 'getConfiguration');
         mockConfig.withArgs('promptregistry.updateCheck').returns({
             get: sandbox.stub().callsFake((key: string, defaultValue?: any) => {
-                if (key === 'enabled') {return true;}
-                if (key === 'frequency') {return currentFrequency;}
+                if (key === 'enabled') {
+                    return true;
+                }
+                if (key === 'frequency') {
+                    return currentFrequency;
+                }
                 return defaultValue;
-            })
+            }),
         } as any);
 
         // Create mock RegistryManager
@@ -170,7 +184,7 @@ suite('Update System Integration', () => {
             bundleId: 'test-bundle',
             version: '1.0.0',
             lastUpdated: new Date().toISOString(),
-            downloadUrl: 'https://example.com/bundle.zip'
+            downloadUrl: 'https://example.com/bundle.zip',
         } as any);
 
         // Create mock RegistryStorage

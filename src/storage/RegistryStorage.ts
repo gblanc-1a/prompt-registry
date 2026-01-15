@@ -3,10 +3,12 @@
  * Handles persistence of sources, profiles, bundles, and settings
  */
 
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { promisify } from 'node:util';
+
 import * as vscode from 'vscode';
-import * as fs from 'fs';
-import * as path from 'path';
-import { promisify } from 'util';
+
 import {
     RegistryConfig,
     RegistrySource,
@@ -21,7 +23,6 @@ const writeFile = promisify(fs.writeFile);
 const mkdir = promisify(fs.mkdir);
 const readdir = promisify(fs.readdir);
 const unlink = promisify(fs.unlink);
-const stat = promisify(fs.stat);
 
 /**
  * Storage paths
@@ -67,14 +68,14 @@ const DEFAULT_CONFIG: RegistryConfig = {
 export class RegistryStorage {
     private paths: StoragePaths;
     private configCache?: RegistryConfig;
-    
+
     // Constants for ID sanitization
     private static readonly MAX_FILENAME_LENGTH = 200;
     private static readonly ALLOWED_CHARS_REGEX = /[^A-Za-z0-9._-]/g;
 
     constructor(private context: vscode.ExtensionContext) {
         const storagePath = context.globalStorageUri.fsPath;
-        
+
         this.paths = {
             root: storagePath,
             config: path.join(storagePath, 'config.json'),
@@ -94,7 +95,7 @@ export class RegistryStorage {
      */
     async initialize(): Promise<void> {
         await this.ensureDirectories();
-        
+
         // Create default config if doesn't exist
         if (!fs.existsSync(this.paths.config)) {
             await this.saveConfig(DEFAULT_CONFIG);
@@ -135,10 +136,10 @@ export class RegistryStorage {
         try {
             const data = await readFile(this.paths.config, 'utf-8');
             const config = JSON.parse(data) as RegistryConfig;
-            
+
             // Merge with defaults for any missing settings
             config.settings = { ...DEFAULT_SETTINGS, ...config.settings };
-            
+
             this.configCache = config;
             return config;
         } catch (error) {
@@ -162,12 +163,12 @@ export class RegistryStorage {
     getPaths(): StoragePaths {
         return { ...this.paths };
     }
-    
+
     /**
      * Sanitize an ID for safe use in filenames
      * Replaces characters outside [A-Za-z0-9._-] with underscore
      * Enforces maximum length to prevent filesystem issues
-     * 
+     *
      * @param id - The bundle ID, source ID, or other identifier
      * @returns Sanitized string safe for use in filenames
      */
@@ -175,15 +176,15 @@ export class RegistryStorage {
         if (!id || id.length === 0) {
             throw new Error('ID cannot be empty');
         }
-        
+
         // Replace disallowed characters with underscore
         let sanitized = id.replace(RegistryStorage.ALLOWED_CHARS_REGEX, '_');
-        
+
         // Enforce max length (leave room for .json extension)
         if (sanitized.length > RegistryStorage.MAX_FILENAME_LENGTH) {
             sanitized = sanitized.substring(0, RegistryStorage.MAX_FILENAME_LENGTH);
         }
-        
+
         return sanitized;
     }
 
@@ -194,9 +195,9 @@ export class RegistryStorage {
      */
     async addSource(source: RegistrySource): Promise<void> {
         const config = await this.loadConfig();
-        
+
         // Check for duplicate IDs
-        if (config.sources.some(s => s.id === source.id)) {
+        if (config.sources.some((s) => s.id === source.id)) {
             throw new Error(`Source with ID '${source.id}' already exists`);
         }
 
@@ -209,13 +210,17 @@ export class RegistryStorage {
      */
     async updateSource(sourceId: string, updates: Partial<RegistrySource>): Promise<void> {
         const config = await this.loadConfig();
-        const index = config.sources.findIndex(s => s.id === sourceId);
-        
+        const index = config.sources.findIndex((s) => s.id === sourceId);
+
         if (index === -1) {
             throw new Error(`Source '${sourceId}' not found`);
         }
 
-        config.sources[index] = { ...config.sources[index], ...updates };
+        const existingSource = config.sources[index];
+        if (!existingSource) {
+            throw new Error(`Source '${sourceId}' is invalid`);
+        }
+        config.sources[index] = { ...existingSource, ...updates } as RegistrySource;
         await this.saveConfig(config);
     }
 
@@ -224,9 +229,9 @@ export class RegistryStorage {
      */
     async removeSource(sourceId: string): Promise<void> {
         const config = await this.loadConfig();
-        config.sources = config.sources.filter(s => s.id !== sourceId);
+        config.sources = config.sources.filter((s) => s.id !== sourceId);
         await this.saveConfig(config);
-        
+
         // Clean up source cache
         await this.clearSourceCache(sourceId);
     }
@@ -246,8 +251,8 @@ export class RegistryStorage {
      */
     async addProfile(profile: Profile): Promise<void> {
         const config = await this.loadConfig();
-        
-        if (config.profiles.some(p => p.id === profile.id)) {
+
+        if (config.profiles.some((p) => p.id === profile.id)) {
             throw new Error(`Profile with ID '${profile.id}' already exists`);
         }
 
@@ -260,13 +265,17 @@ export class RegistryStorage {
      */
     async updateProfile(profileId: string, updates: Partial<Profile>): Promise<void> {
         const config = await this.loadConfig();
-        const index = config.profiles.findIndex(p => p.id === profileId);
-        
+        const index = config.profiles.findIndex((p) => p.id === profileId);
+
         if (index === -1) {
             throw new Error(`Profile '${profileId}' not found`);
         }
 
-        config.profiles[index] = { ...config.profiles[index], ...updates };
+        const existingProfile = config.profiles[index];
+        if (!existingProfile) {
+            throw new Error(`Profile '${profileId}' is invalid`);
+        }
+        config.profiles[index] = { ...existingProfile, ...updates } as Profile;
         await this.saveConfig(config);
     }
 
@@ -275,7 +284,7 @@ export class RegistryStorage {
      */
     async removeProfile(profileId: string): Promise<void> {
         const config = await this.loadConfig();
-        config.profiles = config.profiles.filter(p => p.id !== profileId);
+        config.profiles = config.profiles.filter((p) => p.id !== profileId);
         await this.saveConfig(config);
     }
 
@@ -292,7 +301,7 @@ export class RegistryStorage {
      */
     async getActiveProfile(): Promise<Profile | undefined> {
         const config = await this.loadConfig();
-        return config.profiles.find(p => p.active);
+        return config.profiles.find((p) => p.active);
     }
 
     // ===== Bundle Cache Management =====
@@ -401,7 +410,7 @@ export class RegistryStorage {
         const scopePath = scope === 'user' ? this.paths.userInstalled : this.paths.installed;
         const sanitizedId = this.sanitizeFilename(bundleId);
         const filepath = path.join(scopePath, `${sanitizedId}.json`);
-        
+
         if (fs.existsSync(filepath)) {
             await unlink(filepath);
         }
@@ -412,15 +421,15 @@ export class RegistryStorage {
      */
     async getInstalledBundles(scope?: 'user' | 'workspace'): Promise<InstalledBundle[]> {
         const bundles: InstalledBundle[] = [];
-        
+
         const scopes = scope ? [scope] : ['user', 'workspace'];
-        
+
         for (const s of scopes) {
             const scopePath = s === 'user' ? this.paths.userInstalled : this.paths.installed;
-            
+
             try {
                 const files = await readdir(scopePath);
-                
+
                 for (const file of files) {
                     if (file.endsWith('.json')) {
                         try {
@@ -436,14 +445,17 @@ export class RegistryStorage {
                 // Scope directory doesn't exist
             }
         }
-        
+
         return bundles;
     }
 
     /**
      * Get installed bundle metadata
      */
-    async getInstalledBundle(bundleId: string, scope: 'user' | 'workspace'): Promise<InstalledBundle | undefined> {
+    async getInstalledBundle(
+        bundleId: string,
+        scope: 'user' | 'workspace'
+    ): Promise<InstalledBundle | undefined> {
         try {
             const scopePath = scope === 'user' ? this.paths.userInstalled : this.paths.installed;
             const sanitizedId = this.sanitizeFilename(bundleId);
@@ -495,7 +507,7 @@ export class RegistryStorage {
             settings: DEFAULT_SETTINGS,
         };
         await this.saveConfig(config);
-        
+
         // Clear all caches
         await this.clearAllCaches();
     }
@@ -510,11 +522,12 @@ export class RegistryStorage {
     /**
      * Get all update preferences
      */
-    async getUpdatePreferences(): Promise<Record<string, { autoUpdate: boolean; lastChecked?: string }>> {
-        const prefs = this.context.globalState.get<Record<string, { autoUpdate: boolean; lastChecked?: string }>>(
-            this.UPDATE_PREFERENCES_KEY,
-            {}
-        );
+    async getUpdatePreferences(): Promise<
+        Record<string, { autoUpdate: boolean; lastChecked?: string }>
+    > {
+        const prefs = this.context.globalState.get<
+            Record<string, { autoUpdate: boolean; lastChecked?: string }>
+        >(this.UPDATE_PREFERENCES_KEY, {});
         return prefs;
     }
 
@@ -525,7 +538,7 @@ export class RegistryStorage {
         const prefs = await this.getUpdatePreferences();
         prefs[bundleId] = {
             autoUpdate,
-            lastChecked: new Date().toISOString()
+            lastChecked: new Date().toISOString(),
         };
         await this.context.globalState.update(this.UPDATE_PREFERENCES_KEY, prefs);
     }

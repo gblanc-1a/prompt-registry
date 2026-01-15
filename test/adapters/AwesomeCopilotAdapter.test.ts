@@ -3,8 +3,10 @@
  * Tests the dynamic bundle creation from YAML collections
  */
 
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+
 import nock from 'nock';
+
 import { AwesomeCopilotAdapter } from '../../src/adapters/AwesomeCopilotAdapter';
 import { RegistrySource, Bundle } from '../../src/types/registry';
 
@@ -29,7 +31,10 @@ suite('AwesomeCopilotAdapter', () => {
         });
 
         test('should accept GitHub URL format', () => {
-            const source = { ...mockSource, url: 'https://github.com/microsoft/prompt-bundle-spec' };
+            const source = {
+                ...mockSource,
+                url: 'https://github.com/microsoft/prompt-bundle-spec',
+            };
             const adapter = new AwesomeCopilotAdapter(source);
             assert.ok(adapter);
         });
@@ -44,14 +49,17 @@ suite('AwesomeCopilotAdapter', () => {
                     {
                         name: 'test-collection.collection.yml',
                         type: 'file',
-                        download_url: 'https://raw.githubusercontent.com/test-owner/awesome-copilot/main/collections/test-collection.collection.yml'
-                    }
+                        download_url:
+                            'https://raw.githubusercontent.com/test-owner/awesome-copilot/main/collections/test-collection.collection.yml',
+                    },
                 ]);
 
             // Mock the collection file content
             nock('https://raw.githubusercontent.com')
                 .get('/test-owner/awesome-copilot/main/collections/test-collection.collection.yml')
-                .reply(200, `
+                .reply(
+                    200,
+                    `
 id: test-collection
 name: Test Collection
 description: Test collection for unit tests
@@ -59,7 +67,8 @@ tags: ["test", "example"]
 items:
   - path: "prompts/test.prompt.md"
     kind: prompt
-`);
+`
+                );
 
             const adapter = new AwesomeCopilotAdapter(mockSource);
             const bundles = await adapter.fetchBundles();
@@ -75,7 +84,12 @@ items:
             nock('https://api.github.com')
                 .get('/repos/test-owner/awesome-copilot/contents/collections?ref=main')
                 .reply(200, [
-                    { name: 'invalid.collection.yml', type: 'file', download_url: 'https://raw.githubusercontent.com/test-owner/awesome-copilot/main/collections/invalid.collection.yml' }
+                    {
+                        name: 'invalid.collection.yml',
+                        type: 'file',
+                        download_url:
+                            'https://raw.githubusercontent.com/test-owner/awesome-copilot/main/collections/invalid.collection.yml',
+                    },
                 ]);
 
             nock('https://raw.githubusercontent.com')
@@ -124,7 +138,9 @@ items:
 
             nock('https://raw.githubusercontent.com')
                 .get('/test-owner/awesome-copilot/main/collections/test-bundle.collection.yml')
-                .reply(200, `
+                .reply(
+                    200,
+                    `
 id: test-bundle
 name: Test Bundle
 description: Test
@@ -132,7 +148,8 @@ tags: []
 items:
   - path: "prompts/test.prompt.md"
     kind: prompt
-`)
+`
+                )
                 .get('/test-owner/awesome-copilot/main/prompts/test.prompt.md')
                 .reply(200, '# Test Prompt\n\nThis is a test prompt.');
 
@@ -165,13 +182,16 @@ items:
 
             nock('https://raw.githubusercontent.com')
                 .get('/test-owner/awesome-copilot/main/collections/manifest-test.collection.yml')
-                .reply(200, `
+                .reply(
+                    200,
+                    `
 id: manifest-test
 name: Manifest Test
 description: Test manifest
 tags: []
 items: []
-`);
+`
+                );
 
             const adapter = new AwesomeCopilotAdapter(mockSource);
             const buffer = await adapter.downloadBundle(mockBundle);
@@ -202,7 +222,9 @@ items: []
 
             nock('https://raw.githubusercontent.com')
                 .get('/test-owner/awesome-copilot/main/collections/missing-files.collection.yml')
-                .reply(200, `
+                .reply(
+                    200,
+                    `
 id: missing-files
 name: Missing Files
 description: Test
@@ -210,12 +232,13 @@ tags: []
 items:
   - path: "prompts/missing.prompt.md"
     kind: prompt
-`)
+`
+                )
                 .get('/test-owner/awesome-copilot/main/prompts/missing.prompt.md')
                 .reply(404);
 
             const adapter = new AwesomeCopilotAdapter(mockSource);
-            
+
             // Should throw error for missing files
             let errorThrown = false;
             try {
@@ -235,12 +258,12 @@ items:
                 .reply(200, {
                     name: 'awesome-copilot',
                     description: 'Awesome Copilot Collection',
-                    stargazers_count: 100
+                    stargazers_count: 100,
                 })
                 .get('/repos/test-owner/awesome-copilot/contents/collections?ref=main')
                 .reply(200, [
                     { name: 'col1.collection.yml', type: 'file' },
-                    { name: 'col2.collection.yml', type: 'file' }
+                    { name: 'col2.collection.yml', type: 'file' },
                 ]);
 
             const adapter = new AwesomeCopilotAdapter(mockSource);
@@ -258,10 +281,12 @@ items:
                 .get('/repos/test-owner/awesome-copilot')
                 .reply(200, { name: 'awesome-copilot' })
                 .get('/repos/test-owner/awesome-copilot/contents/collections?ref=main')
-                .reply(200, [{
-                    name: 'test.collection.yml',
-                    type: 'file'
-                }]);
+                .reply(200, [
+                    {
+                        name: 'test.collection.yml',
+                        type: 'file',
+                    },
+                ]);
 
             const adapter = new AwesomeCopilotAdapter(mockSource);
             const result = await adapter.validate();
@@ -271,9 +296,7 @@ items:
         });
 
         test('should fail validation for inaccessible repository', async () => {
-            nock('https://api.github.com')
-                .get('/repos/test-owner/awesome-copilot')
-                .reply(404);
+            nock('https://api.github.com').get('/repos/test-owner/awesome-copilot').reply(404);
 
             const adapter = new AwesomeCopilotAdapter(mockSource);
             const result = await adapter.validate();
@@ -287,15 +310,20 @@ items:
         test('should map .prompt.md files to prompt type', async () => {
             nock('https://api.github.com')
                 .get('/repos/test-owner/awesome-copilot/contents/collections?ref=main')
-                .reply(200, [{
-                    name: 'types.collection.yml',
-                    type: 'file',
-                    download_url: 'https://raw.githubusercontent.com/test-owner/awesome-copilot/main/collections/types.collection.yml'
-                }]);
+                .reply(200, [
+                    {
+                        name: 'types.collection.yml',
+                        type: 'file',
+                        download_url:
+                            'https://raw.githubusercontent.com/test-owner/awesome-copilot/main/collections/types.collection.yml',
+                    },
+                ]);
 
             nock('https://raw.githubusercontent.com')
                 .get('/test-owner/awesome-copilot/main/collections/types.collection.yml')
-                .reply(200, `
+                .reply(
+                    200,
+                    `
 id: types
 name: Types Test
 description: Test content types
@@ -309,7 +337,8 @@ items:
     kind: chat-mode
   - path: "test.agent.md"
     kind: agent
-`);
+`
+                );
 
             const adapter = new AwesomeCopilotAdapter(mockSource);
             const bundles = await adapter.fetchBundles();
@@ -333,15 +362,20 @@ suite('Skill Kind Support', () => {
 
         nock('https://api.github.com')
             .get('/repos/test-owner/awesome-copilot/contents/collections?ref=main')
-            .reply(200, [{
-                name: 'skills-collection.collection.yml',
-                type: 'file',
-                download_url: 'https://raw.githubusercontent.com/test-owner/awesome-copilot/main/collections/skills-collection.collection.yml'
-            }]);
+            .reply(200, [
+                {
+                    name: 'skills-collection.collection.yml',
+                    type: 'file',
+                    download_url:
+                        'https://raw.githubusercontent.com/test-owner/awesome-copilot/main/collections/skills-collection.collection.yml',
+                },
+            ]);
 
         nock('https://raw.githubusercontent.com')
             .get('/test-owner/awesome-copilot/main/collections/skills-collection.collection.yml')
-            .reply(200, `
+            .reply(
+                200,
+                `
 id: skills-collection
 name: Skills Collection
 description: Test collection with skills
@@ -351,7 +385,8 @@ items:
     kind: skill
   - path: "prompts/test.prompt.md"
     kind: prompt
-`);
+`
+            );
 
         const adapter = new AwesomeCopilotAdapter(mockSource);
         const bundles = await adapter.fetchBundles();
@@ -364,13 +399,13 @@ items:
     test('should map skill kind correctly in type mapping', () => {
         // Test the mapKindToType function behavior
         const kindMap: Record<string, string> = {
-            'prompt': 'prompt',
-            'instruction': 'instructions',
+            prompt: 'prompt',
+            instruction: 'instructions',
             'chat-mode': 'chatmode',
-            'agent': 'agent',
-            'skill': 'skill'
+            agent: 'agent',
+            skill: 'skill',
         };
-        
+
         assert.strictEqual(kindMap['skill'], 'skill');
         assert.strictEqual(kindMap['prompt'], 'prompt');
         assert.strictEqual(kindMap['instruction'], 'instructions');

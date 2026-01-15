@@ -2,9 +2,11 @@
  * Profile Management Commands Unit Tests
  */
 
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
+
 import { ProfileCommands } from '../../src/commands/ProfileCommands';
 import { RegistryManager } from '../../src/services/RegistryManager';
 
@@ -35,7 +37,7 @@ suite('Profile Management Commands', () => {
             ];
 
             const newName = 'Profile 1';
-            const isDuplicate = existingProfiles.some(p => p.name === newName);
+            const isDuplicate = existingProfiles.some((p) => p.name === newName);
 
             assert.strictEqual(isDuplicate, true);
         });
@@ -58,15 +60,15 @@ suite('Profile Management Commands', () => {
             const registryManagerStub = sandbox.createStubInstance(RegistryManager);
             registryManagerStub.listProfiles.resolves([]);
             registryManagerStub.createProfile.resolves({} as any);
-            
+
             const profileCommands = new ProfileCommands(registryManagerStub as any);
-            
+
             const showInputBoxStub = sandbox.stub(vscode.window, 'showInputBox');
             showInputBoxStub.onFirstCall().resolves('Test Profile'); // Name
             showInputBoxStub.onSecondCall().resolves('Description'); // Description
-            
+
             const showQuickPickStub = sandbox.stub(vscode.window, 'showQuickPick');
-            
+
             // Mock bundle selection
             sandbox.stub(profileCommands as any, 'selectBundles').resolves(['bundle-1']);
             sandbox.stub(profileCommands as any, 'generateProfileId').returns('test-profile-id');
@@ -74,19 +76,24 @@ suite('Profile Management Commands', () => {
             sandbox.stub(profileCommands as any, 'activateProfile').resolves();
 
             // Mock icon selection return
-            showQuickPickStub.onFirstCall().resolves({ label: '🚀 Rocket', description: 'launch', iconChar: '🚀' } as any);
+            showQuickPickStub
+                .onFirstCall()
+                .resolves({ label: '🚀 Rocket', description: 'launch', iconChar: '🚀' } as any);
 
             await profileCommands.createProfile();
 
             const iconCall = showQuickPickStub.firstCall;
             assert.ok(iconCall, 'showQuickPick should be called for icons');
-            
+
             const items = iconCall.args[0] as vscode.QuickPickItem[];
             assert.ok(items.length > 20, 'Should have a larger pool of icons');
-            
-            const rocketIcon = items.find(i => i.label.includes('🚀'));
+
+            const rocketIcon = items.find((i) => i.label.includes('🚀'));
             assert.ok(rocketIcon);
-            assert.ok(rocketIcon.description && rocketIcon.description.toLowerCase().includes('launch'), 'Rocket icon should be searchable by "launch"');
+            assert.ok(
+                rocketIcon.description && rocketIcon.description.toLowerCase().includes('launch'),
+                'Rocket icon should be searchable by "launch"'
+            );
         });
     });
 
@@ -129,7 +136,7 @@ suite('Profile Management Commands', () => {
 
             const updated = {
                 ...profile,
-                bundles: profile.bundles.filter(b => b !== 'bundle-2'),
+                bundles: profile.bundles.filter((b) => b !== 'bundle-2'),
             };
 
             assert.strictEqual(updated.bundles.length, 2);
@@ -173,13 +180,13 @@ suite('Profile Management Commands', () => {
                 { id: 'profile-3', name: 'Profile 3', active: false },
             ];
 
-            const updated = profiles.map(p => ({
+            const updated = profiles.map((p) => ({
                 ...p,
                 active: p.id === 'profile-2',
             }));
 
-            assert.strictEqual(updated.filter(p => p.active).length, 1);
-            assert.strictEqual(updated.find(p => p.id === 'profile-2')?.active, true);
+            assert.strictEqual(updated.filter((p) => p.active).length, 1);
+            assert.strictEqual(updated.find((p) => p.id === 'profile-2')?.active, true);
         });
 
         test('should install profile bundles', async () => {
@@ -275,10 +282,10 @@ suite('Profile Management Commands', () => {
                 { id: 'profile-2', name: 'Profile 2' },
             ];
 
-            const updated = profiles.filter(p => p.id !== 'profile-1');
+            const updated = profiles.filter((p) => p.id !== 'profile-1');
 
             assert.strictEqual(updated.length, 1);
-            assert.ok(!updated.find(p => p.id === 'profile-1'));
+            assert.ok(!updated.find((p) => p.id === 'profile-1'));
         });
     });
 
@@ -340,22 +347,21 @@ suite('Profile Management Commands', () => {
                 bundles: ['bundle-1'],
             };
 
-            const isValid = importedData.id && importedData.name && Array.isArray(importedData.bundles);
+            const isValid =
+                importedData.id && importedData.name && Array.isArray(importedData.bundles);
 
             assert.strictEqual(isValid, true);
         });
 
         test('should handle duplicate profile names', async () => {
-            const existingProfiles = [
-                { id: 'profile-1', name: 'My Profile' },
-            ];
+            const existingProfiles = [{ id: 'profile-1', name: 'My Profile' }];
 
             const imported = {
                 id: 'profile-2',
                 name: 'My Profile',
             };
 
-            const isDuplicate = existingProfiles.some(p => p.name === imported.name);
+            const isDuplicate = existingProfiles.some((p) => p.name === imported.name);
 
             assert.strictEqual(isDuplicate, true);
         });
@@ -392,7 +398,7 @@ suite('Profile Management Commands', () => {
                 { id: 'profile-2', name: 'Profile 2', active: false },
             ];
 
-            const activeProfile = profiles.find(p => p.active);
+            const activeProfile = profiles.find((p) => p.active);
 
             assert.ok(activeProfile);
             assert.strictEqual(activeProfile.id, 'profile-1');
@@ -421,15 +427,15 @@ suite('Profile Management Commands', () => {
             ];
 
             // Switch to profile-2
-            profiles = profiles.map(p => ({
+            profiles = profiles.map((p) => ({
                 ...p,
                 active: p.id === 'profile-2',
             }));
 
-            const activeProfile = profiles.find(p => p.active);
+            const activeProfile = profiles.find((p) => p.active);
 
             assert.strictEqual(activeProfile?.id, 'profile-2');
-            assert.strictEqual(profiles.filter(p => p.active).length, 1);
+            assert.strictEqual(profiles.filter((p) => p.active).length, 1);
         });
 
         test('should maintain profile state during switch', async () => {

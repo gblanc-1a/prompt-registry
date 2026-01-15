@@ -3,13 +3,16 @@
  * Fetches bundles from local filesystem directories
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import { promisify } from 'util';
-import * as yaml from 'js-yaml';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { promisify } from 'node:util';
+
 import archiver from 'archiver';
-import { RepositoryAdapter } from './RepositoryAdapter';
+import * as yaml from 'js-yaml';
+
 import { Bundle, SourceMetadata, ValidationResult, RegistrySource } from '../types/registry';
+
+import { RepositoryAdapter } from './RepositoryAdapter';
 
 // Promisified fs functions
 const readdir = promisify(fs.readdir);
@@ -46,7 +49,7 @@ export class LocalAdapter extends RepositoryAdapter {
 
     constructor(source: RegistrySource) {
         super(source);
-        
+
         if (!this.isValidUrl(source.url)) {
             throw new Error(`Invalid local path: ${source.url}`);
         }
@@ -57,12 +60,12 @@ export class LocalAdapter extends RepositoryAdapter {
      */
     private getLocalPath(): string {
         let localPath = this.source.url;
-        
+
         // Handle file:// URL
         if (localPath.startsWith('file://')) {
             localPath = localPath.substring(7);
         }
-        
+
         // Normalize path
         return path.normalize(localPath);
     }
@@ -72,10 +75,12 @@ export class LocalAdapter extends RepositoryAdapter {
      */
     isValidUrl(url: string): boolean {
         // Accept file:// URLs or absolute paths
-        return url.startsWith('file://') || 
-               path.isAbsolute(url) ||
-               url.startsWith('~/') ||
-               url.startsWith('./');
+        return (
+            url.startsWith('file://') ||
+            path.isAbsolute(url) ||
+            url.startsWith('~/') ||
+            url.startsWith('./')
+        );
     }
 
     /**
@@ -94,11 +99,13 @@ export class LocalAdapter extends RepositoryAdapter {
     /**
      * Read and parse JSON file
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     private async readJsonFile(filePath: string): Promise<any> {
         try {
             const content = await readFile(filePath, 'utf-8');
             return JSON.parse(content);
         } catch (error) {
+            // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
             console.error(`[LocalAdapter] ✗ Failed to read JSON file: ${error}`);
             throw new Error(`Failed to read JSON file ${filePath}: ${error}`);
         }
@@ -107,11 +114,13 @@ export class LocalAdapter extends RepositoryAdapter {
     /**
      * Read and parse YAML file
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     private async readYamlFile(filePath: string): Promise<any> {
         try {
             const content = await readFile(filePath, 'utf-8');
             return yaml.load(content);
         } catch (error) {
+            // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
             console.error(`[LocalAdapter] ✗ Failed to read YAML file: ${error}`);
             throw new Error(`Failed to read YAML file ${filePath}: ${error}`);
         }
@@ -123,49 +132,64 @@ export class LocalAdapter extends RepositoryAdapter {
     private async getBundleDirectories(): Promise<string[]> {
         const localPath = this.getLocalPath();
 
+        // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
         console.log(`[LocalAdapter] Scanning directory: ${localPath}`);
 
         try {
             // Check if directory exists and is accessible
             try {
                 await access(localPath, fs.constants.R_OK);
+                // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
                 console.log(`[LocalAdapter] ✓ Directory exists and is readable`);
             } catch (error) {
+                // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
                 console.error(`[LocalAdapter] ✗ Cannot access directory: ${error}`);
                 throw new Error(`Cannot access local directory: ${localPath}`);
             }
 
             const entries = await readdir(localPath, { withFileTypes: true });
+            // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
             console.log(`[LocalAdapter] Found ${entries.length} entries in directory`);
-            
+
             const bundleDirs: string[] = [];
 
             for (const entry of entries) {
-                console.log(`[LocalAdapter] Checking entry: ${entry.name} (isDirectory: ${entry.isDirectory()})`);
-                
+                // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
+                console.log(
+                    `[LocalAdapter] Checking entry: ${entry.name} (isDirectory: ${entry.isDirectory()})`
+                );
+
                 if (entry.isDirectory()) {
                     const bundleDir = path.join(localPath, entry.name);
                     const manifestPath = path.join(bundleDir, 'deployment-manifest.yml');
-                    
+
+                    // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
                     console.log(`[LocalAdapter]   Looking for manifest: ${manifestPath}`);
-                    
+
                     // Check if manifest exists
                     try {
                         await access(manifestPath, fs.constants.R_OK);
-                        console.log(`[LocalAdapter]   ✓ Found manifest, adding bundle: ${entry.name}`);
+                        // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
+                        console.log(
+                            `[LocalAdapter]   ✓ Found manifest, adding bundle: ${entry.name}`
+                        );
                         bundleDirs.push(bundleDir);
                     } catch {
+                        // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
                         console.log(`[LocalAdapter]   ✗ No manifest found, skipping`);
                         continue;
                     }
                 } else {
+                    // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
                     console.log(`[LocalAdapter]   Skipping non-directory entry`);
                 }
             }
 
+            // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
             console.log(`[LocalAdapter] Discovered ${bundleDirs.length} valid bundles`);
             return bundleDirs;
         } catch (error) {
+            // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
             console.error(`[LocalAdapter] Failed to read local directory: ${error}`);
             throw new Error(`Failed to read local directory: ${error}`);
         }
@@ -182,7 +206,7 @@ export class LocalAdapter extends RepositoryAdapter {
 
             for (const entry of entries) {
                 const fullPath = path.join(dirPath, entry.name);
-                
+
                 if (entry.isFile()) {
                     const stats = await stat(fullPath);
                     totalSize += stats.size;
@@ -216,7 +240,7 @@ export class LocalAdapter extends RepositoryAdapter {
     /**
      * Fetch repository metadata from local filesystem
      * Scans the local directory and reads registry.json if available.
-     * 
+     *
      * @returns Promise resolving to SourceMetadata with directory info
      * @throws Error if directory doesn't exist or is not accessible
      */
@@ -230,7 +254,7 @@ export class LocalAdapter extends RepositoryAdapter {
             }
 
             const bundleDirs = await this.getBundleDirectories();
-            
+
             // Try to read registry metadata if it exists
             const metadataPath = path.join(localPath, 'registry.json');
             let metadata = {
@@ -268,7 +292,7 @@ export class LocalAdapter extends RepositoryAdapter {
     /**
      * Fetch bundles from local filesystem
      * Scans subdirectories for deployment-manifest.yml files and creates Bundle objects.
-     * 
+     *
      * @returns Promise resolving to array of Bundle objects found in local directory
      * @throws Error if directory is not accessible or manifest parsing fails
      */
@@ -279,12 +303,16 @@ export class LocalAdapter extends RepositoryAdapter {
 
             for (const bundleDir of bundleDirs) {
                 const manifestPath = path.join(bundleDir, 'deployment-manifest.yml');
-                
+
+                // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
                 console.log(`[LocalAdapter] Reading manifest: ${manifestPath}`);
-                
+
                 try {
-                    const manifest = await this.readYamlFile(manifestPath) as LocalManifest;
-                    console.log(`[LocalAdapter] ✓ Parsed manifest for bundle: ${manifest.id} v${manifest.version}`);
+                    const manifest = (await this.readYamlFile(manifestPath)) as LocalManifest;
+                    // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
+                    console.log(
+                        `[LocalAdapter] ✓ Parsed manifest for bundle: ${manifest.id} v${manifest.version}`
+                    );
                     const stats = await stat(bundleDir);
                     const size = await this.calculateDirectorySize(bundleDir);
 
@@ -306,7 +334,10 @@ export class LocalAdapter extends RepositoryAdapter {
                         manifestUrl: `file://${manifestPath}`,
                     });
                 } catch (error) {
-                    console.error(`[LocalAdapter] ✗ Failed to load bundle from ${bundleDir}: ${error}`);
+                    // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
+                    console.error(
+                        `[LocalAdapter] ✗ Failed to load bundle from ${bundleDir}: ${error}`
+                    );
                     continue;
                 }
             }
@@ -320,7 +351,7 @@ export class LocalAdapter extends RepositoryAdapter {
     /**
      * Validate local registry accessibility
      * Checks if the directory exists and contains at least one valid bundle.
-     * 
+     *
      * @returns Promise resolving to ValidationResult with status and any warnings
      */
     async validate(): Promise<ValidationResult> {
@@ -338,7 +369,7 @@ export class LocalAdapter extends RepositoryAdapter {
 
             // Try to read at least one bundle
             const bundleDirs = await this.getBundleDirectories();
-            
+
             if (bundleDirs.length === 0) {
                 return {
                     valid: true,
@@ -364,49 +395,51 @@ export class LocalAdapter extends RepositoryAdapter {
     /**
      * Get manifest URL for a bundle
      * Returns a file:// URL pointing to the local deployment manifest.
-     * 
+     *
      * @param bundleId - Bundle directory name
      * @param version - Optional version (not used for local bundles)
      * @returns file:// URL string pointing to deployment-manifest.yml
      */
-    getManifestUrl(bundleId: string, version?: string): string {
+    getManifestUrl(_bundleId: string, _version?: string): string {
         const localPath = this.getLocalPath();
-        return `file://${path.join(localPath, bundleId, 'deployment-manifest.yml')}`;
+        return `file://${path.join(localPath, _bundleId, 'deployment-manifest.yml')}`;
     }
 
     /**
      * Get download URL for a bundle
      * Returns a file:// URL pointing to the local bundle directory.
-     * 
+     *
      * @param bundleId - Bundle directory name
      * @param version - Optional version (not used for local bundles)
      * @returns file:// URL string pointing to bundle directory
      */
-    getDownloadUrl(bundleId: string, version?: string): string {
+    getDownloadUrl(_bundleId: string, _version?: string): string {
         const localPath = this.getLocalPath();
-        return `file://${path.join(localPath, bundleId)}`;
+        return `file://${path.join(localPath, _bundleId)}`;
     }
 
     /**
      * Download a bundle by creating a ZIP archive from the local directory
      * Reads all files from the local bundle directory and creates a ZIP buffer.
-     * 
+     *
      * @param bundle - Bundle object with local file:// path
      * @returns Promise resolving to Buffer containing ZIP archive
      * @throws Error if directory doesn't exist, is not accessible, or ZIP creation fails
      */
     async downloadBundle(bundle: Bundle): Promise<Buffer> {
+        // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
         console.log(`[LocalAdapter] Creating ZIP archive for bundle: ${bundle.id}`);
-        
+
         // Extract local path from file:// URL
         let bundlePath = bundle.downloadUrl;
         if (bundlePath.startsWith('file://')) {
             bundlePath = bundlePath.substring(7);
         }
         bundlePath = path.normalize(bundlePath);
-        
+
+        // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
         console.log(`[LocalAdapter] Bundle path: ${bundlePath}`);
-        
+
         // Verify directory exists and is accessible
         try {
             await access(bundlePath, fs.constants.R_OK);
@@ -415,6 +448,7 @@ export class LocalAdapter extends RepositoryAdapter {
                 throw new Error(`Path is not a directory: ${bundlePath}`);
             }
         } catch (error) {
+            // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
             console.error(`[LocalAdapter] ✗ Cannot access bundle directory: ${error}`);
             if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
                 throw new Error(`Bundle directory not found: ${bundlePath}`);
@@ -423,48 +457,53 @@ export class LocalAdapter extends RepositoryAdapter {
             }
             throw error;
         }
-        
+
         // Create ZIP archive from directory
         return new Promise<Buffer>((resolve, reject) => {
             (async () => {
                 try {
                     const archive = archiver('zip', { zlib: { level: 9 } });
                     const chunks: Buffer[] = [];
-                    let totalSize = 0;
-                    
+
                     // Collect data chunks
                     archive.on('data', (chunk: Buffer) => {
                         chunks.push(chunk);
-                        totalSize += chunk.length;
                     });
-                    
+
                     // Resolve when archive is finalized
                     archive.on('finish', () => {
                         const buffer = Buffer.concat(chunks);
-                        console.log(`[LocalAdapter] ✓ Archive created: ${buffer.length} bytes (${chunks.length} chunks)`);
+                        // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
+                        console.log(
+                            `[LocalAdapter] ✓ Archive created: ${buffer.length} bytes (${chunks.length} chunks)`
+                        );
                         resolve(buffer);
                     });
-                    
+
                     // Handle errors
                     archive.on('error', (err: Error) => {
+                        // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
                         console.error(`[LocalAdapter] ✗ Archive error: ${err.message}`);
                         reject(new Error(`Failed to create ZIP archive: ${err.message}`));
                     });
-                    
+
                     // Log warnings
                     archive.on('warning', (warning: Error) => {
+                        // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
                         console.warn(`[LocalAdapter] Archive warning: ${warning.message}`);
                     });
-                    
+
                     // Add all files from the directory
+                    // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
                     console.log(`[LocalAdapter] Adding directory contents to archive...`);
                     archive.directory(bundlePath, false);
-                    
+
                     // Finalize the archive
+                    // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
                     console.log(`[LocalAdapter] Finalizing archive...`);
                     await archive.finalize();
-                    
                 } catch (error) {
+                    // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
                     console.error(`[LocalAdapter] ✗ Failed to create bundle archive: ${error}`);
                     reject(error);
                 }

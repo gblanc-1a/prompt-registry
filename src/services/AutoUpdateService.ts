@@ -7,12 +7,13 @@
 // RegistryManager import removed to avoid circular dependency
 // Operations are injected via small interfaces typed with domain models
 import { BundleUpdateNotifications } from '../notifications/BundleUpdateNotifications';
-import { UpdateCheckResult } from './UpdateCache';
 import { RegistryStorage } from '../storage/RegistryStorage';
+import { Bundle, InstalledBundle, RegistrySource } from '../types/registry';
+import { CONCURRENCY_CONSTANTS } from '../utils/constants';
 import { Logger } from '../utils/logger';
 import { toError } from '../utils/typeGuards';
-import { CONCURRENCY_CONSTANTS } from '../utils/constants';
-import { Bundle, InstalledBundle, RegistrySource } from '../types/registry';
+
+import { UpdateCheckResult } from './UpdateCache';
 
 /**
  * Options for auto-update operations
@@ -67,25 +68,27 @@ export class AutoUpdateService {
      */
     async autoUpdateBundle(options: AutoUpdateOptions): Promise<void> {
         this.validateUpdateOptions(options);
-        
+
         const { bundleId, targetVersion } = options;
-        
+
         this.ensureUpdateNotInProgress(bundleId);
         this.activeUpdates.add(bundleId);
 
         const previousVersion = await this.captureCurrentVersion(bundleId);
 
         try {
-            this.logger.info(`Starting auto-update for bundle '${bundleId}' to version ${targetVersion}`);
-            
+            this.logger.info(
+                `Starting auto-update for bundle '${bundleId}' to version ${targetVersion}`
+            );
+
             await this.performUpdateWithVerification(bundleId, targetVersion);
             await this.showSuccessNotification(bundleId, previousVersion, targetVersion);
-            
+
             this.logger.info(`Auto-update completed successfully for bundle '${bundleId}'`);
         } catch (error) {
             const errorObj = toError(error);
             this.logger.error(`Auto-update failed for bundle '${bundleId}'`, errorObj);
-            
+
             await this.handleUpdateFailure(bundleId, errorObj.message, previousVersion);
             throw errorObj;
         } finally {
@@ -113,7 +116,7 @@ export class AutoUpdateService {
         const failed: Array<{ bundleId: string; error: string }> = [];
 
         // Filter to only auto-update enabled bundles
-        const toUpdate = updates.filter(u => {
+        const toUpdate = updates.filter((u) => {
             if (!u.autoUpdateEnabled) {
                 this.logger.debug(`Skipping bundle '${u.bundleId}' - auto-update not enabled`);
                 return false;
@@ -125,30 +128,35 @@ export class AutoUpdateService {
         for (let i = 0; i < toUpdate.length; i += CONCURRENCY_CONSTANTS.BATCH_SIZE) {
             const batch = toUpdate.slice(i, i + CONCURRENCY_CONSTANTS.BATCH_SIZE);
 
-            this.logger.debug(`Processing batch ${Math.floor(i / CONCURRENCY_CONSTANTS.BATCH_SIZE) + 1} with ${batch.length} bundles`);
+            this.logger.debug(
+                `Processing batch ${Math.floor(i / CONCURRENCY_CONSTANTS.BATCH_SIZE) + 1} with ${batch.length} bundles`
+            );
 
             const results = await Promise.allSettled(
-                batch.map(update =>
+                batch.map((update) =>
                     this.autoUpdateBundle({
                         bundleId: update.bundleId,
                         targetVersion: update.latestVersion,
-                        showProgress: false
+                        showProgress: false,
                     })
                 )
             );
 
-            results.forEach((result, index) => {
+            for (const [index, result] of results.entries()) {
                 const update = batch[index];
+                if (!update) {
+                    continue;
+                }
                 if (result.status === 'fulfilled') {
                     successful.push(update.bundleId);
                 } else {
                     const errorObj = toError(result.reason);
                     failed.push({
                         bundleId: update.bundleId,
-                        error: errorObj.message
+                        error: errorObj.message,
                     });
                 }
-            });
+            }
         }
 
         // Show batch summary notification
@@ -241,13 +249,16 @@ export class AutoUpdateService {
      */
     private async captureCurrentVersion(bundleId: string): Promise<string | null> {
         const installedBefore = await this.bundleOps.listInstalledBundles();
-        return installedBefore.find(b => b.bundleId === bundleId)?.version ?? null;
+        return installedBefore.find((b) => b.bundleId === bundleId)?.version ?? null;
     }
 
     /**
      * Perform update with source sync and verification
      */
-    private async performUpdateWithVerification(bundleId: string, targetVersion: string): Promise<void> {
+    private async performUpdateWithVerification(
+        bundleId: string,
+        targetVersion: string
+    ): Promise<void> {
         // CRITICAL: Sync source before updating (only for GitHub release sources)
         await this.syncSourceForBundle(bundleId);
 
@@ -255,7 +266,7 @@ export class AutoUpdateService {
         await this.bundleOps.updateBundle(bundleId, targetVersion);
 
         // CRITICAL: Verify update succeeded
-        if (!await this.verifyUpdate(bundleId, targetVersion)) {
+        if (!(await this.verifyUpdate(bundleId, targetVersion))) {
             throw new Error('Update verification failed');
         }
     }
@@ -263,7 +274,11 @@ export class AutoUpdateService {
     /**
      * Show success notification after update
      */
-    private async showSuccessNotification(bundleId: string, previousVersion: string | null, targetVersion: string): Promise<void> {
+    private async showSuccessNotification(
+        bundleId: string,
+        previousVersion: string | null,
+        targetVersion: string
+    ): Promise<void> {
         await this.bundleNotifications.showAutoUpdateComplete(
             bundleId,
             previousVersion || 'unknown',
@@ -274,7 +289,11 @@ export class AutoUpdateService {
     /**
      * Handle update failure with rollback attempt and appropriate notifications
      */
-    private async handleUpdateFailure(bundleId: string, errorMsg: string, previousVersion: string | null): Promise<void> {
+    private async handleUpdateFailure(
+        bundleId: string,
+        errorMsg: string,
+        previousVersion: string | null
+    ): Promise<void> {
         if (previousVersion) {
             try {
                 await this.performRollback(bundleId, previousVersion);
@@ -305,7 +324,7 @@ export class AutoUpdateService {
         await this.bundleOps.updateBundle(bundleId, previousVersion);
 
         // Verify rollback succeeded
-        if (!await this.verifyUpdate(bundleId, previousVersion)) {
+        if (!(await this.verifyUpdate(bundleId, previousVersion))) {
             throw new Error('Rollback verification failed');
         }
     }
@@ -315,14 +334,14 @@ export class AutoUpdateService {
      */
     private async verifyUpdate(bundleId: string, expectedVersion: string): Promise<boolean> {
         const updatedBundles = await this.bundleOps.listInstalledBundles();
-        const bundle = updatedBundles.find(b => b.bundleId === bundleId);
+        const bundle = updatedBundles.find((b) => b.bundleId === bundleId);
         return bundle?.version === expectedVersion;
     }
 
     /**
      * Sync source for a bundle before updating (only for GitHub release sources)
      * Skips syncing for awesome-copilot, local-awesome-copilot, and local sources
-     * 
+     *
      * NOTE: Sync failures are logged but do not block updates. The update will proceed
      * with cached source data. If the cached data is stale, the update may fail later
      * with a more specific error (e.g., version not found, download failure).
@@ -332,23 +351,25 @@ export class AutoUpdateService {
         try {
             // Get bundle details to find its source
             const bundle = await this.bundleOps.getBundleDetails(bundleId);
-            
+
             // Get all sources to find the bundle's source
             const sources = await this.sourceOps.listSources();
-            const source = sources.find(s => s.id === bundle.sourceId);
+            const source = sources.find((s) => s.id === bundle.sourceId);
 
             if (!source) {
                 // Source not found is potentially critical - log as warning
                 this.logger.warn(
                     `Source not found for bundle '${bundleId}'. ` +
-                    `Update will proceed with cached data, which may be stale.`
+                        `Update will proceed with cached data, which may be stale.`
                 );
                 return;
             }
 
             // Only sync if source type is 'github'
             if (source.type === 'github') {
-                this.logger.info(`Syncing GitHub release source '${source.id}' before updating bundle '${bundleId}'`);
+                this.logger.info(
+                    `Syncing GitHub release source '${source.id}' before updating bundle '${bundleId}'`
+                );
                 try {
                     await this.sourceOps.syncSource(source.id);
                     this.logger.debug(`Source sync completed for '${source.id}'`);
@@ -357,19 +378,21 @@ export class AutoUpdateService {
                     // Make sync failures more visible - this could cause update to fail
                     this.logger.warn(
                         `Failed to sync GitHub source '${source.id}' for bundle '${bundleId}'. ` +
-                        `Update will use cached data. Error: ${errorObj.message}`,
+                            `Update will use cached data. Error: ${errorObj.message}`,
                         errorObj
                     );
                 }
             } else {
-                this.logger.debug(`Skipping sync for source type: ${source.type} (bundle: ${bundleId})`);
+                this.logger.debug(
+                    `Skipping sync for source type: ${source.type} (bundle: ${bundleId})`
+                );
             }
         } catch (error) {
             // Outer catch for getBundleDetails or listSources failures
             const errorObj = toError(error);
             this.logger.warn(
                 `Failed to prepare sync for bundle '${bundleId}', continuing with update. ` +
-                `Error: ${errorObj.message}`,
+                    `Error: ${errorObj.message}`,
                 errorObj
             );
         }

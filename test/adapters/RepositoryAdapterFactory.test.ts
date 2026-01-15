@@ -2,7 +2,8 @@
  * Repository Adapter Factory Unit Tests
  */
 
-import * as assert from 'assert';
+import * as assert from 'node:assert';
+
 import { GitHubAdapter } from '../../src/adapters/GitHubAdapter';
 import { GitLabAdapter } from '../../src/adapters/GitLabAdapter';
 import { HttpAdapter } from '../../src/adapters/HttpAdapter';
@@ -88,11 +89,18 @@ suite('RepositoryAdapterFactory', () => {
         test('should support custom adapter registration', () => {
             const customAdapters = new Map<string, any>();
 
-            customAdapters.set('custom', class CustomAdapter {
-                type = 'custom';
-                async fetchBundles() { return []; }
-                async getDownloadUrl() { return ''; }
-            });
+            customAdapters.set(
+                'custom',
+                class CustomAdapter {
+                    type = 'custom';
+                    async fetchBundles() {
+                        return [];
+                    }
+                    async getDownloadUrl() {
+                        return '';
+                    }
+                }
+            );
 
             assert.strictEqual(customAdapters.size, 1);
             assert.ok(customAdapters.has('custom'));
@@ -104,10 +112,15 @@ suite('RepositoryAdapterFactory', () => {
             adapters.set('github', GitHubAdapter);
 
             // Override
-            adapters.set('github', class CustomGitHubAdapter {
-                type = 'github';
-                async fetchBundles() { return []; }
-            });
+            adapters.set(
+                'github',
+                class CustomGitHubAdapter {
+                    type = 'github';
+                    async fetchBundles() {
+                        return [];
+                    }
+                }
+            );
 
             assert.ok(adapters.get('github'));
         });
@@ -117,12 +130,7 @@ suite('RepositoryAdapterFactory', () => {
         test('should verify all adapters implement required methods', () => {
             const requiredMethods = ['fetchBundles', 'getDownloadUrl', 'validate'];
 
-            const adapters = [
-                GitHubAdapter,
-                GitLabAdapter,
-                HttpAdapter,
-                LocalAdapter,
-            ];
+            const adapters = [GitHubAdapter, GitLabAdapter, HttpAdapter, LocalAdapter];
 
             for (const AdapterClass of adapters) {
                 const prototype = AdapterClass.prototype;
@@ -175,22 +183,10 @@ suite('RepositoryAdapterFactory', () => {
 
         test('should validate URL format for each adapter type', () => {
             const validUrls = {
-                github: [
-                    'https://github.com/owner/repo',
-                    'git@github.com:owner/repo.git',
-                ],
-                gitlab: [
-                    'https://gitlab.com/group/project',
-                    'git@gitlab.com:group/project.git',
-                ],
-                http: [
-                    'https://example.com/bundles',
-                    'http://localhost:3000/bundles',
-                ],
-                local: [
-                    '/absolute/path/to/bundles',
-                    './relative/path',
-                ],
+                github: ['https://github.com/owner/repo', 'git@github.com:owner/repo.git'],
+                gitlab: ['https://gitlab.com/group/project', 'git@gitlab.com:group/project.git'],
+                http: ['https://example.com/bundles', 'http://localhost:3000/bundles'],
+                local: ['/absolute/path/to/bundles', './relative/path'],
             };
 
             for (const [type, urls] of Object.entries(validUrls)) {

@@ -1,9 +1,9 @@
 /**
  * ApmCliWrapper
- * 
+ *
  * Wrapper for APM CLI commands with security-focused input validation.
  * Provides a safe interface for executing APM operations.
- * 
+ *
  * Security considerations:
  * - All inputs are validated before use in commands
  * - Package references are sanitized to prevent injection
@@ -11,11 +11,13 @@
  * - Command execution uses safe patterns
  */
 
-import { exec } from 'child_process';
-import { promisify } from 'util';
-import * as path from 'path';
-import * as fs from 'fs';
+import { exec } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { promisify } from 'node:util';
+
 import { Logger } from '../utils/logger';
+
 import { ApmRuntimeManager } from './ApmRuntimeManager';
 
 const execAsync = promisify(exec);
@@ -47,11 +49,11 @@ const VALID_PACKAGE_REF_PATTERN = /^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_./-]+$/;
  * Dangerous patterns to reject
  */
 const DANGEROUS_PATTERNS = [
-    /[;&|`$(){}[\]<>]/,  // Shell metacharacters
-    /\n|\r/,              // Newlines
-    /^https?:/,           // URLs
-    /^\//,                // Absolute paths (Unix)
-    /^[A-Za-z]:/,         // Absolute paths (Windows)
+    /[;&|`$(){}[\]<>]/, // Shell metacharacters
+    /\n|\r/, // Newlines
+    /^https?:/, // URLs
+    /^\//, // Absolute paths (Unix)
+    /^[A-Za-z]:/, // Absolute paths (Windows)
     /\.\./, // Path traversal
 ];
 
@@ -61,12 +63,12 @@ const DANGEROUS_PATTERNS = [
 export class ApmCliWrapper {
     private logger: Logger;
     private runtime: ApmRuntimeManager;
-    
+
     constructor() {
         this.logger = Logger.getInstance();
         this.runtime = ApmRuntimeManager.getInstance();
     }
-    
+
     /**
      * Check if APM runtime is available
      */
@@ -78,7 +80,7 @@ export class ApmCliWrapper {
             return false;
         }
     }
-    
+
     /**
      * Get APM version
      */
@@ -90,7 +92,7 @@ export class ApmCliWrapper {
             return undefined;
         }
     }
-    
+
     /**
      * Validate a package reference
      * Security: Prevents command injection through malicious package names
@@ -101,32 +103,32 @@ export class ApmCliWrapper {
         if (!ref || ref.trim().length === 0) {
             return false;
         }
-        
+
         // Check for dangerous patterns
         for (const pattern of DANGEROUS_PATTERNS) {
             if (pattern.test(ref)) {
                 return false;
             }
         }
-        
+
         // Must match valid pattern
         if (!VALID_PACKAGE_REF_PATTERN.test(ref)) {
             return false;
         }
-        
+
         // Must not end with slash
         if (ref.endsWith('/')) {
             return false;
         }
-        
+
         // Must have at least one slash but not start with one
         if (!ref.includes('/') || ref.startsWith('/')) {
             return false;
         }
-        
+
         return true;
     }
-    
+
     /**
      * Validate a target directory path
      * Security: Prevents path traversal and injection
@@ -135,28 +137,32 @@ export class ApmCliWrapper {
         if (!targetPath || targetPath.trim().length === 0) {
             return false;
         }
-        
+
         // Check for path traversal
         if (targetPath.includes('..')) {
             return false;
         }
-        
+
         // Normalize and check it's an absolute path
         const normalized = path.normalize(targetPath);
         if (!path.isAbsolute(normalized)) {
             return false;
         }
-        
+
         return true;
     }
-    
+
     /**
      * Install an APM package
      * @param packageRef Package reference (e.g., "owner/repo")
      * @param targetDir Directory where to install
      * @param token Optional GitHub token for authentication
      */
-    async install(packageRef: string, targetDir: string, token?: string): Promise<ApmInstallResult> {
+    async install(
+        packageRef: string,
+        targetDir: string,
+        token?: string
+    ): Promise<ApmInstallResult> {
         // Validate inputs
         if (!this.validatePackageRef(packageRef)) {
             return {
@@ -164,14 +170,14 @@ export class ApmCliWrapper {
                 error: `Invalid package reference: ${packageRef}. Use format: owner/repo`,
             };
         }
-        
+
         if (!this.validateTargetPath(targetDir)) {
             return {
                 success: false,
                 error: `Invalid target directory path: ${targetDir}`,
             };
         }
-        
+
         // Check runtime availability
         try {
             const available = await this.isRuntimeAvailable();
@@ -187,14 +193,14 @@ export class ApmCliWrapper {
                 error: `Failed to check APM runtime: ${(error as Error).message}`,
             };
         }
-        
+
         // Create temporary apm.yml if needed
         const apmYmlPath = path.join(targetDir, 'apm.yml');
-        
+
         try {
             // Ensure target directory exists
             await fs.promises.mkdir(targetDir, { recursive: true });
-            
+
             // Create minimal apm.yml
             if (!fs.existsSync(apmYmlPath)) {
                 const manifest = `name: temp-install
@@ -205,19 +211,18 @@ dependencies:
 `;
                 await fs.promises.writeFile(apmYmlPath, manifest, 'utf-8');
             }
-            
+
             // Execute APM install
             this.logger.debug(`[ApmCli] Installing: ${packageRef} to ${targetDir}`);
-            
+
             await this.executeCommand(['install'], targetDir, token);
-            
+
             const installedPath = path.join(targetDir, 'apm_modules');
-            
+
             return {
                 success: true,
                 installedPath,
             };
-            
         } catch (error) {
             this.logger.error(`[ApmCli] Install failed: ${packageRef}`, error as Error);
             return {
@@ -226,23 +231,27 @@ dependencies:
             };
         }
     }
-    
+
     /**
      * Execute an APM command
      * Security: Uses safe argument passing
      */
-    private async executeCommand(args: string[], cwd: string, token?: string): Promise<{ stdout: string; stderr: string }> {
+    private async executeCommand(
+        args: string[],
+        cwd: string,
+        token?: string
+    ): Promise<{ stdout: string; stderr: string }> {
         // Validate args don't contain dangerous characters
         for (const arg of args) {
-            if (DANGEROUS_PATTERNS.some(p => p.test(arg))) {
+            if (DANGEROUS_PATTERNS.some((p) => p.test(arg))) {
                 throw new Error(`Invalid command argument: ${arg}`);
             }
         }
-        
+
         // Determine command to run (apm, uvx apm, or local uv tool run apm)
         const status = await this.runtime.getStatus();
         let command = 'apm';
-        
+
         if (status.localUvPath) {
             // Use local uv
             command = `"${status.localUvPath}" tool run apm`;
@@ -254,34 +263,34 @@ dependencies:
 
         const fullCommand = `${command} ${args.join(' ')}`;
         this.logger.debug(`[ApmCli] Executing: ${fullCommand} in ${cwd}`);
-        
+
         return execAsync(fullCommand, {
             cwd,
             timeout: COMMAND_TIMEOUT,
             env: this.getSafeEnvironment(token),
         });
     }
-    
+
     /**
      * Get safe environment for command execution
      */
     private getSafeEnvironment(explicitToken?: string): NodeJS.ProcessEnv {
         const env = { ...process.env };
-        
+
         // Pass GitHub token if available
         // Priority: explicit token > env.GITHUB_TOKEN > env.GH_TOKEN
         const token = explicitToken || process.env.GITHUB_TOKEN || process.env.GH_TOKEN;
         if (token) {
             env.GITHUB_TOKEN = token;
         }
-        
+
         // Remove potentially dangerous variables
         delete env.LD_PRELOAD;
         delete env.DYLD_INSERT_LIBRARIES;
-        
+
         return env;
     }
-    
+
     /**
      * List installed dependencies
      */
@@ -289,24 +298,26 @@ dependencies:
         if (!this.validateTargetPath(projectDir)) {
             return { packages: [] };
         }
-        
+
         try {
             const available = await this.isRuntimeAvailable();
             if (!available) {
                 return { packages: [] };
             }
-            
+
             const { stdout } = await this.executeCommand(['deps', 'list'], projectDir);
-            
+
             // Parse output (simple line-based for now)
-            const packages = stdout.trim().split('\n').filter(line => line.trim());
+            const packages = stdout
+                .trim()
+                .split('\n')
+                .filter((line) => line.trim());
             return { packages };
-            
         } catch {
             return { packages: [] };
         }
     }
-    
+
     /**
      * Compile AGENTS.md
      */
@@ -314,16 +325,15 @@ dependencies:
         if (!this.validateTargetPath(projectDir)) {
             return false;
         }
-        
+
         try {
             const available = await this.isRuntimeAvailable();
             if (!available) {
                 return false;
             }
-            
+
             await this.executeCommand(['compile'], projectDir);
             return true;
-            
         } catch {
             return false;
         }

@@ -5,19 +5,30 @@
  */
 
 import * as vscode from 'vscode';
-import { Logger } from '../utils/logger';
+
 import { RegistryManager } from '../services/RegistryManager';
 import { Bundle, InstalledBundle, RegistrySource } from '../types/registry';
+import { BundleIdentityMatcher } from '../utils/bundleIdentityMatcher';
 import { UI_CONSTANTS } from '../utils/constants';
 import { extractAllTags, extractBundleSources } from '../utils/filterUtils';
+import { Logger } from '../utils/logger';
 import { VersionManager } from '../utils/versionManager';
-import { BundleIdentityMatcher } from '../utils/bundleIdentityMatcher';
 
 /**
  * Message types sent from webview to extension
  */
 interface WebviewMessage {
-    type: 'refresh' | 'install' | 'update' | 'uninstall' | 'openDetails' | 'openPromptFile' | 'installVersion' | 'getVersions' | 'toggleAutoUpdate' | 'openSourceRepository';
+    type:
+        | 'refresh'
+        | 'install'
+        | 'update'
+        | 'uninstall'
+        | 'openDetails'
+        | 'openPromptFile'
+        | 'installVersion'
+        | 'getVersions'
+        | 'toggleAutoUpdate'
+        | 'openSourceRepository';
     bundleId?: string;
     installPath?: string;
     filePath?: string;
@@ -54,7 +65,9 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         // Listen to bundle and source events to refresh marketplace
         this.disposables.push(
             this.registryManager.onBundleInstalled((installation) => {
-                this.handleBundleEvent('installed', installation.bundleId, () => this.loadBundles());
+                this.handleBundleEvent('installed', installation.bundleId, () =>
+                    this.loadBundles()
+                );
             }),
             this.registryManager.onBundleUninstalled((bundleId) => {
                 this.handleBundleEvent('uninstalled', bundleId, () => this.loadBundles());
@@ -63,10 +76,14 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                 this.handleBundleEvent('updated', installation.bundleId, () => this.loadBundles());
             }),
             this.registryManager.onBundlesInstalled((installations) => {
-                this.handleBundleEvent('installed', `${installations.length} bundles`, () => this.loadBundles());
+                this.handleBundleEvent('installed', `${installations.length} bundles`, () =>
+                    this.loadBundles()
+                );
             }),
             this.registryManager.onBundlesUninstalled((bundleIds) => {
-                this.handleBundleEvent('uninstalled', `${bundleIds.length} bundles`, () => this.loadBundles());
+                this.handleBundleEvent('uninstalled', `${bundleIds.length} bundles`, () =>
+                    this.loadBundles()
+                );
             }),
             // Source sync events with debouncing
             this.registryManager.onSourceSynced((event) => this.handleSourceSynced(event)),
@@ -77,14 +94,14 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
 
     public resolveWebviewView(
         webviewView: vscode.WebviewView,
-        context: vscode.WebviewViewResolveContext,
+        _context: vscode.WebviewViewResolveContext,
         _token: vscode.CancellationToken
     ) {
         this._view = webviewView;
 
         webviewView.webview.options = {
             enableScripts: true,
-            localResourceRoots: [this.context.extensionUri]
+            localResourceRoots: [this.context.extensionUri],
         };
 
         webviewView.webview.html = this.getHtmlContent(webviewView.webview);
@@ -107,12 +124,14 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         action: () => void | Promise<void>
     ): void {
         try {
-            this.logger.debug(`Bundle ${eventType} event received: ${bundleId}, refreshing marketplace`);
+            this.logger.debug(
+                `Bundle ${eventType} event received: ${bundleId}, refreshing marketplace`
+            );
             action();
         } catch (error) {
             const errorMsg = error instanceof Error ? error.message : String(error);
             this.logger.error(`Error handling bundle ${eventType} event`, error as Error);
-            
+
             // Show user-facing error notification
             vscode.window.showErrorMessage(
                 `Failed to refresh marketplace after bundle ${eventType}: ${errorMsg}`
@@ -149,13 +168,15 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         }
 
         // Dispose all event listeners
-        this.disposables.forEach(d => d.dispose());
+        for (const d of this.disposables) {
+            d.dispose();
+        }
         this.disposables = [];
     }
 
     /**
      * Find installed bundle by marketplace bundle ID using identity matching
-     * 
+     *
      * @param bundleId - Marketplace bundle ID
      * @returns Bundle info including marketplace bundle, installed bundle, and source
      * @throws Error if marketplace bundle not found
@@ -168,25 +189,25 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         const [installedBundles, sources, bundles] = await Promise.all([
             this.registryManager.listInstalledBundles(),
             this.registryManager.listSources(),
-            this.registryManager.searchBundles({})
+            this.registryManager.searchBundles({}),
         ]);
-        
-        const bundle = bundles.find(b => b.id === bundleId);
+
+        const bundle = bundles.find((b) => b.id === bundleId);
         if (!bundle) {
             throw new Error('Bundle not found');
         }
-        
-        const source = sources.find(s => s.id === bundle.sourceId);
-        const installed = installedBundles.find(ib => 
+
+        const source = sources.find((s) => s.id === bundle.sourceId);
+        const installed = installedBundles.find((ib) =>
             this.matchesBundleIdentity(ib.bundleId, bundle.id, source?.type || 'local')
         );
-        
+
         return { bundle, installed, source };
     }
 
     /**
      * Determine button state based on installation status and version comparison
-     * 
+     *
      * @param bundle - The bundle to check
      * @param installed - The installed bundle info (if installed)
      * @returns Button state: 'install', 'update', or 'uninstall'
@@ -206,7 +227,9 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             }
         } catch (error) {
             // If version comparison fails, fall back to string comparison
-            this.logger.warn(`Version comparison failed for ${bundle.id}: ${(error as Error).message}`);
+            this.logger.warn(
+                `Version comparison failed for ${bundle.id}: ${(error as Error).message}`
+            );
             if (installed.version !== bundle.version) {
                 return 'update';
             }
@@ -217,10 +240,10 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
 
     /**
      * Check if installed bundle matches the marketplace bundle identity
-     * 
+     *
      * For GitHub bundles, compares without version suffix (owner-repo)
      * For other sources, requires exact match
-     * 
+     *
      * @param installedId - Bundle ID from installed bundle
      * @param bundleId - Bundle ID from marketplace
      * @param sourceType - Source type of the bundle
@@ -231,6 +254,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         bundleId: string,
         sourceType: string
     ): boolean {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
         return BundleIdentityMatcher.matches(installedId, bundleId, sourceType as any);
     }
 
@@ -252,48 +276,55 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                 ? await autoUpdateService.getAllAutoUpdatePreferences()
                 : {};
 
-            const enhancedBundles = await Promise.all(bundles.map(async bundle => {
-                // Find matching installed bundle using identity matching
-                const source = sources.find(s => s.id === bundle.sourceId);
-                const installed = installedBundles.find(ib => 
-                    this.matchesBundleIdentity(ib.bundleId, bundle.id, source?.type || 'local')
-                );
-                
-                // Use manifest from installed bundle if available
-                const contentBreakdown = this.getContentBreakdown(bundle, installed?.manifest);
+            const enhancedBundles = await Promise.all(
+                bundles.map(async (bundle) => {
+                    // Find matching installed bundle using identity matching
+                    const source = sources.find((s) => s.id === bundle.sourceId);
+                    const installed = installedBundles.find((ib) =>
+                        this.matchesBundleIdentity(ib.bundleId, bundle.id, source?.type || 'local')
+                    );
 
-                // Check if bundle is from a curated hub
-                const isCurated = source?.hubId !== undefined;
-                const hubName = isCurated && source?.hubId ? source.metadata?.description || source.name : undefined;
+                    // Use manifest from installed bundle if available
+                    const contentBreakdown = this.getContentBreakdown(bundle, installed?.manifest);
 
-                // Determine button state based on installation status and version
-                const buttonState = this.determineButtonState(bundle, installed);
+                    // Check if bundle is from a curated hub
+                    const isCurated = source?.hubId !== undefined;
+                    const hubName =
+                        isCurated && source?.hubId
+                            ? source.metadata?.description || source.name
+                            : undefined;
 
-                // Get available versions if this is a consolidated bundle
-                let availableVersions: Array<{version: string}> | undefined;
-                if ((bundle as any).isConsolidated && (bundle as any).availableVersions) {
-                    availableVersions = (bundle as any).availableVersions.map((v: any) => ({
-                        version: v.version
-                    }));
-                }
+                    // Determine button state based on installation status and version
+                    const buttonState = this.determineButtonState(bundle, installed);
 
-                // Get auto-update status if bundle is installed (from preloaded preferences)
-                const autoUpdateEnabled = installed
-                    ? autoUpdatePreferences[installed.bundleId] ?? false
-                    : false;
+                    // Get available versions if this is a consolidated bundle
+                    let availableVersions: Array<{ version: string }> | undefined;
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
+                    if ((bundle as any).isConsolidated && (bundle as any).availableVersions) {
+                        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
+                        availableVersions = (bundle as any).availableVersions.map((v: any) => ({
+                            version: v.version,
+                        }));
+                    }
 
-                return {
-                    ...bundle,
-                    installed: !!installed,
-                    installedVersion: installed?.version,
-                    buttonState,
-                    isCurated,
-                    hubName,
-                    contentBreakdown,
-                    availableVersions,
-                    autoUpdateEnabled,
-                };
-            }));
+                    // Get auto-update status if bundle is installed (from preloaded preferences)
+                    const autoUpdateEnabled = installed
+                        ? (autoUpdatePreferences[installed.bundleId] ?? false)
+                        : false;
+
+                    return {
+                        ...bundle,
+                        installed: !!installed,
+                        installedVersion: installed?.version,
+                        buttonState,
+                        isCurated,
+                        hubName,
+                        contentBreakdown,
+                        availableVersions,
+                        autoUpdateEnabled,
+                    };
+                })
+            );
 
             // Extract dynamic filter options
             const availableTags = extractAllTags(bundles);
@@ -305,13 +336,14 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                 bundles: enhancedBundles,
                 filterOptions: {
                     tags: availableTags,
-                    sources: availableSources
-                }
+                    sources: availableSources,
+                },
             });
 
             this.logger.debug(`Loaded ${enhancedBundles.length} bundles for marketplace`);
-            this.logger.debug(`Available tags: ${availableTags.length}, sources: ${availableSources.length}`);
-
+            this.logger.debug(
+                `Available tags: ${availableTags.length}, sources: ${availableSources.length}`
+            );
         } catch (error) {
             this.logger.error('Failed to load marketplace bundles', error as Error);
         }
@@ -320,13 +352,14 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     /**
      * Count prompts by type from an array of prompt objects
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     private countPromptsByType(prompts: any[]): ContentBreakdown {
         const breakdown: ContentBreakdown = {
             prompts: 0,
             instructions: 0,
             chatmodes: 0,
             agents: 0,
-            skills: 0
+            skills: 0,
         };
 
         for (const prompt of prompts) {
@@ -356,6 +389,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     /**
      * Calculate content breakdown from bundle metadata
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     private getContentBreakdown(bundle: Bundle, manifest?: any): ContentBreakdown {
         // First: Use manifest if provided (from installed bundle)
         if (manifest?.prompts && Array.isArray(manifest.prompts)) {
@@ -363,6 +397,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         }
 
         // Second: Try to parse from bundle data (some sources embed this)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
         const bundleData = bundle as any;
         if (bundleData.prompts && Array.isArray(bundleData.prompts)) {
             return this.countPromptsByType(bundleData.prompts);
@@ -375,7 +410,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                 instructions: bundleData.breakdown.instructions || 0,
                 chatmodes: bundleData.breakdown.chatmodes || 0,
                 agents: bundleData.breakdown.agents || 0,
-                skills: bundleData.breakdown.skills || 0
+                skills: bundleData.breakdown.skills || 0,
             };
         }
 
@@ -386,7 +421,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                 instructions: 0,
                 chatmodes: 0,
                 agents: 0,
-                skills: bundleData.skills.length
+                skills: bundleData.skills.length,
             };
         }
 
@@ -398,7 +433,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             instructions: 0,
             chatmodes: 0,
             agents: 0,
-            skills: 0
+            skills: 0,
         };
     }
 
@@ -465,21 +500,23 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
      */
     private async handleOpenSourceRepository(bundleId: string): Promise<void> {
         try {
-            const { bundle, source } = await this.findInstalledBundleByMarketplaceId(bundleId);
-            
+            const { bundle } = await this.findInstalledBundleByMarketplaceId(bundleId);
+
             // Create a fake tree item to pass to the command
             const item = {
                 type: 'bundle',
                 data: {
                     ...bundle,
-                    sourceId: bundle.sourceId
-                }
+                    sourceId: bundle.sourceId,
+                },
             };
-            
+
             await vscode.commands.executeCommand('promptregistry.openItemRepository', item);
         } catch (error) {
             this.logger.error('Failed to open source repository', error as Error);
-            vscode.window.showErrorMessage(`Failed to open repository: ${(error as Error).message}`);
+            vscode.window.showErrorMessage(
+                `Failed to open repository: ${(error as Error).message}`
+            );
         }
     }
 
@@ -488,19 +525,18 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
      */
     private async openPromptFileInEditor(installPath: string, filePath: string): Promise<void> {
         try {
-            const path = require('path');
+            const path = require('node:path');
             const fullPath = path.join(installPath, filePath);
-            
+
             this.logger.debug(`Opening prompt file: ${fullPath}`);
-            
+
             // Open the file in the editor using Uri for cross-platform compatibility
             const fileUri = vscode.Uri.file(fullPath);
             const document = await vscode.workspace.openTextDocument(fileUri);
             await vscode.window.showTextDocument(document, {
                 preview: false,
-                viewColumn: vscode.ViewColumn.One
+                viewColumn: vscode.ViewColumn.One,
             });
-            
         } catch (error) {
             this.logger.error('Failed to open prompt file', error as Error);
             vscode.window.showErrorMessage(`Failed to open file: ${(error as Error).message}`);
@@ -515,22 +551,24 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             this.logger.info(`Installing bundle from marketplace: ${bundleId}`);
 
             // Use RegistryManager to install
-            await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: `Installing bundle...`,
-                cancellable: false
-            }, async () => {
-                await this.registryManager.installBundle(bundleId, {
-                    scope: 'user',
-                    version: 'latest'
-                });
-            });
+            await vscode.window.withProgress(
+                {
+                    location: vscode.ProgressLocation.Notification,
+                    title: `Installing bundle...`,
+                    cancellable: false,
+                },
+                async () => {
+                    await this.registryManager.installBundle(bundleId, {
+                        scope: 'user',
+                        version: 'latest',
+                    });
+                }
+            );
 
             vscode.window.showInformationMessage(`✅ Bundle installed successfully!`);
 
             // Refresh marketplace
             await this.loadBundles();
-
         } catch (error) {
             this.logger.error('Failed to install bundle from marketplace', error as Error);
             vscode.window.showErrorMessage(`Failed to install bundle: ${(error as Error).message}`);
@@ -552,26 +590,30 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             }
 
             // Use the stored bundle ID from the installation record
-            await this.registryManager.uninstallBundle(installed.bundleId, installed.scope || 'user');
+            await this.registryManager.uninstallBundle(
+                installed.bundleId,
+                installed.scope || 'user'
+            );
 
             vscode.window.showInformationMessage(`✅ Bundle uninstalled successfully!`);
 
             // Refresh marketplace
             await this.loadBundles();
-
         } catch (error) {
             this.logger.error('Failed to uninstall bundle from marketplace', error as Error);
-            vscode.window.showErrorMessage(`Failed to uninstall bundle: ${(error as Error).message}`);
+            vscode.window.showErrorMessage(
+                `Failed to uninstall bundle: ${(error as Error).message}`
+            );
         }
     }
 
     /**
      * Update a bundle to the latest version
-     * 
+     *
      * This method performs a two-step process:
      * 1. Uninstall the current version
      * 2. Install the latest version
-     * 
+     *
      * If uninstall fails, the update is aborted.
      * If install fails after successful uninstall, the bundle will be left uninstalled.
      */
@@ -590,20 +632,22 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             }
 
             // Use the unified update flow from RegistryManager
-            await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: `Updating bundle...`,
-                cancellable: false
-            }, async (progress) => {
-                progress.report({ message: 'Updating bundle...' });
-                await this.registryManager.updateBundle(installed.bundleId);
-            });
+            await vscode.window.withProgress(
+                {
+                    location: vscode.ProgressLocation.Notification,
+                    title: `Updating bundle...`,
+                    cancellable: false,
+                },
+                async (progress) => {
+                    progress.report({ message: 'Updating bundle...' });
+                    await this.registryManager.updateBundle(installed.bundleId);
+                }
+            );
 
             vscode.window.showInformationMessage(`✅ Bundle updated successfully!`);
 
             // Refresh marketplace to show updated state
             await this.loadBundles();
-
         } catch (error) {
             this.logger.error('Failed to update bundle from marketplace', error as Error);
             vscode.window.showErrorMessage(`Failed to update bundle: ${(error as Error).message}`);
@@ -612,7 +656,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
 
     /**
      * Handle installation of a specific version
-     * 
+     *
      * @param bundleId - The bundle to install
      * @param version - The specific version to install
      */
@@ -621,31 +665,38 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             this.logger.info(`Installing specific version of bundle: ${bundleId} v${version}`);
 
             // Use RegistryManager to install with specific version
-            await vscode.window.withProgress({
-                location: vscode.ProgressLocation.Notification,
-                title: `Installing bundle v${version}...`,
-                cancellable: false
-            }, async () => {
-                await this.registryManager.installBundle(bundleId, {
-                    scope: 'user',
-                    version: version
-                });
-            });
+            await vscode.window.withProgress(
+                {
+                    location: vscode.ProgressLocation.Notification,
+                    title: `Installing bundle v${version}...`,
+                    cancellable: false,
+                },
+                async () => {
+                    await this.registryManager.installBundle(bundleId, {
+                        scope: 'user',
+                        version: version,
+                    });
+                }
+            );
 
             vscode.window.showInformationMessage(`✅ Bundle v${version} installed successfully!`);
 
             // Refresh marketplace
             await this.loadBundles();
-
         } catch (error) {
-            this.logger.error('Failed to install specific version from marketplace', error as Error);
-            vscode.window.showErrorMessage(`Failed to install bundle v${version}: ${(error as Error).message}`);
+            this.logger.error(
+                'Failed to install specific version from marketplace',
+                error as Error
+            );
+            vscode.window.showErrorMessage(
+                `Failed to install bundle v${version}: ${(error as Error).message}`
+            );
         }
     }
 
     /**
      * Handle request to get available versions for a bundle
-     * 
+     *
      * @param bundleId - The bundle to get versions for
      */
     private async handleGetVersions(bundleId: string): Promise<void> {
@@ -662,11 +713,10 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             this._view?.webview.postMessage({
                 type: 'versionsLoaded',
                 bundleId: bundleId,
-                versions: versions
+                versions: versions,
             });
 
             this.logger.debug(`Sent ${versions.length} versions for bundle ${bundleId}`);
-
         } catch (error) {
             this.logger.error('Failed to get available versions', error as Error);
         }
@@ -674,7 +724,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
 
     /**
      * Get all available versions for a bundle
-     * 
+     *
      * @param bundle - The bundle to get versions for
      * @returns Array of version strings in descending order
      */
@@ -699,21 +749,20 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             this.logger.info(`Toggling auto-update for bundle '${bundleId}' to ${enabled}`);
 
             // Use RegistryManager facade methods to ensure event is emitted
-            if (enabled) {
-                await this.registryManager.enableAutoUpdate(bundleId);
-            } else {
-                await this.registryManager.disableAutoUpdate(bundleId);
-            }
+            await (enabled
+                ? this.registryManager.enableAutoUpdate(bundleId)
+                : this.registryManager.disableAutoUpdate(bundleId));
 
             // Show confirmation
             const status = enabled ? 'enabled' : 'disabled';
             vscode.window.showInformationMessage(`Auto-update ${status} for ${bundleId}`);
 
             // Note: UI refresh is handled automatically by event listener registered in activateBundleListeners()
-
         } catch (error) {
             this.logger.error('Failed to toggle auto-update', error as Error);
-            vscode.window.showErrorMessage(`Failed to toggle auto-update: ${(error as Error).message}`);
+            vscode.window.showErrorMessage(
+                `Failed to toggle auto-update: ${(error as Error).message}`
+            );
         }
     }
 
@@ -738,8 +787,8 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             // Check if installed to get manifest - use identity matching for GitHub bundles
             const installedBundles = await this.registryManager.listInstalledBundles();
             const sources = await this.registryManager.listSources();
-            const source = sources.find(s => s.id === bundle.sourceId);
-            const installed = installedBundles.find(ib => 
+            const source = sources.find((s) => s.id === bundle.sourceId);
+            const installed = installedBundles.find((ib) =>
                 this.matchesBundleIdentity(ib.bundleId, bundle.id, source?.type || 'local')
             );
             const breakdown = this.getContentBreakdown(bundle, installed?.manifest);
@@ -749,7 +798,8 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             if (installed) {
                 const autoUpdateService = this.registryManager.autoUpdateService;
                 if (autoUpdateService) {
-                    const autoUpdatePreferences = await autoUpdateService.getAllAutoUpdatePreferences();
+                    const autoUpdatePreferences =
+                        await autoUpdateService.getAllAutoUpdatePreferences();
                     autoUpdateEnabled = autoUpdatePreferences[installed.bundleId] ?? false;
                 }
             }
@@ -760,12 +810,17 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                 `📦 ${bundle.name}`,
                 vscode.ViewColumn.One,
                 {
-                    enableScripts: true
+                    enableScripts: true,
                 }
             );
 
             // Set HTML content
-            panel.webview.html = this.getBundleDetailsHtml(bundle, installed, breakdown, autoUpdateEnabled);
+            panel.webview.html = this.getBundleDetailsHtml(
+                bundle,
+                installed,
+                breakdown,
+                autoUpdateEnabled
+            );
 
             // Handle messages from the details panel
             panel.webview.onDidReceiveMessage(
@@ -776,8 +831,14 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                         await this.handleToggleAutoUpdate(message.bundleId, message.enabled);
                         // Update the panel with new status
                         if (installed) {
-                            const newStatus = await this.registryManager.autoUpdateService?.isAutoUpdateEnabled(installed.bundleId) || false;
-                            panel.webview.postMessage({ type: 'autoUpdateStatusChanged', enabled: newStatus });
+                            const newStatus =
+                                (await this.registryManager.autoUpdateService?.isAutoUpdateEnabled(
+                                    installed.bundleId
+                                )) || false;
+                            panel.webview.postMessage({
+                                type: 'autoUpdateStatusChanged',
+                                enabled: newStatus,
+                            });
                         }
                     }
                 },
@@ -789,12 +850,17 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             this.disposables.push(
                 this.registryManager.onAutoUpdatePreferenceChanged((event) => {
                     // Update the webview if this event is for the bundle being displayed
-                    if (event.bundleId === bundleId || (installed && event.bundleId === installed.bundleId)) {
-                        panel.webview.postMessage({ type: 'autoUpdateStatusChanged', enabled: event.enabled });
+                    if (
+                        event.bundleId === bundleId ||
+                        (installed && event.bundleId === installed.bundleId)
+                    ) {
+                        panel.webview.postMessage({
+                            type: 'autoUpdateStatusChanged',
+                            enabled: event.enabled,
+                        });
                     }
                 })
             );
-
         } catch (error) {
             this.logger.error('Failed to open bundle details', error as Error);
             vscode.window.showErrorMessage('Failed to open bundle details');
@@ -804,12 +870,17 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     /**
      * Get HTML for bundle details panel
      */
-    private getBundleDetailsHtml(bundle: Bundle, installed: InstalledBundle | undefined, breakdown: ContentBreakdown, autoUpdateEnabled: boolean = false): string {
+    private getBundleDetailsHtml(
+        bundle: Bundle,
+        installed: InstalledBundle | undefined,
+        breakdown: ContentBreakdown,
+        autoUpdateEnabled: boolean = false
+    ): string {
         const isInstalled = !!installed;
         const installPath = installed?.installPath || 'Not installed';
         // Escape backslashes and quotes for safe embedding in HTML onclick attributes
-        const escapedInstallPath = installPath.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
-        
+        const escapedInstallPath = installPath.replace(/\\/g, '\\\\').replace(/'/g, String.raw`\'`);
+
         return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1073,7 +1144,9 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         </div>
     </div>
 
-    ${isInstalled ? `
+    ${
+        isInstalled
+            ? `
     <div class="auto-update-toggle">
         <div style="flex: 1;">
             <div class="auto-update-label">🔄 Auto-Update</div>
@@ -1083,7 +1156,9 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             <div class="toggle-slider"></div>
         </div>
     </div>
-    ` : ''}
+    `
+            : ''
+    }
 
     <div class="section">
         <h2>Description</h2>
@@ -1092,7 +1167,9 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
 
     <div class="section">
         <h2>📊 Content Breakdown</h2>
-        ${isInstalled ? `
+        ${
+            isInstalled
+                ? `
         <div class="breakdown">
             <div class="breakdown-item">
                 <div class="breakdown-icon">💬</div>
@@ -1115,39 +1192,45 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                 <div class="breakdown-label">Skills</div>
             </div>
         </div>
-        ` : `
+        `
+                : `
         <div class="info-message">
             <p style="text-align: center; padding: 20px; color: var(--vscode-descriptionForeground);">
                 📦 Install this bundle to see the detailed content breakdown.
             </p>
         </div>
-        `}
+        `
+        }
     </div>
     <div class="section">
         <h2>ℹ️ Information</h2>
         <div class="info-grid">
             <div class="info-row">
                 <div class="info-label">Bundle ID:</div>
-                <div class="info-value"><code>${isInstalled ? installed!.bundleId : bundle.id}</code></div>
+                <div class="info-value"><code>${isInstalled ? installed.bundleId : bundle.id}</code></div>
             </div>
             <div class="info-row">
                 <div class="info-label">Version:</div>
-                <div class="info-value">${isInstalled ? installed!.version : bundle.version}</div>
+                <div class="info-value">${isInstalled ? installed.version : bundle.version}</div>
             </div>
             <div class="info-row">
                 <div class="info-label">Author:</div>
                 <div class="info-value">${bundle.author || 'Unknown'}</div>
             </div>
-            ${isInstalled ? `
+            ${
+                isInstalled
+                    ? `
             <div class="info-row">
                 <div class="info-label">Installed At:</div>
-                <div class="info-value">${new Date(installed!.installedAt).toLocaleString()}</div>
+                <div class="info-value">${new Date(installed.installedAt).toLocaleString()}</div>
             </div>
             <div class="info-row">
                 <div class="info-label">Install Path:</div>
                 <div class="info-value"><code>${installPath}</code></div>
             </div>
-            ` : ''}
+            `
+                    : ''
+            }
             <div class="info-row">
                 <div class="info-label">Environments:</div>
                 <div class="info-value">${(bundle.environments || ['any']).join(', ')}</div>
@@ -1155,22 +1238,30 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         </div>
     </div>
 
-    ${bundle.tags && bundle.tags.length > 0 ? `
+    ${
+        bundle.tags && bundle.tags.length > 0
+            ? `
     <div class="section">
         <h2>🏷️ Tags</h2>
         <div class="tags">
-            ${bundle.tags.map(tag => `<span class="tag">${tag}</span>`).join('')}
+            ${bundle.tags.map((tag) => `<span class="tag">${tag}</span>`).join('')}
         </div>
     </div>
-    ` : ''}
+    `
+            : ''
+    }
 
-    ${installed?.manifest?.mcpServers && Object.keys(installed.manifest.mcpServers).length > 0 ? `
+    ${
+        installed?.manifest?.mcpServers && Object.keys(installed.manifest.mcpServers).length > 0
+            ? `
     <div class="section">
         <h2>🔌 MCP Servers</h2>
         <p style="color: var(--vscode-descriptionForeground); margin-bottom: 16px; font-size: 13px;">
             This bundle includes ${Object.keys(installed.manifest.mcpServers).length} Model Context Protocol server${Object.keys(installed.manifest.mcpServers).length > 1 ? 's' : ''} that will be automatically integrated with VS Code.
         </p>
-        ${Object.entries(installed.manifest.mcpServers).map(([serverName, config]) => `
+        ${Object.entries(installed.manifest.mcpServers)
+            .map(
+                ([serverName, config]) => `
             <div class="mcp-server-card">
                 <div class="mcp-server-header">
                     <span>⚡ ${serverName}</span>
@@ -1181,24 +1272,40 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                     <strong>Command:</strong> ${config.command}
                     ${config.args && config.args.length > 0 ? ` ${config.args.join(' ')}` : ''}
                 </div>
-                ${config.env && Object.keys(config.env).length > 0 ? `
+                ${
+                    config.env && Object.keys(config.env).length > 0
+                        ? `
                 <div class="mcp-env-vars">
                     <strong style="font-size: 12px;">Environment Variables:</strong>
-                    ${Object.entries(config.env).map(([key, value]) => `
+                    ${Object.entries(config.env)
+                        .map(
+                            ([key, value]) => `
                         <div class="mcp-env-var">• <code>${key}</code> = <code>${value}</code></div>
-                    `).join('')}
+                    `
+                        )
+                        .join('')}
                 </div>
-                ` : ''}
+                `
+                        : ''
+                }
             </div>
-        `).join('')}
+        `
+            )
+            .join('')}
     </div>
-    ` : ''}
+    `
+            : ''
+    }
 
-    ${installed?.manifest?.prompts ? `
+    ${
+        installed?.manifest?.prompts
+            ? `
     <div class="section">
         <h2>📝 Included Prompts</h2>
         <div class="info-grid">
-            ${installed.manifest.prompts.map(p => `
+            ${installed.manifest.prompts
+                .map(
+                    (p) => `
                 <div class="info-row prompt-item" onclick="openPromptFile('${escapedInstallPath}', '${p.file}')" style="cursor: pointer;">
                     <div class="info-label">${p.id}:</div>
                     <div class="info-value">
@@ -1207,10 +1314,14 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                         <span style="color: var(--vscode-textLink-foreground); margin-left: 8px;">📄 Open</span>
                     </div>
                 </div>
-            `).join('')}
+            `
+                )
+                .join('')}
         </div>
     </div>
-    ` : ''}
+    `
+            : ''
+    }
 </body>
 </html>`;
     }
@@ -1218,7 +1329,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     /**
      * Get HTML content for marketplace webview
      */
-    private getHtmlContent(webview: vscode.Webview): string {
+    private getHtmlContent(_webview: vscode.Webview): string {
         return `<!DOCTYPE html>
 <html lang="en">
 <head>

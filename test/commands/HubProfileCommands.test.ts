@@ -3,11 +3,12 @@
  * Tests for hub profile command logic and data transformations
  */
 
-import * as assert from 'assert';
-import * as path from 'path';
-import * as fs from 'fs';
-import { HubStorage } from '../../src/storage/HubStorage';
+import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+
 import { HubManager } from '../../src/services/HubManager';
+import { HubStorage } from '../../src/storage/HubStorage';
 import { HubConfig } from '../../src/types/hub';
 
 suite('HubProfileCommands - Logic Tests', () => {
@@ -21,7 +22,7 @@ suite('HubProfileCommands - Logic Tests', () => {
             name: `Test Hub ${hubId}`,
             description: `Test hub with ${profileCount} profiles`,
             maintainer: 'Test',
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
         },
         sources: [],
         profiles: Array.from({ length: profileCount }, (_, i) => ({
@@ -33,14 +34,14 @@ suite('HubProfileCommands - Logic Tests', () => {
                     id: `bundle-${i + 1}`,
                     version: '1.0.0',
                     source: 'test-source',
-                    required: i % 2 === 0
-                }
+                    required: i % 2 === 0,
+                },
             ],
             icon: '📦',
             active: false,
             createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-        }))
+            updatedAt: new Date().toISOString(),
+        })),
     });
 
     setup(() => {
@@ -60,18 +61,27 @@ suite('HubProfileCommands - Logic Tests', () => {
 
     suite('Profile Data Retrieval', () => {
         test('should retrieve all profiles from multiple hubs', async () => {
-            await storage.saveHub('hub-1', createSampleHub('1', 2), { type: 'github', location: 'test/hub1' });
-            await storage.saveHub('hub-2', createSampleHub('2', 3), { type: 'github', location: 'test/hub2' });
+            await storage.saveHub('hub-1', createSampleHub('1', 2), {
+                type: 'github',
+                location: 'test/hub1',
+            });
+            await storage.saveHub('hub-2', createSampleHub('2', 3), {
+                type: 'github',
+                location: 'test/hub2',
+            });
 
             const profiles = await hubManager.listAllHubProfiles();
 
             assert.strictEqual(profiles.length, 5);
-            assert.strictEqual(profiles.filter(p => p.hubId === 'hub-1').length, 2);
-            assert.strictEqual(profiles.filter(p => p.hubId === 'hub-2').length, 3);
+            assert.strictEqual(profiles.filter((p) => p.hubId === 'hub-1').length, 2);
+            assert.strictEqual(profiles.filter((p) => p.hubId === 'hub-2').length, 3);
         });
 
         test('should include hub metadata with profiles', async () => {
-            await storage.saveHub('test-hub', createSampleHub('test', 1), { type: 'github', location: 'test/hub' });
+            await storage.saveHub('test-hub', createSampleHub('test', 1), {
+                type: 'github',
+                location: 'test/hub',
+            });
 
             const profiles = await hubManager.listAllHubProfiles();
 
@@ -92,13 +102,16 @@ suite('HubProfileCommands - Logic Tests', () => {
                     name: 'Empty Hub',
                     description: 'No profiles',
                     maintainer: 'Test',
-                    updatedAt: new Date().toISOString()
+                    updatedAt: new Date().toISOString(),
                 },
                 sources: [],
-                profiles: []
+                profiles: [],
             };
 
-            await storage.saveHub('empty-hub', emptyHub, { type: 'github', location: 'test/empty' });
+            await storage.saveHub('empty-hub', emptyHub, {
+                type: 'github',
+                location: 'test/empty',
+            });
             const profiles = await hubManager.listAllHubProfiles();
 
             assert.strictEqual(profiles.length, 0);
@@ -107,8 +120,14 @@ suite('HubProfileCommands - Logic Tests', () => {
 
     suite('Profile Grouping Logic', () => {
         test('should group profiles by hub correctly', async () => {
-            await storage.saveHub('hub-a', createSampleHub('A', 2), { type: 'github', location: 'test/a' });
-            await storage.saveHub('hub-b', createSampleHub('B', 2), { type: 'github', location: 'test/b' });
+            await storage.saveHub('hub-a', createSampleHub('A', 2), {
+                type: 'github',
+                location: 'test/a',
+            });
+            await storage.saveHub('hub-b', createSampleHub('B', 2), {
+                type: 'github',
+                location: 'test/b',
+            });
 
             const profiles = await hubManager.listAllHubProfiles();
 
@@ -127,7 +146,10 @@ suite('HubProfileCommands - Logic Tests', () => {
         });
 
         test('should maintain profile order within hub', async () => {
-            await storage.saveHub('ordered-hub', createSampleHub('ordered', 5), { type: 'github', location: 'test/ordered' });
+            await storage.saveHub('ordered-hub', createSampleHub('ordered', 5), {
+                type: 'github',
+                location: 'test/ordered',
+            });
 
             const profiles = await hubManager.listAllHubProfiles();
 
@@ -140,7 +162,10 @@ suite('HubProfileCommands - Logic Tests', () => {
 
     suite('Profile Detail Access', () => {
         test('should retrieve specific profile with all details', async () => {
-            await storage.saveHub('detail-hub', createSampleHub('detail', 3), { type: 'github', location: 'test/detail' });
+            await storage.saveHub('detail-hub', createSampleHub('detail', 3), {
+                type: 'github',
+                location: 'test/detail',
+            });
 
             const profile = await hubManager.getHubProfile('detail-hub', 'profile-2');
 
@@ -151,7 +176,10 @@ suite('HubProfileCommands - Logic Tests', () => {
         });
 
         test('should include bundle metadata in profile', async () => {
-            await storage.saveHub('bundle-hub', createSampleHub('bundle', 1), { type: 'github', location: 'test/bundle' });
+            await storage.saveHub('bundle-hub', createSampleHub('bundle', 1), {
+                type: 'github',
+                location: 'test/bundle',
+            });
 
             const profile = await hubManager.getHubProfile('bundle-hub', 'profile-1');
 
@@ -169,22 +197,27 @@ suite('HubProfileCommands - Logic Tests', () => {
                     name: 'No Bundles Hub',
                     description: 'Profile without bundles',
                     maintainer: 'Test',
-                    updatedAt: new Date().toISOString()
+                    updatedAt: new Date().toISOString(),
                 },
                 sources: [],
-                profiles: [{
-                    id: 'empty-profile',
-                    name: 'Empty Profile',
-                    description: 'No bundles',
-                    bundles: [],
-                    icon: '',
-                    active: false,
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
-                }]
+                profiles: [
+                    {
+                        id: 'empty-profile',
+                        name: 'Empty Profile',
+                        description: 'No bundles',
+                        bundles: [],
+                        icon: '',
+                        active: false,
+                        createdAt: new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                    },
+                ],
             };
 
-            await storage.saveHub('no-bundles', noBundlesHub, { type: 'github', location: 'test/nobundles' });
+            await storage.saveHub('no-bundles', noBundlesHub, {
+                type: 'github',
+                location: 'test/nobundles',
+            });
             const profile = await hubManager.getHubProfile('no-bundles', 'empty-profile');
 
             assert.strictEqual(profile.bundles.length, 0);
@@ -193,8 +226,14 @@ suite('HubProfileCommands - Logic Tests', () => {
 
     suite('Profile Filtering and Search', () => {
         test('should filter profiles by hub', async () => {
-            await storage.saveHub('hub-1', createSampleHub('1', 3), { type: 'github', location: 'test/1' });
-            await storage.saveHub('hub-2', createSampleHub('2', 2), { type: 'github', location: 'test/2' });
+            await storage.saveHub('hub-1', createSampleHub('1', 3), {
+                type: 'github',
+                location: 'test/1',
+            });
+            await storage.saveHub('hub-2', createSampleHub('2', 2), {
+                type: 'github',
+                location: 'test/2',
+            });
 
             const hub1Profiles = await hubManager.listProfilesFromHub('hub-1');
             const hub2Profiles = await hubManager.listProfilesFromHub('hub-2');
@@ -204,14 +243,15 @@ suite('HubProfileCommands - Logic Tests', () => {
         });
 
         test('should find profiles with specific characteristics', async () => {
-            await storage.saveHub('test-hub', createSampleHub('test', 4), { type: 'github', location: 'test/hub' });
+            await storage.saveHub('test-hub', createSampleHub('test', 4), {
+                type: 'github',
+                location: 'test/hub',
+            });
 
             const profiles = await hubManager.listProfilesFromHub('test-hub');
 
             // Find profiles with required bundles (created with i % 2 === 0)
-            const withRequired = profiles.filter(p => 
-                p.bundles.some(b => b.required)
-            );
+            const withRequired = profiles.filter((p) => p.bundles.some((b) => b.required));
 
             assert.strictEqual(withRequired.length, 2); // profiles 1 and 3 (0-indexed 0 and 2)
         });
@@ -219,17 +259,26 @@ suite('HubProfileCommands - Logic Tests', () => {
 
     suite('Hub List Access', () => {
         test('should retrieve hub list for browsing', async () => {
-            await storage.saveHub('hub-1', createSampleHub('1', 1), { type: 'github', location: 'test/1' });
-            await storage.saveHub('hub-2', createSampleHub('2', 1), { type: 'url', location: 'https://test.com' });
+            await storage.saveHub('hub-1', createSampleHub('1', 1), {
+                type: 'github',
+                location: 'test/1',
+            });
+            await storage.saveHub('hub-2', createSampleHub('2', 1), {
+                type: 'url',
+                location: 'https://test.com',
+            });
 
             const hubs = await hubManager.listHubs();
 
             assert.strictEqual(hubs.length, 2);
-            assert.ok(hubs.every(h => h.id && h.name && h.description));
+            assert.ok(hubs.every((h) => h.id && h.name && h.description));
         });
 
         test('should include reference information in hub list', async () => {
-            await storage.saveHub('test-hub', createSampleHub('test', 1), { type: 'local', location: '/path/to/hub' });
+            await storage.saveHub('test-hub', createSampleHub('test', 1), {
+                type: 'local',
+                location: '/path/to/hub',
+            });
 
             const hubs = await hubManager.listHubs();
 
@@ -241,7 +290,10 @@ suite('HubProfileCommands - Logic Tests', () => {
 
     suite('Profile Metadata Validation', () => {
         test('should have all required profile fields', async () => {
-            await storage.saveHub('valid-hub', createSampleHub('valid', 1), { type: 'github', location: 'test/valid' });
+            await storage.saveHub('valid-hub', createSampleHub('valid', 1), {
+                type: 'github',
+                location: 'test/valid',
+            });
 
             const profile = await hubManager.getHubProfile('valid-hub', 'profile-1');
 
@@ -253,7 +305,10 @@ suite('HubProfileCommands - Logic Tests', () => {
         });
 
         test('should preserve profile icons', async () => {
-            await storage.saveHub('icon-hub', createSampleHub('icon', 1), { type: 'github', location: 'test/icon' });
+            await storage.saveHub('icon-hub', createSampleHub('icon', 1), {
+                type: 'github',
+                location: 'test/icon',
+            });
 
             const profile = await hubManager.getHubProfile('icon-hub', 'profile-1');
 
@@ -261,7 +316,10 @@ suite('HubProfileCommands - Logic Tests', () => {
         });
 
         test('should include timestamps in profiles', async () => {
-            await storage.saveHub('time-hub', createSampleHub('time', 1), { type: 'github', location: 'test/time' });
+            await storage.saveHub('time-hub', createSampleHub('time', 1), {
+                type: 'github',
+                location: 'test/time',
+            });
 
             const profile = await hubManager.getHubProfile('time-hub', 'profile-1');
 
@@ -282,7 +340,10 @@ suite('HubProfileCommands - Logic Tests', () => {
         });
 
         test('should handle non-existent profile gracefully', async () => {
-            await storage.saveHub('test-hub', createSampleHub('test', 1), { type: 'github', location: 'test/hub' });
+            await storage.saveHub('test-hub', createSampleHub('test', 1), {
+                type: 'github',
+                location: 'test/hub',
+            });
 
             await assert.rejects(
                 async () => await hubManager.getHubProfile('test-hub', 'non-existent'),

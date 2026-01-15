@@ -1,10 +1,16 @@
-import * as assert from 'assert';
-import * as vscode from 'vscode';
+import * as assert from 'node:assert';
+
 import * as sinon from 'sinon';
-import { RegistryTreeProvider, TreeItemType, RegistryTreeItem } from '../../src/ui/RegistryTreeProvider';
-import { RegistryManager } from '../../src/services/RegistryManager';
+import * as vscode from 'vscode';
+
 import { HubManager } from '../../src/services/HubManager';
+import { RegistryManager } from '../../src/services/RegistryManager';
 import { HubProfile } from '../../src/types/hub';
+import {
+    RegistryTreeProvider,
+    TreeItemType,
+    RegistryTreeItem,
+} from '../../src/ui/RegistryTreeProvider';
 
 suite('RegistryTreeProvider - Hub Profiles', () => {
     let provider: RegistryTreeProvider;
@@ -16,23 +22,49 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
         sandbox = sinon.createSandbox();
         registryManagerStub = sandbox.createStubInstance(RegistryManager);
         hubManagerStub = sandbox.createStubInstance(HubManager);
-        
+
         // Mock event emitters
-        (registryManagerStub as any).onBundleInstalled = sandbox.stub().returns({ dispose: () => {} });
-        (registryManagerStub as any).onBundleUninstalled = sandbox.stub().returns({ dispose: () => {} });
-        (registryManagerStub as any).onBundleUpdated = sandbox.stub().returns({ dispose: () => {} });
-        (registryManagerStub as any).onBundlesInstalled = sandbox.stub().returns({ dispose: () => {} });
-        (registryManagerStub as any).onBundlesUninstalled = sandbox.stub().returns({ dispose: () => {} });
-        (registryManagerStub as any).onProfileActivated = sandbox.stub().returns({ dispose: () => {} });
-        (registryManagerStub as any).onProfileDeactivated = sandbox.stub().returns({ dispose: () => {} });
-        (registryManagerStub as any).onProfileCreated = sandbox.stub().returns({ dispose: () => {} });
-        (registryManagerStub as any).onProfileUpdated = sandbox.stub().returns({ dispose: () => {} });
-        (registryManagerStub as any).onProfileDeleted = sandbox.stub().returns({ dispose: () => {} });
+        (registryManagerStub as any).onBundleInstalled = sandbox
+            .stub()
+            .returns({ dispose: () => {} });
+        (registryManagerStub as any).onBundleUninstalled = sandbox
+            .stub()
+            .returns({ dispose: () => {} });
+        (registryManagerStub as any).onBundleUpdated = sandbox
+            .stub()
+            .returns({ dispose: () => {} });
+        (registryManagerStub as any).onBundlesInstalled = sandbox
+            .stub()
+            .returns({ dispose: () => {} });
+        (registryManagerStub as any).onBundlesUninstalled = sandbox
+            .stub()
+            .returns({ dispose: () => {} });
+        (registryManagerStub as any).onProfileActivated = sandbox
+            .stub()
+            .returns({ dispose: () => {} });
+        (registryManagerStub as any).onProfileDeactivated = sandbox
+            .stub()
+            .returns({ dispose: () => {} });
+        (registryManagerStub as any).onProfileCreated = sandbox
+            .stub()
+            .returns({ dispose: () => {} });
+        (registryManagerStub as any).onProfileUpdated = sandbox
+            .stub()
+            .returns({ dispose: () => {} });
+        (registryManagerStub as any).onProfileDeleted = sandbox
+            .stub()
+            .returns({ dispose: () => {} });
         (registryManagerStub as any).onSourceAdded = sandbox.stub().returns({ dispose: () => {} });
-        (registryManagerStub as any).onSourceRemoved = sandbox.stub().returns({ dispose: () => {} });
-        (registryManagerStub as any).onSourceUpdated = sandbox.stub().returns({ dispose: () => {} });
+        (registryManagerStub as any).onSourceRemoved = sandbox
+            .stub()
+            .returns({ dispose: () => {} });
+        (registryManagerStub as any).onSourceUpdated = sandbox
+            .stub()
+            .returns({ dispose: () => {} });
         (registryManagerStub as any).onSourceSynced = sandbox.stub().returns({ dispose: () => {} });
-        (registryManagerStub as any).onAutoUpdatePreferenceChanged = sandbox.stub().returns({ dispose: () => {} });
+        (registryManagerStub as any).onAutoUpdatePreferenceChanged = sandbox
+            .stub()
+            .returns({ dispose: () => {} });
         (hubManagerStub as any).onHubImported = sandbox.stub().returns({ dispose: () => {} });
         (hubManagerStub as any).onHubDeleted = sandbox.stub().returns({ dispose: () => {} });
         (hubManagerStub as any).onHubSynced = sandbox.stub().returns({ dispose: () => {} });
@@ -55,11 +87,11 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
             active: false,
             icon: 'test-icon',
             createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
         };
 
         const favorites = {
-            'test-hub': ['test-profile']
+            'test-hub': ['test-profile'],
         };
 
         hubManagerStub.getFavoriteProfiles.resolves(favorites);
@@ -69,7 +101,7 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
             id: 'test-hub',
             config: { metadata: { name: 'Test Hub' } } as any,
             reference: {} as any,
-            metadata: {} as any
+            metadata: {} as any,
         });
         registryManagerStub.listLocalProfiles.resolves([]); // Mock empty local profiles
 
@@ -78,7 +110,7 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
 
         // 1 Hub Item + 0 local + 1 create button = 2 items
         assert.strictEqual(items.length, 3);
-        
+
         const hubItem = items.find((i: RegistryTreeItem) => i.label === 'Test Hub');
         assert.ok(hubItem);
         assert.strictEqual(hubItem.type, TreeItemType.HUB);
@@ -86,8 +118,10 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
         // Get children of Hub Item to find the profile
         hubManagerStub.listProfilesFromHub.withArgs('test-hub').resolves([mockProfile]);
         const children = await provider.getChildren(hubItem);
-        
-        const profileItem = children.find((i: RegistryTreeItem) => i.label === 'test-icon ⭐ Test Profile');
+
+        const profileItem = children.find(
+            (i: RegistryTreeItem) => i.label === 'test-icon ⭐ Test Profile'
+        );
         assert.ok(profileItem);
         assert.strictEqual(profileItem.type, TreeItemType.HUB_PROFILE);
         // contextValue should enable profile actions
@@ -104,7 +138,7 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
             active: false,
             icon: 'test-icon',
             createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
         };
 
         const mockLocalProfile = {
@@ -115,11 +149,11 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
             active: true,
             icon: 'local-icon',
             createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
         };
 
         const favorites = {
-            'test-hub': ['test-hub-profile']
+            'test-hub': ['test-hub-profile'],
         };
 
         hubManagerStub.getFavoriteProfiles.resolves(favorites);
@@ -128,7 +162,7 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
             id: 'test-hub',
             config: { metadata: { name: 'Test Hub' } } as any,
             reference: {} as any,
-            metadata: {} as any
+            metadata: {} as any,
         });
         registryManagerStub.listLocalProfiles.resolves([mockLocalProfile]);
 
@@ -137,14 +171,18 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
 
         // Should contain: 1 Hub Item + 1 Local Profiles folder + 1 create button
         assert.strictEqual(items.length, 4);
-        
+
         const hubItem = items.find((i: RegistryTreeItem) => i.label === 'Test Hub');
         assert.ok(hubItem, 'Hub item should be present for favorited hub profiles');
 
-        const localProfilesFolder = items.find((i: RegistryTreeItem) => i.label === 'Local Profiles');
+        const localProfilesFolder = items.find(
+            (i: RegistryTreeItem) => i.label === 'Local Profiles'
+        );
         assert.ok(localProfilesFolder, 'Local Profiles folder should be present');
 
-        const createItem = items.find((i: RegistryTreeItem) => i.type === TreeItemType.CREATE_PROFILE);
+        const createItem = items.find(
+            (i: RegistryTreeItem) => i.type === TreeItemType.CREATE_PROFILE
+        );
         assert.ok(createItem, 'Create Profile item should be present');
     });
 
@@ -158,11 +196,11 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
             active: true, // Active
             icon: 'test-icon',
             createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
         };
 
         const favorites = {
-            'test-hub': ['test-profile']
+            'test-hub': ['test-profile'],
         };
 
         hubManagerStub.getFavoriteProfiles.resolves(favorites);
@@ -172,16 +210,18 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
             id: 'test-hub',
             config: { metadata: { name: 'Test Hub' } } as any,
             reference: {} as any,
-            metadata: {} as any
+            metadata: {} as any,
         });
         registryManagerStub.listLocalProfiles.resolves([]);
 
         const items = await (provider as any).getFavoritesItems();
         const hubItem = items.find((i: RegistryTreeItem) => i.label === 'Test Hub');
-        
+
         const children = await provider.getChildren(hubItem);
-        const item = children.find((i: RegistryTreeItem) => i.label === 'test-icon ⭐ Test Profile'); // Expect profile icon + star
-        
+        const item = children.find(
+            (i: RegistryTreeItem) => i.label === 'test-icon ⭐ Test Profile'
+        ); // Expect profile icon + star
+
         assert.ok(item);
         assert.strictEqual(item.description, '[Active]');
     });
@@ -189,8 +229,10 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
     test('Favorites root item should not have emoji in label', () => {
         (provider as any).viewMode = 'favorites';
         const roots = (provider as any).getRootItems();
-        const favoritesRoot = roots.find((i: RegistryTreeItem) => i.type === TreeItemType.FAVORITES_ROOT);
-        
+        const favoritesRoot = roots.find(
+            (i: RegistryTreeItem) => i.type === TreeItemType.FAVORITES_ROOT
+        );
+
         assert.strictEqual(favoritesRoot.label, 'Favorites');
     });
 
@@ -205,7 +247,9 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
 
         assert.strictEqual(items[0].label, 'Active Profile');
 
-        const activeProfileSection = items.find((i: RegistryTreeItem) => i.label === 'Active Profile');
+        const activeProfileSection = items.find(
+            (i: RegistryTreeItem) => i.label === 'Active Profile'
+        );
         assert.ok(activeProfileSection);
 
         const children = await provider.getChildren(activeProfileSection);
@@ -224,7 +268,7 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
             active: true,
             icon: 'local-icon',
             createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
         };
 
         hubManagerStub.getFavoriteProfiles.resolves({});
@@ -232,7 +276,9 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
         hubManagerStub.listAllActiveProfiles.resolves([]);
 
         const items = await (provider as any).getFavoritesItems();
-        const activeProfileSection = items.find((i: RegistryTreeItem) => i.label === 'Active Profile');
+        const activeProfileSection = items.find(
+            (i: RegistryTreeItem) => i.label === 'Active Profile'
+        );
         assert.ok(activeProfileSection);
 
         const children = await provider.getChildren(activeProfileSection);
@@ -255,7 +301,7 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
             icon: 'icon',
             path: [],
             createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
         };
 
         hubManagerStub.getFavoriteProfiles.resolves({});
@@ -265,17 +311,21 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
                 hubId,
                 profileId: 'active-profile',
                 activatedAt: new Date().toISOString(),
-                syncedBundles: []
-            }
+                syncedBundles: [],
+            },
         ]);
         hubManagerStub.getHubProfile.withArgs(hubId, 'active-profile').resolves(activeProfile);
 
         const items = await (provider as any).getFavoritesItems();
-        const activeProfileSection = items.find((i: RegistryTreeItem) => i.label === 'Active Profile');
+        const activeProfileSection = items.find(
+            (i: RegistryTreeItem) => i.label === 'Active Profile'
+        );
         assert.ok(activeProfileSection);
 
         const children = await provider.getChildren(activeProfileSection);
-        const activeItem = children.find((i: RegistryTreeItem) => i.label === 'icon Active Profile');
+        const activeItem = children.find(
+            (i: RegistryTreeItem) => i.label === 'icon Active Profile'
+        );
         assert.ok(activeItem);
         assert.strictEqual(activeItem.type, TreeItemType.HUB_PROFILE);
         assert.strictEqual(activeItem.description, '[Active]');
@@ -284,7 +334,7 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
     test('should deduplicate items when local profile matches favorite Hub Profile', async () => {
         (provider as any).viewMode = 'favorites';
         const commonId = 'common-profile';
-        
+
         const mockHubProfile: HubProfile = {
             id: commonId,
             name: 'Common Profile',
@@ -293,7 +343,7 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
             active: false,
             icon: 'hub-icon',
             createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
         };
 
         const mockLocalProfile = {
@@ -304,12 +354,12 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
             active: true,
             icon: 'local-icon',
             createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
         };
 
         // Profile is favorited
         const favorites = {
-            'test-hub': [commonId]
+            'test-hub': [commonId],
         };
 
         hubManagerStub.getFavoriteProfiles.resolves(favorites);
@@ -319,7 +369,7 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
             id: 'test-hub',
             config: { metadata: { name: 'Test Hub' } } as any,
             reference: {} as any,
-            metadata: {} as any
+            metadata: {} as any,
         });
         registryManagerStub.listLocalProfiles.resolves([mockLocalProfile]);
 
@@ -328,11 +378,13 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
         // Should return 3 items: 1 Hub Item + 1 Local Profiles folder + 1 Create Button
         // Local profiles are now in their own folder, separate from hub favorites
         assert.strictEqual(items.length, 4);
-        
+
         const hubItem = items.find((i: RegistryTreeItem) => i.type === TreeItemType.HUB);
         assert.ok(hubItem, 'Hub Item should be present');
-        
-        const localProfilesFolder = items.find((i: RegistryTreeItem) => i.type === TreeItemType.LOCAL_PROFILES_FOLDER);
+
+        const localProfilesFolder = items.find(
+            (i: RegistryTreeItem) => i.type === TreeItemType.LOCAL_PROFILES_FOLDER
+        );
         assert.ok(localProfilesFolder, 'Local Profiles folder should be present');
     });
 
@@ -350,7 +402,7 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
             icon: 'icon',
             path: [],
             createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
         };
 
         const inactiveProfile: HubProfile = {
@@ -362,10 +414,12 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
             icon: 'icon',
             path: [],
             createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
         };
 
-        hubManagerStub.listProfilesFromHub.withArgs(hubId).resolves([activeProfile, inactiveProfile]);
+        hubManagerStub.listProfilesFromHub
+            .withArgs(hubId)
+            .resolves([activeProfile, inactiveProfile]);
         hubManagerStub.getFavoriteProfiles.resolves({});
 
         // Mock a hub item as parent
@@ -378,11 +432,11 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
 
         const items = await provider.getChildren(hubItem);
 
-        const activeItem = items.find(i => i.label === 'icon Active Profile');
+        const activeItem = items.find((i) => i.label === 'icon Active Profile');
         assert.ok(activeItem);
         assert.strictEqual(activeItem.description, '[Active]');
 
-        const inactiveItem = items.find(i => i.label === 'icon Inactive Profile');
+        const inactiveItem = items.find((i) => i.label === 'icon Inactive Profile');
         assert.ok(inactiveItem);
         // Inactive profiles have empty string description to match PROFILE behavior
         assert.strictEqual(inactiveItem.description, '');
@@ -391,7 +445,7 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
     test('should organize profiles by path', async () => {
         (provider as any).viewMode = 'all';
         const hubId = 'test-hub';
-        
+
         const rootProfile: HubProfile = {
             id: 'root-profile',
             name: 'Root Profile',
@@ -401,7 +455,7 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
             active: false,
             icon: 'icon',
             createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
         };
 
         const nestedProfile: HubProfile = {
@@ -413,7 +467,7 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
             active: false,
             icon: 'icon',
             createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
         };
 
         hubManagerStub.listProfilesFromHub.withArgs(hubId).resolves([rootProfile, nestedProfile]);
@@ -426,37 +480,37 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
             { id: hubId },
             vscode.TreeItemCollapsibleState.Expanded
         );
-        
+
         const rootItems = await provider.getChildren(hubItem);
-        
+
         // Should find "Root Profile" (with icon prefix) and "Folder"
-        const rootProfileItem = rootItems.find(i => i.label === 'icon Root Profile');
-        const folderItem = rootItems.find(i => i.label === 'Folder');
-        
+        const rootProfileItem = rootItems.find((i) => i.label === 'icon Root Profile');
+        const folderItem = rootItems.find((i) => i.label === 'Folder');
+
         assert.ok(rootProfileItem, 'Root Profile not found');
         assert.ok(folderItem, 'Folder not found');
         assert.strictEqual(folderItem.type, TreeItemType.PROFILE_FOLDER);
 
         // Get Folder children
         const folderChildren = await provider.getChildren(folderItem);
-        
+
         // Should find "Subfolder"
-        const subfolderItem = folderChildren.find(i => i.label === 'Subfolder');
+        const subfolderItem = folderChildren.find((i) => i.label === 'Subfolder');
         assert.ok(subfolderItem, 'Subfolder not found');
         assert.strictEqual(subfolderItem.type, TreeItemType.PROFILE_FOLDER);
 
         // Get Subfolder children
         const subfolderChildren = await provider.getChildren(subfolderItem);
-        
+
         // Should find "Nested Profile" (with icon prefix)
-        const nestedProfileItem = subfolderChildren.find(i => i.label === 'icon Nested Profile');
+        const nestedProfileItem = subfolderChildren.find((i) => i.label === 'icon Nested Profile');
         assert.ok(nestedProfileItem, 'Nested Profile not found');
     });
 
     test('Favorites view should organize hub profiles by path', async () => {
         (provider as any).viewMode = 'favorites';
         const hubId = 'test-hub';
-        
+
         const nestedProfile: HubProfile = {
             id: 'nested-profile',
             name: 'Nested Profile',
@@ -466,11 +520,11 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
             active: true, // Make it active
             icon: 'icon',
             createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
+            updatedAt: new Date().toISOString(),
         };
 
         const favorites = {
-            [hubId]: ['nested-profile']
+            [hubId]: ['nested-profile'],
         };
 
         hubManagerStub.getFavoriteProfiles.resolves(favorites);
@@ -479,11 +533,11 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
             id: hubId,
             config: { metadata: { name: 'Test Hub' } } as any,
             reference: {} as any,
-            metadata: {} as any
+            metadata: {} as any,
         });
 
         const items = await (provider as any).getFavoritesItems();
-        
+
         // Should find "Test Hub" as a root item in favorites
         const hubItem = items.find((i: RegistryTreeItem) => i.label === 'Test Hub');
         assert.ok(hubItem, 'Hub item not found in favorites');
@@ -491,15 +545,15 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
 
         // Get children of the hub item
         const children = await provider.getChildren(hubItem);
-        
+
         // Should find "Folder"
         const folderItem = children.find((i: RegistryTreeItem) => i.label === 'Folder');
         assert.ok(folderItem, 'Folder not found in favorites');
         assert.strictEqual(folderItem.type, TreeItemType.PROFILE_FOLDER);
-        
+
         // Get children of folder
         const folderChildren = await provider.getChildren(folderItem);
-        
+
         // Should find "Subfolder"
         const subfolderItem = folderChildren.find((i: RegistryTreeItem) => i.label === 'Subfolder');
         assert.ok(subfolderItem, 'Subfolder not found');
@@ -507,10 +561,16 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
 
         // Get Subfolder children
         const subfolderChildren = await provider.getChildren(subfolderItem);
-        
+
         // Should find "Nested Profile" with icon prefix, star, and active status
-        const nestedProfileItem = subfolderChildren.find((i: RegistryTreeItem) => i.label === 'icon ⭐ Nested Profile');
+        const nestedProfileItem = subfolderChildren.find(
+            (i: RegistryTreeItem) => i.label === 'icon ⭐ Nested Profile'
+        );
         assert.ok(nestedProfileItem, 'Nested Profile not found');
-        assert.strictEqual(nestedProfileItem.description, '[Active]', 'Nested profile should be indicated as active');
+        assert.strictEqual(
+            nestedProfileItem.description,
+            '[Active]',
+            'Nested profile should be indicated as active'
+        );
     });
 });

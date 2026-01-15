@@ -8,7 +8,7 @@ export enum LogLevel {
     INFO = 1,
     WARN = 2,
     ERROR = 3,
-    NONE = 4
+    NONE = 4,
 }
 
 /**
@@ -16,15 +16,17 @@ export enum LogLevel {
  */
 export class Logger {
     private static instance: Logger;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     private outputChannel: any;
     private isTestEnvironment: boolean;
     private logLevel: LogLevel;
 
     private constructor() {
         // Detect test environment
-        this.isTestEnvironment = process.env.NODE_ENV === 'test' || 
-                                 process.argv.some(arg => arg.includes('mocha')) ||
-                                 process.argv.some(arg => arg.includes('test'));
+        this.isTestEnvironment =
+            process.env.NODE_ENV === 'test' ||
+            process.argv.some((arg) => arg.includes('mocha')) ||
+            process.argv.some((arg) => arg.includes('test'));
 
         // Check for LOG_LEVEL environment variable
         const envLogLevel = process.env.LOG_LEVEL?.toUpperCase();
@@ -38,10 +40,11 @@ export class Logger {
         if (this.isTestEnvironment) {
             // Use console logging in test environment to avoid channel disposal errors
             this.outputChannel = {
+                // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
                 appendLine: (message: string) => console.log(`[Prompt Registry] ${message}`),
                 show: () => {},
                 hide: () => {},
-                dispose: () => {}
+                dispose: () => {},
             };
         } else {
             // Use VS Code output channel in normal environment
@@ -57,6 +60,7 @@ export class Logger {
     }
 
     public static resetInstance(): void {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
         Logger.instance = undefined as any;
     }
 
@@ -74,62 +78,66 @@ export class Logger {
         return this.logLevel;
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     public info(message: string, ...args: any[]): void {
         if (this.logLevel > LogLevel.INFO) {
             return;
         }
-        
+
         const timestamp = new Date().toISOString();
         const logMessage = `[${timestamp}] INFO: ${message}`;
         this.outputChannel.appendLine(logMessage);
-        
+
         if (args.length > 0) {
             this.outputChannel.appendLine(`  Details: ${JSON.stringify(args, null, 2)}`);
         }
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     public warn(message: string, ...args: any[]): void {
         if (this.logLevel > LogLevel.WARN) {
             return;
         }
-        
+
         const timestamp = new Date().toISOString();
         const logMessage = `[${timestamp}] WARN: ${message}`;
         this.outputChannel.appendLine(logMessage);
-        
+
         if (args.length > 0) {
             this.outputChannel.appendLine(`  Details: ${JSON.stringify(args, null, 2)}`);
         }
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     public error(message: string, error?: Error, ...args: any[]): void {
         if (this.logLevel > LogLevel.ERROR) {
             return;
         }
-        
+
         const timestamp = new Date().toISOString();
         const logMessage = `[${timestamp}] ERROR: ${message}`;
         this.outputChannel.appendLine(logMessage);
-        
+
         if (error) {
             this.outputChannel.appendLine(`  Error: ${error.message}`);
             this.outputChannel.appendLine(`  Stack: ${error.stack}`);
         }
-        
+
         if (args.length > 0) {
             this.outputChannel.appendLine(`  Details: ${JSON.stringify(args, null, 2)}`);
         }
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     public debug(message: string, ...args: any[]): void {
         if (this.logLevel > LogLevel.DEBUG) {
             return;
         }
-        
+
         const timestamp = new Date().toISOString();
         const logMessage = `[${timestamp}] DEBUG: ${message}`;
         this.outputChannel.appendLine(logMessage);
-        
+
         if (args.length > 0) {
             this.outputChannel.appendLine(`  Details: ${JSON.stringify(args, null, 2)}`);
         }

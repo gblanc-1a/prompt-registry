@@ -1,53 +1,50 @@
 import * as vscode from 'vscode';
-import { RegistryManager } from './services/RegistryManager';
-import { RegistryTreeProvider } from './ui/RegistryTreeProvider';
-import { MarketplaceViewProvider } from './ui/MarketplaceViewProvider';
-import { ProfileCommands } from './commands/ProfileCommands';
-import { SourceCommands } from './commands/SourceCommands';
-import { BundleCommands } from './commands/BundleCommands';
-import { HubCommands } from './commands/HubCommands';
-import { HubProfileCommands } from './commands/HubProfileCommands';
-import { HubIntegrationCommands } from './commands/HubIntegrationCommands';
-import { HubManager } from './services/HubManager';
-import { getEnabledDefaultHubs } from './config/defaultHubs';
-import { HubStorage } from './storage/HubStorage';
-import { SchemaValidator } from './services/SchemaValidator';
-import { SettingsCommands } from './commands/SettingsCommands';
-import { ScaffoldCommand } from './commands/ScaffoldCommand';
+
 import { AddResourceCommand } from './commands/AddResourceCommand';
-import { ValidateCollectionsCommand } from './commands/ValidateCollectionsCommand';
-import { ValidateApmCommand } from './commands/ValidateApmCommand';
+import { BundleCommands } from './commands/BundleCommands';
 import { CreateCollectionCommand } from './commands/CreateCollectionCommand';
 import { GitHubAuthCommand } from './commands/GitHubAuthCommand';
-import { StatusBar } from './ui/statusBar';
+import { HubCommands } from './commands/HubCommands';
+import { HubIntegrationCommands } from './commands/HubIntegrationCommands';
+import { HubProfileCommands } from './commands/HubProfileCommands';
+import { ProfileCommands } from './commands/ProfileCommands';
+import { ScaffoldCommand } from './commands/ScaffoldCommand';
+import { SettingsCommands } from './commands/SettingsCommands';
+import { SourceCommands } from './commands/SourceCommands';
+import { ValidateApmCommand } from './commands/ValidateApmCommand';
+import { ValidateCollectionsCommand } from './commands/ValidateCollectionsCommand';
+import { selectVersionCommand } from './commands/selectVersionCommand';
+import { StatusCommand } from './commands/statusCommand';
+import { UpdateCommand } from './commands/updateCommand';
+import { ValidateAccessCommand } from './commands/validateAccessCommand';
+import { getEnabledDefaultHubs } from './config/defaultHubs';
+import { CopilotIntegration } from './integrations/CopilotIntegration';
+import { BundleUpdateNotifications } from './notifications/BundleUpdateNotifications';
 import { ExtensionNotifications } from './notifications/ExtensionNotifications';
+import { ApmRuntimeManager } from './services/ApmRuntimeManager';
+import { AutoUpdateService } from './services/AutoUpdateService';
+import { HubManager } from './services/HubManager';
+import { NotificationManager } from './services/NotificationManager';
+import { OlafRuntimeManager } from './services/OlafRuntimeManager';
+import { RegistryManager } from './services/RegistryManager';
+import { SchemaValidator } from './services/SchemaValidator';
+import { UpdateChecker } from './services/UpdateChecker';
+import { UpdateScheduler } from './services/UpdateScheduler';
+import { InstallationManager } from './services/installationManager';
+import { HubStorage } from './storage/HubStorage';
+import { RegistrySource } from './types/registry';
+import { MarketplaceViewProvider } from './ui/MarketplaceViewProvider';
+import { RegistryTreeProvider } from './ui/RegistryTreeProvider';
+import { StatusBar } from './ui/statusBar';
+import {
+    getValidNotificationPreference,
+    getValidUpdateCheckFrequency,
+} from './utils/configTypeGuards';
 import { Logger } from './utils/logger';
 import { McpConfigLocator } from './utils/mcpConfigLocator';
-import { CopilotIntegration } from './integrations/CopilotIntegration';
-import { UpdateScheduler } from './services/UpdateScheduler';
-import { UpdateChecker } from './services/UpdateChecker';
-import { NotificationManager } from './services/NotificationManager';
-import { AutoUpdateService } from './services/AutoUpdateService';
-import { BundleUpdateNotifications } from './notifications/BundleUpdateNotifications';
-
-import {
-    getValidUpdateCheckFrequency,
-    getValidNotificationPreference
-} from './utils/configTypeGuards';
-
-import { ApmRuntimeManager } from './services/ApmRuntimeManager';
-import { OlafRuntimeManager } from './services/OlafRuntimeManager';
 
 // Module-level variable to store the extension instance for deactivation
 let extensionInstance: PromptRegistryExtension | undefined;
-
-// Legacy imports (to be migrated)
-import { selectVersionCommand } from './commands/selectVersionCommand';
-import { UpdateCommand } from './commands/updateCommand';
-import { StatusCommand } from './commands/statusCommand';
-import { ValidateAccessCommand } from './commands/validateAccessCommand';
-import { InstallationManager } from './services/installationManager';
-import { RegistrySource } from './types/registry';
 
 /**
  * Main extension class that handles activation, deactivation, and command registration
@@ -71,7 +68,7 @@ export class PromptRegistryExtension {
     private validateApmCommand: ValidateApmCommand | undefined;
     private createCollectionCommand: CreateCollectionCommand | undefined;
     private copilotIntegration: CopilotIntegration | undefined;
-    
+
     // Update notification services
     private updateScheduler: UpdateScheduler | undefined;
     private updateChecker: UpdateChecker | undefined;
@@ -87,7 +84,7 @@ export class PromptRegistryExtension {
         this.statusBar = StatusBar.getInstance();
         this.notifications = ExtensionNotifications.getInstance();
         this.registryManager = RegistryManager.getInstance(context);
-        
+
         // Legacy (to be removed)
         this.installationManager = InstallationManager.getInstance();
     }
@@ -98,6 +95,7 @@ export class PromptRegistryExtension {
     /**
      * Extract bundleId from various argument types (string, TreeItem, InstalledBundle)
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     private extractBundleId(arg?: any): string | undefined {
         if (typeof arg === 'string') {
             return arg;
@@ -130,7 +128,7 @@ export class PromptRegistryExtension {
 
             // Initialize UI components
             await this.initializeUI();
-            
+
             // Register TreeView
             await this.registerTreeView();
 
@@ -156,17 +154,18 @@ export class PromptRegistryExtension {
             await this.ensureSingleActiveProfile();
 
             this.logger.info('Prompt Registry extension activated successfully');
-
         } catch (error) {
             this.logger.error('Failed to activate Prompt Registry extension', error as Error);
-            await this.notifications.showError(
-                `Failed to activate Prompt Registry extension: ${(error as Error).message}`,
-                'Show Logs'
-            ).then((action) => {
-                if (action === 'Show Logs') {
-                    this.logger.show();
-                }
-            });
+            await this.notifications
+                .showError(
+                    `Failed to activate Prompt Registry extension: ${(error as Error).message}`,
+                    'Show Logs'
+                )
+                .then((action) => {
+                    if (action === 'Show Logs') {
+                        this.logger.show();
+                    }
+                });
         }
     }
 
@@ -178,7 +177,9 @@ export class PromptRegistryExtension {
             this.logger.info('Deactivating Prompt Registry extension...');
 
             // Dispose of all resources
-            this.disposables.forEach(disposable => disposable.dispose());
+            for (const disposable of this.disposables) {
+                disposable.dispose();
+            }
             this.disposables = [];
 
             // Dispose update scheduler
@@ -197,8 +198,8 @@ export class PromptRegistryExtension {
             this.logger.dispose();
 
             this.logger.info('Prompt Registry extension deactivated successfully');
-
         } catch (error) {
+            // eslint-disable-next-line no-console -- TODO: Migrate to Logger (Req 6)
             console.error('Error during Prompt Registry extension deactivation:', error);
         }
     }
@@ -212,18 +213,25 @@ export class PromptRegistryExtension {
         this.sourceCommands = new SourceCommands(this.registryManager);
         this.settingsCommands = new SettingsCommands(this.registryManager);
         this.bundleCommands = new BundleCommands(this.registryManager);
-        
+
         // Initialize hub infrastructure
         const hubStoragePath = this.context.globalStorageUri.fsPath;
         const hubStorage = new HubStorage(hubStoragePath);
         const hubValidator = new SchemaValidator(this.context.extensionPath);
         // Pass BundleInstaller from RegistryManager to enable bundle installation during profile activation
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
         const bundleInstaller = (this.registryManager as any).installer;
-        this.hubManager = new HubManager(hubStorage, hubValidator, this.context.extensionPath, bundleInstaller, this.registryManager);
-		
-		// Connect HubManager to RegistryManager for profile integration
-		this.registryManager.setHubManager(this.hubManager);
-        
+        this.hubManager = new HubManager(
+            hubStorage,
+            hubValidator,
+            this.context.extensionPath,
+            bundleInstaller,
+            this.registryManager
+        );
+
+        // Connect HubManager to RegistryManager for profile integration
+        this.registryManager.setHubManager(this.hubManager);
+
         this.hubCommands = new HubCommands(this.hubManager, this.registryManager, this.context);
         this.hubIntegrationCommands = new HubIntegrationCommands(this.hubManager, this.context);
         this.hubProfileCommands = new HubProfileCommands(this.context);
@@ -242,33 +250,75 @@ export class PromptRegistryExtension {
         // Register command handlers
         const commands = [
             // Profile Management Commands
-            vscode.commands.registerCommand('promptRegistry.createProfile', () => this.profileCommands!.createProfile()),
-            vscode.commands.registerCommand('promptRegistry.editProfile', (profileId?) => this.profileCommands!.editProfile(profileId)),
-            vscode.commands.registerCommand('promptRegistry.activateProfile', (profileId?) => this.profileCommands!.activateProfile(profileId)),
-            vscode.commands.registerCommand('promptRegistry.deactivateProfile', (profileId?) => this.profileCommands!.deactivateProfile(profileId)),
-            vscode.commands.registerCommand('promptRegistry.deleteProfile', (profileId?) => this.profileCommands!.deleteProfile(profileId)),
-            vscode.commands.registerCommand('promptRegistry.exportProfile', (profileId?) => this.profileCommands!.exportProfile(profileId)),
-            vscode.commands.registerCommand('promptRegistry.importProfile', () => this.profileCommands!.importProfile()),
-            vscode.commands.registerCommand('promptRegistry.listProfiles', () => this.profileCommands!.listProfiles()),
-            
+            vscode.commands.registerCommand('promptRegistry.createProfile', () =>
+                this.profileCommands!.createProfile()
+            ),
+            vscode.commands.registerCommand('promptRegistry.editProfile', (profileId?) =>
+                this.profileCommands!.editProfile(profileId)
+            ),
+            vscode.commands.registerCommand('promptRegistry.activateProfile', (profileId?) =>
+                this.profileCommands!.activateProfile(profileId)
+            ),
+            vscode.commands.registerCommand('promptRegistry.deactivateProfile', (profileId?) =>
+                this.profileCommands!.deactivateProfile(profileId)
+            ),
+            vscode.commands.registerCommand('promptRegistry.deleteProfile', (profileId?) =>
+                this.profileCommands!.deleteProfile(profileId)
+            ),
+            vscode.commands.registerCommand('promptRegistry.exportProfile', (profileId?) =>
+                this.profileCommands!.exportProfile(profileId)
+            ),
+            vscode.commands.registerCommand('promptRegistry.importProfile', () =>
+                this.profileCommands!.importProfile()
+            ),
+            vscode.commands.registerCommand('promptRegistry.listProfiles', () =>
+                this.profileCommands!.listProfiles()
+            ),
+
             // Settings Management Commands
-            vscode.commands.registerCommand('promptRegistry.exportSettings', () => this.settingsCommands!.exportSettings()),
-            vscode.commands.registerCommand('promptRegistry.importSettings', () => this.settingsCommands!.importSettings()),
+            vscode.commands.registerCommand('promptRegistry.exportSettings', () =>
+                this.settingsCommands!.exportSettings()
+            ),
+            vscode.commands.registerCommand('promptRegistry.importSettings', () =>
+                this.settingsCommands!.importSettings()
+            ),
 
             // Source Management Commands
-            vscode.commands.registerCommand('promptRegistry.addSource', () => this.sourceCommands!.addSource()),
-            vscode.commands.registerCommand('promptRegistry.editSource', (sourceId?) => this.sourceCommands!.editSource(sourceId)),
-            vscode.commands.registerCommand('promptRegistry.removeSource', (sourceId?) => this.sourceCommands!.removeSource(sourceId)),
-            vscode.commands.registerCommand('promptRegistry.syncSource', (sourceId?) => this.sourceCommands!.syncSource(sourceId)),
-            vscode.commands.registerCommand('promptRegistry.syncAllSources', () => this.sourceCommands!.syncAllSources()),
-            vscode.commands.registerCommand('promptRegistry.toggleSource', (sourceId?) => this.sourceCommands!.toggleSource(sourceId)),
-            vscode.commands.registerCommand('promptRegistry.listSources', () => this.sourceCommands!.listSources()),
-            
+            vscode.commands.registerCommand('promptRegistry.addSource', () =>
+                this.sourceCommands!.addSource()
+            ),
+            vscode.commands.registerCommand('promptRegistry.editSource', (sourceId?) =>
+                this.sourceCommands!.editSource(sourceId)
+            ),
+            vscode.commands.registerCommand('promptRegistry.removeSource', (sourceId?) =>
+                this.sourceCommands!.removeSource(sourceId)
+            ),
+            vscode.commands.registerCommand('promptRegistry.syncSource', (sourceId?) =>
+                this.sourceCommands!.syncSource(sourceId)
+            ),
+            vscode.commands.registerCommand('promptRegistry.syncAllSources', () =>
+                this.sourceCommands!.syncAllSources()
+            ),
+            vscode.commands.registerCommand('promptRegistry.toggleSource', (sourceId?) =>
+                this.sourceCommands!.toggleSource(sourceId)
+            ),
+            vscode.commands.registerCommand('promptRegistry.listSources', () =>
+                this.sourceCommands!.listSources()
+            ),
+
             // Bundle Management Commands
-            vscode.commands.registerCommand('promptRegistry.searchBundles', () => this.bundleCommands!.searchAndInstall()),
-            vscode.commands.registerCommand('promptRegistry.installBundle', (bundleId?) => this.bundleCommands!.installBundle(bundleId)),
-            vscode.commands.registerCommand('promptRegistry.uninstallBundle', (arg?) => this.bundleCommands!.uninstallBundle(this.extractBundleId(arg))),
-            vscode.commands.registerCommand('promptRegistry.updateBundle', (arg?) => this.bundleCommands!.updateBundle(this.extractBundleId(arg))),
+            vscode.commands.registerCommand('promptRegistry.searchBundles', () =>
+                this.bundleCommands!.searchAndInstall()
+            ),
+            vscode.commands.registerCommand('promptRegistry.installBundle', (bundleId?) =>
+                this.bundleCommands!.installBundle(bundleId)
+            ),
+            vscode.commands.registerCommand('promptRegistry.uninstallBundle', (arg?) =>
+                this.bundleCommands!.uninstallBundle(this.extractBundleId(arg))
+            ),
+            vscode.commands.registerCommand('promptRegistry.updateBundle', (arg?) =>
+                this.bundleCommands!.updateBundle(this.extractBundleId(arg))
+            ),
             vscode.commands.registerCommand('promptRegistry.checkBundleUpdates', (arg?) => {
                 const bundleId = this.extractBundleId(arg);
                 if (bundleId) {
@@ -282,12 +332,18 @@ export class PromptRegistryExtension {
             vscode.commands.registerCommand('promptRegistry.manualCheckForUpdates', async () => {
                 await this.handleManualUpdateCheck();
             }),
-            vscode.commands.registerCommand('promptRegistry.updateAllBundles', () => this.bundleCommands!.updateAllBundles()),
-            vscode.commands.registerCommand('promptRegistry.enableAutoUpdate', (arg?) => this.bundleCommands!.enableAutoUpdate(this.extractBundleId(arg))),
-            vscode.commands.registerCommand('promptRegistry.disableAutoUpdate', (arg?) => this.bundleCommands!.disableAutoUpdate(this.extractBundleId(arg))),
+            vscode.commands.registerCommand('promptRegistry.updateAllBundles', () =>
+                this.bundleCommands!.updateAllBundles()
+            ),
+            vscode.commands.registerCommand('promptRegistry.enableAutoUpdate', (arg?) =>
+                this.bundleCommands!.enableAutoUpdate(this.extractBundleId(arg))
+            ),
+            vscode.commands.registerCommand('promptRegistry.disableAutoUpdate', (arg?) =>
+                this.bundleCommands!.disableAutoUpdate(this.extractBundleId(arg))
+            ),
             vscode.commands.registerCommand('promptRegistry.viewBundle', async (arg?) => {
                 const bundleId = this.extractBundleId(arg);
-                
+
                 if (bundleId && this.marketplaceProvider) {
                     // Open in webview details panel (same as marketplace)
                     await this.marketplaceProvider.openBundleDetails(bundleId);
@@ -296,23 +352,33 @@ export class PromptRegistryExtension {
                     await this.bundleCommands!.viewBundle(bundleId);
                 }
             }),
-            vscode.commands.registerCommand('promptRegistry.browseByCategory', () => this.bundleCommands!.browseByCategory()),
-            vscode.commands.registerCommand('promptRegistry.showPopular', () => this.bundleCommands!.showPopular()),
-            vscode.commands.registerCommand('promptRegistry.listInstalled', () => this.bundleCommands!.listInstalled()),
-            
+            vscode.commands.registerCommand('promptRegistry.browseByCategory', () =>
+                this.bundleCommands!.browseByCategory()
+            ),
+            vscode.commands.registerCommand('promptRegistry.showPopular', () =>
+                this.bundleCommands!.showPopular()
+            ),
+            vscode.commands.registerCommand('promptRegistry.listInstalled', () =>
+                this.bundleCommands!.listInstalled()
+            ),
+
             // Scaffold Command - Create project structure
-            vscode.commands.registerCommand('promptRegistry.scaffoldProject', () => ScaffoldCommand.runWithUI()),
-            
-            
+            vscode.commands.registerCommand('promptRegistry.scaffoldProject', () =>
+                ScaffoldCommand.runWithUI()
+            ),
+
             // Add Resource Command - Add individual resources
             vscode.commands.registerCommand('promptRegistry.addResource', async () => {
                 await addResourceCommand.execute();
             }),
 
             // Collection Management Commands
-            vscode.commands.registerCommand('promptRegistry.validateCollections', async (options?) => {
-                await this.validateCollectionsCommand!.execute(options);
-            }),
+            vscode.commands.registerCommand(
+                'promptRegistry.validateCollections',
+                async (options?) => {
+                    await this.validateCollectionsCommand!.execute(options);
+                }
+            ),
 
             vscode.commands.registerCommand('promptRegistry.listCollections', async () => {
                 await this.validateCollectionsCommand!.execute({ listOnly: true });
@@ -342,20 +408,37 @@ export class PromptRegistryExtension {
                 await this.context.globalState.update('promptregistry.hubInitialized', false);
                 // Clear active hub to ensure hub selector is shown
                 await this.hubManager?.setActiveHub(null);
-                this.logger.info('First run state reset: firstRun=true, hubInitialized=false, activeHub=null');
-                vscode.window.showInformationMessage('First run state has been reset. Reload the window to trigger first-run initialization.');
+                this.logger.info(
+                    'First run state reset: firstRun=true, hubInitialized=false, activeHub=null'
+                );
+                vscode.window.showInformationMessage(
+                    'First run state has been reset. Reload the window to trigger first-run initialization.'
+                );
             }),
 
-            
             // Legacy commands (to be migrated)
-            vscode.commands.registerCommand('promptregistry.selectVersion', () => selectVersionCommand()),
+            vscode.commands.registerCommand('promptregistry.selectVersion', () =>
+                selectVersionCommand()
+            ),
             vscode.commands.registerCommand('promptregistry.update', () => updateCommand.execute()),
-            vscode.commands.registerCommand('promptregistry.checkUpdates', () => statusCommand.checkUpdates()),
-            vscode.commands.registerCommand('promptregistry.showVersion', () => statusCommand.showVersion()),
-            vscode.commands.registerCommand('promptregistry.uninstall', () => statusCommand.uninstall()),
-            vscode.commands.registerCommand('promptregistry.showHelp', () => statusCommand.showHelp()),
-            vscode.commands.registerCommand('promptregistry.validateAccess', () => validateAccessCommand.execute()),
-            vscode.commands.registerCommand('promptregistry.forceGitHubAuth', () => githubAuthCommand.execute()),
+            vscode.commands.registerCommand('promptregistry.checkUpdates', () =>
+                statusCommand.checkUpdates()
+            ),
+            vscode.commands.registerCommand('promptregistry.showVersion', () =>
+                statusCommand.showVersion()
+            ),
+            vscode.commands.registerCommand('promptregistry.uninstall', () =>
+                statusCommand.uninstall()
+            ),
+            vscode.commands.registerCommand('promptregistry.showHelp', () =>
+                statusCommand.showHelp()
+            ),
+            vscode.commands.registerCommand('promptregistry.validateAccess', () =>
+                validateAccessCommand.execute()
+            ),
+            vscode.commands.registerCommand('promptregistry.forceGitHubAuth', () =>
+                githubAuthCommand.execute()
+            ),
 
             // vscode.commands.registerCommand('promptregistry.uninstallAll', () => uninstallCommand.executeUninstallAll()),
             // vscode.commands.registerCommand('promptregistry.enhancedInstall', () => enhancedInstallCommand.execute()),
@@ -376,18 +459,18 @@ export class PromptRegistryExtension {
      */
     private async registerTreeView(): Promise<void> {
         this.logger.info('Registering Registry Explorer TreeView...');
-        
+
         // Create tree provider
         this.treeProvider = new RegistryTreeProvider(this.registryManager, this.hubManager!);
-        
+
         // Register tree view
         const treeView = vscode.window.createTreeView('promptRegistryExplorer', {
             treeDataProvider: this.treeProvider,
             showCollapseAll: true,
         });
-        
+
         this.disposables.push(treeView);
-        
+
         // Register tree view commands
         const treeCommands = [
             vscode.commands.registerCommand('promptRegistry.refresh', () => {
@@ -397,10 +480,10 @@ export class PromptRegistryExtension {
                 this.treeProvider?.toggleViewMode();
             }),
         ];
-        
+
         this.disposables.push(...treeCommands);
         this.context.subscriptions.push(...treeCommands);
-        
+
         this.logger.info('Registry Explorer TreeView registered successfully');
     }
 
@@ -409,24 +492,24 @@ export class PromptRegistryExtension {
      */
     private async registerMarketplaceView(): Promise<void> {
         this.logger.info('Registering Marketplace View...');
-        
+
         // Create marketplace provider
         this.marketplaceProvider = new MarketplaceViewProvider(this.context, this.registryManager);
-        
+
         // Register webview view
         const marketplaceView = vscode.window.registerWebviewViewProvider(
             MarketplaceViewProvider.viewType,
             this.marketplaceProvider,
             {
                 webviewOptions: {
-                    retainContextWhenHidden: true
-                }
+                    retainContextWhenHidden: true,
+                },
             }
         );
-        
+
         this.disposables.push(marketplaceView);
         this.context.subscriptions.push(marketplaceView);
-        
+
         this.logger.info('Marketplace View registered successfully');
     }
 
@@ -436,10 +519,10 @@ export class PromptRegistryExtension {
     private async initializeCopilot(): Promise<void> {
         try {
             this.logger.info('Initializing Copilot integration...');
-            
+
             this.copilotIntegration = new CopilotIntegration(this.context);
             await this.copilotIntegration.activate();
-            
+
             this.logger.info('Copilot integration initialized successfully');
         } catch (error) {
             this.logger.warn('Failed to initialize Copilot integration', error as Error);
@@ -472,24 +555,24 @@ export class PromptRegistryExtension {
 
             // Initialize AutoUpdateService with dependency injection
             // Pass RegistryManager methods as functions to avoid circular reference
-            const bundleNotifications = new BundleUpdateNotifications(
-                async (bundleId: string) => {
-                    return await this.registryManager.getBundleName(bundleId);
-                }
-            );
+            const bundleNotifications = new BundleUpdateNotifications(async (bundleId: string) => {
+                return await this.registryManager.getBundleName(bundleId);
+            });
 
             // Create update service factory to inject dependencies
             this.autoUpdateService = new AutoUpdateService(
                 // Bundle operations
                 {
-                    updateBundle: (bundleId: string, version?: string) => this.registryManager.updateBundle(bundleId, version),
+                    updateBundle: (bundleId: string, version?: string) =>
+                        this.registryManager.updateBundle(bundleId, version),
                     listInstalledBundles: () => this.registryManager.listInstalledBundles(),
-                    getBundleDetails: (bundleId: string) => this.registryManager.getBundleDetails(bundleId)
+                    getBundleDetails: (bundleId: string) =>
+                        this.registryManager.getBundleDetails(bundleId),
                 },
                 // Source operations
                 {
                     listSources: () => this.registryManager.listSources(),
-                    syncSource: (sourceId: string) => this.registryManager.syncSource(sourceId)
+                    syncSource: (sourceId: string) => this.registryManager.syncSource(sourceId),
                 },
                 bundleNotifications,
                 registryStorage
@@ -510,7 +593,7 @@ export class PromptRegistryExtension {
 
             // Wire up update detection to tree provider
             if (this.treeProvider) {
-                this.updateScheduler.onUpdatesDetected(updates => {
+                this.updateScheduler.onUpdatesDetected((updates) => {
                     this.treeProvider?.onUpdatesDetected(updates);
                 });
             }
@@ -534,7 +617,7 @@ export class PromptRegistryExtension {
      */
     private registerUpdateConfigurationListeners(): void {
         // Listen for update check configuration changes
-        const configListener = vscode.workspace.onDidChangeConfiguration(e => {
+        const configListener = vscode.workspace.onDidChangeConfiguration((e) => {
             if (e.affectsConfiguration('promptregistry.updateCheck')) {
                 this.handleUpdateConfigurationChange();
             }
@@ -567,7 +650,9 @@ export class PromptRegistryExtension {
             );
         }
 
-        this.logger.info(`Update configuration changed: enabled=${enabled}, frequency=${frequency}`);
+        this.logger.info(
+            `Update configuration changed: enabled=${enabled}, frequency=${frequency}`
+        );
 
         // Apply changes immediately
         this.updateScheduler.updateEnabled(enabled);
@@ -581,7 +666,9 @@ export class PromptRegistryExtension {
     private async handleManualUpdateCheck(): Promise<void> {
         if (!this.updateScheduler || !this.updateChecker || !this.notificationManager) {
             this.logger.warn('Update system not initialized');
-            await vscode.window.showWarningMessage('Update system is not initialized yet. Please try again in a moment.');
+            await vscode.window.showWarningMessage(
+                'Update system is not initialized yet. Please try again in a moment.'
+            );
             return;
         }
 
@@ -590,7 +677,7 @@ export class PromptRegistryExtension {
                 {
                     location: vscode.ProgressLocation.Notification,
                     title: 'Checking for bundle updates...',
-                    cancellable: false
+                    cancellable: false,
                 },
                 async () => {
                     // Trigger manual check (bypasses cache)
@@ -606,10 +693,16 @@ export class PromptRegistryExtension {
 
                     // Show notification with results
                     const config = vscode.workspace.getConfiguration('promptregistry.updateCheck');
-                    const rawNotificationPreference = config.get<string>('notificationPreference', 'all');
+                    const rawNotificationPreference = config.get<string>(
+                        'notificationPreference',
+                        'all'
+                    );
 
                     // Validate and sanitize notification preference
-                    const notificationPreference = getValidNotificationPreference(rawNotificationPreference, 'all');
+                    const notificationPreference = getValidNotificationPreference(
+                        rawNotificationPreference,
+                        'all'
+                    );
 
                     // Log warning if invalid value was provided
                     if (rawNotificationPreference !== notificationPreference) {
@@ -626,20 +719,22 @@ export class PromptRegistryExtension {
                     );
                     await bundleNotifications.showUpdateNotification({
                         updates,
-                        notificationPreference
+                        notificationPreference,
                     });
                 }
             );
         } catch (error) {
             this.logger.error('Manual update check failed', error as Error);
-            await vscode.window.showErrorMessage(
-                `Failed to check for updates: ${(error as Error).message}`,
-                'Show Logs'
-            ).then(action => {
-                if (action === 'Show Logs') {
-                    this.logger.show();
-                }
-            });
+            await vscode.window
+                .showErrorMessage(
+                    `Failed to check for updates: ${(error as Error).message}`,
+                    'Show Logs'
+                )
+                .then((action) => {
+                    if (action === 'Show Logs') {
+                        this.logger.show();
+                    }
+                });
         }
     }
 
@@ -655,7 +750,6 @@ export class PromptRegistryExtension {
             this.disposables.push(this.statusBar);
 
             this.logger.debug('UI components initialized successfully');
-
         } catch (error) {
             this.logger.error('Failed to initialize UI components', error as Error);
         }
@@ -670,7 +764,11 @@ export class PromptRegistryExtension {
             return false;
         }
 
-        const workspaceRoot = workspaceFolders[0].uri;
+        const firstFolder = workspaceFolders[0];
+        if (!firstFolder) {
+            return false;
+        }
+        const workspaceRoot = firstFolder.uri;
 
         // Check for key directories that indicate an awesome-copilot structure
         const requiredDirs = ['collections', 'prompts', 'instructions', 'agents'];
@@ -701,7 +799,11 @@ export class PromptRegistryExtension {
             return false;
         }
 
-        const workspaceRoot = workspaceFolders[0].uri;
+        const firstFolder = workspaceFolders[0];
+        if (!firstFolder) {
+            return false;
+        }
+        const workspaceRoot = firstFolder.uri;
         const apmYmlUri = vscode.Uri.joinPath(workspaceRoot, 'apm.yml');
 
         try {
@@ -727,75 +829,75 @@ export class PromptRegistryExtension {
             // Profile Management
             {
                 label: '$(person) Profile Management',
-                kind: vscode.QuickPickItemKind.Separator
+                kind: vscode.QuickPickItemKind.Separator,
             },
             {
                 label: '$(add) Create Profile',
                 description: 'Create a new prompt profile',
-                command: 'promptRegistry.createProfile'
+                command: 'promptRegistry.createProfile',
             },
             {
                 label: '$(edit) Edit Profile',
                 description: 'Edit an existing profile',
-                command: 'promptRegistry.editProfile'
+                command: 'promptRegistry.editProfile',
             },
             {
                 label: '$(check) Activate Profile',
                 description: 'Switch to a different profile',
-                command: 'promptRegistry.activateProfile'
+                command: 'promptRegistry.activateProfile',
             },
             {
                 label: '$(list-flat) List Profiles',
                 description: 'View all available profiles',
-                command: 'promptRegistry.listProfiles'
+                command: 'promptRegistry.listProfiles',
             },
-            
+
             // Source Management
             {
                 label: '$(source-control) Source Management',
-                kind: vscode.QuickPickItemKind.Separator
+                kind: vscode.QuickPickItemKind.Separator,
             },
             {
                 label: '$(add) Add Source',
                 description: 'Add a new prompt source',
-                command: 'promptRegistry.addSource'
+                command: 'promptRegistry.addSource',
             },
             {
                 label: '$(sync) Sync All Sources',
                 description: 'Synchronize all prompt sources',
-                command: 'promptRegistry.syncAllSources'
+                command: 'promptRegistry.syncAllSources',
             },
             {
                 label: '$(list-flat) List Sources',
                 description: 'View all configured sources',
-                command: 'promptRegistry.listSources'
+                command: 'promptRegistry.listSources',
             },
-            
+
             // Bundle Management
             {
                 label: '$(package) Bundle Management',
-                kind: vscode.QuickPickItemKind.Separator
+                kind: vscode.QuickPickItemKind.Separator,
             },
             {
                 label: '$(search) Search Bundles',
                 description: 'Search and install prompt bundles',
-                command: 'promptRegistry.searchBundles'
+                command: 'promptRegistry.searchBundles',
             },
             {
                 label: '$(star) Show Popular Bundles',
                 description: 'Browse popular prompt bundles',
-                command: 'promptRegistry.showPopular'
+                command: 'promptRegistry.showPopular',
             },
             {
                 label: '$(list-selection) List Installed Bundles',
                 description: 'View all installed bundles',
-                command: 'promptRegistry.listInstalled'
+                command: 'promptRegistry.listInstalled',
             },
             {
                 label: '$(refresh) Check for Updates',
                 description: 'Check for bundle updates',
-                command: 'promptRegistry.checkBundleUpdates'
-            }
+                command: 'promptRegistry.checkBundleUpdates',
+            },
         ];
 
         // Add Collection Management section only for awesome-copilot repositories
@@ -803,22 +905,22 @@ export class PromptRegistryExtension {
             commands.push(
                 {
                     label: '$(folder) Collection Management',
-                    kind: vscode.QuickPickItemKind.Separator
+                    kind: vscode.QuickPickItemKind.Separator,
                 },
                 {
                     label: '$(new-file) Create New Collection',
                     description: 'Interactive collection creator',
-                    command: 'promptRegistry.createCollection'
+                    command: 'promptRegistry.createCollection',
                 },
                 {
                     label: '$(check-all) Validate Collections',
                     description: 'Validate collection YAML files',
-                    command: 'promptRegistry.validateCollections'
+                    command: 'promptRegistry.validateCollections',
                 },
                 {
                     label: '$(list-flat) List All Collections',
                     description: 'Show collection metadata',
-                    command: 'promptRegistry.listCollections'
+                    command: 'promptRegistry.listCollections',
                 }
             );
         }
@@ -828,12 +930,12 @@ export class PromptRegistryExtension {
             commands.push(
                 {
                     label: '$(package) Package Management',
-                    kind: vscode.QuickPickItemKind.Separator
+                    kind: vscode.QuickPickItemKind.Separator,
                 },
                 {
                     label: '$(check-all) Validate APM Package',
                     description: 'Validate APM manifest and prompt files',
-                    command: 'promptRegistry.validateApm'
+                    command: 'promptRegistry.validateApm',
                 }
             );
         }
@@ -842,35 +944,31 @@ export class PromptRegistryExtension {
         commands.push(
             {
                 label: '$(file-directory) Project Scaffolding',
-                kind: vscode.QuickPickItemKind.Separator
+                kind: vscode.QuickPickItemKind.Separator,
             },
             {
                 label: '$(folder-library) Scaffold Project',
                 description: 'Create new prompt project (GitHub or APM)',
-                command: 'promptRegistry.scaffoldProject'
-            }
-        );
-
-        // Settings & Info
-        commands.push(
+                command: 'promptRegistry.scaffoldProject',
+            },
             {
                 label: '$(settings-gear) Settings & Information',
-                kind: vscode.QuickPickItemKind.Separator
+                kind: vscode.QuickPickItemKind.Separator,
             },
             {
                 label: '$(gear) Open Settings',
                 description: 'Configure Prompt Registry',
-                command: 'promptRegistry.openSettings'
+                command: 'promptRegistry.openSettings',
             },
             {
                 label: '$(info) Show Version',
                 description: 'Display version information',
-                command: 'promptregistry.showVersion'
+                command: 'promptregistry.showVersion',
             },
             {
                 label: '$(question) Show Help',
                 description: 'Get help with Prompt Registry',
-                command: 'promptregistry.showHelp'
+                command: 'promptregistry.showHelp',
             }
         );
 
@@ -878,7 +976,7 @@ export class PromptRegistryExtension {
             placeHolder: 'Select a Prompt Registry command',
             matchOnDescription: true,
             matchOnDetail: true,
-            ignoreFocusOut: true
+            ignoreFocusOut: true,
         });
 
         if (selected && selected.command) {
@@ -892,28 +990,38 @@ export class PromptRegistryExtension {
      */
     private async ensureSingleActiveProfile(): Promise<void> {
         try {
-            const allProfiles = await this.registryManager!.listProfiles();
-            const activeProfiles = allProfiles.filter(p => p.active);
-            
+            const allProfiles = await this.registryManager.listProfiles();
+            const activeProfiles = allProfiles.filter((p) => p.active);
+
             if (activeProfiles.length <= 1) {
                 // Already have 0 or 1 active profile - good state
                 return;
             }
-            
-            this.logger.info(`Found ${activeProfiles.length} active profiles, ensuring only one is active`);
-            
+
+            this.logger.info(
+                `Found ${activeProfiles.length} active profiles, ensuring only one is active`
+            );
+
             // Deactivate all but the first active profile
             for (let i = 1; i < activeProfiles.length; i++) {
                 const profile = activeProfiles[i];
+                if (!profile) {
+                    continue;
+                }
                 this.logger.info(`Deactivating extra active profile: ${profile.name}`);
                 try {
-                    await this.registryManager!.deactivateProfile(profile.id);
+                    await this.registryManager.deactivateProfile(profile.id);
                 } catch (error) {
                     this.logger.error(`Failed to deactivate profile ${profile.id}`, error as Error);
                 }
             }
-            
-            this.logger.info(`Profile cleanup complete, only ${activeProfiles[0].name} remains active`);
+
+            const firstProfile = activeProfiles[0];
+            if (firstProfile) {
+                this.logger.info(
+                    `Profile cleanup complete, only ${firstProfile.name} remains active`
+                );
+            }
         } catch (error) {
             this.logger.error('Failed to ensure single active profile', error as Error);
         }
@@ -936,17 +1044,16 @@ export class PromptRegistryExtension {
 
             // Automatic update checking removed - users can access all commands via status bar menu
             this.logger.debug('Automatic update checking disabled - use command menu instead');
-
         } catch (error) {
             this.logger.warn('Failed to perform automatic update check', error as Error);
         }
-    }    /**
+    } /**
      * Initialize default sources on first run
      */
     private async initializeDefaultSources(): Promise<void> {
         try {
             // Check if any sources already exist
-            const existingSources = await this.registryManager!.listSources();
+            const existingSources = await this.registryManager.listSources();
             if (existingSources.length > 0) {
                 this.logger.info('Sources already exist, skipping default source initialization');
                 return;
@@ -964,18 +1071,18 @@ export class PromptRegistryExtension {
                 metadata: {
                     description: 'Official Awesome Copilot collections from GitHub',
                     homepage: 'https://github.com/github/awesome-copilot',
-                }
+                },
             };
 
             // Add config for awesome-copilot source type
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
             (defaultSource as any).config = {
                 branch: 'main',
-                collectionsPath: 'collections'
+                collectionsPath: 'collections',
             };
 
-            await this.registryManager!.addSource(defaultSource);
+            await this.registryManager.addSource(defaultSource);
             this.logger.info('Default Awesome Copilot source added successfully');
-
         } catch (error) {
             this.logger.warn('Failed to initialize default sources', error as Error);
         }
@@ -988,9 +1095,13 @@ export class PromptRegistryExtension {
      */
     private async checkFirstRun(): Promise<void> {
         try {
-            const isFirstRun = this.context.globalState.get<boolean>('promptregistry.firstRun', true);
+            const isFirstRun = this.context.globalState.get<boolean>(
+                'promptregistry.firstRun',
+                true
+            );
 
-            if (isFirstRun) {                // Mark as not first run
+            if (isFirstRun) {
+                // Mark as not first run
                 await this.context.globalState.update('promptregistry.firstRun', false);
 
                 // Initialize default sources (Awesome Copilot)
@@ -998,7 +1109,6 @@ export class PromptRegistryExtension {
 
                 // Initialize hub (first-run hub selector or migration)
                 await this.initializeHub();
-
 
                 // Check if Prompt Registry is already installed
                 const installedScopes = await this.installationManager.getInstalledScopes();
@@ -1011,7 +1121,6 @@ export class PromptRegistryExtension {
 
                 this.logger.info('First run detected, welcome message shown');
             }
-
         } catch (error) {
             this.logger.warn('Failed to check first run status', error as Error);
         }
@@ -1025,7 +1134,7 @@ export class PromptRegistryExtension {
         try {
             const hubManager = this.hubManager;
             const sourceCommands = this.sourceCommands;
-            
+
             if (!hubManager || !sourceCommands) {
                 this.logger.warn('HubManager or SourceCommands not initialized, skipping hub sync');
                 return;
@@ -1040,31 +1149,30 @@ export class PromptRegistryExtension {
 
             // Get active hub ID
             const activeProfiles = await hubManager.listActiveHubProfiles();
-            if (activeProfiles.length === 0 || !activeProfiles[0].hubId) {
+            const firstProfile = activeProfiles[0];
+            if (activeProfiles.length === 0 || !firstProfile || !firstProfile.hubId) {
                 this.logger.warn('Active hub has no profiles or hub ID, skipping auto-sync');
                 return;
             }
 
-            const activeHubId = activeProfiles[0].hubId;
+            const activeHubId = firstProfile.hubId;
             this.logger.info(`Auto-syncing active hub: ${activeHubId}`);
 
             // Sync hub configuration
             await hubManager.syncHub(activeHubId);
-            
+
             // Sync all sources from the active hub
             await sourceCommands.syncAllSources();
-            
+
             // Refresh tree view
             await vscode.commands.executeCommand('promptRegistry.refresh');
-            
-            this.logger.info('Active hub synchronized successfully on activation');
 
+            this.logger.info('Active hub synchronized successfully on activation');
         } catch (error) {
             this.logger.warn('Failed to auto-sync active hub on activation', error as Error);
             // Don't fail extension activation if sync fails
         }
     }
-
 
     /**
      * Initialize hub configuration on first run or migrate existing installations
@@ -1072,7 +1180,10 @@ export class PromptRegistryExtension {
     private async initializeHub(): Promise<void> {
         try {
             const hubManager = this.hubManager!;
-            const isHubInitialized = this.context.globalState.get<boolean>('promptregistry.hubInitialized', false);
+            const isHubInitialized = this.context.globalState.get<boolean>(
+                'promptregistry.hubInitialized',
+                false
+            );
 
             if (isHubInitialized) {
                 this.logger.info('Hub already initialized, skipping hub setup');
@@ -1089,7 +1200,9 @@ export class PromptRegistryExtension {
                 await this.showFirstRunHubSelector();
             } else if (hubs.length > 0 && !activeHubResult) {
                 // Scenario 2: Migration - hubs exist but no active hub set
-                this.logger.info(`Migration detected: ${hubs.length} hubs found, migrating to active hub model`);
+                this.logger.info(
+                    `Migration detected: ${hubs.length} hubs found, migrating to active hub model`
+                );
                 await this.migrateToActiveHub(hubs);
             } else {
                 // Scenario 3: Already initialized (active hub exists)
@@ -1099,7 +1212,6 @@ export class PromptRegistryExtension {
             // Mark as initialized
             await this.context.globalState.update('promptregistry.hubInitialized', true);
             this.logger.info('Hub initialization complete');
-
         } catch (error) {
             this.logger.error('Failed to initialize hub', error as Error);
             // Don't block extension activation on hub init failure
@@ -1111,33 +1223,41 @@ export class PromptRegistryExtension {
      */
     private async showFirstRunHubSelector(): Promise<void> {
         const hubManager = this.hubManager!;
-        
+
         // Get enabled default hubs and verify their availability
         const defaultHubs = getEnabledDefaultHubs();
         // Verify each hub in parallel but preserve order
         this.logger.info('Verifying default hubs...');
-        const verificationResults = await Promise.all(defaultHubs.map(async (hub) => {
-            const isAvailable = await hubManager.verifyHubAvailability(hub.reference);
-            this.logger.debug(`Hub verification result for ${hub.name}: ${isAvailable ? 'available' : 'unavailable'}`);
-            if (isAvailable) {
-                this.logger.info(`✓ Hub verified: ${hub.name} (${hub.reference.type}:${hub.reference.location})`);
-            } else {
-                this.logger.warn(`✗ Hub unavailable: ${hub.name} (${hub.reference.type}:${hub.reference.location})`);
-            }
-            return { ...hub, verified: isAvailable };
-        }));
-        
+        const verificationResults = await Promise.all(
+            defaultHubs.map(async (hub) => {
+                const isAvailable = await hubManager.verifyHubAvailability(hub.reference);
+                this.logger.debug(
+                    `Hub verification result for ${hub.name}: ${isAvailable ? 'available' : 'unavailable'}`
+                );
+                if (isAvailable) {
+                    this.logger.info(
+                        `✓ Hub verified: ${hub.name} (${hub.reference.type}:${hub.reference.location})`
+                    );
+                } else {
+                    this.logger.warn(
+                        `✗ Hub unavailable: ${hub.name} (${hub.reference.type}:${hub.reference.location})`
+                    );
+                }
+                return { ...hub, verified: isAvailable };
+            })
+        );
+
         // verificationResults maintains the same order as defaultHubs
         const verifiedHubs = verificationResults;
 
         // Build quick-pick items from verified hubs
         const items = verifiedHubs
-            .filter(hub => hub.verified) // Only show verified hubs
-            .map(hub => ({
+            .filter((hub) => hub.verified) // Only show verified hubs
+            .map((hub) => ({
                 label: `$(${hub.icon}) ${hub.name}${hub.recommended ? ' ⭐' : ''}`,
                 description: hub.recommended ? hub.description + ' (recommended)' : hub.description,
                 detail: `${hub.reference.type}/${hub.reference.location}`,
-                hubConfig: hub
+                hubConfig: hub,
             }));
 
         // Add custom URL and skip options
@@ -1146,18 +1266,20 @@ export class PromptRegistryExtension {
                 label: '$(link-external) Custom Hub URL',
                 description: 'Import from custom URL',
                 detail: 'Enter a custom hub URL',
-                hubConfig: null as any
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
+                hubConfig: null as any,
             },
             {
                 label: '$(x) Skip for now',
                 description: 'Configure hub later',
                 detail: 'You can configure a hub anytime from the toolbar',
-                hubConfig: null as any
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
+                hubConfig: null as any,
             }
         );
 
         // Show warning if no verified hubs
-        if (verifiedHubs.filter(h => h.verified).length === 0) {
+        if (verifiedHubs.filter((h) => h.verified).length === 0) {
             this.logger.warn('No default hubs are currently accessible');
             vscode.window.showWarningMessage(
                 'Default hubs are currently unavailable. You can import a custom hub or skip for now.',
@@ -1168,7 +1290,7 @@ export class PromptRegistryExtension {
         const selected = await vscode.window.showQuickPick(items, {
             placeHolder: 'Select a hub to get started',
             title: 'Welcome to Prompt Registry - Choose Your Hub',
-            ignoreFocusOut: true
+            ignoreFocusOut: true,
         });
 
         if (!selected) {
@@ -1182,8 +1304,10 @@ export class PromptRegistryExtension {
             try {
                 const hubId = await hubManager.importHub(selected.hubConfig.reference);
                 await hubManager.setActiveHub(hubId);
-                this.logger.info(`First-run hub ${hubId} imported and activated, syncing sources...`);
-                
+                this.logger.info(
+                    `First-run hub ${hubId} imported and activated, syncing sources...`
+                );
+
                 // Sync all sources from the newly imported hub
                 try {
                     await this.sourceCommands!.syncAllSources();
@@ -1191,27 +1315,41 @@ export class PromptRegistryExtension {
                 } catch (syncError) {
                     this.logger.warn('Failed to sync sources after hub import', syncError as Error);
                 }
-                
+
                 // Try to activate a default profile if hub has profiles
                 try {
                     const hubProfiles = await hubManager.listActiveHubProfiles();
                     if (hubProfiles.length > 0) {
                         // Activate the first profile as default
                         const defaultProfile = hubProfiles[0];
-                        this.logger.info(`Auto-activating default profile: ${defaultProfile.name}`);
-                        await this.registryManager!.activateProfile(defaultProfile.id);
-                        this.logger.info(`Default profile ${defaultProfile.id} activated successfully`);
+                        if (defaultProfile) {
+                            this.logger.info(
+                                `Auto-activating default profile: ${defaultProfile.name}`
+                            );
+                            await this.registryManager.activateProfile(defaultProfile.id);
+                            this.logger.info(
+                                `Default profile ${defaultProfile.id} activated successfully`
+                            );
+                        }
                     } else {
                         this.logger.info('No profiles found in hub for auto-activation');
                     }
                 } catch (profileError) {
-                    this.logger.warn('Failed to auto-activate default profile', profileError as Error);
+                    this.logger.warn(
+                        'Failed to auto-activate default profile',
+                        profileError as Error
+                    );
                 }
-                
+
                 await vscode.commands.executeCommand('promptRegistry.refresh');
-                vscode.window.showInformationMessage(`Successfully activated ${selected.hubConfig.name}`);
+                vscode.window.showInformationMessage(
+                    `Successfully activated ${selected.hubConfig.name}`
+                );
             } catch (error) {
-                this.logger.error(`Failed to import hub: ${selected.hubConfig.name}`, error as Error);
+                this.logger.error(
+                    `Failed to import hub: ${selected.hubConfig.name}`,
+                    error as Error
+                );
                 vscode.window.showErrorMessage(
                     `Failed to import ${selected.hubConfig.name}: ${error instanceof Error ? error.message : String(error)}`
                 );
@@ -1229,6 +1367,7 @@ export class PromptRegistryExtension {
     /**
      * Migrate existing multi-hub installation to active hub model
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- TODO: Add proper types (Req 7)
     private async migrateToActiveHub(hubs: any[]): Promise<void> {
         const hubManager = this.hubManager!;
 
@@ -1242,17 +1381,17 @@ export class PromptRegistryExtension {
         }
 
         // Multiple hubs - show selection dialog
-        const items = hubs.map(hub => ({
+        const items = hubs.map((hub) => ({
             label: hub.metadata?.name || hub.id,
             description: hub.metadata?.description || '',
             detail: `${hub.metadata?.url || 'Unknown URL'} (${hub.metadata?.ref || 'Unknown ref'})`,
-            hubId: hub.id
+            hubId: hub.id,
         }));
 
         const selected = await vscode.window.showQuickPick(items, {
             placeHolder: 'Multiple hubs found. Select which hub to activate:',
             title: 'Hub Migration - Select Active Hub',
-            ignoreFocusOut: true
+            ignoreFocusOut: true,
         });
 
         const hubId = selected ? selected.hubId : hubs[0].id;
@@ -1260,7 +1399,6 @@ export class PromptRegistryExtension {
         await hubManager.setActiveHub(hubId);
         await vscode.commands.executeCommand('promptRegistry.refresh');
     }
-
 }
 
 // Extension activation function called by VS Code

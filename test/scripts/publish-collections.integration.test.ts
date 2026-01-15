@@ -249,4 +249,86 @@ suite('Publish Collections Integration Tests', () => {
             }
         }
     });
+
+    test('skill items include entire skill directory contents in bundle', async function() {
+        this.timeout(60000);
+
+        const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wf-publish-skill-'));
+        
+        try {
+            initGitRepo(root);
+            makeMinimalPackageJson(root);
+            copyScriptsToProject(root);
+
+            // Create a skill directory with multiple files (like ospo.skills-collection)
+            writeFile(root, 'skills/my-skill/SKILL.md', '# My Skill\nDescription');
+            writeFile(root, 'skills/my-skill/assets/diagram.png', 'fake-png-content');
+            writeFile(root, 'skills/my-skill/references/doc.md', '# Reference Doc');
+            writeFile(root, 'skills/my-skill/scripts/helper.js', 'console.log("helper")');
+            
+            // Create a regular prompt
+            writeFile(root, 'prompts/simple.prompt.md', '# Simple Prompt');
+
+            writeFile(
+                root,
+                'collections/skills-collection.collection.yml',
+                [
+                    'id: skills-collection',
+                    'name: Skills Collection',
+                    'description: Collection with skills',
+                    'items:',
+                    '  - path: skills/my-skill/SKILL.md',
+                    '    kind: skill',
+                    '  - path: prompts/simple.prompt.md',
+                    '    kind: prompt',
+                    'version: "1.0.0"',
+                    '',
+                ].join('\n'),
+            );
+
+            gitCommitAll(root, 'init');
+
+            const ghStub = createGhStub(root);
+
+            const env = {
+                ...process.env,
+                PATH: `${ghStub.binDir}:${process.env.PATH || ''}`,
+                GH_STUB_LOG: ghStub.logPath,
+                GH_TOKEN: 'x',
+                GITHUB_TOKEN: 'x',
+                GITHUB_REPOSITORY: 'owner/repo',
+                NODE_PATH: getNodeModulesPath(),
+            };
+
+            const res = runPublishScript(root, ['skills/my-skill/SKILL.md'], 'repo', env);
+
+            assert.strictEqual(res.code, 0, res.stderr || res.stdout);
+
+            const calls = readGhCalls(ghStub.logPath);
+            assert.strictEqual(calls.filter(c => c[0] === 'release' && c[1] === 'create').length, 1);
+
+            // Verify the bundle includes ALL skill directory contents, not just SKILL.md
+            const result = assertReleaseCreateCalledWithAssets({
+                calls,
+                tag: 'skills-collection-v1.0.0',
+                mustInclude: [
+                    /skills\/my-skill\/SKILL\.md/,
+                    /skills\/my-skill\/assets\/diagram\.png/,
+                    /skills\/my-skill\/references\/doc\.md/,
+                    /skills\/my-skill\/scripts\/helper\.js/,
+                    /prompts\/simple\.prompt\.md/,
+                ],
+            });
+
+            // Verify the listing contains all expected files
+            assert.match(result.listing, /skills\/my-skill\/SKILL\.md/, 'Should include SKILL.md');
+            assert.match(result.listing, /skills\/my-skill\/assets\/diagram\.png/, 'Should include assets');
+            assert.match(result.listing, /skills\/my-skill\/references\/doc\.md/, 'Should include references');
+            assert.match(result.listing, /skills\/my-skill\/scripts\/helper\.js/, 'Should include scripts');
+        } finally {
+            if (fs.existsSync(root)) {
+                fs.rmSync(root, { recursive: true, force: true });
+            }
+        }
+    });
 });

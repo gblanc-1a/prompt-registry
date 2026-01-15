@@ -225,5 +225,61 @@ items: [unclosed bracket
                 'prompts/another.md'
             ]);
         });
+
+        test('includes all files in skill directory when kind is skill', function() {
+            project = createTestProject('wf-collections-', { copyScripts: false, initGit: false });
+            const { root } = project;
+
+            // Create a skill directory structure like the real ospo.skills-collection
+            writeFile(root, 'skills/my-skill/SKILL.md', '# My Skill\nDescription here');
+            writeFile(root, 'skills/my-skill/assets/diagram.png', 'fake-png-content');
+            writeFile(root, 'skills/my-skill/references/doc.md', '# Reference Doc');
+            writeFile(root, 'skills/my-skill/scripts/helper.js', 'console.log("helper")');
+
+            const collection = {
+                id: 'test',
+                name: 'Test',
+                items: [
+                    { path: 'skills/my-skill/SKILL.md', kind: 'skill' },
+                ]
+            };
+
+            const paths = collectionsLib.resolveCollectionItemPaths(root, collection);
+            
+            // Should include all files in the skill directory, not just SKILL.md
+            assert.ok(paths.length >= 4, `Should include all skill files, got ${paths.length}: ${JSON.stringify(paths)}`);
+            assert.ok(paths.includes('skills/my-skill/SKILL.md'), 'Should include SKILL.md');
+            assert.ok(paths.includes('skills/my-skill/assets/diagram.png'), 'Should include assets');
+            assert.ok(paths.includes('skills/my-skill/references/doc.md'), 'Should include references');
+            assert.ok(paths.includes('skills/my-skill/scripts/helper.js'), 'Should include scripts');
+        });
+
+        test('includes skill directory files alongside regular prompts', function() {
+            project = createTestProject('wf-collections-', { copyScripts: false, initGit: false });
+            const { root } = project;
+
+            // Create skill directory
+            writeFile(root, 'skills/my-skill/SKILL.md', '# My Skill');
+            writeFile(root, 'skills/my-skill/assets/image.png', 'fake-png');
+            
+            // Create regular prompt
+            writeFile(root, 'prompts/simple.prompt.md', '# Simple Prompt');
+
+            const collection = {
+                id: 'test',
+                name: 'Test',
+                items: [
+                    { path: 'skills/my-skill/SKILL.md', kind: 'skill' },
+                    { path: 'prompts/simple.prompt.md', kind: 'prompt' },
+                ]
+            };
+
+            const paths = collectionsLib.resolveCollectionItemPaths(root, collection);
+            
+            // Should include all skill files plus the prompt
+            assert.ok(paths.includes('skills/my-skill/SKILL.md'), 'Should include SKILL.md');
+            assert.ok(paths.includes('skills/my-skill/assets/image.png'), 'Should include skill assets');
+            assert.ok(paths.includes('prompts/simple.prompt.md'), 'Should include regular prompt');
+        });
     });
 });

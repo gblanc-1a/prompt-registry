@@ -227,7 +227,7 @@
                 "id": {
                   "type": "string",
                   "description": "Bundle identifier",
-                  "pattern": "^[a-zA-Z0-9-_]+$",
+                  "pattern": "^[\\w\\.\\-]+$",
                   "minLength": 1,
                   "maxLength": 50
                 },

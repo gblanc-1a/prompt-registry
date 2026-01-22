@@ -1398,21 +1398,9 @@ export class PromptRegistryExtension {
                     this.logger.warn('Failed to sync sources after hub import', syncError as Error);
                 }
                 
-                // Try to activate a default profile if hub has profiles
-                try {
-                    const hubProfiles = await hubManager.listActiveHubProfiles();
-                    if (hubProfiles.length > 0) {
-                        // Activate the first profile as default
-                        const defaultProfile = hubProfiles[0];
-                        this.logger.info(`Auto-activating default profile: ${defaultProfile.name}`);
-                        await this.registryManager!.activateProfile(defaultProfile.id);
-                        this.logger.info(`Default profile ${defaultProfile.id} activated successfully`);
-                    } else {
-                        this.logger.info('No profiles found in hub for auto-activation');
-                    }
-                } catch (profileError) {
-                    this.logger.warn('Failed to auto-activate default profile', profileError as Error);
-                }
+                // Note: We intentionally do NOT auto-activate any profile here.
+                // Users should explicitly choose which profile to activate.
+                this.logger.info('Hub imported successfully. User can manually activate a profile if desired.');
                 
                 await vscode.commands.executeCommand('promptRegistry.refresh');
                 vscode.window.showInformationMessage(`Successfully activated ${selected.hubConfig.name}`);

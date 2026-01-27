@@ -35,6 +35,27 @@ export interface McpRemoteServerConfig extends McpServerConfigBase {
  */
 export type McpServerConfig = McpStdioServerConfig | McpRemoteServerConfig;
 
+/**
+ * Type guard to check if a server config is stdio-based (local process)
+ * Returns true for configs with command property and no url, or explicit type: 'stdio'
+ */
+export function isStdioServerConfig(config: McpServerConfig): config is McpStdioServerConfig {
+    // If it has a url and type is http/sse, it's remote
+    if ('url' in config && (config.type === 'http' || config.type === 'sse')) {
+        return false;
+    }
+    // If it has command, it's stdio (type is optional for backward compatibility)
+    return 'command' in config;
+}
+
+/**
+ * Type guard to check if a server config is remote (HTTP/SSE)
+ * Returns true for configs with url property and type: 'http' or 'sse'
+ */
+export function isRemoteServerConfig(config: McpServerConfig): config is McpRemoteServerConfig {
+    return 'url' in config && (config.type === 'http' || config.type === 'sse');
+}
+
 export interface McpTaskDefinition {
     input?: string;
     output?: string;
@@ -51,11 +72,16 @@ export interface McpConfiguration {
 }
 
 /**
- * Legacy type alias for backward compatibility
+ * Server definition type - supports both stdio and remote servers
+ * Note: This was previously aliased to McpStdioServerConfig only.
+ * Now it properly supports the full McpServerConfig union.
  */
-export type McpServerDefinition = McpStdioServerConfig;
+export type McpServerDefinition = McpServerConfig;
 
-export type McpServersManifest = Record<string, McpServerDefinition>;
+/**
+ * Manifest of MCP servers - supports both stdio and remote configurations
+ */
+export type McpServersManifest = Record<string, McpServerConfig>;
 
 export interface McpTrackingMetadata {
     managedServers: Record<string, {

@@ -12,6 +12,7 @@ import { UI_CONSTANTS } from '../utils/constants';
 import { extractAllTags, extractBundleSources } from '../utils/filterUtils';
 import { VersionManager } from '../utils/versionManager';
 import { BundleIdentityMatcher } from '../utils/bundleIdentityMatcher';
+import { McpServerConfig, isStdioServerConfig, isRemoteServerConfig } from '../types/mcp';
 
 /**
  * Message types sent from webview to extension
@@ -1223,27 +1224,48 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         <p style="color: var(--vscode-descriptionForeground); margin-bottom: 16px; font-size: 13px;">
             This bundle includes ${Object.keys(installed.manifest.mcpServers).length} Model Context Protocol server${Object.keys(installed.manifest.mcpServers).length > 1 ? 's' : ''} that will be automatically integrated with VS Code.
         </p>
-        ${Object.entries(installed.manifest.mcpServers).map(([serverName, config]) => `
+        ${Object.entries(installed.manifest.mcpServers).map(([serverName, config]) => {
+            const isRemote = isRemoteServerConfig(config);
+            const isStdio = isStdioServerConfig(config);
+            return `
             <div class="mcp-server-card">
                 <div class="mcp-server-header">
-                    <span>⚡ ${serverName}</span>
+                    <span>${isRemote ? '🌐' : '⚡'} ${serverName}</span>
                     ${config.disabled ? '<span class="mcp-status-badge mcp-status-disabled">Disabled</span>' : '<span class="mcp-status-badge mcp-status-enabled">Enabled</span>'}
                 </div>
                 ${config.description ? `<div style="color: var(--vscode-descriptionForeground); font-size: 12px; margin-bottom: 8px;">${config.description}</div>` : ''}
+                ${isStdio ? `
                 <div class="mcp-server-command">
-                    <strong>Command:</strong> ${config.command}
-                    ${config.args && config.args.length > 0 ? ` ${config.args.join(' ')}` : ''}
+                    <strong>Command:</strong> ${(config as any).command}
+                    ${(config as any).args && (config as any).args.length > 0 ? ` ${(config as any).args.join(' ')}` : ''}
                 </div>
-                ${config.env && Object.keys(config.env).length > 0 ? `
+                ${(config as any).env && Object.keys((config as any).env).length > 0 ? `
                 <div class="mcp-env-vars">
                     <strong style="font-size: 12px;">Environment Variables:</strong>
-                    ${Object.entries(config.env).map(([key, value]) => `
+                    ${Object.entries((config as any).env).map(([key, value]) => `
                         <div class="mcp-env-var">• <code>${key}</code> = <code>${value}</code></div>
                     `).join('')}
                 </div>
                 ` : ''}
+                ` : ''}
+                ${isRemote ? `
+                <div class="mcp-server-command">
+                    <strong>Type:</strong> ${(config as any).type?.toUpperCase() || 'HTTP'}
+                </div>
+                <div class="mcp-server-command">
+                    <strong>URL:</strong> <code>${(config as any).url}</code>
+                </div>
+                ${(config as any).headers && Object.keys((config as any).headers).length > 0 ? `
+                <div class="mcp-env-vars">
+                    <strong style="font-size: 12px;">Headers:</strong>
+                    ${Object.entries((config as any).headers).map(([key, value]) => `
+                        <div class="mcp-env-var">• <code>${key}</code>: <code>${String(value).substring(0, 20)}${String(value).length > 20 ? '...' : ''}</code></div>
+                    `).join('')}
+                </div>
+                ` : ''}
+                ` : ''}
             </div>
-        `).join('')}
+        `;}).join('')}
     </div>
     ` : ''}
 

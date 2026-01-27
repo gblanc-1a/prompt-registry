@@ -91,6 +91,15 @@ export class McpServerManager {
             await this.configService.writeMcpConfig(mergeResult.config, options.scope, options.createBackup !== false);
             await this.configService.writeTrackingMetadata(tracking, options.scope);
 
+            // Detect and disable duplicate servers across all bundles
+            const { duplicatesDisabled, config: deduplicatedConfig } = await this.configService.detectAndDisableDuplicates(options.scope);
+            if (duplicatesDisabled.length > 0) {
+                await this.configService.writeMcpConfig(deduplicatedConfig, options.scope, false);
+                const duplicateNames = duplicatesDisabled.map(d => d.serverName).join(', ');
+                result.warnings?.push(`Disabled ${duplicatesDisabled.length} duplicate server(s): ${duplicateNames}`);
+                this.logger.info(`Disabled ${duplicatesDisabled.length} duplicate MCP servers: ${duplicateNames}`);
+            }
+
             result.serversInstalled = Object.keys(serversToInstall).length - mergeResult.conflicts.length;
             result.installedServers = Object.keys(serversToInstall).filter(
                 name => !mergeResult.conflicts.includes(name)

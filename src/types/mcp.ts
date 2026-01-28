@@ -37,9 +37,13 @@ export type McpServerConfig = McpStdioServerConfig | McpRemoteServerConfig;
 
 /**
  * Type guard to check if a server config is stdio-based (local process)
- * Returns true for configs with command property and no url, or explicit type: 'stdio'
+ * Returns true for configs with command property (and no url, or explicit type: 'stdio')
  */
 export function isStdioServerConfig(config: McpServerConfig): config is McpStdioServerConfig {
+    // If it has url without command, it's remote
+    if ('url' in config && !('command' in config)) {
+        return false;
+    }
     // If it has a url and type is http/sse, it's remote
     if ('url' in config && (config.type === 'http' || config.type === 'sse')) {
         return false;
@@ -51,9 +55,17 @@ export function isStdioServerConfig(config: McpServerConfig): config is McpStdio
 /**
  * Type guard to check if a server config is remote (HTTP/SSE)
  * Returns true for configs with url property and type: 'http' or 'sse'
+ * Also returns true if url is present without command (infers remote)
  */
 export function isRemoteServerConfig(config: McpServerConfig): config is McpRemoteServerConfig {
-    return 'url' in config && (config.type === 'http' || config.type === 'sse');
+    if ('url' in config && (config.type === 'http' || config.type === 'sse')) {
+        return true;
+    }
+    // Infer remote if url is present but no command (common in YAML configs)
+    if ('url' in config && !('command' in config)) {
+        return true;
+    }
+    return false;
 }
 
 export interface McpTaskDefinition {

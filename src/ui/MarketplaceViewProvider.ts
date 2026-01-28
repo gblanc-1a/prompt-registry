@@ -36,6 +36,7 @@ interface ContentBreakdown {
     chatmodes: number;
     agents: number;
     skills: number;
+    mcpServers: number;
 }
 
 export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
@@ -357,13 +358,14 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     /**
      * Count prompts by type from an array of prompt objects
      */
-    private countPromptsByType(prompts: any[]): ContentBreakdown {
+    private countPromptsByType(prompts: any[], mcpServersCount: number = 0): ContentBreakdown {
         const breakdown: ContentBreakdown = {
             prompts: 0,
             instructions: 0,
             chatmodes: 0,
             agents: 0,
-            skills: 0
+            skills: 0,
+            mcpServers: mcpServersCount
         };
 
         for (const prompt of prompts) {
@@ -394,15 +396,17 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
      * Calculate content breakdown from bundle metadata
      */
     private getContentBreakdown(bundle: Bundle, manifest?: any): ContentBreakdown {
+        const bundleData = bundle as any;
+        const mcpCount = manifest?.mcpServers ? Object.keys(manifest.mcpServers).length : this.countMcpServers(bundleData);
+
         // First: Use manifest if provided (from installed bundle)
         if (manifest?.prompts && Array.isArray(manifest.prompts)) {
-            return this.countPromptsByType(manifest.prompts);
+            return this.countPromptsByType(manifest.prompts, mcpCount);
         }
 
         // Second: Try to parse from bundle data (some sources embed this)
-        const bundleData = bundle as any;
         if (bundleData.prompts && Array.isArray(bundleData.prompts)) {
-            return this.countPromptsByType(bundleData.prompts);
+            return this.countPromptsByType(bundleData.prompts, mcpCount);
         }
 
         // Third: Use pre-calculated breakdown from adapters (AwesomeCopilot, LocalAwesomeCopilot)
@@ -412,7 +416,8 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                 instructions: bundleData.breakdown.instructions || 0,
                 chatmodes: bundleData.breakdown.chatmodes || 0,
                 agents: bundleData.breakdown.agents || 0,
-                skills: bundleData.breakdown.skills || 0
+                skills: bundleData.breakdown.skills || 0,
+                mcpServers: bundleData.breakdown.mcpServers || this.countMcpServers(bundleData)
             };
         }
 
@@ -423,7 +428,8 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                 instructions: 0,
                 chatmodes: 0,
                 agents: 0,
-                skills: bundleData.skills.length
+                skills: bundleData.skills.length,
+                mcpServers: this.countMcpServers(bundleData)
             };
         }
 
@@ -435,8 +441,24 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             instructions: 0,
             chatmodes: 0,
             agents: 0,
-            skills: 0
+            skills: 0,
+            mcpServers: this.countMcpServers(bundleData)
         };
+    }
+
+    /**
+     * Count MCP servers from bundle data
+     */
+    private countMcpServers(bundleData: any): number {
+        // Check manifest.mcpServers
+        if (bundleData.mcpServers && typeof bundleData.mcpServers === 'object') {
+            return Object.keys(bundleData.mcpServers).length;
+        }
+        // Check mcp.items (collection format)
+        if (bundleData.mcp?.items && typeof bundleData.mcp.items === 'object') {
+            return Object.keys(bundleData.mcp.items).length;
+        }
+        return 0;
     }
 
     /**
@@ -2454,6 +2476,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                         \${renderContentItem('📋', 'Instructions', bundle.contentBreakdown?.instructions || 0)}
                         \${renderContentItem('🤖', 'Agents', bundle.contentBreakdown?.agents || 0)}
                         \${renderContentItem('🛠️', 'Skills', bundle.contentBreakdown?.skills || 0)}
+                        \${renderContentItem('🔌', 'MCP Servers', bundle.contentBreakdown?.mcpServers || 0)}
                     </div>
 
                     <div class="bundle-tags">

@@ -141,6 +141,9 @@ export class McpServerManager {
                 this.logger.debug(`No MCP servers found for bundle ${bundleId}`);
             } else {
                 this.logger.info(`Successfully uninstalled ${removedServers.length} MCP servers for bundle ${bundleId}`);
+                
+                // Re-enable duplicates that were disabled due to the removed servers
+                await this.reEnableDuplicatesAfterRemoval(scope, removedServers);
             }
 
         } catch (error) {
@@ -150,6 +153,46 @@ export class McpServerManager {
         }
 
         return result;
+    }
+
+    /**
+     * Re-enable duplicate servers after the original active server is removed.
+     * This ensures at least one server remains active when duplicates exist.
+     */
+    private async reEnableDuplicatesAfterRemoval(
+        scope: 'user' | 'workspace',
+        removedServerNames: string[]
+    ): Promise<void> {
+        try {
+            const config = await this.configService.readMcpConfig(scope);
+            let needsUpdate = false;
+
+            // Find disabled servers that were duplicates of the removed servers
+            for (const serverConfig of Object.values(config.servers)) {
+                if (serverConfig.disabled && serverConfig.description?.includes('Duplicate of')) {
+                    const match = serverConfig.description.match(/Duplicate of ([^\s(]+)/);
+                    if (match && removedServerNames.includes(match[1])) {
+                        serverConfig.disabled = false;
+                        delete serverConfig.description;
+                        needsUpdate = true;
+                    }
+                }
+            }
+
+            if (needsUpdate) {
+                // Re-run duplicate detection to ensure only one is active per identity
+                const { duplicatesDisabled, config: deduplicatedConfig } = await this.configService.detectAndDisableDuplicates(scope);
+                await this.configService.writeMcpConfig(deduplicatedConfig, scope, false);
+                
+                if (duplicatesDisabled.length > 0) {
+                    this.logger.info(`Re-enabled and re-evaluated duplicates: ${duplicatesDisabled.length} still disabled`);
+                } else {
+                    this.logger.info(`Re-enabled duplicate servers after removal`);
+                }
+            }
+        } catch (error) {
+            this.logger.warn(`Failed to re-enable duplicates after removal: ${(error as Error).message}`);
+        }
     }
 
     async listInstalledServers(scope: 'user' | 'workspace'): Promise<Array<{

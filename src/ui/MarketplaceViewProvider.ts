@@ -15,12 +15,14 @@ import { VersionManager } from '../utils/versionManager';
 import { BundleIdentityMatcher } from '../utils/bundleIdentityMatcher';
 import { McpServerConfig, McpStdioServerConfig, McpRemoteServerConfig, isStdioServerConfig, isRemoteServerConfig } from '../types/mcp';
 import { SetupStateManager } from '../services/SetupStateManager';
+import { RatingCache } from '../services/engagement/RatingCache';
+import { FeedbackCache } from '../services/engagement/FeedbackCache';
 
 /**
  * Message types sent from webview to extension
  */
 interface WebviewMessage {
-    type: 'refresh' | 'install' | 'update' | 'uninstall' | 'openDetails' | 'openPromptFile' | 'installVersion' | 'getVersions' | 'toggleAutoUpdate' | 'openSourceRepository' | 'completeSetup';
+    type: 'refresh' | 'install' | 'update' | 'uninstall' | 'openDetails' | 'openPromptFile' | 'installVersion' | 'getVersions' | 'toggleAutoUpdate' | 'openSourceRepository' | 'completeSetup' | 'getFeedbacks';
     bundleId?: string;
     installPath?: string;
     filePath?: string;
@@ -320,6 +322,11 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                     ? autoUpdatePreferences[installed.bundleId] ?? false
                     : false;
 
+                // Get rating from cache if available
+                const ratingCache = RatingCache.getInstance();
+                const ratingDisplay = ratingCache.getRatingDisplay(bundle.sourceId, bundle.id);
+                const cachedRating = ratingCache.getRating(bundle.sourceId, bundle.id);
+
                 return {
                     ...bundle,
                     installed: !!installed,
@@ -330,6 +337,12 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                     contentBreakdown,
                     availableVersions,
                     autoUpdateEnabled,
+                    rating: cachedRating ? {
+                        starRating: cachedRating.starRating,
+                        voteCount: cachedRating.voteCount,
+                        confidence: cachedRating.confidence,
+                        displayText: ratingDisplay?.text
+                    } : undefined,
                 };
             }));
 
@@ -524,6 +537,11 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             case 'completeSetup':
                 await this.handleCompleteSetup();
                 break;
+            case 'getFeedbacks':
+                if (message.bundleId) {
+                    await this.handleGetFeedbacks(message.bundleId);
+                }
+                break;
             default:
                 this.logger.warn(`Unknown message type: ${message.type}`);
         }
@@ -554,36 +572,77 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
 
     /**
      * Handle complete setup request from marketplace empty state.
-     * 
+     *
      * State Management: This method marks setup as started, then delegates to
      * the initializeHub command. The command handles its own state transitions
      * (markComplete on success, markIncomplete on failure). We only need to
      * mark started here and refresh the UI afterward.
-     * 
+     *
      * Requirements: 4.4
      */
     private async handleCompleteSetup(): Promise<void> {
         this.logger.info('User clicked Complete Setup from marketplace');
-        
+
         // Mark setup as started before triggering the flow
         await this.setupStateManager.markStarted();
-        
+
         try {
             // Trigger first-run flow via the extension command
             // Note: initializeHub handles markComplete/markIncomplete internally
             // Pass resetAuth to clear cached auth so the user is re-prompted for GitHub authentication
             await vscode.commands.executeCommand('promptRegistry.initializeHub', { resetAuth: true });
-            
+
             // Refresh marketplace to show updated state
             await this.loadBundles();
         } catch (error) {
             this.logger.error('Failed to complete setup from marketplace', error as Error);
-            
+
             // Only show error message - state is already marked by initializeHub
             vscode.window.showErrorMessage(`Failed to complete setup: ${(error as Error).message}`);
-            
+
             // Refresh to show current state
             await this.loadBundles();
+        }
+    }
+
+    /**
+     * Get feedbacks for a bundle and send to webview
+     */
+    private async handleGetFeedbacks(bundleId: string): Promise<void> {
+        try {
+            const feedbackCache = FeedbackCache.getInstance();
+            const ratingCache = RatingCache.getInstance();
+
+            // Get feedbacks from cache
+            const feedbacks = feedbackCache.getFeedbacks(bundleId) || [];
+
+            // Get rating data for the bundle
+            // Note: We need sourceId to look up ratings, but bundleId alone is insufficient
+            // For now, we'll need to find the bundle to get its sourceId
+            const bundles = await this.registryManager.searchBundles({ text: bundleId });
+            const bundle = bundles.find(b => b.id === bundleId);
+            const rating = bundle ? ratingCache.getRating(bundle.sourceId, bundleId) : undefined;
+
+            // Send data to webview
+            if (this._view) {
+                this._view.webview.postMessage({
+                    type: 'feedbacksLoaded',
+                    bundleId: bundleId,
+                    feedbacks: feedbacks,
+                    rating: rating
+                });
+            }
+        } catch (error) {
+            this.logger.error('Failed to get feedbacks', error as Error);
+            // Send empty feedbacks on error
+            if (this._view) {
+                this._view.webview.postMessage({
+                    type: 'feedbacksLoaded',
+                    bundleId: bundleId,
+                    feedbacks: [],
+                    rating: null
+                });
+            }
         }
     }
 
@@ -887,6 +946,11 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                 }
             }
 
+            // Get rating from cache
+            const ratingCache = RatingCache.getInstance();
+            const ratingDisplay = ratingCache.getRatingDisplay(bundle.sourceId, bundle.id);
+            const cachedRating = ratingCache.getRating(bundle.sourceId, bundle.id);
+
             // Create webview panel
             const panel = vscode.window.createWebviewPanel(
                 'bundleDetails',
@@ -898,7 +962,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             );
 
             // Set HTML content
-            panel.webview.html = this.getBundleDetailsHtml(panel.webview, bundle, installed, breakdown, autoUpdateEnabled);
+            panel.webview.html = this.getBundleDetailsHtml(panel.webview, bundle, installed, breakdown, autoUpdateEnabled, cachedRating, ratingDisplay);
 
             // Handle messages from the details panel
             panel.webview.onDidReceiveMessage(
@@ -912,6 +976,21 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
                             const newStatus = await this.registryManager.autoUpdateService?.isAutoUpdateEnabled(installed.bundleId) || false;
                             panel.webview.postMessage({ type: 'autoUpdateStatusChanged', enabled: newStatus });
                         }
+                    } else if (message.type === 'feedback' || message.type === 'submitFeedback' || message.type === 'quickFeedback') {
+                        // Execute the unified feedback command with bundle info
+                        // Get source info for issue redirect and hub routing
+                        const sources = await this.registryManager.listSources();
+                        const source = sources.find(s => s.id === bundle.sourceId);
+                        
+                        await vscode.commands.executeCommand('promptRegistry.feedback', {
+                            resourceId: message.bundleId,
+                            resourceType: 'bundle',
+                            name: bundle.name,
+                            version: bundle.version,
+                            sourceUrl: source?.url || '',
+                            sourceType: source?.type || '',
+                            hubId: source?.hubId || ''
+                        });
                     }
                 },
                 undefined,
@@ -942,7 +1021,9 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         bundle: Bundle, 
         installed: InstalledBundle | undefined, 
         breakdown: ContentBreakdown, 
-        autoUpdateEnabled: boolean = false
+        autoUpdateEnabled: boolean = false,
+        rating?: { starRating: number; voteCount: number; confidence: string } | null,
+        ratingDisplay?: { text: string; tooltip: string } | null
     ): string {
         const isInstalled = !!installed;
         const installPath = installed?.installPath || 'Not installed';
@@ -984,6 +1065,12 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             <div class="toggle-slider"></div>
         </div>
     </div>` : '';
+
+        const ratingDisplayHtml = rating ? `
+            <span class="rating-stars">${'★'.repeat(Math.round(rating.starRating))}${'☆'.repeat(5 - Math.round(rating.starRating))}</span>
+            <span class="rating-score">${rating.starRating.toFixed(1)}</span>
+            <span class="rating-meta">${rating.voteCount} votes (${rating.confidence} confidence)</span>
+        ` : `<span class="no-rating">No ratings yet</span>`;
 
         const breakdownContent = isInstalled ? `
         <div class="breakdown">
@@ -1051,6 +1138,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             .replace('{{author}}', this.escapeHtml(bundle.author || 'Unknown'))
             .replace('{{version}}', bundle.version)
             .replace('{{autoUpdateSection}}', autoUpdateSection)
+            .replace('{{ratingDisplay}}', ratingDisplayHtml)
             .replace('{{description}}', bundle.description || 'No description available')
             .replace('{{breakdownContent}}', breakdownContent)
             .replace('{{displayBundleId}}', isInstalled ? installed!.bundleId : bundle.id)

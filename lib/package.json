@@ -13,7 +13,9 @@
     "generate-manifest": "./bin/generate-manifest.js",
     "publish-collections": "./bin/publish-collections.js",
     "list-collections": "./bin/list-collections.js",
-    "create-skill": "./bin/create-skill.js"
+    "create-skill": "./bin/create-skill.js",
+    "compute-ratings": "./bin/compute-ratings.js",
+    "setup-discussions": "./bin/setup-discussions.js"
   },
   "scripts": {
     "build": "tsc",

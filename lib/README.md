@@ -70,6 +70,51 @@ create-skill my-skill --description "A helpful skill"
 | `publish-collections` | Build and publish affected collections |
 | `list-collections` | List all collections in repo |
 | `create-skill` | Create a new skill directory structure |
+| `compute-ratings` | Compute ratings from GitHub Discussion reactions |
+| `setup-discussions` | Create GitHub Discussions for bundle ratings |
+
+## Engagement Tools
+
+These tools help set up and manage the engagement system for collecting bundle ratings and feedback.
+
+### setup-discussions
+
+Creates GitHub Discussions for all bundles in a hub configuration. The discussions are used to collect ratings via reactions (👍/👎).
+
+```bash
+# Basic usage - creates discussions for all bundles
+GITHUB_TOKEN=ghp_xxx setup-discussions https://github.com/org/hub-config
+
+# Dry run to preview what would be created
+GITHUB_TOKEN=ghp_xxx setup-discussions --dry-run org/hub-config
+
+# Specify branch and output file
+GITHUB_TOKEN=ghp_xxx setup-discussions -b develop -o my-collections.yaml org/hub-config
+
+# Specify discussion category
+GITHUB_TOKEN=ghp_xxx setup-discussions --category "Bundle Ratings" org/hub-config
+```
+
+**Requirements:**
+- Hub config must have `engagement.backend.repository` configured
+- GitHub token needs `repo` and `write:discussion` scopes
+- Engagement repository must have GitHub Discussions enabled
+
+**Output:** Creates a `collections.yaml` file mapping bundles to discussion numbers.
+
+### compute-ratings
+
+Fetches reaction counts from GitHub Discussions and computes ratings using the Wilson score algorithm.
+
+```bash
+# Compute ratings from collections.yaml
+GITHUB_TOKEN=ghp_xxx compute-ratings --config collections.yaml --output ratings.json
+```
+
+**Workflow:**
+1. Run `setup-discussions` once to create discussions and generate `collections.yaml`
+2. Run `compute-ratings` periodically (e.g., via GitHub Actions) to update `ratings.json`
+3. Host `ratings.json` statically and reference it in hub config's `engagement.ratings.ratingsUrl`
 
 ## Programmatic API
 

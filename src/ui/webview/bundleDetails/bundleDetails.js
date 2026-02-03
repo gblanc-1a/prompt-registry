@@ -4,11 +4,11 @@
 (function() {
     'use strict';
 
-    var vscode = acquireVsCodeApi();
-    
+    const vscode = acquireVsCodeApi();
+
     // Get initial data from window object (set by TypeScript)
-    var autoUpdateEnabled = window.bundleDetailsData ? window.bundleDetailsData.autoUpdateEnabled : false;
-    var bundleId = window.bundleDetailsData ? window.bundleDetailsData.bundleId : '';
+    let autoUpdateEnabled = window.bundleDetailsData?.autoUpdateEnabled || false;
+    const bundleId = window.bundleDetailsData?.bundleId || '';
 
     /**
      * Open a prompt file in the editor
@@ -38,7 +38,7 @@
      * Update the toggle UI to reflect current state
      */
     function updateToggleUI() {
-        var toggle = document.getElementById('autoUpdateToggle');
+        const toggle = document.getElementById('autoUpdateToggle');
         if (toggle) {
             if (autoUpdateEnabled) {
                 toggle.classList.add('enabled');
@@ -48,9 +48,19 @@
         }
     }
 
+    /**
+     * Open unified feedback dialog (star rating + binary feedback + optional issue redirect)
+     */
+    function feedback() {
+        vscode.postMessage({
+            type: 'feedback',
+            bundleId: bundleId
+        });
+    }
+
     // Listen for status updates from extension
     window.addEventListener('message', function(event) {
-        var message = event.data;
+        const message = event.data;
         if (message.type === 'autoUpdateStatusChanged') {
             autoUpdateEnabled = message.enabled;
             updateToggleUI();
@@ -59,20 +69,23 @@
 
     // Event delegation for all click handlers (CSP compliant)
     document.addEventListener('click', function(e) {
-        var target = e.target;
-        var actionElement = target.closest('[data-action]');
-        
+        const target = e.target;
+        const actionElement = target.closest('[data-action]');
+
         if (actionElement) {
-            var action = actionElement.dataset.action;
-            var installPath = actionElement.dataset.installPath;
-            var filePath = actionElement.dataset.filePath;
-            
+            const action = actionElement.dataset.action;
+            const installPath = actionElement.dataset.installPath;
+            const filePath = actionElement.dataset.filePath;
+
             switch (action) {
                 case 'openPromptFile':
-                    if (installPath && filePath) { openPromptFile(installPath, filePath); }
+                    if (installPath && filePath) openPromptFile(installPath, filePath);
                     break;
                 case 'toggleAutoUpdate':
                     toggleAutoUpdate();
+                    break;
+                case 'feedback':
+                    feedback();
                     break;
             }
         }

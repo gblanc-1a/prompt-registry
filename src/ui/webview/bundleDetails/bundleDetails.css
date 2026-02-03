@@ -235,3 +235,66 @@ code {
     background: var(--vscode-descriptionForeground);
     color: var(--vscode-editor-background);
 }
+
+.rating-section {
+    background: var(--vscode-input-background);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 24px;
+}
+
+.rating-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+}
+
+.rating-display {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.rating-stars {
+    font-size: 24px;
+    color: var(--vscode-charts-yellow);
+}
+
+.rating-score {
+    font-size: 28px;
+    font-weight: 600;
+}
+
+.rating-meta {
+    font-size: 13px;
+    color: var(--vscode-descriptionForeground);
+}
+
+.feedback-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-feedback {
+    padding: 8px 16px;
+    border: 1px solid var(--vscode-button-border, var(--vscode-input-border));
+    border-radius: 4px;
+    background: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    cursor: pointer;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn-feedback:hover {
+    background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.no-rating {
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+}

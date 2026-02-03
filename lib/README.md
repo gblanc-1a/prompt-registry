@@ -70,7 +70,7 @@ create-skill my-skill --description "A helpful skill"
 | `publish-collections` | Build and publish affected collections |
 | `list-collections` | List all collections in repo |
 | `create-skill` | Create a new skill directory structure |
-| `compute-ratings` | Compute ratings from GitHub Discussion reactions |
+| `compute-ratings` | Compute ratings from GitHub Discussion feedback comments (star ratings) |
 | `setup-discussions` | Create GitHub Discussions for bundle ratings |
 
 ## Engagement Tools
@@ -79,20 +79,20 @@ These tools help set up and manage the engagement system for collecting bundle r
 
 ### setup-discussions
 
-Creates GitHub Discussions for all bundles in a hub configuration. The discussions are used to collect ratings via reactions (👍/👎).
+Creates GitHub Discussions for all bundles in a hub configuration. The discussions are used to collect ratings and feedback via comments with star ratings (1-5 ⭐).
 
 ```bash
 # Basic usage - creates discussions for all bundles
-GITHUB_TOKEN=ghp_xxx setup-discussions https://github.com/org/hub-config
+GITHUB_TOKEN=ghp_xxx npx --package @prompt-registry/collection-scripts setup-discussions https://github.com/org/hub-config
 
 # Dry run to preview what would be created
-GITHUB_TOKEN=ghp_xxx setup-discussions --dry-run org/hub-config
+GITHUB_TOKEN=ghp_xxx npx --package @prompt-registry/collection-scripts setup-discussions --dry-run org/hub-config
 
 # Specify branch and output file
-GITHUB_TOKEN=ghp_xxx setup-discussions -b develop -o my-collections.yaml org/hub-config
+GITHUB_TOKEN=ghp_xxx npx --package @prompt-registry/collection-scripts setup-discussions -b develop -o my-collections.yaml org/hub-config
 
 # Specify discussion category
-GITHUB_TOKEN=ghp_xxx setup-discussions --category "Bundle Ratings" org/hub-config
+GITHUB_TOKEN=ghp_xxx npx --package @prompt-registry/collection-scripts setup-discussions --category "Bundle Ratings" org/hub-config
 ```
 
 **Requirements:**
@@ -104,11 +104,11 @@ GITHUB_TOKEN=ghp_xxx setup-discussions --category "Bundle Ratings" org/hub-confi
 
 ### compute-ratings
 
-Fetches reaction counts from GitHub Discussions and computes ratings using the Wilson score algorithm.
+Fetches feedback comments from GitHub Discussions, parses star ratings (1-5), and computes aggregate ratings. Also supports legacy thumbs up/down reactions for backward compatibility.
 
 ```bash
 # Compute ratings from collections.yaml
-GITHUB_TOKEN=ghp_xxx compute-ratings --config collections.yaml --output ratings.json
+GITHUB_TOKEN=ghp_xxx npx --package @prompt-registry/collection-scripts compute-ratings --config collections.yaml --output ratings.json
 ```
 
 **Workflow:**

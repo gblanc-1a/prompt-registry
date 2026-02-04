@@ -198,14 +198,14 @@ export class LoggerHelpers {
 export const PropertyTestConfig = {
     /**
      * Number of test runs for different test complexity levels
-     * Reduced for faster execution while maintaining coverage
+     * Minimum 100 iterations per property test as per design spec
      */
     RUNS: {
-        QUICK: 3,          // Quick smoke tests
-        STANDARD: 5,       // Standard property tests  
-        EXTENDED: 8,       // Tests with more complex scenarios
-        COMPREHENSIVE: 10, // Tests covering many combinations
-        THOROUGH: 15,      // Thorough testing (use sparingly)
+        QUICK: 50,         // Quick smoke tests
+        STANDARD: 100,     // Standard property tests (minimum per spec)
+        EXTENDED: 200,     // Tests with more complex scenarios
+        COMPREHENSIVE: 500,// Tests covering many combinations
+        THOROUGH: 1000,    // Thorough testing (use sparingly)
     },
 
     /**

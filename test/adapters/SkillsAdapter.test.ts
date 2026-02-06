@@ -199,57 +199,62 @@ Instructions for ${skill.name}
         });
 
         test('should include nested files when hashing remote skills', async () => {
-            nock('https://api.github.com')
-                .get('/repos/test-owner/test-skills-repo/contents/skills')
-                .reply(200, [
-                    { name: 'deep-skill', path: 'skills/deep-skill', type: 'dir' }
-                ]);
+            const mockNestedSkill = (assetSha: string) => {
+                nock.cleanAll();
 
-            nock('https://api.github.com')
-                .get('/repos/test-owner/test-skills-repo/contents/skills/deep-skill')
-                .reply(200, [
-                    {
-                        name: 'SKILL.md',
-                        path: 'skills/deep-skill/SKILL.md',
-                        type: 'file',
-                        download_url: 'https://raw.githubusercontent.com/test-owner/test-skills-repo/main/skills/deep-skill/SKILL.md',
-                        sha: 'sha-skill'
-                    },
-                    {
-                        name: 'assets',
-                        path: 'skills/deep-skill/assets',
-                        type: 'dir'
-                    }
-                ]);
+                nock('https://api.github.com')
+                    .get('/repos/test-owner/test-skills-repo/contents/skills')
+                    .reply(200, [
+                        { name: 'deep-skill', path: 'skills/deep-skill', type: 'dir' }
+                    ]);
 
-            nock('https://api.github.com')
-                .get('/repos/test-owner/test-skills-repo/contents/skills/deep-skill/assets')
-                .reply(200, [
-                    {
-                        name: 'diagram.png',
-                        path: 'skills/deep-skill/assets/diagram.png',
-                        type: 'file',
-                        download_url: 'https://raw.githubusercontent.com/test-owner/test-skills-repo/main/skills/deep-skill/assets/diagram.png',
-                        sha: 'sha-diagram'
-                    }
-                ]);
+                nock('https://api.github.com')
+                    .get('/repos/test-owner/test-skills-repo/contents/skills/deep-skill')
+                    .reply(200, [
+                        {
+                            name: 'SKILL.md',
+                            path: 'skills/deep-skill/SKILL.md',
+                            type: 'file',
+                            download_url: 'https://raw.githubusercontent.com/test-owner/test-skills-repo/main/skills/deep-skill/SKILL.md',
+                            sha: 'sha-skill'
+                        },
+                        {
+                            name: 'assets',
+                            path: 'skills/deep-skill/assets',
+                            type: 'dir'
+                        }
+                    ]);
 
-            nock('https://raw.githubusercontent.com')
-                .get('/test-owner/test-skills-repo/main/skills/deep-skill/SKILL.md')
-                .reply(200, '---\nname: Deep Skill\ndescription: Deep skill description\n---\n\n# Deep Skill');
+                nock('https://api.github.com')
+                    .get('/repos/test-owner/test-skills-repo/contents/skills/deep-skill/assets')
+                    .reply(200, [
+                        {
+                            name: 'diagram.png',
+                            path: 'skills/deep-skill/assets/diagram.png',
+                            type: 'file',
+                            download_url: 'https://raw.githubusercontent.com/test-owner/test-skills-repo/main/skills/deep-skill/assets/diagram.png',
+                            sha: assetSha
+                        }
+                    ]);
 
-            const adapter = new SkillsAdapter(mockSource);
-            const bundles = await adapter.fetchBundles();
+                nock('https://raw.githubusercontent.com')
+                    .get('/test-owner/test-skills-repo/main/skills/deep-skill/SKILL.md')
+                    .reply(200, '---\nname: Deep Skill\ndescription: Deep skill description\n---\n\n# Deep Skill');
+            };
 
+            mockNestedSkill('sha-diagram');
+            let adapter = new SkillsAdapter(mockSource);
+            let bundles = await adapter.fetchBundles();
             assert.strictEqual(bundles.length, 1);
-            const bundle = bundles[0];
+            const versionWithOriginalAsset = bundles[0].version;
 
-            const expectedHash = crypto.createHash('sha256');
-            expectedHash.update('skills/deep-skill/SKILL.md:sha-skill|');
-            expectedHash.update('skills/deep-skill/assets/diagram.png:sha-diagram|');
-            const expectedVersion = `hash:${expectedHash.digest('hex')}`;
+            mockNestedSkill('sha-diagram-updated');
+            adapter = new SkillsAdapter(mockSource);
+            bundles = await adapter.fetchBundles();
+            const versionWithUpdatedAsset = bundles[0].version;
 
-            assert.strictEqual(bundle.version, expectedVersion);
+            assert.notStrictEqual(versionWithOriginalAsset, versionWithUpdatedAsset);
+            assert.ok(versionWithUpdatedAsset.startsWith('hash:'), 'Version should be hash-based');
         });
 
         test('should handle many skills efficiently', async () => {

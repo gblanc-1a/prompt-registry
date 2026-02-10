@@ -429,7 +429,10 @@ export class PromptRegistryExtension {
         
         // Create tree provider
         this.treeProvider = new RegistryTreeProvider(this.registryManager, this.hubManager!);
-        
+
+        // Initialize favorites view context (starts in 'all' mode)
+        vscode.commands.executeCommand('setContext', 'promptRegistry.favoritesViewActive', false);
+
         // Register tree view
         const treeView = vscode.window.createTreeView('promptRegistryExplorer', {
             treeDataProvider: this.treeProvider,
@@ -444,6 +447,12 @@ export class PromptRegistryExtension {
                 this.treeProvider?.refresh();
             }),
             vscode.commands.registerCommand('promptRegistry.toggleProfileView', () => {
+                this.treeProvider?.toggleViewMode();
+            }),
+            vscode.commands.registerCommand('promptRegistry.showFavoritesView', () => {
+                this.treeProvider?.toggleViewMode();
+            }),
+            vscode.commands.registerCommand('promptRegistry.hideFavoritesView', () => {
                 this.treeProvider?.toggleViewMode();
             }),
         ];
@@ -1260,7 +1269,7 @@ export class PromptRegistryExtension {
             // Sync all sources from the active hub in the background (non-blocking)
             // This allows the extension to finish activation quickly so the webview can resolve
             // and show cached bundles while sync happens progressively
-            sourceCommands.syncAllSources().then(() => {
+            sourceCommands.syncAllSources({ silent: true }).then(() => {
                 this.logger.info('Active hub synchronized successfully on activation');
                 // Refresh tree view after sync completes
                 vscode.commands.executeCommand('promptRegistry.refresh');
@@ -1395,7 +1404,7 @@ export class PromptRegistryExtension {
                 
                 // Sync all sources from the newly imported hub in the background (non-blocking)
                 // This allows the UI to be responsive while sync happens progressively
-                this.sourceCommands!.syncAllSources().then(() => {
+                this.sourceCommands!.syncAllSources({ silent: true }).then(() => {
                     this.logger.info('Sources synchronized successfully');
                     vscode.commands.executeCommand('promptRegistry.refresh');
                 }).catch((syncError) => {

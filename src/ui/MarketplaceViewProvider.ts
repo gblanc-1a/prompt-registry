@@ -1733,28 +1733,6 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             border-color: var(--vscode-gitDecoration-addedResourceForeground);
         }
 
-        .curated-badge {
-            position: absolute;
-            top: 12px;
-            right: 12px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 4px 10px;
-            border-radius: 12px;
-            font-size: 11px;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
-            z-index: 2;
-        }
-
-        .curated-badge::before {
-            content: "✨";
-            font-size: 12px;
-        }
-
         .installed-badge {
             position: absolute;
             top: 12px;
@@ -2465,7 +2443,6 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             marketplace.innerHTML = filteredBundles.map(bundle => \`
                 <div class="bundle-card \${bundle.installed ? 'installed' : ''}" data-bundle-id="\${bundle.id}" onclick="openDetails('\${bundle.id}')">
                     \${bundle.installed && bundle.autoUpdateEnabled ? '<div class="installed-badge">🔄 Auto-Update</div>' : bundle.installed ? '<div class="installed-badge">✓ Installed</div>' : ''}
-                    \${bundle.isCurated ? '<div class="curated-badge" title="From curated hub: ' + (bundle.hubName || 'Unknown') + '">' + (bundle.hubName || 'Curated') + '</div>' : ''}
                     
                     <div class="bundle-header">
                         <div class="bundle-title">\${bundle.name}</div>

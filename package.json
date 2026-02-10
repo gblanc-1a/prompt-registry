@@ -381,6 +381,18 @@
         "icon": "$(star)"
       },
       {
+        "command": "promptRegistry.showFavoritesView",
+        "title": "Show Favorites",
+        "category": "Prompt Registry",
+        "icon": "$(star)"
+      },
+      {
+        "command": "promptRegistry.hideFavoritesView",
+        "title": "Show All Profiles",
+        "category": "Prompt Registry",
+        "icon": "$(star-full)"
+      },
+      {
         "command": "promptRegistry.toggleProfileFavorite",
         "title": "Toggle Favorite",
         "category": "Prompt Registry",
@@ -475,8 +487,13 @@
       ],
       "view/title": [
         {
-          "command": "promptRegistry.toggleProfileView",
-          "when": "view == promptRegistryExplorer",
+          "command": "promptRegistry.showFavoritesView",
+          "when": "view == promptRegistryExplorer && !promptRegistry.favoritesViewActive",
+          "group": "navigation@0"
+        },
+        {
+          "command": "promptRegistry.hideFavoritesView",
+          "when": "view == promptRegistryExplorer && promptRegistry.favoritesViewActive",
           "group": "navigation@0"
         },
         {

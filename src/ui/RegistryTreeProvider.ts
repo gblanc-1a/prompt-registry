@@ -294,6 +294,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
      */
     toggleViewMode(): void {
         this.viewMode = this.viewMode === 'all' ? 'favorites' : 'all';
+        vscode.commands.executeCommand('setContext', 'promptRegistry.favoritesViewActive', this.viewMode === 'favorites');
         this.refresh();
     }
 

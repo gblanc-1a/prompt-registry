@@ -343,16 +343,18 @@ function renderBundles() {
     switch (selectedSort) {
         case 'rating-desc':
             filteredBundles.sort((a, b) => {
-                const ratingA = a.rating?.wilsonScore ?? 0;
-                const ratingB = b.rating?.wilsonScore ?? 0;
-                return ratingB - ratingA;
+                const ratingA = a.rating?.starRating ?? 0;
+                const ratingB = b.rating?.starRating ?? 0;
+                if (ratingB !== ratingA) return ratingB - ratingA;
+                return (b.rating?.voteCount ?? 0) - (a.rating?.voteCount ?? 0);
             });
             break;
         case 'rating-asc':
             filteredBundles.sort((a, b) => {
-                const ratingA = a.rating?.wilsonScore ?? 0;
-                const ratingB = b.rating?.wilsonScore ?? 0;
-                return ratingA - ratingB;
+                const ratingA = a.rating?.starRating ?? 0;
+                const ratingB = b.rating?.starRating ?? 0;
+                if (ratingA !== ratingB) return ratingA - ratingB;
+                return (a.rating?.voteCount ?? 0) - (b.rating?.voteCount ?? 0);
             });
             break;
         case 'name-asc':

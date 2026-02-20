@@ -138,8 +138,7 @@ export class RatingCache {
     private formatTooltip(rating: CachedRating): string {
         const lines = [
             `Rating: ${rating.starRating.toFixed(1)} / 5`,
-            `Votes: ${rating.voteCount}`,
-            `Confidence: ${rating.confidence}`
+            `Votes: ${rating.voteCount}`
         ];
         return lines.join('\n');
     }

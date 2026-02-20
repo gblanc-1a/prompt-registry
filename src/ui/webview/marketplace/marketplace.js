@@ -426,7 +426,7 @@ function renderBundles() {
                     ${bundle.rating ? `
                         <button class="rating-badge clickable"
                                 data-action="showFeedbacks" data-bundle-id="${bundle.id}"
-                                title="${bundle.rating.voteCount} votes (${bundle.rating.confidence} confidence)">
+                                title="${bundle.rating.voteCount} votes">
                             <span class="rating-stars">${renderStars(bundle.rating.starRating)}</span>
                             <span class="rating-score">${bundle.rating.starRating?.toFixed(1) || '0.0'}</span>
                             <span class="rating-votes">(${bundle.rating.voteCount})</span>

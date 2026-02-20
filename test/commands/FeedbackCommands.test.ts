@@ -10,6 +10,7 @@ import { FeedbackCommands, FeedbackableItem } from '../../src/commands/FeedbackC
 import { EngagementService } from '../../src/services/engagement/EngagementService';
 import { Feedback } from '../../src/types/engagement';
 import { EngagementStorage } from '../../src/storage/EngagementStorage';
+import { RatingCache } from '../../src/services/engagement/RatingCache';
 
 suite('FeedbackCommands', () => {
     let sandbox: sinon.SinonSandbox;
@@ -61,6 +62,7 @@ suite('FeedbackCommands', () => {
 
     teardown(() => {
         sandbox.restore();
+        RatingCache.resetInstance();
     });
 
     suite('submitFeedback()', () => {
@@ -165,6 +167,31 @@ suite('FeedbackCommands', () => {
             // Pending feedback was saved
             const mockStorage = (mockEngagementService as any).getStorage();
             assert.ok(mockStorage.savePendingFeedback.calledOnce);
+        });
+
+        test('should apply optimistic rating update after submission', async () => {
+            const item = createMockItem({ hubId: 'test-hub', sourceId: 'test-source' });
+            const feedback = createMockFeedback('Nice!', 4);
+
+            const ratingCache = RatingCache.getInstance();
+            const applyStub = sandbox.stub(ratingCache, 'applyOptimisticRating');
+
+            showQuickPickStub.onFirstCall().resolves({
+                label: '⭐⭐⭐⭐☆',
+                description: '4 stars - Very good'
+            });
+            showInputBoxStub.resolves('Nice!');
+            showQuickPickStub.onSecondCall().resolves({
+                label: '⏭️ Skip'
+            });
+            mockEngagementService.submitFeedback.resolves(feedback);
+
+            await commands.submitFeedback(item);
+
+            assert.ok(applyStub.calledOnce);
+            assert.strictEqual(applyStub.firstCall.args[0], 'test-source');
+            assert.strictEqual(applyStub.firstCall.args[1], 'test-bundle');
+            assert.strictEqual(applyStub.firstCall.args[2], 4);
         });
 
         test('should mark feedback as synced when remote submission succeeds', async () => {

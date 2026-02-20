@@ -14,6 +14,7 @@ import { Logger } from '../utils/logger';
 import { EngagementService } from '../services/engagement/EngagementService';
 import { RatingScore, Feedback, EngagementResourceType } from '../types/engagement';
 import { PendingFeedback } from '../types/pendingFeedback';
+import { RatingCache } from '../services/engagement/RatingCache';
 
 /**
  * Item that can receive feedback
@@ -33,6 +34,8 @@ export interface FeedbackableItem {
     sourceType?: string;
     /** Hub ID for routing feedback to correct backend */
     hubId?: string;
+    /** Source ID for cache key matching */
+    sourceId?: string;
 }
 
 /**
@@ -398,6 +401,17 @@ export class FeedbackCommands {
             }
         } catch (storageError) {
             this.logger.error('Failed to save pending feedback locally', storageError as Error);
+        }
+
+        // Apply optimistic rating update to cache
+        if (rating) {
+            try {
+                const ratingCache = RatingCache.getInstance();
+                const cacheSourceId = item.sourceId || item.resourceId;
+                ratingCache.applyOptimisticRating(cacheSourceId, item.resourceId, rating);
+            } catch (cacheError) {
+                this.logger.debug('Failed to apply optimistic rating update');
+            }
         }
 
         if (pendingEntry.synced) {

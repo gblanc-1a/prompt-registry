@@ -9,6 +9,7 @@ import * as vscode from 'vscode';
 import { FeedbackCommands, FeedbackableItem } from '../../src/commands/FeedbackCommands';
 import { EngagementService } from '../../src/services/engagement/EngagementService';
 import { Feedback } from '../../src/types/engagement';
+import { EngagementStorage } from '../../src/storage/EngagementStorage';
 
 suite('FeedbackCommands', () => {
     let sandbox: sinon.SinonSandbox;
@@ -50,6 +51,9 @@ suite('FeedbackCommands', () => {
         // Mock EngagementService
         mockEngagementService = {
             submitFeedback: sandbox.stub(),
+            getStorage: sandbox.stub().returns({
+                savePendingFeedback: sandbox.stub().resolves(),
+            }),
         } as unknown as sinon.SinonStubbedInstance<EngagementService>;
 
         commands = new FeedbackCommands(mockEngagementService as unknown as EngagementService);
@@ -136,25 +140,56 @@ suite('FeedbackCommands', () => {
     });
 
 
-    suite('Error Handling', () => {
-        test('should handle service errors gracefully', async () => {
-            const item = createMockItem();
-            
-            showQuickPickStub.onFirstCall().resolves({ 
-                label: '⭐⭐⭐☆☆', 
-                description: '3 stars - Good' 
+    suite('Network Resilience', () => {
+        test('should save feedback locally when remote submission fails', async () => {
+            const item = createMockItem({ hubId: 'test-hub' });
+
+            showQuickPickStub.onFirstCall().resolves({
+                label: '⭐⭐⭐☆☆',
+                description: '3 stars - Good'
             });
             showInputBoxStub.resolves('Test feedback');
-            showQuickPickStub.onSecondCall().resolves({ 
-                label: '⏭️ Skip' 
+            showQuickPickStub.onSecondCall().resolves({
+                label: '⏭️ Skip'
             });
-            mockEngagementService.submitFeedback.rejects(new Error('Service unavailable'));
+            mockEngagementService.submitFeedback.rejects(new Error('Network error'));
 
             const result = await commands.submitFeedback(item);
 
-            assert.strictEqual(result.success, false);
-            assert.strictEqual(result.error, 'Service unavailable');
-            assert.ok(showErrorMessageStub.calledOnce);
+            // Feedback saved locally = success
+            assert.strictEqual(result.success, true);
+            assert.ok(result.feedback);
+            // Warning shown instead of error
+            assert.ok(showWarningMessageStub.calledOnce);
+            assert.ok(showWarningMessageStub.firstCall.args[0].includes('saved locally'));
+            // Pending feedback was saved
+            const mockStorage = (mockEngagementService as any).getStorage();
+            assert.ok(mockStorage.savePendingFeedback.calledOnce);
+        });
+
+        test('should mark feedback as synced when remote submission succeeds', async () => {
+            const item = createMockItem({ hubId: 'test-hub' });
+            const feedback = createMockFeedback('Great!', 5);
+
+            showQuickPickStub.onFirstCall().resolves({
+                label: '⭐⭐⭐⭐⭐',
+                description: '5 stars - Excellent!'
+            });
+            showInputBoxStub.resolves('Great!');
+            showQuickPickStub.onSecondCall().resolves({
+                label: '⏭️ Skip'
+            });
+            mockEngagementService.submitFeedback.resolves(feedback);
+
+            const result = await commands.submitFeedback(item);
+
+            assert.strictEqual(result.success, true);
+            assert.ok(showInformationMessageStub.calledOnce);
+            // Pending feedback was saved with synced=true
+            const mockStorage = (mockEngagementService as any).getStorage();
+            assert.ok(mockStorage.savePendingFeedback.calledOnce);
+            const savedEntry = mockStorage.savePendingFeedback.firstCall.args[0];
+            assert.strictEqual(savedEntry.synced, true);
         });
     });
 

@@ -13,6 +13,7 @@ import * as crypto from 'crypto';
 import { Logger } from '../utils/logger';
 import { EngagementService } from '../services/engagement/EngagementService';
 import { RatingScore, Feedback, EngagementResourceType } from '../types/engagement';
+import { PendingFeedback } from '../types/pendingFeedback';
 
 /**
  * Item that can receive feedback
@@ -348,44 +349,62 @@ export class FeedbackCommands {
         comment: string,
         rating?: RatingScore
     ): Promise<FeedbackResult> {
+        const feedback: Feedback = {
+            id: crypto.randomUUID(),
+            resourceType: item.resourceType,
+            resourceId: item.resourceId,
+            comment,
+            rating,
+            version: item.version,
+            timestamp: new Date().toISOString(),
+        };
+
+        const pendingEntry: PendingFeedback = {
+            id: feedback.id,
+            bundleId: item.resourceId,
+            sourceId: item.resourceId,
+            hubId: item.hubId || '',
+            resourceType: item.resourceType,
+            rating: rating || 3,
+            comment: comment || undefined,
+            timestamp: feedback.timestamp,
+            synced: false,
+        };
+
         try {
-            if (!this.engagementService) {
-                // Store locally without engagement service
-                this.logger.info(`Feedback for ${item.resourceId}: ${comment}`);
-                vscode.window.showInformationMessage('Thank you for your feedback!');
-                return {
-                    success: true,
-                    feedback: {
-                        id: crypto.randomUUID(),
-                        resourceType: item.resourceType,
-                        resourceId: item.resourceId,
-                        comment,
-                        rating,
-                        version: item.version,
-                        timestamp: new Date().toISOString(),
-                    },
-                };
+            if (this.engagementService) {
+                this.logger.info(`[FeedbackCommands] Submitting feedback for ${item.resourceId}, hubId: "${item.hubId || 'none'}"`);
+                await this.engagementService.submitFeedback(
+                    item.resourceType,
+                    item.resourceId,
+                    comment,
+                    { version: item.version, rating, hubId: item.hubId || undefined }
+                );
+                pendingEntry.synced = true;
             }
-
-            this.logger.info(`[FeedbackCommands] Submitting feedback for ${item.resourceId}, hubId: "${item.hubId || 'none'}"`);
-            
-            const feedback = await this.engagementService.submitFeedback(
-                item.resourceType,
-                item.resourceId,
-                comment,
-                { version: item.version, rating, hubId: item.hubId || undefined }
-            );
-
-            vscode.window.showInformationMessage('Thank you for your feedback!');
-            this.logger.info(`Feedback submitted for ${item.resourceId}`);
-
-            return { success: true, feedback };
         } catch (error) {
             const message = error instanceof Error ? error.message : 'Unknown error';
-            this.logger.error(`Failed to submit feedback: ${message}`, error as Error);
-            vscode.window.showErrorMessage(`Failed to submit feedback: ${message}`);
-            return { success: false, error: message };
+            this.logger.warn(`Failed to submit feedback to remote: ${message}`);
+            vscode.window.showWarningMessage(
+                'Feedback saved locally. Retry from the bundle menu when connectivity is restored.'
+            );
         }
+
+        // Save pending feedback locally (synced or not)
+        try {
+            const storage = this.engagementService?.getStorage?.();
+            if (storage) {
+                await storage.savePendingFeedback(pendingEntry);
+            }
+        } catch (storageError) {
+            this.logger.error('Failed to save pending feedback locally', storageError as Error);
+        }
+
+        if (pendingEntry.synced) {
+            vscode.window.showInformationMessage('Thank you for your feedback!');
+        }
+
+        return { success: true, feedback };
     }
 
     /**

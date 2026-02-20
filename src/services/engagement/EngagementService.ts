@@ -31,6 +31,7 @@ import {
     HubEngagementConfig,
 } from '../../types/engagement';
 import { Logger } from '../../utils/logger';
+import { EngagementStorage } from '../../storage/EngagementStorage';
 
 /**
  * EngagementService provides a unified interface for telemetry, ratings, and feedback
@@ -41,6 +42,7 @@ export class EngagementService {
     private hubBackends: Map<string, IEngagementBackend> = new Map();
     private privacySettings: EngagementPrivacySettings = DEFAULT_PRIVACY_SETTINGS;
     private logger: Logger;
+    private storage?: EngagementStorage;
 
     // Events
     private _onRatingSubmitted = new vscode.EventEmitter<Rating>();
@@ -91,6 +93,9 @@ export class EngagementService {
         this.defaultBackend = new FileBackend();
         await this.defaultBackend.initialize(config);
 
+        this.storage = new EngagementStorage(storagePath);
+        await this.storage.initialize();
+
         this.logger.info('EngagementService initialized with file backend');
     }
 
@@ -117,6 +122,13 @@ export class EngagementService {
      */
     get initialized(): boolean {
         return this.defaultBackend?.initialized ?? false;
+    }
+
+    /**
+     * Get the local engagement storage (for pending feedback operations)
+     */
+    getStorage(): EngagementStorage | undefined {
+        return this.storage;
     }
 
     // ========================================================================

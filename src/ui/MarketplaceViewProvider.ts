@@ -6,6 +6,7 @@
 
 import * as vscode from 'vscode';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 import { Logger } from '../utils/logger';
 import { RegistryManager } from '../services/RegistryManager';
 import { Bundle, InstalledBundle, RegistrySource } from '../types/registry';
@@ -17,6 +18,9 @@ import { McpServerConfig, McpStdioServerConfig, McpRemoteServerConfig, isStdioSe
 import { SetupStateManager } from '../services/SetupStateManager';
 import { RatingCache } from '../services/engagement/RatingCache';
 import { FeedbackCache } from '../services/engagement/FeedbackCache';
+import { EngagementService } from '../services/engagement/EngagementService';
+import { RatingScore } from '../types/engagement';
+import { PendingFeedback } from '../types/pendingFeedback';
 
 /**
  * Message types sent from webview to extension
@@ -654,7 +658,9 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     }
 
     /**
-     * Handle feedback submitted from the webview interactive stars
+     * Handle feedback submitted from the webview interactive stars.
+     * Submits directly to EngagementService without routing through VS Code commands,
+     * so the entire flow stays in the webview with no native dialogs.
      */
     private async handleWebviewFeedback(bundleId: string, rating: number, comment?: string): Promise<void> {
         try {
@@ -662,21 +668,76 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
             const bundle = bundles.find(b => b.id === bundleId);
             const sources = await this.registryManager.listSources();
             const source = bundle ? sources.find(s => s.id === bundle.sourceId) : undefined;
+            const ratingScore = rating as RatingScore;
+            const feedbackComment = comment || `Rated ${rating} stars`;
 
-            await vscode.commands.executeCommand('promptRegistry.feedback', {
-                resourceId: bundleId,
-                resourceType: 'bundle',
-                name: bundle?.name || bundleId,
-                version: bundle?.version,
-                sourceUrl: source?.url,
-                sourceType: source?.type,
-                hubId: source?.hubId,
-                sourceId: bundle?.sourceId,
-                prefilledRating: rating,
-                prefilledComment: comment,
-            });
+            const engagementService = EngagementService.getInstance();
+            let synced = false;
+
+            // Try remote submission
+            if (engagementService.initialized) {
+                try {
+                    await engagementService.submitFeedback(
+                        'bundle',
+                        bundleId,
+                        feedbackComment,
+                        { version: bundle?.version, rating: ratingScore, hubId: source?.hubId || undefined }
+                    );
+                    synced = true;
+                } catch (err) {
+                    this.logger.warn(`Failed to submit feedback to remote: ${err}`);
+                }
+            }
+
+            // Save locally as pending feedback
+            try {
+                const storage = engagementService.getStorage?.();
+                if (storage) {
+                    const pending: PendingFeedback = {
+                        id: crypto.randomUUID(),
+                        bundleId,
+                        sourceId: bundle?.sourceId || bundleId,
+                        hubId: source?.hubId || '',
+                        resourceType: 'bundle',
+                        rating: ratingScore,
+                        comment: comment || undefined,
+                        timestamp: new Date().toISOString(),
+                        synced,
+                    };
+                    await storage.savePendingFeedback(pending);
+                }
+            } catch (storageErr) {
+                this.logger.error('Failed to save pending feedback locally');
+            }
+
+            // Optimistic cache update
+            try {
+                const ratingCache = RatingCache.getInstance();
+                const cacheSourceId = bundle?.sourceId || bundleId;
+                ratingCache.applyOptimisticRating(cacheSourceId, bundleId, ratingScore);
+            } catch {
+                // non-critical
+            }
+
+            // Send result back to webview
+            if (this._view) {
+                this._view.webview.postMessage({
+                    type: 'feedbackSubmitted',
+                    bundleId,
+                    rating,
+                    synced,
+                    success: true,
+                });
+            }
         } catch (error) {
             this.logger.error(`Failed to process webview feedback: ${error}`);
+            if (this._view) {
+                this._view.webview.postMessage({
+                    type: 'feedbackSubmitted',
+                    bundleId,
+                    success: false,
+                });
+            }
         }
     }
 

@@ -25,6 +25,8 @@
         renderBundles();
     } else if (message.type === 'feedbacksLoaded') {
         renderFeedbackModal(message.bundleId, message.feedbacks, message.rating);
+    } else if (message.type === 'feedbackSubmitted') {
+        handleFeedbackSubmitted(message);
     }
 });
 
@@ -804,6 +806,39 @@ function submitInlineFeedback(bundleId, element) {
 function cancelFeedback(bundleId, element) {
     const form = element.closest('.inline-feedback-form');
     form.classList.remove('visible');
+}
+
+function handleFeedbackSubmitted(message) {
+    const bundleId = message.bundleId;
+    // Find the interactive-stars container for this bundle
+    const container = document.querySelector(`.interactive-stars[data-bundle-id="${bundleId}"]`);
+    if (!container) return;
+
+    // Remove the inline form
+    const form = container.parentElement.querySelector('.inline-feedback-form');
+    if (form) {
+        form.classList.remove('visible');
+    }
+
+    if (message.success) {
+        // Update star display with the user's rating
+        const stars = container.querySelectorAll('.star');
+        const rating = message.rating || 0;
+        stars.forEach(s => {
+            const val = parseInt(s.dataset.star);
+            s.classList.toggle('filled', val <= rating);
+            s.classList.remove('hovered');
+        });
+        container.dataset.currentRating = rating;
+
+        // Brief "thank you" indicator
+        const thankYou = document.createElement('span');
+        thankYou.className = 'rating-votes';
+        thankYou.textContent = message.synced ? ' Submitted!' : ' Saved locally';
+        thankYou.style.color = 'var(--vscode-testing-iconPassed)';
+        container.appendChild(thankYou);
+        setTimeout(() => thankYou.remove(), 3000);
+    }
 }
 
 // Star hover events

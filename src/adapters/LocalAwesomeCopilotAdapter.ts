@@ -485,16 +485,18 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
                     // Add each item file
                     const localPath = this.getLocalPath();
                     for (const item of collection.items) {
-                        const itemPath = path.join(localPath, item.path);
-                        const content = await readFile(itemPath, 'utf-8');
-                        
-                        // For skills, preserve directory structure
+                        // For skills, add the entire skill directory recursively
+                        // so that templates/, references/ and other sibling resources are included
                         if (item.kind === 'skill') {
-                            // item.path is like skills/my-skill/SKILL.md
-                            archive.append(content, { name: item.path });
-                            this.logger.debug(`Added ${item.path} (${content.length} bytes)`);
+                            // item.path is like skills/my-skill/SKILL.md — add skills/my-skill/ recursively
+                            const skillDir = path.join(localPath, path.dirname(item.path));
+                            const skillDirInArchive = path.dirname(item.path);
+                            archive.directory(skillDir, skillDirInArchive);
+                            this.logger.debug(`Added skill directory ${skillDirInArchive}/ recursively`);
                         } else {
                             // For other types, put in prompts/ folder
+                            const itemPath = path.join(localPath, item.path);
+                            const content = await readFile(itemPath, 'utf-8');
                             const filename = path.basename(item.path);
                             archive.append(content, { name: `prompts/${filename}` });
                             this.logger.debug(`Added ${filename} (${content.length} bytes)`);

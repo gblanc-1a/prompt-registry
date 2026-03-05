@@ -5,6 +5,7 @@
 
 import * as assert from 'assert';
 import * as path from 'path';
+import AdmZip from 'adm-zip';
 import { LocalAwesomeCopilotAdapter } from '../../src/adapters/LocalAwesomeCopilotAdapter';
 import { RegistrySource } from '../../src/types/registry';
 
@@ -70,8 +71,8 @@ suite('LocalAwesomeCopilotAdapter', () => {
             const adapter = new LocalAwesomeCopilotAdapter(mockSource);
             const metadata = await adapter.fetchMetadata();
 
-            // We have 2 collections in fixtures
-            assert.strictEqual(metadata.bundleCount, 2);
+            // We have 3 collections in fixtures
+            assert.strictEqual(metadata.bundleCount, 3);
         });
 
         test('should throw error for non-existent directory', async () => {
@@ -91,11 +92,11 @@ suite('LocalAwesomeCopilotAdapter', () => {
             const bundles = await adapter.fetchBundles();
 
             assert.ok(Array.isArray(bundles));
-            assert.strictEqual(bundles.length, 2);
+            assert.strictEqual(bundles.length, 3);
 
             // Check collection IDs
             const bundleIds = bundles.map(b => b.id).sort();
-            assert.deepStrictEqual(bundleIds, ['python-dev', 'test-collection']);
+            assert.deepStrictEqual(bundleIds, ['python-dev', 'skills-collection', 'test-collection']);
         });
 
         test('should parse YAML collections correctly', async () => {
@@ -122,7 +123,7 @@ suite('LocalAwesomeCopilotAdapter', () => {
                 assert.ok(bundle.name);
                 assert.strictEqual(bundle.version, '1.0.0');
                 assert.ok(bundle.description);
-                assert.strictEqual(bundle.author, 'Local Developer');
+                assert.ok(bundle.author);
                 assert.strictEqual(bundle.sourceId, 'test-local-awesome');
                 assert.ok(Array.isArray(bundle.environments));
                 assert.ok(Array.isArray(bundle.tags));
@@ -200,7 +201,7 @@ suite('LocalAwesomeCopilotAdapter', () => {
 
             assert.strictEqual(result.valid, true);
             assert.strictEqual(result.errors.length, 0);
-            assert.strictEqual(result.bundlesFound, 2);
+            assert.strictEqual(result.bundlesFound, 3);
         });
 
         test('should fail validation for non-existent directory', async () => {
@@ -279,6 +280,32 @@ suite('LocalAwesomeCopilotAdapter', () => {
             // Archive should contain manifest
             // This is a basic check - full archive inspection would need unzip
             assert.ok(buffer.length > 100); // Reasonable size for manifest + files
+        });
+
+        test('should include skill nested subdirectories recursively in archive', async () => {
+            const adapter = new LocalAwesomeCopilotAdapter(mockSource);
+            const bundles = await adapter.fetchBundles();
+            const skillsBundle = bundles.find(b => b.id === 'skills-collection');
+
+            assert.ok(skillsBundle, 'skills-collection bundle must be discoverable');
+            const buffer = await adapter.downloadBundle(skillsBundle);
+
+            const zip = new AdmZip(buffer);
+            const entryNames = zip.getEntries().map(e => e.entryName);
+
+            assert.ok(entryNames.includes('deployment-manifest.yml'), 'archive must contain deployment-manifest.yml');
+            assert.ok(
+                entryNames.some(e => e === 'skills/analyzer/SKILL.md'),
+                'archive must contain skills/analyzer/SKILL.md'
+            );
+            assert.ok(
+                entryNames.some(e => e === 'skills/analyzer/templates/analysis-template.md'),
+                'archive must contain skills/analyzer/templates/analysis-template.md (nested subdirectory)'
+            );
+            assert.ok(
+                entryNames.some(e => e === 'skills/reporter/SKILL.md'),
+                'archive must contain skills/reporter/SKILL.md'
+            );
         });
 
         test('should handle bundle without stored collectionFile', async () => {

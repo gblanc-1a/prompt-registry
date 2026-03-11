@@ -2,14 +2,18 @@ name: Collection Scripts Library CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
     paths:
       - "lib/**"
   pull_request:
-    branches: [main, develop]
+    branches: [main]
     paths:
       - "lib/**"
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   NODE_VERSION: "20"
@@ -86,15 +90,10 @@ jobs:
           # Check if this version tag already exists
           if git tag -l "collection-scripts-v$PACKAGE_VERSION" | grep -q .; then
             echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Version $PACKAGE_VERSION already published"
           else
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
-
-      - name: Publish package
-        if: steps.version-check.outputs.exists == 'false'
-        run: npm publish --provenance --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Create version tag
         if: steps.version-check.outputs.exists == 'false'
         run: |
@@ -104,8 +103,10 @@ jobs:
           git push origin "collection-scripts-v${{ steps.version-check.outputs.version }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Skip publish (version exists)
-        if: steps.version-check.outputs.exists == 'true'
+      - name: Publish package
+        if: steps.version-check.outputs.exists == 'false'
+        run: npm publish --provenance --access public
+      - name: Push the tag
+        if: steps.version-check.outputs.exists == 'false'
         run: |
-          echo "Version ${{ steps.version-check.outputs.version }} already published, skipping."
+          git push origin "collection-scripts-v${{ steps.version-check.outputs.version }}"

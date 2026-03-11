@@ -126,6 +126,15 @@ npm run build
 npm test
 ```
 
+### Releasing
+
+The package is configured to use provenance signing for npm publish. Make sure to set up OIDC authentication if publishing to npm.
+The version is taken from the package.json file. Therefore it is important to bump the version before publishing 
+
+```bash
+npm version <patch|minor|major>
+```
+
 ## License
 
-MIT
+Apache License Version 2.0

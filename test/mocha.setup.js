@@ -245,7 +245,34 @@ const vscode = {
     sessionId: 'mock-session-id',
     remoteName: undefined,
     shell: '/bin/bash',
-    openExternal: (uri) => Promise.resolve(true)
+    isTelemetryEnabled: true,
+    openExternal: (uri) => Promise.resolve(true),
+    createTelemetryLogger: (sender, options) => {
+      let _isUsageEnabled = true;
+      return {
+        get isUsageEnabled() { return _isUsageEnabled; },
+        set isUsageEnabled(v) { _isUsageEnabled = v; },
+        get isErrorsEnabled() { return _isUsageEnabled; },
+        onDidChangeEnableStates: () => ({ dispose: () => {} }),
+        logUsage: (eventName, data) => {
+          if (_isUsageEnabled) {
+            sender.sendEventData(eventName, data);
+          }
+        },
+        logError: (eventNameOrError, data) => {
+          if (_isUsageEnabled) {
+            if (eventNameOrError instanceof Error) {
+              sender.sendErrorData(eventNameOrError, data);
+            } else {
+              sender.sendEventData(eventNameOrError, data);
+            }
+          }
+        },
+        dispose: () => {
+          if (sender.flush) { sender.flush(); }
+        }
+      };
+    }
   },
   ConfigurationTarget: {
     Global: 1,

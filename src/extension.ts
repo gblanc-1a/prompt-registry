@@ -42,6 +42,7 @@ import {
 import { ApmRuntimeManager } from './services/ApmRuntimeManager';
 import { OlafRuntimeManager } from './services/OlafRuntimeManager';
 import { SetupStateManager, SetupState } from './services/SetupStateManager';
+import { TelemetryService } from './services/TelemetryService';
 import { MigrationRegistry } from './services/MigrationRegistry';
 import { runSourceIdNormalizationMigration } from './migrations/sourceIdNormalizationMigration';
 
@@ -86,6 +87,9 @@ export class PromptRegistryExtension {
     private updateChecker: UpdateChecker | undefined;
     private notificationManager: NotificationManager | undefined;
     private autoUpdateService: AutoUpdateService | undefined;
+
+    // Telemetry
+    private telemetryService: TelemetryService | undefined;
 
     // Repository-level installation services
     private lockfileManager: LockfileManager | undefined;
@@ -160,6 +164,9 @@ export class PromptRegistryExtension {
             // Initialize update notification system
             await this.initializeUpdateSystem();
 
+            // Initialize telemetry service
+            this.initializeTelemetry();
+
             // Initialize repository-level installation services
             await this.initializeRepositoryServices();
 
@@ -204,6 +211,9 @@ export class PromptRegistryExtension {
             this.disposables.forEach(disposable => disposable.dispose());
             this.disposables = [];
 
+            // Dispose telemetry event subscriptions
+            this.telemetryService?.dispose();
+
             // Dispose update scheduler
             this.updateScheduler?.dispose();
 
@@ -223,6 +233,18 @@ export class PromptRegistryExtension {
 
         } catch (error) {
             console.error('Error during Prompt Registry extension deactivation:', error);
+        }
+    }
+
+    /**
+     * Initialize telemetry service and subscribe to bundle lifecycle events.
+     */
+    private initializeTelemetry(): void {
+        try {
+            this.telemetryService = TelemetryService.getInstance();
+            this.telemetryService.subscribeToRegistryEvents(this.registryManager);
+        } catch (error) {
+            this.logger.warn('Failed to initialize telemetry service (non-fatal)', error as Error);
         }
     }
 

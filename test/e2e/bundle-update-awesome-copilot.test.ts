@@ -311,7 +311,7 @@ Content: ${content}
             // Check that prompt file exists with initial content
             const promptPath = path.join(installPath, 'prompts', 'test.prompt.md');
             if (fs.existsSync(promptPath)) {
-                const initialContent = fs.readFileSync(promptPath, 'utf-8');
+                const initialContent = fs.readFileSync(promptPath, 'utf8');
                 assert.ok(initialContent.includes('INITIAL_CONTENT_MARKER'), 
                     'Initial content should contain marker');
             }
@@ -352,7 +352,7 @@ Content: ${content}
             const newPromptPath = path.join(newInstallPath, 'prompts', 'test.prompt.md');
             
             if (fs.existsSync(newPromptPath)) {
-                const updatedContent = fs.readFileSync(newPromptPath, 'utf-8');
+                const updatedContent = fs.readFileSync(newPromptPath, 'utf8');
                 assert.ok(updatedContent.includes('UPDATED_CONTENT_MARKER'), 
                     'Updated content should contain new marker');
                 assert.ok(!updatedContent.includes('INITIAL_CONTENT_MARKER'), 

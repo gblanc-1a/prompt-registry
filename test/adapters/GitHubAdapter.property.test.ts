@@ -504,7 +504,7 @@ suite('GitHubAdapter Property-Based Tests', () => {
                     const source = createTestSource();
                     const adapter = new GitHubAdapter(source);
 
-                    stubHttpsWithResponse(sandbox, 401, config.htmlBody, 'text/html; charset=utf-8');
+                    stubHttpsWithResponse(sandbox, 401, config.htmlBody, 'text/html; charset=utf8');
 
                     // Attempt to make a request
                     try {

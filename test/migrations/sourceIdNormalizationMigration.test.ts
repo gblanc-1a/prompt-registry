@@ -230,7 +230,7 @@ suite('sourceIdNormalizationMigration', () => {
         await runSourceIdNormalizationMigration(storage, migrationRegistry);
 
         // Installation record should reference the new sourceId
-        const updatedRecord = JSON.parse(fs.readFileSync(installFile, 'utf-8'));
+        const updatedRecord = JSON.parse(fs.readFileSync(installFile, 'utf8'));
         assert.strictEqual(updatedRecord.sourceId, newId, 'Installation record sourceId should be updated');
     });
 

@@ -234,7 +234,7 @@ suite('RepositoryScopeService Property Tests', () => {
         const readGitExclude = (): string | null => {
             const excludePath = path.join(workspaceRoot, '.git', 'info', 'exclude');
             if (fs.existsSync(excludePath)) {
-                return fs.readFileSync(excludePath, 'utf-8');
+                return fs.readFileSync(excludePath, 'utf8');
             }
             return null;
         };
@@ -552,7 +552,7 @@ prompts:
                 } else if (entry.isFile()) {
                     result.push({
                         relativePath,
-                        content: fs.readFileSync(fullPath, 'utf-8')
+                        content: fs.readFileSync(fullPath, 'utf8')
                     });
                 }
             }

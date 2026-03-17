@@ -403,8 +403,8 @@ suite('OlafAdapter Integration Tests', () => {
 
     suite('Post-Installation', () => {
         test('should register skill in competency index after installation', async () => {
-            const fs = require('fs');
-            const path = require('path');
+            const fs = require('node:fs');
+            const path = require('node:path');
             
             // Mock workspace path
             const workspacePath = '/test/workspace';
@@ -491,8 +491,8 @@ suite('OlafAdapter Integration Tests', () => {
         });
 
         test('should update existing skill entry in competency index', async () => {
-            const fs = require('fs');
-            const path = require('path');
+            const fs = require('node:fs');
+            const path = require('node:path');
             
             const workspacePath = '/test/workspace';
             // Install path is now: .olaf/external-skills/<source-name>/ (without bundle/skill name)
@@ -566,7 +566,7 @@ suite('OlafAdapter Integration Tests', () => {
             existsSyncStub.withArgs(sinon.match(/competency-index\.json$/)).returns(true);
             existsSyncStub.withArgs(sinon.match(/reference$/)).returns(true);
             
-            readFileSyncStub.withArgs(sinon.match(/competency-index\.json$/), 'utf-8')
+            readFileSyncStub.withArgs(sinon.match(/competency-index\.json$/), 'utf8')
                 .returns(JSON.stringify(existingIndex));
             
             const adapter = new OlafAdapter(mockSource);
@@ -586,8 +586,8 @@ suite('OlafAdapter Integration Tests', () => {
 
     suite('Post-Uninstallation', () => {
         test('should remove skill from competency index after uninstallation', async () => {
-            const fs = require('fs');
-            const path = require('path');
+            const fs = require('node:fs');
+            const path = require('node:path');
             
             const workspacePath = '/test/workspace';
             // Install path is now: .olaf/external-skills/<source-name>/ (without bundle/skill name)
@@ -613,7 +613,7 @@ suite('OlafAdapter Integration Tests', () => {
             
             existsSyncStub.withArgs(sinon.match(/competency-index\.json$/)).returns(true);
             
-            readFileSyncStub.withArgs(sinon.match(/competency-index\.json$/), 'utf-8')
+            readFileSyncStub.withArgs(sinon.match(/competency-index\.json$/), 'utf8')
                 .returns(JSON.stringify(existingIndex));
             
             const adapter = new OlafAdapter(mockSource);
@@ -630,8 +630,8 @@ suite('OlafAdapter Integration Tests', () => {
         });
 
         test('should handle empty competency index after removing last skill', async () => {
-            const fs = require('fs');
-            const path = require('path');
+            const fs = require('node:fs');
+            const path = require('node:path');
             
             const workspacePath = '/test/workspace';
             // Install path is now: .olaf/external-skills/<source-name>/ (without bundle/skill name)
@@ -652,7 +652,7 @@ suite('OlafAdapter Integration Tests', () => {
             
             existsSyncStub.withArgs(sinon.match(/competency-index\.json$/)).returns(true);
             
-            readFileSyncStub.withArgs(sinon.match(/competency-index\.json$/), 'utf-8')
+            readFileSyncStub.withArgs(sinon.match(/competency-index\.json$/), 'utf8')
                 .returns(JSON.stringify(existingIndex));
             
             const adapter = new OlafAdapter(mockSource);
@@ -667,8 +667,8 @@ suite('OlafAdapter Integration Tests', () => {
         });
 
         test('should handle non-existent competency index gracefully', async () => {
-            const fs = require('fs');
-            const path = require('path');
+            const fs = require('node:fs');
+            const path = require('node:path');
             
             const workspacePath = '/test/workspace';
             // Install path is now: .olaf/external-skills/<source-name>/ (without bundle/skill name)
@@ -687,8 +687,8 @@ suite('OlafAdapter Integration Tests', () => {
         });
 
         test('should handle skill not found in competency index', async () => {
-            const fs = require('fs');
-            const path = require('path');
+            const fs = require('node:fs');
+            const path = require('node:path');
             
             const workspacePath = '/test/workspace';
             // Install path is now: .olaf/external-skills/<source-name>/ (without bundle/skill name)
@@ -709,7 +709,7 @@ suite('OlafAdapter Integration Tests', () => {
             
             existsSyncStub.withArgs(sinon.match(/competency-index\.json$/)).returns(true);
             
-            readFileSyncStub.withArgs(sinon.match(/competency-index\.json$/), 'utf-8')
+            readFileSyncStub.withArgs(sinon.match(/competency-index\.json$/), 'utf8')
                 .returns(JSON.stringify(existingIndex));
             
             const adapter = new OlafAdapter(mockSource);

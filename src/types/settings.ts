@@ -1,31 +1,33 @@
 /**
  * Registry Settings Export/Import Types
- * 
+ *
  * These types define the schema for exporting and importing complete registry settings,
  * including sources, profiles, and configuration.
  */
 
-import { Profile } from './registry';
-import { RegistrySource } from './registry';
+import {
+  Profile,
+  RegistrySource,
+} from './registry';
 
 /**
  * Complete registry settings for export/import
  */
 export interface ExportedSettings {
 /** Schema version for migration compatibility */
-version: string;
+  version: string;
 
-/** ISO timestamp when settings were exported */
-exportedAt: string;
+  /** ISO timestamp when settings were exported */
+  exportedAt: string;
 
-/** All registry sources */
-sources: RegistrySource[];
+  /** All registry sources */
+  sources: RegistrySource[];
 
-/** All user profiles */
-profiles: Profile[];
+  /** All user profiles */
+  profiles: Profile[];
 
-/** Extension configuration settings */
-configuration?: RegistryConfiguration;
+  /** Extension configuration settings */
+  configuration?: RegistryConfiguration;
 }
 
 /**
@@ -33,16 +35,16 @@ configuration?: RegistryConfiguration;
  */
 export interface RegistryConfiguration {
 /** Automatically check for bundle updates */
-autoCheckUpdates?: boolean;
+  autoCheckUpdates?: boolean;
 
-/** Default installation scope (user or workspace) */
-installationScope?: string;
+  /** Default installation scope (user or workspace) */
+  installationScope?: string;
 
-/** Default version to install (latest or specific) */
-defaultVersion?: string;
+  /** Default version to install (latest or specific) */
+  defaultVersion?: string;
 
-/** Enable logging for debugging */
-enableLogging?: boolean;
+  /** Enable logging for debugging */
+  enableLogging?: boolean;
 }
 
 /**
@@ -60,10 +62,10 @@ export type ImportStrategy = 'merge' | 'replace';
  */
 export interface ExportOptions {
 /** Export format */
-format: ExportFormat;
+  format: ExportFormat;
 
-/** Include configuration settings */
-includeConfiguration?: boolean;
+  /** Include configuration settings */
+  includeConfiguration?: boolean;
 }
 
 /**
@@ -71,11 +73,11 @@ includeConfiguration?: boolean;
  */
 export interface ImportOptions {
 /** Import format (auto-detected if not specified) */
-format?: ExportFormat;
+  format?: ExportFormat;
 
-/** Import strategy */
-strategy: ImportStrategy;
+  /** Import strategy */
+  strategy: ImportStrategy;
 
-/** Validate schema before importing */
-validate?: boolean;
+  /** Validate schema before importing */
+  validate?: boolean;
 }

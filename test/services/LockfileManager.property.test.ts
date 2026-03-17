@@ -949,7 +949,7 @@ suite('Lockfile Separation Properties', () => {
     const readGitExclude = (repoPath: string): string => {
         const excludePath = path.join(repoPath, '.git', 'info', 'exclude');
         if (fs.existsSync(excludePath)) {
-            return fs.readFileSync(excludePath, 'utf-8');
+            return fs.readFileSync(excludePath, 'utf8');
         }
         return '';
     };
@@ -1015,7 +1015,7 @@ suite('Lockfile Separation Properties', () => {
                             'Main lockfile should exist after creating commit bundle'
                         );
 
-                        const mainLockfile = JSON.parse(fs.readFileSync(mainLockfilePath, 'utf-8'));
+                        const mainLockfile = JSON.parse(fs.readFileSync(mainLockfilePath, 'utf8'));
                         assert.ok(
                             mainLockfile.bundles[bundleId],
                             `Bundle ${bundleId} should be in main lockfile`
@@ -1076,7 +1076,7 @@ suite('Lockfile Separation Properties', () => {
                             'Local lockfile should exist after creating local-only bundle'
                         );
 
-                        const localLockfile = JSON.parse(fs.readFileSync(localLockfilePath, 'utf-8'));
+                        const localLockfile = JSON.parse(fs.readFileSync(localLockfilePath, 'utf8'));
                         assert.ok(
                             localLockfile.bundles[bundleId],
                             `Bundle ${bundleId} should be in local lockfile`
@@ -1155,12 +1155,12 @@ suite('Lockfile Separation Properties', () => {
                         let inLocal = false;
 
                         if (mainExists) {
-                            const mainLockfile = JSON.parse(fs.readFileSync(mainLockfilePath, 'utf-8'));
+                            const mainLockfile = JSON.parse(fs.readFileSync(mainLockfilePath, 'utf8'));
                             inMain = !!mainLockfile.bundles[bundleId];
                         }
 
                         if (localExists) {
-                            const localLockfile = JSON.parse(fs.readFileSync(localLockfilePath, 'utf-8'));
+                            const localLockfile = JSON.parse(fs.readFileSync(localLockfilePath, 'utf8'));
                             inLocal = !!localLockfile.bundles[bundleId];
                         }
 
@@ -1524,7 +1524,7 @@ suite('Lockfile Separation Properties', () => {
                             `Lockfile ${lockfileName} should still exist with remaining bundle`
                         );
 
-                        const lockfile = JSON.parse(fs.readFileSync(lockfilePath, 'utf-8'));
+                        const lockfile = JSON.parse(fs.readFileSync(lockfilePath, 'utf8'));
                         assert.ok(
                             lockfile.bundles[bundleId2],
                             `Bundle ${bundleId2} should still be in lockfile`

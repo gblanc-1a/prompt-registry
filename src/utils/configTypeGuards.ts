@@ -19,10 +19,10 @@ export type NotificationPreference = 'all' | 'critical' | 'none';
  * @returns True if the value is a valid UpdateCheckFrequency
  */
 export function isValidUpdateCheckFrequency(value: unknown): value is UpdateCheckFrequency {
-    return (
-        typeof value === 'string' &&
-        (value === 'daily' || value === 'weekly' || value === 'manual')
-    );
+  return (
+    typeof value === 'string'
+    && (value === 'daily' || value === 'weekly' || value === 'manual')
+  );
 }
 
 /**
@@ -31,10 +31,10 @@ export function isValidUpdateCheckFrequency(value: unknown): value is UpdateChec
  * @returns True if the value is a valid NotificationPreference
  */
 export function isValidNotificationPreference(value: unknown): value is NotificationPreference {
-    return (
-        typeof value === 'string' &&
-        (value === 'all' || value === 'critical' || value === 'none')
-    );
+  return (
+    typeof value === 'string'
+    && (value === 'all' || value === 'critical' || value === 'none')
+  );
 }
 
 /**
@@ -47,10 +47,10 @@ export function getValidUpdateCheckFrequency(
     value: unknown,
     defaultValue: UpdateCheckFrequency = 'daily'
 ): UpdateCheckFrequency {
-    if (isValidUpdateCheckFrequency(value)) {
-        return value;
-    }
-    return defaultValue;
+  if (isValidUpdateCheckFrequency(value)) {
+    return value;
+  }
+  return defaultValue;
 }
 
 /**
@@ -63,8 +63,8 @@ export function getValidNotificationPreference(
     value: unknown,
     defaultValue: NotificationPreference = 'all'
 ): NotificationPreference {
-    if (isValidNotificationPreference(value)) {
-        return value;
-    }
-    return defaultValue;
+  if (isValidNotificationPreference(value)) {
+    return value;
+  }
+  return defaultValue;
 }

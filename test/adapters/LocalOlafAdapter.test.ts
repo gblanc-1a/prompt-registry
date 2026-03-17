@@ -293,7 +293,7 @@ suite('LocalOlafAdapter', () => {
                 // Verify competency index was created with correct path
                 assert.ok(fs.existsSync(competencyIndexPath), 'Competency index should be created');
                 
-                const indexContent = JSON.parse(fs.readFileSync(competencyIndexPath, 'utf-8'));
+                const indexContent = JSON.parse(fs.readFileSync(competencyIndexPath, 'utf8'));
                 assert.ok(Array.isArray(indexContent), 'Competency index should be an array');
                 assert.strictEqual(indexContent.length, 1, 'Should have one entry');
                 
@@ -305,7 +305,7 @@ suite('LocalOlafAdapter', () => {
                 await adapter.postUninstall('local-olaf-test', '/mock/install/path');
                 
                 // Verify entry was removed
-                const updatedIndexContent = JSON.parse(fs.readFileSync(competencyIndexPath, 'utf-8'));
+                const updatedIndexContent = JSON.parse(fs.readFileSync(competencyIndexPath, 'utf8'));
                 assert.ok(Array.isArray(updatedIndexContent), 'Competency index should still be an array');
                 assert.strictEqual(updatedIndexContent.length, 0, 'Entry should be removed during uninstallation');
                 

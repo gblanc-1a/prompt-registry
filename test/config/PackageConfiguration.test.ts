@@ -14,7 +14,7 @@ suite('Package Configuration - Update Check Settings', () => {
     setup(() => {
         // Load package.json
         const packagePath = path.join(process.cwd(), 'package.json');
-        const packageContent = fs.readFileSync(packagePath, 'utf-8');
+        const packageContent = fs.readFileSync(packagePath, 'utf8');
         packageJson = JSON.parse(packageContent);
     });
 

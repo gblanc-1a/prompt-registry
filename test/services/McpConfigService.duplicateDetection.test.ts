@@ -33,7 +33,7 @@ suite('McpConfigService - Duplicate Detection', () => {
     };
 
     const readTestConfig = async (): Promise<McpConfiguration> => {
-        const content = await fs.readFile(mockConfigPath, 'utf-8');
+        const content = await fs.readFile(mockConfigPath, 'utf8');
         return JSON.parse(content.toString());
     };
 

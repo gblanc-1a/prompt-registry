@@ -635,7 +635,7 @@ suite('DeploymentManifestValidator - Integration with Real Fixtures', () => {
                 assert.fail('bundle1 manifest not found');
             }
             
-            const content = fs.readFileSync(manifestPath, 'utf-8');
+            const content = fs.readFileSync(manifestPath, 'utf8');
             const manifest = yaml.load(content) as any;
             
             // Verify required fields
@@ -651,7 +651,7 @@ suite('DeploymentManifestValidator - Integration with Real Fixtures', () => {
                 assert.fail('example-bundle manifest not found');
             }
             
-            const content = fs.readFileSync(manifestPath, 'utf-8');
+            const content = fs.readFileSync(manifestPath, 'utf8');
             const manifest = yaml.load(content) as any;
             
             // Verify required fields
@@ -677,7 +677,7 @@ suite('DeploymentManifestValidator - Integration with Real Fixtures', () => {
                 assert.fail('testing-bundle manifest not found');
             }
             
-            const content = fs.readFileSync(manifestPath, 'utf-8');
+            const content = fs.readFileSync(manifestPath, 'utf8');
             const manifest = yaml.load(content) as any;
             
             // Verify required fields
@@ -717,7 +717,7 @@ suite('DeploymentManifestValidator - Integration with Real Fixtures', () => {
                 
                 if (fs.existsSync(manifestPath)) {
                     try {
-                        const content = fs.readFileSync(manifestPath, 'utf-8');
+                        const content = fs.readFileSync(manifestPath, 'utf8');
                         const manifest = yaml.load(content) as any;
                         
                         // Basic validation
@@ -759,7 +759,7 @@ suite('DeploymentManifestValidator - Integration with Real Fixtures', () => {
                 const manifestPath = path.join(fixturesDir, bundleName, 'deployment-manifest.yml');
                 
                 if (fs.existsSync(manifestPath)) {
-                    const content = fs.readFileSync(manifestPath, 'utf-8');
+                    const content = fs.readFileSync(manifestPath, 'utf8');
                     const manifest = yaml.load(content) as any;
                     
                     if (manifest.prompts) {

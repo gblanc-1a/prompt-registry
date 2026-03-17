@@ -101,7 +101,7 @@ suite('RepositoryScopeService', () => {
     const readGitExclude = (): string | null => {
         const excludePath = path.join(workspaceRoot, '.git', 'info', 'exclude');
         if (fs.existsSync(excludePath)) {
-            return fs.readFileSync(excludePath, 'utf-8');
+            return fs.readFileSync(excludePath, 'utf8');
         }
         return null;
     };
@@ -760,7 +760,7 @@ suite('RepositoryScopeService', () => {
             mockStorage.getInstalledBundle.resolves(createMockInstalledBundle(bundleId, 'local-only'));
             
             // Manually remove just test1
-            const content = fs.readFileSync(excludePath, 'utf-8');
+            const content = fs.readFileSync(excludePath, 'utf8');
             fs.writeFileSync(excludePath, content.replace('.github/prompts/test1.prompt.md\n', ''));
             
             const excludeContent = readGitExclude();
@@ -880,7 +880,7 @@ prompts:
             assert.ok(fs.statSync(path.join(targetSkillDir, 'lib', 'utils')).isDirectory(), 'lib/utils should be a directory');
             
             // Verify file contents are preserved
-            const coreContent = fs.readFileSync(path.join(targetSkillDir, 'lib', 'core.js'), 'utf-8');
+            const coreContent = fs.readFileSync(path.join(targetSkillDir, 'lib', 'core.js'), 'utf8');
             assert.strictEqual(coreContent, 'exports.core = {};', 'File content should be preserved');
         });
 

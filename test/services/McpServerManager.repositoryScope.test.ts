@@ -40,7 +40,7 @@ suite('McpServerManager Repository Scope Test Suite', () => {
         if (!await fs.pathExists(configPath)) {
             return null;
         }
-        const content = await fs.readFile(configPath, 'utf-8');
+        const content = await fs.readFile(configPath, 'utf8');
         return JSON.parse(content);
     };
 
@@ -48,7 +48,7 @@ suite('McpServerManager Repository Scope Test Suite', () => {
     const writeMcpConfig = async (config: McpConfiguration): Promise<void> => {
         const configPath = getMcpConfigPath();
         await fs.ensureDir(path.dirname(configPath));
-        await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf-8');
+        await fs.writeFile(configPath, JSON.stringify(config, null, 2), 'utf8');
     };
 
     // Helper to read tracking metadata
@@ -57,7 +57,7 @@ suite('McpServerManager Repository Scope Test Suite', () => {
         if (!await fs.pathExists(trackingPath)) {
             return null;
         }
-        const content = await fs.readFile(trackingPath, 'utf-8');
+        const content = await fs.readFile(trackingPath, 'utf8');
         return JSON.parse(content);
     };
 
@@ -67,7 +67,7 @@ suite('McpServerManager Repository Scope Test Suite', () => {
         if (!await fs.pathExists(excludePath)) {
             return null;
         }
-        return fs.readFile(excludePath, 'utf-8');
+        return fs.readFile(excludePath, 'utf8');
     };
 
     // Helper to create a test workspace with .git directory

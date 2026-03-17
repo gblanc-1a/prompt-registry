@@ -202,7 +202,7 @@ interface PackageJsonMenuItem {
 export function extractPackageJsonContextPatterns(): RegExp[] {
     // Resolve package.json from the workspace root (handles both src and test-dist locations)
     const packageJsonPath = path.resolve(__dirname, '../../..', 'package.json');
-    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
     const menus: PackageJsonMenuItem[] = packageJson.contributes?.menus?.['view/item/context'] ?? [];
     
     const patternSet = new Set<string>();

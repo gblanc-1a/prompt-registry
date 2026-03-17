@@ -524,7 +524,7 @@ suite('LockfileManager', () => {
                 const excludePath = path.join(gitInfoDir, 'exclude');
                 assert.ok(fs.existsSync(excludePath), '.git/info/exclude should exist');
                 
-                const excludeContent = fs.readFileSync(excludePath, 'utf-8');
+                const excludeContent = fs.readFileSync(excludePath, 'utf8');
                 assert.ok(
                     excludeContent.includes('prompt-registry.local.lock.json'),
                     'Local lockfile should be in git exclude'
@@ -580,7 +580,7 @@ suite('LockfileManager', () => {
                 
                 // Verify .git/info/exclude has only one entry for local lockfile
                 const excludePath = path.join(gitInfoDir, 'exclude');
-                const excludeContent = fs.readFileSync(excludePath, 'utf-8');
+                const excludeContent = fs.readFileSync(excludePath, 'utf8');
                 
                 const matches = excludeContent.match(/prompt-registry\.local\.lock\.json/g);
                 assert.strictEqual(matches?.length, 1, 'Local lockfile should appear only once in git exclude');
@@ -748,7 +748,7 @@ suite('LockfileManager', () => {
                 assert.strictEqual(fs.existsSync(localLockfilePath()), false, 'Local lockfile should be deleted');
                 
                 // Git exclude should no longer have the local lockfile entry
-                const excludeContent = fs.readFileSync(excludePath, 'utf-8');
+                const excludeContent = fs.readFileSync(excludePath, 'utf8');
                 assert.ok(
                     !excludeContent.includes('prompt-registry.local.lock.json'),
                     'Local lockfile should be removed from git exclude'
@@ -971,7 +971,7 @@ suite('LockfileManager', () => {
             const excludePath = path.join(gitInfoDir, 'exclude');
             assert.ok(fs.existsSync(excludePath), '.git/info/exclude should exist');
             
-            const excludeContent = fs.readFileSync(excludePath, 'utf-8');
+            const excludeContent = fs.readFileSync(excludePath, 'utf8');
             assert.ok(
                 excludeContent.includes('prompt-registry.local.lock.json'),
                 'Local lockfile should be in git exclude'
@@ -996,7 +996,7 @@ suite('LockfileManager', () => {
             assert.strictEqual(fs.existsSync(localLockfilePath()), false, 'Local lockfile should be deleted');
             
             // Git exclude should no longer have the local lockfile entry
-            const excludeContent = fs.readFileSync(excludePath, 'utf-8');
+            const excludeContent = fs.readFileSync(excludePath, 'utf8');
             assert.ok(
                 !excludeContent.includes('prompt-registry.local.lock.json'),
                 'Local lockfile should be removed from git exclude'

@@ -186,7 +186,7 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
             assert.ok(fs.existsSync(lockfilePath), 'Lockfile should exist after installation');
             
             // Read lockfile directly to get the actual bundle ID
-            const lockfileContent = JSON.parse(fs.readFileSync(lockfilePath, 'utf-8'));
+            const lockfileContent = JSON.parse(fs.readFileSync(lockfilePath, 'utf8'));
             const lockfileBundleIds = Object.keys(lockfileContent.bundles);
             assert.ok(lockfileBundleIds.length > 0, 'Lockfile should have at least one bundle');
             
@@ -223,7 +223,7 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
             
             // Get the actual bundle ID from lockfile
             const lockfilePath = path.join(workspaceRoot, LOCKFILE_NAME);
-            const lockfileContent = JSON.parse(fs.readFileSync(lockfilePath, 'utf-8'));
+            const lockfileContent = JSON.parse(fs.readFileSync(lockfilePath, 'utf8'));
             const actualBundleId = Object.keys(lockfileContent.bundles)[0];
             
             // Query all bundles (no scope filter)
@@ -609,7 +609,7 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
             assert.ok(fs.existsSync(lockfilePath), 'Lockfile should exist after installation');
             
             // Verify this is the only bundle in the lockfile
-            const lockfileBefore = JSON.parse(fs.readFileSync(lockfilePath, 'utf-8'));
+            const lockfileBefore = JSON.parse(fs.readFileSync(lockfilePath, 'utf8'));
             const bundleCount = Object.keys(lockfileBefore.bundles).length;
             assert.strictEqual(bundleCount, 1, 'Should have exactly one bundle in lockfile');
             
@@ -686,7 +686,7 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
             const lockfilePath = path.join(workspaceRoot, LOCKFILE_NAME);
             assert.ok(fs.existsSync(lockfilePath), 'Lockfile should exist');
             
-            const lockfileBefore = JSON.parse(fs.readFileSync(lockfilePath, 'utf-8'));
+            const lockfileBefore = JSON.parse(fs.readFileSync(lockfilePath, 'utf8'));
             const bundleIdsBefore = Object.keys(lockfileBefore.bundles);
             assert.strictEqual(bundleIdsBefore.length, 2, 'Should have two bundles in lockfile');
             

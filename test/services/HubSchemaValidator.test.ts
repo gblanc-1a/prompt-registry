@@ -26,19 +26,19 @@ suite('HubSchemaValidator - TDD', () => {
         
         const validContent = fs.readFileSync(
             path.join(fixturesDir, 'valid-hub-config.yml'),
-            'utf-8'
+            'utf8'
         );
         validHubConfig = yaml.load(validContent) as HubConfig;
         
         const invalidContent = fs.readFileSync(
             path.join(fixturesDir, 'invalid-hub-config.yml'),
-            'utf-8'
+            'utf8'
         );
         invalidHubConfig = yaml.load(invalidContent);
         
         const maliciousContent = fs.readFileSync(
             path.join(fixturesDir, 'malicious-hub-config.yml'),
-            'utf-8'
+            'utf8'
         );
         maliciousHubConfig = yaml.load(maliciousContent);
     });
@@ -49,12 +49,12 @@ suite('HubSchemaValidator - TDD', () => {
         });
 
         test('hub schema should be valid JSON', () => {
-            const schemaContent = fs.readFileSync(hubSchemaPath, 'utf-8');
+            const schemaContent = fs.readFileSync(hubSchemaPath, 'utf8');
             assert.doesNotThrow(() => JSON.parse(schemaContent), 'Schema should be valid JSON');
         });
 
         test('hub schema should have required root properties', () => {
-            const schemaContent = fs.readFileSync(hubSchemaPath, 'utf-8');
+            const schemaContent = fs.readFileSync(hubSchemaPath, 'utf8');
             const schema = JSON.parse(schemaContent);
             
             assert.ok(schema.$schema, 'Schema should have $schema property');

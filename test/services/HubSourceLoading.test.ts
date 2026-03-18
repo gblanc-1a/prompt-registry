@@ -404,7 +404,7 @@ suite('Hub Source Loading', () => {
 
             // Modify the hub config to add a 3rd source
             const yaml = require('js-yaml');
-            const hubConfig = yaml.load(fs.readFileSync(tempHubPath, 'utf-8')) as HubConfig;
+            const hubConfig = yaml.load(fs.readFileSync(tempHubPath, 'utf8')) as HubConfig;
             hubConfig.sources.push({
                 id: 'source-3',
                 name: 'Source 3',

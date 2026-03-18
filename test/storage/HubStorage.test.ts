@@ -30,7 +30,7 @@ suite('HubStorage - TDD', () => {
         const fixturesDir = path.join(process.cwd(), 'test', 'fixtures', 'hubs');
         const validContent = fs.readFileSync(
             path.join(fixturesDir, 'valid-hub-config.yml'),
-            'utf-8'
+            'utf8'
         );
         testHubConfig = yaml.load(validContent) as HubConfig;
 
@@ -87,7 +87,7 @@ suite('HubStorage - TDD', () => {
             await storage.saveHub(hubId, testHubConfig, testHubReference);
             
             const configPath = path.join(tempDir, `${hubId}.yml`);
-            const savedContent = fs.readFileSync(configPath, 'utf-8');
+            const savedContent = fs.readFileSync(configPath, 'utf8');
             const parsed = yaml.load(savedContent) as HubConfig;
             
             assert.strictEqual(parsed.version, testHubConfig.version);
@@ -101,7 +101,7 @@ suite('HubStorage - TDD', () => {
             const metaPath = path.join(tempDir, `${hubId}.meta.json`);
             assert.ok(fs.existsSync(metaPath), 'Reference metadata should exist');
             
-            const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+            const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
             assert.strictEqual(meta.reference.type, testHubReference.type);
             assert.strictEqual(meta.reference.location, testHubReference.location);
         });
@@ -481,7 +481,7 @@ suite('HubStorage - TDD', () => {
             const activeHubPath = path.join(tempDir, 'activeHubId.json');
             assert.ok(fs.existsSync(activeHubPath), 'activeHubId.json should exist');
             
-            const content = JSON.parse(fs.readFileSync(activeHubPath, 'utf-8'));
+            const content = JSON.parse(fs.readFileSync(activeHubPath, 'utf8'));
             assert.ok(content.setAt, 'Should have setAt timestamp');
             
             const setAtTime = new Date(content.setAt);

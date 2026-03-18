@@ -371,9 +371,9 @@ export const TestGenerators = {
     contentType: () => {
         return fc.constantFrom(
             'application/json',
-            'application/json; charset=utf-8',
+            'application/json; charset=utf8',
             'text/html',
-            'text/html; charset=utf-8',
+            'text/html; charset=utf8',
             'text/plain',
             'application/octet-stream'
         );

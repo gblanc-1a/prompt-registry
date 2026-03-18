@@ -94,7 +94,7 @@ suite('Repository Fixture Helpers', () => {
             
             assert.ok(manifestEntry, 'ZIP should contain deployment-manifest.yml');
             
-            const manifestContent = manifestEntry!.getData().toString('utf-8');
+            const manifestContent = manifestEntry!.getData().toString('utf8');
             assert.ok(manifestContent.includes('id: test-bundle'), 'manifest should contain id');
             assert.ok(manifestContent.includes('version: 1.0.0'), 'manifest should contain version');
         });
@@ -109,7 +109,7 @@ suite('Repository Fixture Helpers', () => {
             
             assert.ok(promptEntry, 'ZIP should contain prompts/test.prompt.md');
             
-            const promptContent = promptEntry!.getData().toString('utf-8');
+            const promptContent = promptEntry!.getData().toString('utf8');
             assert.ok(promptContent.includes('# Test Prompt'), 'prompt should have header');
             assert.ok(promptContent.includes('Content: test'), 'prompt should include content identifier');
         });
@@ -131,7 +131,7 @@ suite('Repository Fixture Helpers', () => {
             const manifestEntry = zip.getEntry('deployment-manifest.yml');
             assert.ok(manifestEntry, 'should find manifest');
             
-            const manifestContent = manifestEntry!.getData().toString('utf-8');
+            const manifestContent = manifestEntry!.getData().toString('utf8');
             assert.ok(manifestContent.includes(`id: ${config.manifestId}`), 'manifest id should match');
             assert.ok(manifestContent.includes(`version: ${version}`), 'manifest version should match');
             assert.ok(manifestContent.includes(`author: ${config.owner}`), 'manifest author should match');

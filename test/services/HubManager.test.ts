@@ -133,13 +133,13 @@ suite('HubManager', () => {
     suite('Hub Validation', () => {
         test('should validate hub config', async () => {
             // Load the fixture
-            const config = yaml.load(fs.readFileSync(localRef.location, 'utf-8')) as HubConfig;
+            const config = yaml.load(fs.readFileSync(localRef.location, 'utf8')) as HubConfig;
             const result = await hubManager.validateHub(config);
             assert.strictEqual(result.valid, true);
         });
 
         test('should fail validation for invalid config', async () => {
-            const config = yaml.load(fs.readFileSync(localRef.location, 'utf-8')) as HubConfig;
+            const config = yaml.load(fs.readFileSync(localRef.location, 'utf8')) as HubConfig;
             mockValidator.setShouldFail(true, ['Schema error']);
 
             const result = await hubManager.validateHub(config);
@@ -246,7 +246,7 @@ suite('HubManager', () => {
             await hubManager.importHub(syncRef, 'test-sync');
 
             // Modify the source file
-            const config = yaml.load(fs.readFileSync(tempFixture, 'utf-8')) as any;
+            const config = yaml.load(fs.readFileSync(tempFixture, 'utf8')) as any;
             config.metadata.maintainer = 'Updated Team';
             fs.writeFileSync(tempFixture, yaml.dump(config));
 
@@ -940,7 +940,7 @@ sources: []
 profiles: []
 `;
         // Update the hub reference to URL type for sync test
-        await storage.saveHub(hubId, yaml.load(fs.readFileSync(fixturePath, 'utf-8')) as HubConfig, {
+        await storage.saveHub(hubId, yaml.load(fs.readFileSync(fixturePath, 'utf8')) as HubConfig, {
             type: 'url',
             location: 'https://raw.githubusercontent.com/test-owner/test-repo/main/hub-config.yml'
         });

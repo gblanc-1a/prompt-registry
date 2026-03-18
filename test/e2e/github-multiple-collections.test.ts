@@ -324,13 +324,13 @@ Version: ${version}
             // Verify collection-a files
             const promptA = path.join(recordA!.installPath, 'prompts', 'collection-a-prompt-1.md');
             assert.ok(fs.existsSync(promptA), 'Collection-a prompt should exist');
-            const contentA = fs.readFileSync(promptA, 'utf-8');
+            const contentA = fs.readFileSync(promptA, 'utf8');
             assert.ok(contentA.includes('collection-a'), 'Should have collection-a content');
             
             // Verify collection-b files
             const promptB = path.join(recordB!.installPath, 'prompts', 'collection-b-prompt-1.md');
             assert.ok(fs.existsSync(promptB), 'Collection-b prompt should exist');
-            const contentB = fs.readFileSync(promptB, 'utf-8');
+            const contentB = fs.readFileSync(promptB, 'utf8');
             assert.ok(contentB.includes('collection-b'), 'Should have collection-b content');
             
             // Verify no cross-contamination

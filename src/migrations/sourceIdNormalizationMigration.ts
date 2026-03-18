@@ -11,16 +11,24 @@
  * Dual-read fallback in RepositoryActivationService and RegistryManager handles the gap.
  */
 
-import * as fs from 'fs';
-import * as path from 'path';
-import { promisify } from 'util';
-import { RegistryStorage } from '../storage/RegistryStorage';
-import { MigrationRegistry } from '../services/MigrationRegistry';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import {
-    generateHubSourceId,
-    generateLegacyHubSourceId
+  promisify,
+} from 'node:util';
+import {
+  MigrationRegistry,
+} from '../services/MigrationRegistry';
+import {
+  RegistryStorage,
+} from '../storage/RegistryStorage';
+import {
+  Logger,
+} from '../utils/logger';
+import {
+  generateHubSourceId,
+  generateLegacyHubSourceId,
 } from '../utils/sourceIdUtils';
-import { Logger } from '../utils/logger';
 
 const rename = promisify(fs.rename);
 const readFile = promisify(fs.readFile);
@@ -32,154 +40,166 @@ export const MIGRATION_NAME = 'sourceId-normalization-v2';
 /**
  * Run the source ID normalization migration.
  * Idempotent: uses MigrationRegistry to ensure it only runs once.
+ * @param storage
+ * @param migrationRegistry
  */
 export async function runSourceIdNormalizationMigration(
     storage: RegistryStorage,
     migrationRegistry: MigrationRegistry
 ): Promise<void> {
-    await migrationRegistry.runMigration(MIGRATION_NAME, async () => {
-        const logger = Logger.getInstance();
-        const paths = storage.getPaths();
+  await migrationRegistry.runMigration(MIGRATION_NAME, async () => {
+    const logger = Logger.getInstance();
+    const paths = storage.getPaths();
 
-        // Step 1: Migrate config.json sources
-        const idMap = await migrateConfigSources(storage, logger);
+    // Step 1: Migrate config.json sources
+    const idMap = await migrateConfigSources(storage, logger);
 
-        if (idMap.size === 0) {
-            logger.info('No sources require ID migration');
-            return;
-        }
+    if (idMap.size === 0) {
+      logger.info('No sources require ID migration');
+      return;
+    }
 
-        logger.info(`Migrating ${idMap.size} source ID(s): ${[...idMap.entries()].map(([o, n]) => `${o} -> ${n}`).join(', ')}`);
+    logger.info(`Migrating ${idMap.size} source ID(s): ${[...idMap.entries()].map(([o, n]) => `${o} -> ${n}`).join(', ')}`);
 
-        // Step 2: Rename source cache files
-        await migrateSourceCacheFiles(paths.sourcesCache, idMap, logger);
+    // Step 2: Rename source cache files
+    await migrateSourceCacheFiles(paths.sourcesCache, idMap, logger);
 
-        // Step 3: Update installation records that reference old sourceIds
-        await migrateInstallationRecords(paths.userInstalled, idMap, logger);
-        await migrateInstallationRecords(paths.installed, idMap, logger);
-    });
+    // Step 3: Update installation records that reference old sourceIds
+    await migrateInstallationRecords(paths.userInstalled, idMap, logger);
+    await migrateInstallationRecords(paths.installed, idMap, logger);
+  });
 }
 
 /**
  * Migrate source IDs in config.json.
  * Returns a map of oldId -> newId for sources that were migrated.
+ * @param storage
+ * @param logger
  */
 async function migrateConfigSources(
     storage: RegistryStorage,
     logger: Logger
 ): Promise<Map<string, string>> {
-    const idMap = new Map<string, string>();
-    const sources = await storage.getSources();
-    let changed = false;
+  const idMap = new Map<string, string>();
+  const sources = await storage.getSources();
+  let changed = false;
 
-    for (const source of sources) {
-        // Only hub-generated IDs (format: {type}-{12hexchars}) need migration
-        if (!isHubGeneratedId(source.id)) {
-            continue;
-        }
-
-        // Compute what the new ID should be
-        const newId = generateHubSourceId(source.type, source.url, {
-            branch: source.config?.branch,
-            collectionsPath: source.config?.collectionsPath
-        });
-
-        // If the stored ID differs from the new format, it's a legacy ID
-        if (source.id !== newId) {
-            // Verify it's actually the legacy form (not some other mismatch)
-            const legacyId = generateLegacyHubSourceId(source.type, source.url, {
-                branch: source.config?.branch,
-                collectionsPath: source.config?.collectionsPath
-            });
-
-            if (legacyId && source.id === legacyId) {
-                logger.info(`Migrating source '${source.name}': ${source.id} -> ${newId}`);
-                idMap.set(source.id, newId);
-                source.id = newId;
-                changed = true;
-            }
-        }
+  for (const source of sources) {
+    // Only hub-generated IDs (format: {type}-{12hexchars}) need migration
+    if (!isHubGeneratedId(source.id)) {
+      continue;
     }
 
-    if (changed) {
-        // Save the updated config through RegistryStorage
-        const config = await storage.loadConfig();
-        config.sources = sources;
-        await storage.saveConfig(config);
-    }
+    // Compute what the new ID should be
+    const newId = generateHubSourceId(source.type, source.url, {
+      branch: source.config?.branch,
+      collectionsPath: source.config?.collectionsPath
+    });
 
-    return idMap;
+    // If the stored ID differs from the new format, it's a legacy ID
+    if (source.id !== newId) {
+      // Verify it's actually the legacy form (not some other mismatch)
+      const legacyId = generateLegacyHubSourceId(source.type, source.url, {
+        branch: source.config?.branch,
+        collectionsPath: source.config?.collectionsPath
+      });
+
+      if (legacyId && source.id === legacyId) {
+        logger.info(`Migrating source '${source.name}': ${source.id} -> ${newId}`);
+        idMap.set(source.id, newId);
+        source.id = newId;
+        changed = true;
+      }
+    }
+  }
+
+  if (changed) {
+    // Save the updated config through RegistryStorage
+    const config = await storage.loadConfig();
+    config.sources = sources;
+    await storage.saveConfig(config);
+  }
+
+  return idMap;
 }
 
 /**
  * Check if a source ID looks like a hub-generated ID (format: {type}-{12hexchars})
+ * @param id
  */
 function isHubGeneratedId(id: string): boolean {
-    return /^[a-z]+-[a-f0-9]{12}$/.test(id);
+  return /^[a-z]+-[a-f0-9]{12}$/.test(id);
 }
 
 /**
  * Rename source cache files from old sanitized ID to new sanitized ID.
+ * @param cacheDir
+ * @param idMap
+ * @param logger
  */
 async function migrateSourceCacheFiles(
     cacheDir: string,
     idMap: Map<string, string>,
     logger: Logger
 ): Promise<void> {
-    for (const [oldId, newId] of idMap) {
-        const oldFile = path.join(cacheDir, `${sanitize(oldId)}.json`);
-        const newFile = path.join(cacheDir, `${sanitize(newId)}.json`);
+  for (const [oldId, newId] of idMap) {
+    const oldFile = path.join(cacheDir, `${sanitize(oldId)}.json`);
+    const newFile = path.join(cacheDir, `${sanitize(newId)}.json`);
 
-        try {
-            if (fs.existsSync(oldFile) && !fs.existsSync(newFile)) {
-                await rename(oldFile, newFile);
-                logger.debug(`Renamed cache file: ${sanitize(oldId)}.json -> ${sanitize(newId)}.json`);
-            }
-        } catch (error) {
-            logger.warn(`Failed to rename cache file for ${oldId}`, error as Error);
-        }
+    try {
+      if (fs.existsSync(oldFile) && !fs.existsSync(newFile)) {
+        await rename(oldFile, newFile);
+        logger.debug(`Renamed cache file: ${sanitize(oldId)}.json -> ${sanitize(newId)}.json`);
+      }
+    } catch (error) {
+      logger.warn(`Failed to rename cache file for ${oldId}`, error as Error);
     }
+  }
 }
 
 /**
  * Update sourceId references in installation record JSON files.
+ * @param installDir
+ * @param idMap
+ * @param logger
  */
 async function migrateInstallationRecords(
     installDir: string,
     idMap: Map<string, string>,
     logger: Logger
 ): Promise<void> {
-    let files: string[];
+  let files: string[];
+  try {
+    files = await readdir(installDir);
+  } catch {
+    return; // directory doesn't exist
+  }
+
+  for (const file of files) {
+    if (!file.endsWith('.json')) {
+      continue;
+    }
+
+    const filepath = path.join(installDir, file);
     try {
-        files = await readdir(installDir);
-    } catch {
-        return; // directory doesn't exist
+      const data = await readFile(filepath, 'utf8');
+      const record = JSON.parse(data);
+
+      if (record.sourceId && idMap.has(record.sourceId)) {
+        record.sourceId = idMap.get(record.sourceId);
+        await writeFile(filepath, JSON.stringify(record, null, 2), 'utf8');
+        logger.debug(`Updated sourceId in installation record: ${file}`);
+      }
+    } catch (error) {
+      logger.warn(`Failed to migrate installation record ${file}`, error as Error);
     }
-
-    for (const file of files) {
-        if (!file.endsWith('.json')) {
-            continue;
-        }
-
-        const filepath = path.join(installDir, file);
-        try {
-            const data = await readFile(filepath, 'utf-8');
-            const record = JSON.parse(data);
-
-            if (record.sourceId && idMap.has(record.sourceId)) {
-                record.sourceId = idMap.get(record.sourceId);
-                await writeFile(filepath, JSON.stringify(record, null, 2), 'utf-8');
-                logger.debug(`Updated sourceId in installation record: ${file}`);
-            }
-        } catch (error) {
-            logger.warn(`Failed to migrate installation record ${file}`, error as Error);
-        }
-    }
+  }
 }
 
 /**
  * Sanitize an ID for filenames (mirrors RegistryStorage.sanitizeFilename logic).
+ * @param id
  */
 function sanitize(id: string): string {
-    return id.replace(/[^A-Za-z0-9._-]/g, '_').substring(0, 200);
+  return id.replace(/[^A-Za-z0-9._-]/g, '_').substring(0, 200);
 }

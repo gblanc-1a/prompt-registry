@@ -91,7 +91,7 @@ suite('Hub Types - TDD Implementation', () => {
     setup(() => {
       const fixtureContent = fs.readFileSync(
         path.join(__dirname, '../../fixtures/hubs/valid-hub-config.yml'),
-        'utf-8'
+        'utf8'
       );
       validConfig = yaml.load(fixtureContent) as HubConfig;
     });
@@ -265,7 +265,7 @@ suite('Hub Types - TDD Implementation', () => {
     setup(() => {
       const fixtureContent = fs.readFileSync(
         path.join(__dirname, '../../fixtures/hubs/malicious-hub-config.yml'),
-        'utf-8'
+        'utf8'
       );
       maliciousConfig = yaml.load(fixtureContent);
     });

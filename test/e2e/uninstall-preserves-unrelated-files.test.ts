@@ -249,7 +249,7 @@ jobs:
             assert.ok(fs.existsSync(lockfilePath), 'Lockfile should exist after installation');
             
             // Get the actual bundle ID from the lockfile
-            const lockfileBefore = JSON.parse(fs.readFileSync(lockfilePath, 'utf-8'));
+            const lockfileBefore = JSON.parse(fs.readFileSync(lockfilePath, 'utf8'));
             const actualBundleId = Object.keys(lockfileBefore.bundles)[0];
             
             // Uninstall the bundle (this is the last bundle)
@@ -270,10 +270,10 @@ jobs:
             assert.ok(fs.existsSync(issueTemplateFile), 'Issue template file should be preserved');
             
             // Verify content of preserved files is intact
-            const ciContent = fs.readFileSync(ciWorkflowFile, 'utf-8');
+            const ciContent = fs.readFileSync(ciWorkflowFile, 'utf8');
             assert.ok(ciContent.includes('npm test'), 'CI workflow content should be intact');
             
-            const codeownersContent = fs.readFileSync(codeownersFile, 'utf-8');
+            const codeownersContent = fs.readFileSync(codeownersFile, 'utf8');
             assert.ok(codeownersContent.includes('@test-owner'), 'CODEOWNERS content should be intact');
         });
 
@@ -308,7 +308,7 @@ updates:
             
             // Get bundle ID and uninstall
             const lockfilePath = path.join(workspaceRoot, LOCKFILE_NAME);
-            const lockfile = JSON.parse(fs.readFileSync(lockfilePath, 'utf-8'));
+            const lockfile = JSON.parse(fs.readFileSync(lockfilePath, 'utf8'));
             const actualBundleId = Object.keys(lockfile.bundles)[0];
             
             await testContext.registryManager.uninstallBundle(actualBundleId, 'repository');
@@ -322,7 +322,7 @@ updates:
             assert.ok(fs.existsSync(dependabotFile), 'Dependabot config should be preserved');
             
             // Verify dependabot content is intact
-            const dependabotContent = fs.readFileSync(dependabotFile, 'utf-8');
+            const dependabotContent = fs.readFileSync(dependabotFile, 'utf8');
             assert.ok(dependabotContent.includes('package-ecosystem: npm'), 'Dependabot content should be intact');
         });
 
@@ -342,13 +342,13 @@ updates:
             assert.ok(fs.existsSync(promptFile), 'Prompt file should exist after installation');
             
             // === ACT: Modify the prompt file (simulate user customization) ===
-            const originalContent = fs.readFileSync(promptFile, 'utf-8');
+            const originalContent = fs.readFileSync(promptFile, 'utf8');
             const modifiedContent = originalContent + '\n\n## User Customization\nThis was added by the user.';
             fs.writeFileSync(promptFile, modifiedContent);
             
             // Get bundle ID and uninstall
             const lockfilePath = path.join(workspaceRoot, LOCKFILE_NAME);
-            const lockfile = JSON.parse(fs.readFileSync(lockfilePath, 'utf-8'));
+            const lockfile = JSON.parse(fs.readFileSync(lockfilePath, 'utf8'));
             const actualBundleId = Object.keys(lockfile.bundles)[0];
             
             await testContext.registryManager.uninstallBundle(actualBundleId, 'repository');
@@ -357,7 +357,7 @@ updates:
             assert.ok(fs.existsSync(promptFile), 'User-modified prompt file should be preserved');
             
             // Verify the user's modifications are intact
-            const preservedContent = fs.readFileSync(promptFile, 'utf-8');
+            const preservedContent = fs.readFileSync(promptFile, 'utf8');
             assert.ok(preservedContent.includes('User Customization'), 'User modifications should be preserved');
             assert.ok(preservedContent.includes('This was added by the user'), 'User content should be intact');
             
@@ -394,7 +394,7 @@ Do something custom.
             
             // Get bundle ID and uninstall
             const lockfilePath = path.join(workspaceRoot, LOCKFILE_NAME);
-            const lockfile = JSON.parse(fs.readFileSync(lockfilePath, 'utf-8'));
+            const lockfile = JSON.parse(fs.readFileSync(lockfilePath, 'utf8'));
             const actualBundleId = Object.keys(lockfile.bundles)[0];
             
             await testContext.registryManager.uninstallBundle(actualBundleId, 'repository');
@@ -407,7 +407,7 @@ Do something custom.
             assert.ok(fs.existsSync(userPromptFile), 'User-created prompt file should be preserved');
             
             // Verify user's content is intact
-            const userContent = fs.readFileSync(userPromptFile, 'utf-8');
+            const userContent = fs.readFileSync(userPromptFile, 'utf8');
             assert.ok(userContent.includes('My Custom Prompt'), 'User prompt content should be intact');
             assert.ok(userContent.includes('not from any bundle'), 'User prompt should be preserved');
             

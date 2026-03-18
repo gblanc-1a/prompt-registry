@@ -440,7 +440,7 @@ license: MIT
             // Verify v1.0.0 files exist with initial content
             const v1PromptPath = path.join(v1InstallPath, 'prompts', 'test.prompt.md');
             assert.ok(fs.existsSync(v1PromptPath), 'v1.0.0 prompt file should exist');
-            const v1Content = fs.readFileSync(v1PromptPath, 'utf-8');
+            const v1Content = fs.readFileSync(v1PromptPath, 'utf8');
             assert.ok(v1Content.includes('INITIAL_CONTENT'), 'v1.0.0 should have initial content');
             
             // Trigger update
@@ -458,7 +458,7 @@ license: MIT
             // v2 files should have updated content
             const v2PromptPath = path.join(v2InstallPath, 'prompts', 'test.prompt.md');
             assert.ok(fs.existsSync(v2PromptPath), 'v2.0.0 prompt file should exist');
-            const v2Content = fs.readFileSync(v2PromptPath, 'utf-8');
+            const v2Content = fs.readFileSync(v2PromptPath, 'utf8');
             assert.ok(v2Content.includes('UPDATED_CONTENT'), 'v2.0.0 should have updated content');
             assert.ok(!v2Content.includes('INITIAL_CONTENT'), 'v2.0.0 should not have initial content');
         });

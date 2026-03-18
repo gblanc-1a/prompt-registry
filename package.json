@@ -777,8 +777,8 @@
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "format:check": "prettier --check \"src/**/*.ts\" \"test/**/*.ts\"",
     "vscode:prepublish": "npm run compile",
-    "compile-lib": "cd lib && npm run build",
-    "copy-webview": "node -e \"const fs=require('fs'),p=require('path');['marketplace','bundleDetails'].forEach(d=>{const s=p.join('src','ui','webview',d),t=p.join('dist','webview',d);fs.mkdirSync(t,{recursive:true});fs.readdirSync(s).forEach(f=>fs.copyFileSync(p.join(s,f),p.join(t,f)))});\"",
+    "compile-lib": "npm run build --workspace=lib",
+    "copy-webview": "cpy \"src/ui/webview/marketplace/*\" dist/webview/marketplace && cpy \"src/ui/webview/bundleDetails/*\" dist/webview/bundleDetails",
     "compile": "npm run compile-lib && webpack --mode production && npm run copy-webview",
     "watch": "webpack --mode development --watch",
     "package": "webpack --mode production --devtool hidden-source-map && npm run copy-webview",
@@ -818,7 +818,9 @@
     "@istanbuljs/nyc-config-typescript": "^1.0.0",
     "@playwright/test": "^1.56.1",
     "@types/adm-zip": "^0.5.7",
+    "@types/archiver": "^7.0.0",
     "@types/fs-extra": "^11.0.4",
+    "@types/glob": "^8.1.0",
     "@types/js-yaml": "^4.0.9",
     "@types/mocha": "^10.0.10",
     "@types/node": "^20.11.0",
@@ -830,12 +832,11 @@
     "@typescript-eslint/parser": "^8.56.0",
     "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^2.15.0",
-    "adm-zip": "^0.5.16",
     "c8": "^10.1.3",
+    "cpy-cli": "^7.0.0",
     "eslint": "^9.0.0",
     "eslint-config-prettier": "^10.1.8",
     "fast-check": "^3.23.2",
-    "fs-extra": "^11.3.2",
     "mocha": "^10.1.0",
     "nock": "^14.0.10",
     "nyc": "^17.1.0",
@@ -850,11 +851,11 @@
     "webpack-cli": "^5.0.1"
   },
   "dependencies": {
-    "@prompt-registry/collection-scripts": "file:lib",
-    "@types/archiver": "^7.0.0",
-    "@types/glob": "^8.1.0",
+    "@prompt-registry/collection-scripts": "workspace:^",
+    "adm-zip": "^0.5.16",
     "archiver": "^7.0.1",
     "axios": "^1.6.0",
+    "fs-extra": "^11.3.2",
     "glob": "^11.1.0",
     "js-yaml": "^4.1.1",
     "jsonc-parser": "^3.2.0",
@@ -863,12 +864,11 @@
   },
   "extensionDependencies": [],
   "overrides": {
-    "undici": "^7.18.2",
     "archiver-utils": {
       "glob": "^11.1.0"
     },
-    "readdir-glob": {
-      "minimatch": "^10.2.1"
+    "mocha": {
+      "chokidar": "^5.0.0"
     }
   },
   "nyc": {
@@ -897,6 +897,7 @@
     "temp-dir": ".nyc_output"
   },
   "workspaces": [
+    "lib",
     "github-actions/*"
   ]
 }

@@ -36,6 +36,9 @@ build/
 *.js.map
 *.d.ts.map
 
+# Generated skill references (copied from docs/ at build time)
+resources/skills/prompt-registry-helper/references
+
 # Test outputs
 test-out/
 test-dist/

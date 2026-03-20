@@ -9,6 +9,8 @@
 
 Search "Prompt Registry" in VS Code Extensions (`Ctrl+Shift+X`) and click Install.
 
+Alternatively, install directly from the [VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=AmadeusITGroup.prompt-registry). You will be prompted to authenticate with GitHub — click Allow and sign in.
+
 ## First Launch: Hub Selection
 
 On first launch, Prompt Registry shows a welcome dialog to help you get started:

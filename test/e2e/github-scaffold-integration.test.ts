@@ -19,7 +19,7 @@ import * as path from 'node:path';
 import {
   ScaffoldCommand,
   ScaffoldType,
-} from '../../src/commands/ScaffoldCommand';
+} from '../../src/commands/scaffold-command';
 
 suite('E2E: GitHub Scaffold Integration Tests', () => {
   const templateRoot = path.join(process.cwd(), 'templates/scaffolds/github');

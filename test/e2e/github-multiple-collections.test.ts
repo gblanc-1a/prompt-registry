@@ -27,7 +27,7 @@ import {
   createE2ETestContext,
   E2ETestContext,
   generateTestId,
-} from '../helpers/e2eTestHelpers';
+} from '../helpers/e2e-test-helpers';
 
 suite('E2E: GitHub Multiple Collections (Separate Releases)', () => {
   let testContext: E2ETestContext;

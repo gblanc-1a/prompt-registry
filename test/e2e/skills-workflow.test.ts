@@ -21,7 +21,7 @@ import * as vscode from 'vscode';
 import {
   ScaffoldCommand,
   ScaffoldType,
-} from '../../src/commands/ScaffoldCommand';
+} from '../../src/commands/scaffold-command';
 import {
   RegistrySource,
 } from '../../src/types/registry';
@@ -29,7 +29,7 @@ import {
   createE2ETestContext,
   E2ETestContext,
   generateTestId,
-} from '../helpers/e2eTestHelpers';
+} from '../helpers/e2e-test-helpers';
 
 suite('E2E: Agent Skills (SKILL.md) Workflow Tests', () => {
   let testContext: E2ETestContext;

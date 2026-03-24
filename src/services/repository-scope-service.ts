@@ -38,7 +38,7 @@ import {
   IScopeService,
   ScopeStatus,
   SyncBundleOptions,
-} from './i-scope-service';
+} from './scope-service';
 import {
   LockfileManager,
 } from './lockfile-manager';

@@ -44,7 +44,7 @@ import {
   IScopeService,
   ScopeStatus,
   SyncBundleOptions,
-} from './i-scope-service';
+} from './scope-service';
 
 const readFile = promisify(fs.readFile);
 const readdir = promisify(fs.readdir);

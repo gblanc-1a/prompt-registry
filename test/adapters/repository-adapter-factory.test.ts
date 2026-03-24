@@ -5,10 +5,10 @@
 import * as assert from 'node:assert';
 import {
   GitHubAdapter,
-} from '../../src/adapters/git-hub-adapter';
+} from '../../src/adapters/github-adapter';
 import {
   GitLabAdapter,
-} from '../../src/adapters/git-lab-adapter';
+} from '../../src/adapters/gitlab-adapter';
 import {
   HttpAdapter,
 } from '../../src/adapters/http-adapter';

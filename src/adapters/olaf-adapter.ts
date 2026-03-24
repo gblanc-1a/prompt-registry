@@ -29,7 +29,7 @@ import {
 } from '../utils/logger';
 import {
   GitHubAdapter,
-} from './git-hub-adapter';
+} from './github-adapter';
 import {
   RepositoryAdapter,
 } from './repository-adapter';

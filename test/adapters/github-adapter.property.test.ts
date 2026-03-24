@@ -13,7 +13,7 @@ import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import {
   GitHubAdapter,
-} from '../../src/adapters/git-hub-adapter';
+} from '../../src/adapters/github-adapter';
 import {
   RegistrySource,
 } from '../../src/types/registry';

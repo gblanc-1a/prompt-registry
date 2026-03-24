@@ -57,7 +57,7 @@ import {
 } from '../utils/symlink-utils';
 import {
   IScopeService,
-} from './i-scope-service';
+} from './scope-service';
 import {
   LockfileManager,
 } from './lockfile-manager';

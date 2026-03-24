@@ -16,7 +16,7 @@ import {
 } from '../types/registry';
 import {
   IScopeService,
-} from './i-scope-service';
+} from './scope-service';
 import {
   RepositoryScopeService,
 } from './repository-scope-service';

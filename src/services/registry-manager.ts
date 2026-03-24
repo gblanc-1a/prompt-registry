@@ -12,10 +12,10 @@ import {
 } from '../adapters/awesome-copilot-adapter';
 import {
   GitHubAdapter,
-} from '../adapters/git-hub-adapter';
+} from '../adapters/github-adapter';
 import {
   GitLabAdapter,
-} from '../adapters/git-lab-adapter';
+} from '../adapters/gitlab-adapter';
 import {
   HttpAdapter,
 } from '../adapters/http-adapter';

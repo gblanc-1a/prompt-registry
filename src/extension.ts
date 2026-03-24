@@ -13,7 +13,7 @@ import {
 } from './commands/create-collection-command';
 import {
   GitHubAuthCommand,
-} from './commands/git-hub-auth-command';
+} from './commands/github-auth-command';
 import {
   HubCommands,
 } from './commands/hub-commands';

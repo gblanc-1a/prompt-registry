@@ -6,7 +6,7 @@ import * as assert from 'node:assert';
 import nock from 'nock';
 import {
   GitLabAdapter,
-} from '../../src/adapters/git-lab-adapter';
+} from '../../src/adapters/gitlab-adapter';
 import {
   RegistrySource,
 } from '../../src/types/registry';

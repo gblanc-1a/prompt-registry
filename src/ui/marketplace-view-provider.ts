@@ -996,10 +996,10 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
 
     // Get URIs for external resources
     const cssUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview', 'bundleDetails', 'bundleDetails.css')
+      vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview', 'bundle-details', 'bundle-details.css')
     );
     const scriptUri = webview.asWebviewUri(
-      vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview', 'bundleDetails', 'bundleDetails.js')
+      vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview', 'bundle-details', 'bundle-details.js')
     );
 
     // Generate CSP
@@ -1010,8 +1010,8 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
       this.context.extensionUri,
       'dist',
       'webview',
-      'bundleDetails',
-      'bundleDetails.html'
+      'bundle-details',
+      'bundle-details.html'
     );
     let html = fs.readFileSync(htmlPath.fsPath, 'utf8');
 

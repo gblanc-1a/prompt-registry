@@ -18,7 +18,7 @@ import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import {
   IScopeService,
-} from '../../src/services/i-scope-service';
+} from '../../src/services/scope-service';
 import {
   LockfileManager,
 } from '../../src/services/lockfile-manager';

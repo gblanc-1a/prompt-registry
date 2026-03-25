@@ -95,7 +95,7 @@ export interface GitHubContentItem {
   name: string;
   path: string;
   type: 'file' | 'dir';
-  // eslint-disable-next-line @typescript-eslint/naming-convention
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API response shape
   download_url?: string;
   url?: string;
   sha?: string;

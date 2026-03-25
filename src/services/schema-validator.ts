@@ -34,7 +34,7 @@ export class SchemaValidator {
 
   constructor(extensionPath?: string) {
     // Use default export for AJV v6
-    // eslint-disable-next-line @typescript-eslint/naming-convention
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
     const AjvConstructor = (Ajv as any).default || Ajv;
     this.ajv = new AjvConstructor({
       allErrors: true, // Collect all errors, not just first
@@ -54,7 +54,7 @@ export class SchemaValidator {
    * @param schemaPath Path to the JSON schema file
    * @returns Compiled validation function
    */
-  // eslint-disable-next-line @typescript-eslint/require-await
+  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   private async loadSchema(schemaPath: string): Promise<Ajv.ValidateFunction> {
     // Check cache first
     if (this.schemaCache.has(schemaPath)) {
@@ -157,7 +157,7 @@ export class SchemaValidator {
    * @param errors AJV error objects
    * @returns Formatted error messages
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private formatErrors(errors: Ajv.ErrorObject[]): string[] {
     return errors.map((error) => {
       const dataPath = error.dataPath || '';
@@ -205,7 +205,7 @@ export class SchemaValidator {
    * @param workspaceRoot Root directory for resolving paths
    * @returns Errors and warnings for missing files
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private validateFileReferences(data: any, workspaceRoot: string): { errors: string[]; warnings: string[] } {
     const errors: string[] = [];
     const warnings: string[] = [];
@@ -229,7 +229,7 @@ export class SchemaValidator {
    * @param data Collection data
    * @returns Warning messages
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private generateWarnings(data: any): string[] {
     const warnings: string[] = [];
 

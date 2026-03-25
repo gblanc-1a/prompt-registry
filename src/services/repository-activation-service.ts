@@ -373,7 +373,7 @@ export class RepositoryActivationService {
    * @param repositoryPath - Path to the repository
    * @returns True if previously declined
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async wasDeclined(repositoryPath: string): Promise<boolean> {
     const declined = await this.getDeclinedRepositories();
     return declined.includes(repositoryPath);
@@ -383,7 +383,7 @@ export class RepositoryActivationService {
    * Get list of declined repositories from global state
    * @returns Array of repository paths
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await
+  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
   private async getDeclinedRepositories(): Promise<string[]> {
     const context = this.storage.getContext();
     return context.globalState.get<string[]>(this.DECLINED_KEY, []);
@@ -394,7 +394,7 @@ export class RepositoryActivationService {
    * @param lockfilePath - Full path to lockfile
    * @returns Repository root path
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getRepositoryPath(lockfilePath: string): string {
     return path.dirname(lockfilePath);
   }
@@ -403,7 +403,7 @@ export class RepositoryActivationService {
    * Check if setup is complete before proceeding with source/hub detection.
    * Fail-open: if SetupStateManager is not available or throws, proceed with detection.
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async isSetupComplete(): Promise<boolean> {
     if (!this.setupStateManager) {
       this.logger.debug('SetupStateManager not available, proceeding with detection');

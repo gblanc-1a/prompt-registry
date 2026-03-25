@@ -469,7 +469,7 @@ suite('E2E: Setup State Flows', () => {
 
         // Test ExtensionMode detection
         const testContext = createMockContext(3); // ExtensionMode.Test = 3
-        // eslint-disable-next-line @typescript-eslint/no-unsafe-enum-comparison
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-enum-comparison -- enum comparison is type-safe in this context
         const isTestViaMode = testContext.extensionMode === 3; // ExtensionMode.Test = 3
         assert.strictEqual(isTestViaMode, true, 'Should detect test via ExtensionMode.Test');
       } finally {

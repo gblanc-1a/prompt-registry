@@ -127,7 +127,7 @@ suite('RepositoryAdapterFactory', () => {
 
   suite('Adapter Interface Compliance', () => {
     test('should verify all adapters implement required methods', () => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       const _requiredMethods = ['fetchBundles', 'getDownloadUrl', 'validate'];
 
       const adapters = [
@@ -137,7 +137,7 @@ suite('RepositoryAdapterFactory', () => {
         LocalAdapter
       ];
 
-      // eslint-disable-next-line @typescript-eslint/naming-convention
+      // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
       for (const AdapterClass of adapters) {
         const prototype = AdapterClass.prototype;
         for (const method of ['fetchBundles', 'getDownloadUrl']) {

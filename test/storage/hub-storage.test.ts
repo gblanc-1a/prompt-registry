@@ -58,7 +58,7 @@ suite('HubStorage - TDD', () => {
   suite('Initialization', () => {
     test('should create storage directory if it does not exist', () => {
       const newDir = path.join(tempDir, 'new-storage');
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       const _newStorage = new HubStorage(newDir);
 
       assert.ok(fs.existsSync(newDir), 'Storage directory should be created');
@@ -68,7 +68,7 @@ suite('HubStorage - TDD', () => {
       const existingDir = path.join(tempDir, 'existing');
       fs.mkdirSync(existingDir, { recursive: true });
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       const _newStorage = new HubStorage(existingDir);
       assert.ok(fs.existsSync(existingDir));
     });
@@ -206,7 +206,7 @@ suite('HubStorage - TDD', () => {
       await storage.saveHub(hubId, testHubConfig, testHubReference);
 
       // First load
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       const _result1 = await storage.loadHub(hubId);
 
       // Second load should use cache (modify file to verify)

@@ -41,7 +41,7 @@ export const HTTP_STATUS_MESSAGES: Record<number, string> = {
  * Provides consistent error message validation across property-based tests.
  * These helpers check for specific error patterns in adapter error messages.
  */
-// eslint-disable-next-line @typescript-eslint/naming-convention
+// eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
 export const ErrorCheckers = {
   /**
    * Check if error indicates HTML content was detected instead of JSON
@@ -205,7 +205,7 @@ export class LoggerHelpers {
  * Centralized configuration for property-based tests.
  * Optimized for speed while maintaining good coverage.
  */
-// eslint-disable-next-line @typescript-eslint/naming-convention
+// eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
 export const PropertyTestConfig = {
   /**
    * Number of test runs for different test complexity levels
@@ -319,7 +319,7 @@ export const stubHttpsWithResponse = (
  * These generators provide reusable arbitraries for property-based tests.
  * They ensure consistent test data generation across different test files.
  */
-// eslint-disable-next-line @typescript-eslint/naming-convention
+// eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
 export const TestGenerators = {
   /**
    * Generate a valid GitHub token string
@@ -400,7 +400,7 @@ export const TestGenerators = {
  * Shared generators for bundle-related property-based tests.
  * Ensures consistent version and bundle ID generation across test files.
  */
-// eslint-disable-next-line @typescript-eslint/naming-convention
+// eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
 export const BundleGenerators = {
   /**
    * Generate semantic version strings (0-10 for each component)

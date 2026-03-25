@@ -117,7 +117,7 @@ suite('Hub Source Loading', () => {
         location: fixturePath
       };
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by method signature
       const _hubId = await hubManager.importHub(ref, 'test-hub');
 
       // Verify sources were loaded
@@ -176,7 +176,7 @@ suite('Hub Source Loading', () => {
       assert.strictEqual(sourcesAfterFirst.length, 2, 'Should have 2 sources after first import');
 
       // Reset the mock to track only the second import
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       const _addCallsBefore = mockRegistry.addSourceCalls.length;
       mockRegistry.addSourceCalls = [];
       mockRegistry.updateSourceCalls = [];

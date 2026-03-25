@@ -15,7 +15,7 @@ import * as path from 'node:path';
 import {
   promisify,
 } from 'node:util';
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
 import AdmZip = require('adm-zip');
 import * as yaml from 'js-yaml';
 import * as vscode from 'vscode';
@@ -84,7 +84,7 @@ const lstat = promisify(fs.lstat);
 const unlink = promisify(fs.unlink);
 const rmdir = promisify(fs.rmdir);
 const symlink = promisify(fs.symlink);
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
 const _readlink = promisify(fs.readlink);
 
 /**
@@ -128,7 +128,7 @@ export class BundleInstaller {
    * Get the appropriate scope service for the given scope
    * @param scope
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getScopeService(scope: InstallationScope): IScopeService {
     if (scope === 'repository') {
       const workspaceRoot = getWorkspaceRoot();
@@ -145,7 +145,7 @@ export class BundleInstaller {
    * @param installDir
    * @param workspaceRoot
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async collectFileEntries(installDir: string, workspaceRoot: string): Promise<LockfileFileEntry[]> {
     const entries: LockfileFileEntry[] = [];
 
@@ -504,7 +504,7 @@ export class BundleInstaller {
    * @param options
    * @param sourceType
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async updateLockfileOnInstall(
     bundle: Bundle,
     installed: InstalledBundle,
@@ -553,7 +553,7 @@ export class BundleInstaller {
    * @param workspaceRoot
    * @param bundlePath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async collectRepositoryFileEntries(workspaceRoot: string, bundlePath: string): Promise<LockfileFileEntry[]> {
     const entries: LockfileFileEntry[] = [];
 
@@ -610,7 +610,7 @@ export class BundleInstaller {
    * @param workspaceRoot
    * @param entries
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async collectFromDirectory(dir: string, workspaceRoot: string, entries: LockfileFileEntry[]): Promise<void> {
     if (!fs.existsSync(dir)) {
       return;
@@ -635,7 +635,7 @@ export class BundleInstaller {
    * Update lockfile when uninstalling a bundle at repository scope
    * @param bundleId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async updateLockfileOnUninstall(bundleId: string): Promise<void> {
     const workspaceRoot = getWorkspaceRoot();
     if (!workspaceRoot) {
@@ -658,7 +658,7 @@ export class BundleInstaller {
   /**
    * Create temporary directory
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async createTempDir(): Promise<string> {
     const tempBase = path.join(this.context.globalStorageUri.fsPath, 'temp');
     await ensureDirectory(tempBase);
@@ -674,7 +674,7 @@ export class BundleInstaller {
    * @param bundleFile
    * @param extractDir
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async extractBundle(bundleFile: string, extractDir: string): Promise<void> {
     await ensureDirectory(extractDir);
 
@@ -692,7 +692,7 @@ export class BundleInstaller {
    * @param extractDir
    * @param bundle
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async validateBundle(extractDir: string, bundle: Bundle): Promise<DeploymentManifest> {
     // Check if deployment-manifest.yml exists
     const manifestPath = path.join(extractDir, 'deployment-manifest.yml');
@@ -765,7 +765,7 @@ export class BundleInstaller {
    * @param sourceName
    * @param _bundleName
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getInstallDirectory(bundleId: string, scope: InstallationScope, sourceType?: string, sourceName?: string, _bundleName?: string): string {
     // Check if this is an OLAF bundle
     const isOlafBundle = sourceType === 'olaf' || sourceType === 'local-olaf' || bundleId.startsWith('olaf-');
@@ -835,7 +835,7 @@ export class BundleInstaller {
    * @param sourceDir
    * @param targetDir
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async copyBundleFiles(sourceDir: string, targetDir: string): Promise<void> {
     const files = await readdir(sourceDir);
 
@@ -862,7 +862,7 @@ export class BundleInstaller {
    * @param sourceDir
    * @param targetDir
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async copyOlafSkillFolders(sourceDir: string, targetDir: string): Promise<void> {
     const files = await readdir(sourceDir);
 
@@ -889,7 +889,7 @@ export class BundleInstaller {
    * @param dirPath - The directory path to check
    * @returns true if the path is .github or ends with /.github
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private isGitHubDirectory(dirPath: string): boolean {
     const normalizedPath = path.normalize(dirPath);
     const baseName = path.basename(normalizedPath);
@@ -904,7 +904,7 @@ export class BundleInstaller {
    * Handles symbolic links safely by removing only the link, not the target
    * @param dir
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async removeDirectory(dir: string): Promise<void> {
     if (!fs.existsSync(dir)) {
       return;
@@ -935,7 +935,7 @@ export class BundleInstaller {
    * Looks for the first directory under skills/ in the extracted bundle
    * @param extractDir
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async extractSkillNameFromBundle(extractDir: string): Promise<string> {
     const skillsDir = path.join(extractDir, 'skills');
 
@@ -959,7 +959,7 @@ export class BundleInstaller {
    * @param sourceDir
    * @param targetDir
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async copyDirectory(sourceDir: string, targetDir: string): Promise<void> {
     await ensureDirectory(targetDir);
 
@@ -982,7 +982,7 @@ export class BundleInstaller {
    * Clean up temporary directory
    * @param tempDir
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async cleanupTempDir(tempDir: string): Promise<void> {
     try {
       await this.removeDirectory(tempDir);
@@ -1001,7 +1001,7 @@ export class BundleInstaller {
    * @param scope
    * @param commitMode
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async installMcpServers(
     bundleId: string,
     bundleVersion: string,
@@ -1026,7 +1026,7 @@ export class BundleInstaller {
           return;
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-shadow
+        // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
         const result = await this.mcpManager.installServersToWorkspace(
           bundleId,
           bundleVersion,
@@ -1086,7 +1086,7 @@ export class BundleInstaller {
    * @param bundleId
    * @param scope
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async uninstallMcpServers(bundleId: string, scope: InstallationScope): Promise<void> {
     this.logger.info(`Uninstalling MCP servers for bundle ${bundleId}`);
 
@@ -1099,7 +1099,7 @@ export class BundleInstaller {
           return;
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-shadow
+        // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
         const result = await this.mcpManager.uninstallServersFromWorkspace(bundleId, workspaceRoot);
 
         if (!result.success) {
@@ -1135,7 +1135,7 @@ export class BundleInstaller {
    * @param existingIsSymlink Whether the existing skill is a symlink
    * @returns True if user confirms overwrite, false otherwise
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async promptOverwriteSkill(skillName: string, existingPath: string, existingIsSymlink: boolean): Promise<boolean> {
     const symlinkInfo = existingIsSymlink ? ' (symlink)' : '';
     const message = `A skill named '${skillName}' already exists${symlinkInfo}. Do you want to overwrite it?`;

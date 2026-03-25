@@ -125,7 +125,7 @@ export class InstallSpecificVersionCommand {
    * @param version
    * @param scope
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async performInstallation(version: string, scope: InstallationScope): Promise<void> {
     await vscode.window.withProgress({
       location: vscode.ProgressLocation.Notification,
@@ -152,7 +152,7 @@ export class InstallSpecificVersionCommand {
         progress.report({ increment: 25, message: `Downloading ${bundle.filename}...` });
 
         const bundleData = await this.githubService.downloadBundle(bundle, (downloadProgress) => {
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
           const _currentProgress = 25 + (downloadProgress * 0.5); // Download takes 50% of remaining progress
           progress.report({ increment: 0, message: `Downloading... ${Math.round(downloadProgress)}%` });
         });

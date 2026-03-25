@@ -58,7 +58,7 @@ interface CollectionManifest {
   items: CollectionItem[];
   display?: {
     ordering?: string;
-    // eslint-disable-next-line @typescript-eslint/naming-convention
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API response shape
     show_badge?: boolean;
   };
   mcp?: {
@@ -79,7 +79,7 @@ interface GitHubContent {
   name: string;
   path: string;
   type: 'file' | 'dir';
-  // eslint-disable-next-line @typescript-eslint/naming-convention
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API response shape
   download_url: string;
 }
 
@@ -321,7 +321,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
   /**
    * List all .collection.yml files in collections directory
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async listCollectionFiles(): Promise<string[]> {
     const apiUrl = this.buildApiUrl(`${this.config.collectionsPath}`);
     const content = await this.fetchUrl(apiUrl);
@@ -336,7 +336,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
    * Parse a collection file into a Bundle
    * @param collectionFile
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async parseCollection(collectionFile: string): Promise<Bundle | null> {
     try {
       const collectionUrl = this.buildRawUrl(`${this.config.collectionsPath}/${collectionFile}`);
@@ -388,7 +388,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
    * @param collection
    * @param _collectionFile
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async createBundleArchive(collection: CollectionManifest, _collectionFile: string): Promise<Buffer> {
     this.logger.debug(`Creating archive for collection: ${collection.name}`);
 
@@ -398,7 +398,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
         try {
           const archive = archiver('zip', { zlib: { level: 9 } });
           const chunks: Buffer[] = [];
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
           let totalSize = 0;
 
           // Collect data chunks
@@ -464,7 +464,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
           void archive.finalize();
         } catch (error) {
           this.logger.error('Failed to create archive', error as Error);
-          // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
+          // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- rejection value is handled by caller
           reject(error);
         }
       })();
@@ -475,7 +475,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
    * Create deployment manifest from collection
    * @param collection
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private createDeploymentManifest(collection: CollectionManifest): any {
     const prompts = collection.items.map((item) => {
       const itemKind = item.kind;
@@ -531,7 +531,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
    * Map collection kind to Prompt Registry type
    * @param kind
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private mapKindToType(kind: string): 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill' {
     const kindMap: Record<string, 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill'> = {
       prompt: 'prompt',
@@ -548,7 +548,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
    * @param items
    * @param mcpServers
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private calculateBreakdown(items: CollectionItem[], mcpServers?: Record<string, any>): Record<string, number> {
     const breakdown = {
       prompts: 0,
@@ -591,7 +591,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
    * Infer environments from tags
    * @param tags
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private inferEnvironments(tags: string[]): string[] {
     const envMap: Record<string, string> = {
       azure: 'cloud',
@@ -619,7 +619,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
    * Build GitHub API URL
    * @param path
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private buildApiUrl(path: string): string {
     const { owner, repo } = this.parseGitHubUrl();
     return `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${this.config.branch}`;
@@ -630,7 +630,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
    * @param dirPath - Directory path in the repository
    * @returns Array of file paths relative to repo root
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async listDirectoryContentsRecursively(dirPath: string): Promise<string[]> {
     const filePaths: string[] = [];
 
@@ -659,7 +659,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
    * Build raw GitHub content URL
    * @param path
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private buildRawUrl(path: string): string {
     const { owner, repo } = this.parseGitHubUrl();
     return `https://raw.githubusercontent.com/${owner}/${repo}/${this.config.branch}/${path}`;
@@ -668,7 +668,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
   /**
    * Parse GitHub URL
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private parseGitHubUrl(): { owner: string; repo: string } {
     const url = this.source.url.replace(/\.git$/, '');
     const match = url.match(/github\.com[/:]([^/]+)\/([^/]+)/);
@@ -683,7 +683,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
   /**
    * Extract repository owner
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private extractRepoOwner(): string {
     const { owner } = this.parseGitHubUrl();
     return owner;
@@ -723,7 +723,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
    * 2. gh CLI (if installed and authenticated)
    * 3. Explicit token from source configuration
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getAuthenticationToken(): Promise<string | undefined> {
     // Return cached token if already resolved
     if (this.authToken !== undefined) {
@@ -788,7 +788,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
    * @param url
    * @param redirectDepth
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async fetchUrl(url: string, redirectDepth = 0): Promise<string> {
     /**
      * Maximum redirect depth to prevent infinite loops.
@@ -876,7 +876,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
    * Convert kebab-case to Title Case
    * @param str
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private titleCase(str: string): string {
     return str
       .split(' ')

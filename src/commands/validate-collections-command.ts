@@ -21,7 +21,7 @@ interface Collection {
   author?: string;
   display?: {
     ordering?: string;
-    // eslint-disable-next-line @typescript-eslint/naming-convention
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API response shape
     show_badge?: boolean;
   };
 }
@@ -189,7 +189,7 @@ export class ValidateCollectionsCommand {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async validateCollection(
     filePath: string,
     workspaceRoot: string,
@@ -252,7 +252,7 @@ export class ValidateCollectionsCommand {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private log(message: string, type?: 'error' | 'warning' | 'success'): void {
     let prefix = '';
     switch (type) {

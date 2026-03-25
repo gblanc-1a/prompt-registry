@@ -253,7 +253,7 @@ suite('GitHubAdapter Property-Based Tests', () => {
     };
 
     const adapter = new GitHubAdapter(source);
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
     const _token = await (adapter as any).getAuthenticationToken();
     const method = adapter.getAuthenticationMethod();
 

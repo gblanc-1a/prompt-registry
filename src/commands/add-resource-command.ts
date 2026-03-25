@@ -12,13 +12,13 @@ import {
 } from '../utils/bundle-name-utils';
 
 export enum ResourceType {
-  // eslint-disable-next-line @typescript-eslint/naming-convention
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
   Prompt = 'prompt',
-  // eslint-disable-next-line @typescript-eslint/naming-convention
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
   Instruction = 'instruction',
-  // eslint-disable-next-line @typescript-eslint/naming-convention
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
   Agent = 'agent',
-  // eslint-disable-next-line @typescript-eslint/naming-convention
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
   Skill = 'skill'
 }
 
@@ -186,7 +186,7 @@ export class AddResourceCommand {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getWorkspaceFolder(): Promise<string | undefined> {
     const folders = vscode.workspace.workspaceFolders;
     if (!folders || folders.length === 0) {
@@ -210,7 +210,7 @@ export class AddResourceCommand {
     return selected?.folder.uri.fsPath;
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async selectResourceType(): Promise<ResourceType | undefined> {
     const items: vscode.QuickPickItem[] = Array.from(this.resourceTypes.entries()).map(
       ([type, info]) => ({
@@ -231,7 +231,7 @@ export class AddResourceCommand {
     return selected ? (selected as any).type : undefined;
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async promptForResourceName(): Promise<string | undefined> {
     return await vscode.window.showInputBox({
       prompt: 'Enter resource name',
@@ -249,7 +249,7 @@ export class AddResourceCommand {
     });
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async promptForDescription(): Promise<string | undefined> {
     return await vscode.window.showInputBox({
       prompt: 'Enter resource description',
@@ -267,7 +267,7 @@ export class AddResourceCommand {
     });
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async promptForAuthor(): Promise<string | undefined> {
     const gitConfig = await this.getGitUserName();
     return await vscode.window.showInputBox({
@@ -284,7 +284,7 @@ export class AddResourceCommand {
     });
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await
+  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
   private async getGitUserName(): Promise<string> {
     try {
       return execSync('git config user.name', { encoding: 'utf8' }).trim();
@@ -293,7 +293,7 @@ export class AddResourceCommand {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async addToCollection(workspaceRoot: string, resourcePath: string, resourceType: ResourceType): Promise<void> {
     try {
       const collectionsDir = path.join(workspaceRoot, 'collections');

@@ -24,7 +24,7 @@ const writeFile = promisify(fs.writeFile);
 const mkdir = promisify(fs.mkdir);
 const readdir = promisify(fs.readdir);
 const unlink = promisify(fs.unlink);
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
 const _stat = promisify(fs.stat);
 
 /**
@@ -73,9 +73,9 @@ export class RegistryStorage {
   private configCache?: RegistryConfig;
 
   // Constants for ID sanitization
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private static readonly MAX_FILENAME_LENGTH = 200;
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private static readonly ALLOWED_CHARS_REGEX = /[^A-Za-z0-9._-]/g;
 
   constructor(private readonly context: vscode.ExtensionContext) {
@@ -117,7 +117,7 @@ export class RegistryStorage {
   /**
    * Ensure all required directories exist
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async ensureDirectories(): Promise<void> {
     const dirs = [
       this.paths.root,
@@ -185,7 +185,7 @@ export class RegistryStorage {
    * @param id - The bundle ID, source ID, or other identifier
    * @returns Sanitized string safe for use in filenames
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private sanitizeFilename(id: string): string {
     if (!id || id.length === 0) {
       throw new Error('ID cannot be empty');
@@ -486,7 +486,7 @@ export class RegistryStorage {
    * @param scope - Optional scope to filter by
    * @returns Array of supported scopes to query
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getSupportedScopes(scope?: InstallationScope): ('user' | 'workspace')[] {
     // Repository scope bundles are tracked via LockfileManager, not RegistryStorage
     if (scope === 'repository') {
@@ -525,7 +525,7 @@ export class RegistryStorage {
    * Get installation path for bundle
    * @param bundle
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getInstalledBundlePath(bundle: InstalledBundle): string {
     const scopePath = bundle.scope === 'user' ? this.paths.userInstalled : this.paths.installed;
     const sanitizedId = this.sanitizeFilename(bundle.bundleId);
@@ -574,13 +574,13 @@ export class RegistryStorage {
   /**
    * Bundle update preferences
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private readonly UPDATE_PREFERENCES_KEY = 'bundleUpdatePreferences';
 
   /**
    * Get all update preferences
    */
-  // eslint-disable-next-line @typescript-eslint/require-await
+  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   public async getUpdatePreferences(): Promise<Record<string, { autoUpdate: boolean; lastChecked?: string }>> {
     const prefs = this.context.globalState.get<Record<string, { autoUpdate: boolean; lastChecked?: string }>>(
       this.UPDATE_PREFERENCES_KEY,

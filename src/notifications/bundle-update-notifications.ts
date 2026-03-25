@@ -66,7 +66,7 @@ export class BundleUpdateNotifications extends BaseNotificationService {
    * @param updates
    * @param preference
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private filterUpdatesByPreference(updates: UpdateCheckResult[], preference: string): UpdateCheckResult[] {
     if (preference === 'critical') {
       return updates.filter((update) => this.isCriticalUpdate(update));
@@ -164,7 +164,7 @@ export class BundleUpdateNotifications extends BaseNotificationService {
    * Handles both single and multiple updates
    * @param updates
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async buildUpdateMessage(updates: UpdateCheckResult[]): Promise<string> {
     if (updates.length === 1) {
       const update = updates[0];
@@ -183,7 +183,7 @@ export class BundleUpdateNotifications extends BaseNotificationService {
     return `${updates.length} bundle updates available:\n${updateList.join('\n')}`;
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private shouldSkipNotification(updates: UpdateCheckResult[], preference: string): boolean {
     if (preference === 'none') {
       return true;
@@ -208,7 +208,7 @@ export class BundleUpdateNotifications extends BaseNotificationService {
    * Critical updates are major version changes (e.g., 1.x.x -> 2.x.x)
    * @param update
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private isCriticalUpdate(update: UpdateCheckResult): boolean {
     try {
       const currentParts = update.currentVersion.split('.').map(Number);
@@ -223,7 +223,7 @@ export class BundleUpdateNotifications extends BaseNotificationService {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async handleNotificationAction(
     action: string | undefined,
     updates: UpdateCheckResult[]

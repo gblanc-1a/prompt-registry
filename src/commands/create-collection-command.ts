@@ -14,7 +14,7 @@ interface CollectionTemplate {
   }[];
   display: {
     ordering: string;
-    // eslint-disable-next-line @typescript-eslint/naming-convention
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API response shape
     show_badge: boolean;
   };
 }
@@ -173,14 +173,14 @@ export class CreateCollectionCommand {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private generateDefaultName(id: string): string {
     return id.split('-')
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ') + ' Collection';
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private generateTemplate(
     id: string,
     name: string,
@@ -205,7 +205,7 @@ export class CreateCollectionCommand {
     };
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private log(message: string): void {
     this.outputChannel.appendLine(message);
   }

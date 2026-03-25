@@ -40,7 +40,7 @@ suite('ScopeConflictResolver Property Tests', () => {
   // ===== Test Utilities =====
   const ALL_SCOPES: InstallationScope[] = ['user', 'workspace', 'repository'];
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
   const _createMockContext = (): vscode.ExtensionContext => {
     const globalStateData = new Map<string, any>();
     return {

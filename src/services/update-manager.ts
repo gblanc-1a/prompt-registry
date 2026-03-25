@@ -296,7 +296,7 @@ export class ExtensionUpdateManager {
     return `Prompt Registry updates available for ${updatesAvailable.length} scopes`;
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async checkScopeForUpdate(
     scope: InstallationScope,
     latestRelease: GitHubRelease,
@@ -347,7 +347,7 @@ export class ExtensionUpdateManager {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await
+  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
   private async createBackup(scope: InstallationScope): Promise<string | null> {
     try {
       // Implementation for creating backup would go here
@@ -360,7 +360,7 @@ export class ExtensionUpdateManager {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await
+  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
   private async cleanupBackup(backupPath: string): Promise<void> {
     try {
       // Implementation for cleaning up backup would go here
@@ -370,7 +370,7 @@ export class ExtensionUpdateManager {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await
+  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
   private async restoreBackup(backupPath: string, scope: InstallationScope): Promise<void> {
     try {
       // Implementation for restoring backup would go here

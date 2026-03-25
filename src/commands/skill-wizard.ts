@@ -130,7 +130,7 @@ Provide example interactions or use cases.
    * @param collectionPath
    * @param skillName
    */
-  // eslint-disable-next-line @typescript-eslint/require-await
+  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   public async addSkillToCollection(collectionPath: string, skillName: string): Promise<void> {
     const content = fs.readFileSync(collectionPath, 'utf8');
     const collection = yaml.load(content) as { items?: { path: string; kind: string }[] };
@@ -188,7 +188,7 @@ Provide example interactions or use cases.
     }
 
     return new Promise((resolve) => {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
       const { exec } = require('node:child_process');
       exec(`node "${validateScript}"`, { cwd: workspaceRoot }, (error: Error | null, stdout: string, stderr: string) => {
         if (error) {

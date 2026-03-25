@@ -51,7 +51,7 @@ suite('RegistryManager.listInstalledBundles Property Tests', () => {
    * Uses sinon sandbox for proper cleanup.
    * @param sandbox
    */
-  // eslint-disable-next-line @typescript-eslint/no-shadow
+  // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
   const createMockContext = (sandbox: sinon.SinonSandbox): vscode.ExtensionContext => {
     return {
       globalState: {

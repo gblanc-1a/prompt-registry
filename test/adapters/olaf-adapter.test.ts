@@ -29,7 +29,7 @@ suite('OlafAdapter Integration Tests', () => {
   };
 
   let runtimeManagerStub: sinon.SinonStubbedInstance<OlafRuntimeManager>;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
   let _workspaceStub: sinon.SinonStub;
 
   /**
@@ -45,9 +45,9 @@ suite('OlafAdapter Integration Tests', () => {
       metadata: { name: string; description: string; version?: string; author?: string; tags?: string[] };
       skills: { name: string; description: string; path: string; manifest: string }[];
     }[];
-    // eslint-disable-next-line @typescript-eslint/naming-convention
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
     skillManifests?: Record<string, { name: string; version?: string; entry_points: { protocol: string; path: string; patterns: string[] }[] }>;
-    // eslint-disable-next-line @typescript-eslint/naming-convention
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API response shape
     skillFiles?: Record<string, { name: string; type: 'file' | 'dir'; download_url?: string }[]>;
   }) {
     const { bundleDefinitions = [], skillManifests = {}, skillFiles = {} } = options;
@@ -422,7 +422,7 @@ suite('OlafAdapter Integration Tests', () => {
       const workspacePath = '/test/workspace';
       // Install path is now: .olaf/external-skills/<source-name>/ (without bundle/skill name)
       const installPath = path.join(workspacePath, '.olaf', 'external-skills', 'test-source');
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by method signature
       const _competencyIndexPath = path.join(workspacePath, '.olaf', 'olaf-core', 'reference', 'competency-index.json');
 
       // Mock bundle definition with skill entry points
@@ -482,7 +482,7 @@ suite('OlafAdapter Integration Tests', () => {
       // Mock file system operations
       const existsSyncStub = sinon.stub(fs, 'existsSync');
       const mkdirSyncStub = sinon.stub(fs, 'mkdirSync');
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by method signature
       const _readFileSyncStub = sinon.stub(fs, 'readFileSync');
       const writeFileSyncStub = sinon.stub(fs, 'writeFileSync');
 
@@ -579,7 +579,7 @@ suite('OlafAdapter Integration Tests', () => {
         .reply(200, JSON.stringify(skillManifest));
 
       const existsSyncStub = sinon.stub(fs, 'existsSync');
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by method signature
       const _mkdirSyncStub = sinon.stub(fs, 'mkdirSync');
       const readFileSyncStub = sinon.stub(fs, 'readFileSync');
       const writeFileSyncStub = sinon.stub(fs, 'writeFileSync');

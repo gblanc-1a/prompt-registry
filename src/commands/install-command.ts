@@ -164,7 +164,7 @@ export class InstallCommand {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async selectInstallationScope(): Promise<InstallationScope | undefined> {
     const scopeItems: vscode.QuickPickItem[] = [
       {

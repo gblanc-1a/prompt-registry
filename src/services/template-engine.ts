@@ -177,7 +177,7 @@ export class TemplateEngine {
    * @param name
    * @param templatePath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private resolveRelativePath(name: string, templatePath: string): string {
     let relativePath = templatePath;
 
@@ -233,7 +233,7 @@ export class TemplateEngine {
    * Enhance context with computed values
    * @param context
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private enhanceContext(context: TemplateContext): Record<string, any> {
     const enhanced: Record<string, string> = { ...context };
 

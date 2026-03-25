@@ -8,7 +8,7 @@ import * as path from 'node:path';
 import {
   promisify,
 } from 'node:util';
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
 import AdmZip = require('adm-zip');
 import * as yaml from 'js-yaml';
 import * as vscode from 'vscode';
@@ -78,7 +78,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
 
     // Expand home directory
     if (localPath.startsWith('~/')) {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
       const os = require('node:os');
       localPath = path.join(os.homedir(), localPath.slice(2));
     }
@@ -256,9 +256,9 @@ export class LocalOlafAdapter extends RepositoryAdapter {
       // Validate bundle definitions and skills
       let bundleCount = 0;
       let skillCount = 0;
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       const _bundleErrors = 0;
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       const _skillErrors = 0;
 
       try {
@@ -314,7 +314,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
    * Perform additional validation checks for source configuration
    * @param warnings
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async performAdditionalValidation(warnings: string[]): Promise<void> {
     const localPath = this.getLocalPath();
 
@@ -399,7 +399,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
    * Read and parse JSON file with detailed error reporting
    * @param filePath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async readJsonFile(filePath: string): Promise<any> {
     try {
       const content = await readFile(filePath, 'utf8');
@@ -421,7 +421,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
    * Parse skill manifest and extract entry points with detailed error reporting
    * @param skillPath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async parseSkillManifest(skillPath: string): Promise<LocalOlafSkillManifest> {
     try {
       const data = await this.readJsonFile(skillPath);
@@ -512,7 +512,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
    * Provides detailed error messages for validation failures
    * @param bundleDefinition
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async validateSkillReferences(bundleDefinition: BundleDefinition): Promise<SkillInfo[]> {
     const localPath = this.getLocalPath();
     const validatedSkills: SkillInfo[] = [];
@@ -591,7 +591,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
    * Get list of files in skill directory recursively
    * @param skillPath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getSkillFiles(skillPath: string): Promise<string[]> {
     const files: string[] = [];
 
@@ -622,13 +622,13 @@ export class LocalOlafAdapter extends RepositoryAdapter {
    * Updated scanBundleDefinitions to include skill validation with comprehensive error handling
    * Continues processing valid bundles when some are invalid
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async scanBundleDefinitions(): Promise<BundleDefinitionInfo[]> {
     const localPath = this.getLocalPath();
     const bundlesPath = path.join(localPath, 'bundles');
     const bundleDefinitions: BundleDefinitionInfo[] = [];
     const errors: string[] = [];
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
     const _warnings: string[] = [];
 
     try {
@@ -707,7 +707,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
    * Parse and validate bundle definition JSON file with detailed error reporting
    * @param bundlePath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async parseBundleDefinition(bundlePath: string): Promise<BundleDefinition> {
     try {
       const data = await this.readJsonFile(bundlePath);
@@ -765,7 +765,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
    * Create Bundle object from BundleDefinitionInfo with proper metadata mapping
    * @param bundleInfo
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private createBundleFromDefinition(bundleInfo: BundleDefinitionInfo): Bundle {
     const { definition, validatedSkills } = bundleInfo;
     const localPath = this.getLocalPath();
@@ -923,7 +923,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
    * Creates manifest from bundle definition information with all skills
    * @param bundleInfo
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private generateDeploymentManifest(bundleInfo: BundleDefinitionInfo): any {
     const { definition, validatedSkills } = bundleInfo;
     const localPath = this.getLocalPath();
@@ -990,7 +990,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
    * Copies all skill files while preserving folder structure
    * @param bundleInfo
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async packageBundleAsZip(bundleInfo: BundleDefinitionInfo): Promise<Buffer> {
     const localPath = this.getLocalPath();
 
@@ -1031,7 +1031,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
    * @param sourcePath
    * @param zipPath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async addDirectoryToZip(zip: AdmZip, sourcePath: string, zipPath: string): Promise<void> {
     try {
       const entries = await readdir(sourcePath, { withFileTypes: true });
@@ -1088,7 +1088,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
    * Ensure OLAF runtime is installed using existing OlafRuntimeManager
    * Handles runtime installation errors gracefully with user feedback
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async ensureRuntimeInstalled(): Promise<void> {
     this.logger.info(`[LocalOlafAdapter] Ensuring OLAF runtime is installed`);
 
@@ -1147,7 +1147,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
    * Create workspace symbolic links for runtime access during bundle installation
    * Handles link creation errors gracefully
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async createWorkspaceLinks(): Promise<void> {
     this.logger.info(`[LocalOlafAdapter] Creating workspace symbolic links`);
 
@@ -1250,7 +1250,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
    * @param bundleId
    * @param installPath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async registerBundleInCompetencyIndex(bundleId: string, installPath: string): Promise<void> {
     this.logger.info(`[LocalOlafAdapter] Registering bundle skills in competency index: ${bundleId}`);
     this.logger.info(`[LocalOlafAdapter] Install path: ${installPath}`);
@@ -1356,7 +1356,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
    * Get the source name to use for directory paths
    * Uses source.name with fallback to source.id
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getSourceName(): string {
     return this.source.name || this.source.id;
   }
@@ -1367,7 +1367,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
    * @param installPath
    * @param competencyIndex
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await
+  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
   private async registerSkillInCompetencyIndex(skill: SkillInfo, installPath: string, competencyIndex: any[]): Promise<void> {
     try {
       // Extract entry points from skill manifest
@@ -1421,7 +1421,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
    * @param bundleId
    * @param installPath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async unregisterBundleFromCompetencyIndex(bundleId: string, installPath: string): Promise<void> {
     this.logger.info(`[LocalOlafAdapter] Unregistering bundle from competency index: ${bundleId}`);
     this.logger.info(`[LocalOlafAdapter] Install path: ${installPath}`);
@@ -1529,7 +1529,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
    * For local OLAF bundles, skills are linked symbolically rather than copied
    * @param bundleInfo
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await
+  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
   private async createMinimalBundle(bundleInfo: BundleDefinitionInfo): Promise<Buffer> {
     try {
       const zip = new AdmZip();
@@ -1555,7 +1555,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
    * Links are created in .olaf/external-skills/<source-name>/<skill-name>
    * @param bundleId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async createSkillSymbolicLinks(bundleId: string): Promise<void> {
     this.logger.info(`[LocalOlafAdapter] Creating symbolic links for bundle: ${bundleId}`);
 
@@ -1639,7 +1639,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
    * Remove symbolic links for all skills in a bundle
    * @param bundleId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async removeSkillSymbolicLinks(bundleId: string): Promise<void> {
     this.logger.info(`[LocalOlafAdapter] Removing symbolic links for bundle: ${bundleId}`);
 

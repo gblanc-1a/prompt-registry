@@ -98,9 +98,9 @@ export class UserScopeService implements IScopeService {
       const baseDir = path.dirname(path.dirname(globalStoragePath));
 
       // Check if we're in a profiles structure
-      // eslint-disable-next-line @typescript-eslint/no-shadow
+      // eslint-disable-next-line @typescript-eslint/no-shadow -- local scope intentionally narrows outer binding
       const escapedSep = escapeRegex(path.sep);
-      // eslint-disable-next-line @typescript-eslint/no-shadow
+      // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
       const profilesMatch = baseDir.match(new RegExp(`profiles${escapedSep}([^${escapedSep}]+)`));
       if (profilesMatch) {
         const profileId = profilesMatch[1];
@@ -374,7 +374,7 @@ export class UserScopeService implements IScopeService {
    * @param bundlePath
    * @param promptDef
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async syncSkillFromBundle(bundleId: string, bundlePath: string, promptDef: any): Promise<void> {
     try {
       // Extract skill name from the path (e.g., skills/my-skill/SKILL.md -> my-skill)
@@ -410,7 +410,7 @@ export class UserScopeService implements IScopeService {
    * @param sourcePath
    * @param bundleId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private determineCopilotFileType(
     promptDef: any,
     sourcePath: string,
@@ -445,7 +445,7 @@ export class UserScopeService implements IScopeService {
    * returns false for broken symlinks.
    * @param file
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async createCopilotFile(file: CopilotFile): Promise<void> {
     try {
       // Check if target already exists using lstat() to detect broken symlinks
@@ -680,7 +680,7 @@ export class UserScopeService implements IScopeService {
    * Ensure directory exists
    * @param dir
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await
+  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
   private async ensureDirectory(dir: string): Promise<void> {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
@@ -811,7 +811,7 @@ export class UserScopeService implements IScopeService {
    * @param sourceDir
    * @param targetDir
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async copySkillDirectory(sourceDir: string, targetDir: string): Promise<void> {
     await this.ensureDirectory(targetDir);
 
@@ -836,7 +836,7 @@ export class UserScopeService implements IScopeService {
    * Remove skill directory recursively
    * @param dir
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async removeSkillDirectory(dir: string): Promise<void> {
     if (!fs.existsSync(dir)) {
       return;

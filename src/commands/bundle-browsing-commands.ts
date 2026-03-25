@@ -344,7 +344,7 @@ export class BundleBrowsingCommands {
    * @param bundle
    * @param isInstalled
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private formatBundleInfo(bundle: Bundle, isInstalled: boolean): string {
     const parts: string[] = [`Name: ${bundle.name}`, `Version: ${bundle.version}`, `Author: ${bundle.author}`, `Description: ${bundle.description}`];
 

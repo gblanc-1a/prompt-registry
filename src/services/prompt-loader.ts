@@ -90,7 +90,7 @@ export class PromptLoader {
    * @param bundleId
    * @param bundlePath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getPromptsFromBundle(bundleId: string, bundlePath: string): Promise<PromptInfo[]> {
     const prompts: PromptInfo[] = [];
 

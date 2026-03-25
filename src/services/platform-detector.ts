@@ -147,7 +147,7 @@ export class PlatformDetector {
     return path.join(basePath, 'olaf');
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await
+  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
   private async detectByExecutablePath(): Promise<PlatformDetectionResult> {
     const executablePath = process.execPath;
 
@@ -186,7 +186,7 @@ export class PlatformDetector {
     return { platform: Platform.UNKNOWN, confidence: 0 };
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await
+  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
   private async detectByEnvironmentVariables(): Promise<PlatformDetectionResult> {
     const env = process.env;
 
@@ -237,7 +237,7 @@ export class PlatformDetector {
     return { platform: Platform.UNKNOWN, confidence: 0 };
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await
+  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
   private async detectByProcessInfo(): Promise<PlatformDetectionResult> {
     try {
       const processTitle = process.title?.toLowerCase() || '';
@@ -265,7 +265,7 @@ export class PlatformDetector {
     return { platform: Platform.UNKNOWN, confidence: 0 };
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await
+  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
   private async detectByConfigFiles(): Promise<PlatformDetectionResult> {
     try {
       const userDataPaths = [
@@ -291,7 +291,7 @@ export class PlatformDetector {
     return { platform: Platform.UNKNOWN, confidence: 0 };
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await
+  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
   private async detectByVSCodeAPI(): Promise<PlatformDetectionResult> {
     try {
       // Try to detect using VSCode API information
@@ -319,7 +319,7 @@ export class PlatformDetector {
     return { platform: Platform.UNKNOWN, confidence: 0 };
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private aggregateResults(results: PlatformDetectionResult[]): PlatformDetectionResult {
     if (results.length === 0) {
       return { platform: Platform.UNKNOWN, confidence: 0 };
@@ -357,7 +357,7 @@ export class PlatformDetector {
     };
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getUserDataPath(appName: string): string {
     const homeDir = os.homedir();
     const platform = os.platform();

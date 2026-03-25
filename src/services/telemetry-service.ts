@@ -96,7 +96,7 @@ export class TelemetryService {
     );
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private trackBundleEvent(eventName: string, bundle: InstalledBundle): void {
     this.telemetryLogger.logUsage(eventName, {
       bundleId: bundle.bundleId,
@@ -106,7 +106,7 @@ export class TelemetryService {
     });
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private trackProfileEvent(eventName: string, profile: Profile): void {
     this.telemetryLogger.logUsage(eventName, {
       profileId: profile.id,
@@ -114,7 +114,7 @@ export class TelemetryService {
     });
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private trackSourceEvent(eventName: string, source: RegistrySource): void {
     this.telemetryLogger.logUsage(eventName, {
       sourceId: source.id,
@@ -122,7 +122,7 @@ export class TelemetryService {
     });
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private trackSourceSyncedEvent(eventName: string, event: SourceSyncedEvent): void {
     this.telemetryLogger.logUsage(eventName, {
       sourceId: event.sourceId,

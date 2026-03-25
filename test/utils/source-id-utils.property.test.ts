@@ -23,7 +23,7 @@ suite('sourceIdUtils Property Tests', () => {
   /**
    * Generators for property tests
    */
-  // eslint-disable-next-line @typescript-eslint/naming-convention
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
   const Generators = {
     /**
      * Generate valid source types (common adapter types)

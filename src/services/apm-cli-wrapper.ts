@@ -140,7 +140,7 @@ export class ApmCliWrapper {
    * Security: Prevents path traversal and injection
    * @param targetPath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private validateTargetPath(targetPath: string): boolean {
     if (!targetPath || targetPath.trim().length === 0) {
       return false;
@@ -243,7 +243,7 @@ dependencies:
    * @param cwd
    * @param token
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async executeCommand(args: string[], cwd: string, token?: string): Promise<{ stdout: string; stderr: string }> {
     // Validate args don't contain dangerous characters
     for (const arg of args) {
@@ -279,7 +279,7 @@ dependencies:
    * Get safe environment for command execution
    * @param explicitToken
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getSafeEnvironment(explicitToken?: string): NodeJS.ProcessEnv {
     const env = { ...process.env };
 

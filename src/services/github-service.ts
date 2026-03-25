@@ -503,7 +503,7 @@ export class GitHubService {
    * Get direct download URL for a GitHub release asset (for private repos)
    * @param assetId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await
+  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
   private async getAssetDirectDownloadUrl(assetId: number): Promise<string> {
     return `${this.baseUrl}/repos/${this.owner}/${this.repo}/releases/assets/${assetId}`;
   }
@@ -544,7 +544,7 @@ export class GitHubService {
    * Get release by tag with automatic fallback between v-prefixed and non-prefixed versions
    * @param version
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getReleaseByTagWithFallback(version: string): Promise<GitHubRelease> {
     // First, try the exact version as provided
     try {
@@ -593,7 +593,7 @@ export class GitHubService {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getPlatformPrefix(platform: Platform): string {
     const prefixMap: Record<Platform, string> = {
       [Platform.VSCODE]: 'vscode',

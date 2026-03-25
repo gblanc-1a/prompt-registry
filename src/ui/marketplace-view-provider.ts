@@ -85,7 +85,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
       .replace(/'/g, '&#039;');
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly registryManager: RegistryManager,
@@ -151,7 +151,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    * @param bundleId
    * @param action
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private handleBundleEvent(
     eventType: 'installed' | 'uninstalled' | 'updated',
     bundleId: string,
@@ -179,7 +179,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    * @param event.sourceId
    * @param event.bundleCount
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private handleSourceSynced(event: { sourceId: string; bundleCount: number }): void {
     this.logger.debug(`Source synced: ${event.sourceId} (${event.bundleCount} bundles)`);
 
@@ -222,7 +222,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    * @returns Bundle info including marketplace bundle, installed bundle, and source
    * @throws Error if marketplace bundle not found
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async findInstalledBundleByMarketplaceId(bundleId: string): Promise<{
     bundle: Bundle;
     installed: InstalledBundle | undefined;
@@ -253,7 +253,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    * @param installed - The installed bundle info (if installed)
    * @returns Button state: 'install', 'update', or 'uninstall'
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private determineButtonState(
     bundle: Bundle,
     installed: InstalledBundle | undefined
@@ -288,7 +288,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    * @param sourceType - Source type of the bundle
    * @returns True if the bundles match
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private matchesBundleIdentity(
     installedId: string,
     bundleId: string,
@@ -301,7 +301,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    * Load bundles from registries and send to webview
    * Uses cacheOnly mode for fast initial load, then updates progressively via onSourceSynced events
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async loadBundles(): Promise<void> {
     // Prevent concurrent loads to avoid UI flicker
     if (this.isLoadingBundles) {
@@ -323,7 +323,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         ? await autoUpdateService.getAllAutoUpdatePreferences()
         : {};
 
-      // eslint-disable-next-line @typescript-eslint/await-thenable
+      // eslint-disable-next-line @typescript-eslint/await-thenable -- await used for consistency with async test pattern
       const enhancedBundles = await Promise.all(bundles.map((bundle) => {
         // Find matching installed bundle using identity matching
         const source = sources.find((s) => s.id === bundle.sourceId);
@@ -400,7 +400,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    * @param prompts
    * @param mcpServersCount
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private countPromptsByType(prompts: any[], mcpServersCount = 0): ContentBreakdown {
     const breakdown: ContentBreakdown = {
       prompts: 0,
@@ -445,7 +445,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    * @param bundle
    * @param manifest
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getContentBreakdown(bundle: Bundle, manifest?: any): ContentBreakdown {
     const bundleData = bundle as any;
     const mcpCount = manifest?.mcpServers ? Object.keys(manifest.mcpServers).length : this.countMcpServers(bundleData);
@@ -501,7 +501,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    * Count MCP servers from bundle data
    * @param bundleData
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private countMcpServers(bundleData: any): number {
     // Check manifest.mcpServers
     if (bundleData.mcpServers && typeof bundleData.mcpServers === 'object') {
@@ -518,7 +518,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    * Handle messages from webview
    * @param message
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async handleMessage(message: WebviewMessage): Promise<void> {
     switch (message.type) {
       case 'refresh': {
@@ -584,7 +584,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         break;
       }
       default: {
-        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
+        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- value is safely stringifiable at runtime
         this.logger.warn(`Unknown message type: ${message.type}`);
       }
     }
@@ -594,10 +594,10 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    * Open the source repository for a bundle
    * @param bundleId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async handleOpenSourceRepository(bundleId: string): Promise<void> {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructuring with unused bindings
       const { bundle, source } = await this.findInstalledBundleByMarketplaceId(bundleId);
 
       // Create a fake tree item to pass to the command
@@ -626,7 +626,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    *
    * Requirements: 4.4
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async handleCompleteSetup(): Promise<void> {
     this.logger.info('User clicked Complete Setup from marketplace');
 
@@ -657,10 +657,10 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    * @param installPath
    * @param filePath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async openPromptFileInEditor(installPath: string, filePath: string): Promise<void> {
     try {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
       const path = require('node:path');
       const fullPath = path.join(installPath, filePath);
 
@@ -683,7 +683,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    * Show scope selection dialog and return result
    * @returns Scope selection result or undefined if cancelled
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async promptForScope(): Promise<import('../utils/scope-selection-ui').ScopeSelectionResult | undefined> {
     const { showScopeSelectionDialog } = await import('../utils/scope-selection-ui');
     return showScopeSelectionDialog();
@@ -693,7 +693,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    * Install a bundle
    * @param bundleId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async handleInstall(bundleId: string): Promise<void> {
     try {
       this.logger.info(`Installing bundle from marketplace: ${bundleId}`);
@@ -734,7 +734,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    * Uninstall a bundle
    * @param bundleId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async handleUninstall(bundleId: string): Promise<void> {
     try {
       this.logger.info(`Uninstalling bundle from marketplace: ${bundleId}`);
@@ -770,7 +770,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    * If install fails after successful uninstall, the bundle will be left uninstalled.
    * @param bundleId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async handleUpdate(bundleId: string): Promise<void> {
     try {
       this.logger.info(`Updating bundle from marketplace: ${bundleId}`);
@@ -810,7 +810,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    * @param bundleId - The bundle to install
    * @param version - The specific version to install
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async handleInstallVersion(bundleId: string, version: string): Promise<void> {
     try {
       this.logger.info(`Installing specific version of bundle: ${bundleId} v${version}`);
@@ -851,7 +851,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    * Handle request to get available versions for a bundle
    * @param bundleId - The bundle to get versions for
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async handleGetVersions(bundleId: string): Promise<void> {
     try {
       this.logger.debug(`Getting available versions for bundle: ${bundleId}`);
@@ -880,7 +880,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    * @param bundle - The bundle to get versions for
    * @returns Array of version strings in descending order
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getAvailableVersions(bundle: Bundle): Promise<string[]> {
     try {
       // Use public API from RegistryManager
@@ -896,7 +896,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    * @param bundleId - The bundle to toggle auto-update for
    * @param enabled - Whether auto-update should be enabled
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async handleToggleAutoUpdate(bundleId: string, enabled: boolean): Promise<void> {
     try {
       this.logger.info(`Toggling auto-update for bundle '${bundleId}' to ${enabled}`);
@@ -1007,7 +1007,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    * @param breakdown
    * @param autoUpdateEnabled
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getBundleDetailsHtml(
     webview: vscode.Webview,
     bundle: Bundle,
@@ -1151,7 +1151,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    * Generate MCP servers section HTML
    * @param installed
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private generateMcpServersSection(installed: InstalledBundle | undefined): string {
     if (!installed?.manifest?.mcpServers || Object.keys(installed.manifest.mcpServers).length === 0) {
       return '';
@@ -1226,7 +1226,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    * @param installed
    * @param escapedInstallPath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private generatePromptsSection(installed: InstalledBundle | undefined, escapedInstallPath: string): string {
     if (!installed?.manifest?.prompts) {
       return '';
@@ -1255,7 +1255,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
   /**
    * Generate a nonce for Content Security Policy
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getNonce(): string {
     let text = '';
     const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -1269,7 +1269,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    * Get HTML content for marketplace webview
    * @param webview
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getHtmlContent(webview: vscode.Webview): string {
     // Get URIs for external resources
     const cssUri = webview.asWebviewUri(

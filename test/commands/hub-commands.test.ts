@@ -134,11 +134,11 @@ suite('HubCommands', () => {
       const fixturePath = path.join(__dirname, '..', 'fixtures', 'hubs', 'valid-hub-config.yml');
 
       // Mock user input
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
       const _showInputBoxStub = (_opts: any) => Promise.resolve('test-hub');
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
       const _showQuickPickStub = (_items: any) => Promise.resolve({ label: 'Local File', value: 'local' });
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
       const _showOpenDialogStub = () => Promise.resolve([vscode.Uri.file(fixturePath)]);
 
       // Execute import
@@ -153,7 +153,7 @@ suite('HubCommands', () => {
 
     test('should handle cancellation gracefully', async () => {
       // Mock user cancels input
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
       const _showQuickPickStub = () => Promise.resolve(undefined);
 
       const result = await commands.importHub();
@@ -163,16 +163,16 @@ suite('HubCommands', () => {
 
     test('should show error message on import failure', async () => {
       // Mock invalid input
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
       const _showInputBoxStub = () => Promise.resolve('test-hub');
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
       const _showQuickPickStub = () => Promise.resolve({ label: 'GitHub', value: 'github' });
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
       const _showInputBoxForUrlStub = () => Promise.resolve('invalid/format');
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       let _errorShown = false;
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
       const _showErrorMessageStub = () => {
         errorShown = true;
       };
@@ -189,11 +189,11 @@ suite('HubCommands', () => {
 
     test('should validate hub ID input', async () => {
       // Test with invalid hub ID
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
       const _showInputBoxStub = () => Promise.resolve('../invalid-id');
 
       // Should reject invalid IDs
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       const _result = await commands.importHub();
 
       // Hub should not be imported with invalid ID
@@ -204,9 +204,9 @@ suite('HubCommands', () => {
 
   suite('List Hubs Command', () => {
     test('should show empty message when no hubs', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       let _infoShown = false;
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
       const _showInformationMessageStub = () => {
         infoShown = true;
       };
@@ -236,7 +236,7 @@ suite('HubCommands', () => {
       await hubManager.importHub(ref, 'test-hub');
 
       // Mock user selection
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
       const _showQuickPickStub = (items: any) => Promise.resolve(items[0]);
 
       await commands.listHubs();
@@ -253,7 +253,7 @@ suite('HubCommands', () => {
       await hubManager.importHub(ref, 'test-hub');
 
       // Mock user selection
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
       const _showQuickPickStub = (items: any) => Promise.resolve(items[0]);
 
       await commands.syncHub();
@@ -269,7 +269,7 @@ suite('HubCommands', () => {
       await hubManager.importHub(ref, 'hub2');
 
       // Mock "Sync All" selection
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
       const _showQuickPickStub = () => Promise.resolve({ label: 'Sync All Hubs', value: 'all' });
 
       await commands.syncHub();
@@ -279,9 +279,9 @@ suite('HubCommands', () => {
 
     test('should show error on sync failure', async () => {
       // Mock hub manager to fail
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       let _errorShown = false;
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
       const _showErrorMessageStub = () => {
         errorShown = true;
       };
@@ -310,7 +310,7 @@ suite('HubCommands', () => {
       await hubManager.importHub(ref, 'test-hub');
 
       // Mock user confirmation
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
       const _showWarningMessageStub = () => Promise.resolve('Delete');
 
       await commands.deleteHub('test-hub');
@@ -327,7 +327,7 @@ suite('HubCommands', () => {
       await hubManager.importHub(ref, 'test-hub');
 
       // Mock user cancellation
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
       const _showWarningMessageStub = () => Promise.resolve(undefined);
 
       await commands.deleteHub('test-hub');
@@ -338,9 +338,9 @@ suite('HubCommands', () => {
     });
 
     test('should show error if hub not found', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       let _errorShown = false;
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
       const _showErrorMessageStub = () => {
         errorShown = true;
       };
@@ -357,9 +357,9 @@ suite('HubCommands', () => {
       await hubManager.importHub(ref, 'test-hub');
 
       // Mock user selection
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
       const _showQuickPickStub = (items: any) => Promise.resolve(items[0]);
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
       const _showWarningMessageStub = () => Promise.resolve('Delete');
 
       await commands.deleteHub();
@@ -383,9 +383,9 @@ suite('HubCommands', () => {
     });
 
     test('should show user-friendly error messages', async () => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       let _errorMessage = '';
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
       const _showErrorMessageStub = (msg: string) => {
         errorMessage = msg;
       };
@@ -399,12 +399,12 @@ suite('HubCommands', () => {
 
   suite('User Experience', () => {
     test('should show success message after import', () => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by method signature
       const _fixturePath = path.join(__dirname, '..', 'fixtures', 'hubs', 'valid-hub-config.yml');
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       let _successShown = false;
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
       const _showInformationMessageStub = () => {
         successShown = true;
       };

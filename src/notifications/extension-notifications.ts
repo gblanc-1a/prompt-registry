@@ -218,7 +218,7 @@ export class ExtensionNotifications {
   /**
    * Show first install welcome notification
    */
-  // eslint-disable-next-line @typescript-eslint/require-await
+  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   public async showWelcomeNotification(): Promise<'install' | 'learn' | 'dismiss' | undefined> {
     // Currently disabled - returning undefined
     return undefined;

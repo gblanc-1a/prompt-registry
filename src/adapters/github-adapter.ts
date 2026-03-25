@@ -37,26 +37,26 @@ const execAsync = promisify(exec);
  * GitHub API response types
  */
 interface GitHubRelease {
-  // eslint-disable-next-line @typescript-eslint/naming-convention
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API response shape
   tag_name: string;
   name: string;
   body: string;
   assets: {
     name: string;
-    // eslint-disable-next-line @typescript-eslint/naming-convention
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API response shape
     browser_download_url: string;
     url: string; // API endpoint for downloading the asset
     size: number;
   }[];
-  // eslint-disable-next-line @typescript-eslint/naming-convention
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API response shape
   published_at: string;
 }
 
-// eslint-disable-next-line @typescript-eslint/naming-convention, @typescript-eslint/no-unused-vars
+// eslint-disable-next-line @typescript-eslint/naming-convention, @typescript-eslint/no-unused-vars -- name reflects domain terminology; kept for clarity
 interface _GitHubContent {
   name: string;
   path: string;
-  // eslint-disable-next-line @typescript-eslint/naming-convention
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API response shape
   download_url: string;
   type: string;
 }
@@ -356,7 +356,7 @@ export class GitHubAdapter extends RepositoryAdapter {
             this.logger.error(`[GitHubAdapter] Response: ${data.substring(0, 500)}`);
 
             // Validate response format before processing error
-            // eslint-disable-next-line @typescript-eslint/no-shadow
+            // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
             const validation = this.validateResponse(res, data);
             if (!validation.isValid) {
               this.logger.error(`[GitHubAdapter] ${validation.error}`);
@@ -596,7 +596,7 @@ export class GitHubAdapter extends RepositoryAdapter {
    * @param repo - Repository name
    * @returns Bundle object or null if processing fails
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async processSingleRelease(
     release: GitHubRelease,
     owner: string,
@@ -673,7 +673,7 @@ export class GitHubAdapter extends RepositoryAdapter {
    * @param filename - Manifest filename (for determining parse format)
    * @returns Parsed manifest object
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async fetchManifestWithCache(url: string, filename: string): Promise<any> {
     // Check cache first
     if (this.manifestCache.has(url)) {
@@ -690,7 +690,7 @@ export class GitHubAdapter extends RepositoryAdapter {
       manifest = JSON.parse(manifestText);
     } else {
       // Assume YAML for .yml or .yaml
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
       const yaml = require('js-yaml');
       manifest = yaml.load(manifestText);
     }
@@ -837,7 +837,7 @@ export class GitHubAdapter extends RepositoryAdapter {
    * Extract description from release body
    * @param body
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private extractDescription(body: string): string {
     if (!body) {
       return '';
@@ -863,7 +863,7 @@ export class GitHubAdapter extends RepositoryAdapter {
    * Extract environments from release body
    * @param body
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private extractEnvironments(body: string): string[] {
     const envs = [];
     const envRegex = /(?:environments?|platforms?):\s*([^\n]+)/i;
@@ -881,7 +881,7 @@ export class GitHubAdapter extends RepositoryAdapter {
    * Extract tags from release body
    * @param body
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private extractTags(body: string): string[] {
     const tags = [];
     const tagRegex = /(?:tags?):\s*([^\n]+)/i;

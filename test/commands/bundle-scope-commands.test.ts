@@ -70,7 +70,7 @@ suite('BundleScopeCommands', () => {
   };
 
   // Helper to reset all mocks
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
   const _resetAllMocks = (): void => {
     mockRegistryManager.getStorage.reset();
     mockRegistryManager.getBundleName.reset();

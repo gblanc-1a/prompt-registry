@@ -113,7 +113,7 @@ export abstract class RepositoryAdapter implements IRepositoryAdapter {
    * Get authentication token from source config
    * @returns Token or undefined
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   protected getAuthToken(): string | undefined {
     return this.source.token;
   }
@@ -122,7 +122,7 @@ export abstract class RepositoryAdapter implements IRepositoryAdapter {
    * Create common HTTP headers for requests
    * @returns Headers object
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   protected getHeaders(): Record<string, string> {
     const headers: Record<string, string> = {
       'User-Agent': 'Prompt-Registry-VSCode-Extension/1.0',
@@ -142,7 +142,7 @@ export abstract class RepositoryAdapter implements IRepositoryAdapter {
    * @param response HTTP response
    * @param context Error context
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   protected async handleHttpError(response: any, context: string): Promise<never> {
     const statusText = response.statusText || 'Unknown';
     const body = await response.text?.().catch(() => '') || '';
@@ -157,7 +157,7 @@ export abstract class RepositoryAdapter implements IRepositoryAdapter {
    * @param url URL to validate
    * @returns True if valid
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   protected isValidUrl(url: string): boolean {
     try {
       new URL(url);
@@ -194,7 +194,7 @@ export class RepositoryAdapterFactory {
    * @returns Repository adapter instance
    */
   public static create(source: RegistrySource): IRepositoryAdapter {
-    // eslint-disable-next-line @typescript-eslint/naming-convention
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
     const AdapterClass = this.adapters.get(source.type);
 
     if (!AdapterClass) {

@@ -360,7 +360,7 @@ export function generateMockChecksum(): string {
  * These generators create valid lockfile objects and their components
  * for use in property-based tests.
  */
-// eslint-disable-next-line @typescript-eslint/naming-convention
+// eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
 export const LockfileGenerators = {
   /**
    * Generate a valid SHA256 checksum (64 lowercase hex characters)

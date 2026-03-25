@@ -80,7 +80,7 @@ export class ValidateAccessCommand {
    * @param results.accessMessage
    * @param results.connectivity
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async showValidationResults(results: {
     owner: string;
     repo: string;

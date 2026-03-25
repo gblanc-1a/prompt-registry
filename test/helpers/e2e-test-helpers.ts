@@ -129,7 +129,7 @@ export async function createE2ETestContext(): Promise<E2ETestContext> {
   (registryManager as any).sourcesCache = [];
 
   // Re-initialize the installer with the new context
-  // eslint-disable-next-line @typescript-eslint/naming-convention
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- matches module export name
   const BundleInstaller = require('../../src/services/bundle-installer').BundleInstaller;
   (registryManager as any).installer = new BundleInstaller(mockContext);
 
@@ -270,7 +270,7 @@ export async function setupSourceAndGetBundleGeneric(
   setupReleaseMocks([{ tag: 'v1.0.0', version: '1.0.0', content }]);
 
   // Import vscode dynamically to avoid issues in non-VS Code environments
-  // eslint-disable-next-line @typescript-eslint/no-shadow
+  // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
   const vscode = require('vscode');
   sandbox.stub(vscode.workspace, 'workspaceFolders').value([
     { uri: vscode.Uri.file(workspaceRoot), name: 'test-workspace', index: 0 }

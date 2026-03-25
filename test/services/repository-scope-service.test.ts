@@ -62,7 +62,7 @@ suite('RepositoryScopeService', () => {
       type: f.type || 'prompt'
     }));
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
     const _manifest = {
       id: bundleId,
       version: '1.0.0',
@@ -544,7 +544,7 @@ suite('RepositoryScopeService', () => {
       const checksum = calculateChecksumSync(promptFile);
 
       const bundleId = 'test-bundle';
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       const _bundlePath = createMockBundle(bundleId, [
         { name: 'test.prompt.md', content: '# Test', type: 'prompt' }
       ]);
@@ -568,7 +568,7 @@ suite('RepositoryScopeService', () => {
 
       const bundleId = 'test-bundle';
       // Create the bundle directory with manifest so unsyncBundle can read it
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       const _bundlePath = createMockBundle(bundleId, [
         { name: 'test.prompt.md', content: '# Test', type: 'prompt' }
       ]);

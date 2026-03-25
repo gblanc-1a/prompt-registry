@@ -20,9 +20,9 @@ import {
 } from '../../src/types/registry';
 
 suite('RegistryManager - Installation Record Management', () => {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
   let _context: vscode.ExtensionContext;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
   let _registryManager: RegistryManager;
   let storageStub: sinon.SinonStubbedInstance<RegistryStorage>;
   let installerStub: sinon.SinonStubbedInstance<BundleInstaller>;
@@ -115,7 +115,7 @@ suite('RegistryManager - Installation Record Management', () => {
       installerStub.uninstall.resolves();
 
       // Track what bundleId is passed to removeInstallation
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       let _removedBundleId: string | undefined;
       storageStub.removeInstallation.callsFake((bundleId: string) => {
         removedBundleId = bundleId;

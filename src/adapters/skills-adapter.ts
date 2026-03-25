@@ -117,7 +117,7 @@ export class SkillsAdapter extends RepositoryAdapter {
    * Scan skills/ directory for skill folders with SKILL.md files
    * Uses parallel fetching with concurrency limit for better performance
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async scanSkillsDirectory(): Promise<SkillItem[]> {
     const { owner, repo } = this.parseGitHubUrl();
     const apiBase = 'https://api.github.com';
@@ -168,7 +168,7 @@ export class SkillsAdapter extends RepositoryAdapter {
    * @param owner
    * @param repo
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async processSkillDirectory(dir: GitHubContentItem, owner: string, repo: string): Promise<SkillItem | null> {
     const skillPath = dir.path;
     const skillId = dir.name;
@@ -221,7 +221,7 @@ export class SkillsAdapter extends RepositoryAdapter {
    * Parse SKILL.md file content (YAML frontmatter + markdown)
    * @param downloadUrl
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async parseSkillMd(downloadUrl: string): Promise<ParsedSkillFile> {
     this.logger.debug(`[SkillsAdapter] Parsing SKILL.md from: ${downloadUrl}`);
 
@@ -266,7 +266,7 @@ export class SkillsAdapter extends RepositoryAdapter {
    * Create Bundle object from SkillItem
    * @param skill
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private createBundleFromSkill(skill: SkillItem): Bundle {
     const { owner, repo } = this.parseGitHubUrl();
 
@@ -299,7 +299,7 @@ export class SkillsAdapter extends RepositoryAdapter {
    * Calculate a stable hash from GitHub file metadata in the skill folder.
    * @param skillContents
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private calculateContentHash(skillContents: GitHubContentItem[]): string {
     const hash = crypto.createHash('sha256');
     const files = skillContents
@@ -322,7 +322,7 @@ export class SkillsAdapter extends RepositoryAdapter {
    * @param repo
    * @param initialEntries
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async collectSkillFiles(owner: string, repo: string, initialEntries: GitHubContentItem[]): Promise<GitHubContentItem[]> {
     const apiBase = 'https://api.github.com';
     const files: GitHubContentItem[] = [];
@@ -349,7 +349,7 @@ export class SkillsAdapter extends RepositoryAdapter {
     return files;
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getRelativeSkillPath(fullPath: string, skillPath: string): string {
     if (fullPath.startsWith(`${skillPath}/`)) {
       return fullPath.slice(skillPath.length + 1);
@@ -364,7 +364,7 @@ export class SkillsAdapter extends RepositoryAdapter {
    * Format skill version from content hash.
    * @param contentHash
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private formatSkillVersion(contentHash?: string): string {
     return contentHash ? `hash:${contentHash}` : '1.0.0';
   }
@@ -373,7 +373,7 @@ export class SkillsAdapter extends RepositoryAdapter {
    * Estimate skill size based on file count
    * @param files
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private estimateSkillSize(files: string[]): string {
     const estimatedBytes = files.length * 4096;
 
@@ -532,7 +532,7 @@ export class SkillsAdapter extends RepositoryAdapter {
    * Fetch a single skill by ID (optimized - doesn't scan all skills)
    * @param skillId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async fetchSingleSkill(skillId: string): Promise<SkillItem | null> {
     const { owner, repo } = this.parseGitHubUrl();
     const apiBase = 'https://api.github.com';
@@ -589,12 +589,12 @@ export class SkillsAdapter extends RepositoryAdapter {
    * Package a skill as a ZIP bundle
    * @param skill
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async packageSkillAsZip(skill: SkillItem): Promise<Buffer> {
     const { owner, repo } = this.parseGitHubUrl();
-    // eslint-disable-next-line @typescript-eslint/naming-convention, @typescript-eslint/no-require-imports
+    // eslint-disable-next-line @typescript-eslint/naming-convention, @typescript-eslint/no-require-imports -- matches library export name; dynamic require needed at runtime
     const AdmZip = require('adm-zip');
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
     const yamlLib = require('js-yaml');
 
     this.logger.debug(`[SkillsAdapter] Packaging skill as ZIP: ${skill.id}`);
@@ -644,7 +644,7 @@ export class SkillsAdapter extends RepositoryAdapter {
    * @param dirPath
    * @param zipPath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async addDirectoryToZip(zip: any, owner: string, repo: string, dirPath: string, zipPath: string): Promise<void> {
     try {
       const apiBase = 'https://api.github.com';
@@ -675,7 +675,7 @@ export class SkillsAdapter extends RepositoryAdapter {
    * @param owner
    * @param repo
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private generateDeploymentManifest(skill: SkillItem, owner: string, repo: string): any {
     return {
       id: `skills-${owner}-${repo}-${skill.id}`,
@@ -730,9 +730,9 @@ export class SkillsAdapter extends RepositoryAdapter {
    * Download file content from URL
    * @param url
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async downloadFileContent(url: string): Promise<Buffer> {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
     const https = require('node:https');
 
     return new Promise((resolve, reject) => {
@@ -769,15 +769,15 @@ export class SkillsAdapter extends RepositoryAdapter {
    * Make GitHub API request with authentication
    * @param url
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async makeGitHubRequest(url: string): Promise<any> {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
     const https = require('node:https');
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
     const vscode = require('vscode');
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
     const { exec } = require('node:child_process');
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
     const { promisify } = require('node:util');
     const execAsync = promisify(exec);
 

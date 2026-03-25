@@ -602,7 +602,7 @@ suite('BundleInstaller Property Tests', () => {
             lockfileRemoveCalls = [];
 
             // Create a mock installed bundle at user/workspace scope
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
             const _installed = createMockInstalledBundle(bundleId, version, {
               scope,
               installPath: path.join(tempDir, 'bundles', bundleId),
@@ -871,7 +871,7 @@ suite('BundleInstaller Property Tests', () => {
             });
 
             // Property: Scope should determine lockfile interaction
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
             const _shouldModifyLockfile = scope === 'repository';
 
             // Verify scope is correctly set

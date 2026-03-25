@@ -238,7 +238,7 @@ export class HttpAdapter extends RepositoryAdapter {
    * Resolve relative URLs to absolute
    * @param url
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private resolveUrl(url: string): string {
     // If already absolute, return as-is
     if (url.startsWith('http://') || url.startsWith('https://')) {

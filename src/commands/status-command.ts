@@ -229,7 +229,7 @@ export class StatusCommand {
   /**
    * Show help documentation
    */
-  // eslint-disable-next-line @typescript-eslint/require-await
+  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   public async showHelp(): Promise<void> {
     const helpContent = `
 # Prompt Registry VSCode Extension Help
@@ -296,7 +296,7 @@ Configure Prompt Registry behavior in VS Code settings under "Prompt Registry" s
         `;
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async showUpdateDetails(updateChecks: any[]): Promise<void> {
     const details = updateChecks.map((check) => {
       return check.hasUpdate ? `${check.scope}: ${check.currentVersion} → ${check.latestVersion}` : `${check.scope}: ${check.currentVersion} (up to date)`;
@@ -312,7 +312,7 @@ Configure Prompt Registry behavior in VS Code settings under "Prompt Registry" s
     });
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async showInstallationFolder(scope: any): Promise<void> {
     try {
       const installationInfo = await this.installationManager.getInstallationInfo(scope);
@@ -325,7 +325,7 @@ Configure Prompt Registry behavior in VS Code settings under "Prompt Registry" s
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async selectUninstallScope(installedScopes: any[]): Promise<string | undefined> {
     if (installedScopes.length === 1) {
       return installedScopes[0];

@@ -388,7 +388,7 @@ export class HubProfileComparisonView {
    * @param str
    * @param length
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private padRight(str: string, length: number): string {
     if (str.length >= length) {
       return str.substring(0, length - 3) + '...';

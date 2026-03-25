@@ -18,7 +18,7 @@ import {
  * GitLab API response types
  */
 interface GitLabRelease {
-  // eslint-disable-next-line @typescript-eslint/naming-convention
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API response shape
   tag_name: string;
   name: string;
   description: string;
@@ -28,15 +28,15 @@ interface GitLabRelease {
       url: string;
     }[];
   };
-  // eslint-disable-next-line @typescript-eslint/naming-convention
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API response shape
   released_at: string;
 }
 
-// eslint-disable-next-line @typescript-eslint/naming-convention, @typescript-eslint/no-unused-vars
+// eslint-disable-next-line @typescript-eslint/naming-convention, @typescript-eslint/no-unused-vars -- name reflects domain terminology; kept for clarity
 interface _GitLabFile {
-  // eslint-disable-next-line @typescript-eslint/naming-convention
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API property name
   file_name: string;
-  // eslint-disable-next-line @typescript-eslint/naming-convention
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API property name
   file_path: string;
   type: string;
 }

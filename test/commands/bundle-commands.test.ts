@@ -164,7 +164,7 @@ suite('Bundle Management Commands', () => {
     });
 
     test('should remove bundle files', () => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       const _bundle = {
         id: 'test-bundle',
         installPath: '/path/to/bundle'
@@ -175,7 +175,7 @@ suite('Bundle Management Commands', () => {
     });
 
     test('should clean up dependencies', () => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       const _bundle = {
         id: 'test-bundle',
         dependencies: ['dep-1', 'dep-2']

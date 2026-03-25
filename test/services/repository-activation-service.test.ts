@@ -37,7 +37,7 @@ suite('RepositoryActivationService', () => {
   let mockContext: vscode.ExtensionContext;
   let service: RepositoryActivationService;
   let showInformationMessageStub: sinon.SinonStub;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
   let _showWarningMessageStub: sinon.SinonStub;
   const testWorkspaceRoot = '/test/workspace';
 
@@ -473,7 +473,7 @@ suite('RepositoryActivationService', () => {
       showInformationMessageStub.resolves('Add Sources');
 
       // Act
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       const _result = await service.checkAndOfferMissingSources(lockfile);
 
       // Assert
@@ -776,7 +776,7 @@ suite('RepositoryActivationService - Missing Bundle Installation', () => {
   let mockRegistryManager: any;
   let mockContext: vscode.ExtensionContext;
   let service: RepositoryActivationService;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
   let _showInformationMessageStub: sinon.SinonStub;
   let withProgressStub: sinon.SinonStub;
   const testWorkspaceRoot = '/test/workspace/missing-bundles';

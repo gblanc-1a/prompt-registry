@@ -29,7 +29,7 @@ export class CopilotIntegration implements vscode.Disposable {
   /**
    * Activate Copilot integration
    */
-  // eslint-disable-next-line @typescript-eslint/require-await
+  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   public async activate(): Promise<void> {
     try {
       // Register chat participant
@@ -65,7 +65,7 @@ export class CopilotIntegration implements vscode.Disposable {
    * @param stream
    * @param token
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async handleRequest(
     request: vscode.ChatRequest,
     context: vscode.ChatContext,
@@ -103,7 +103,7 @@ export class CopilotIntegration implements vscode.Disposable {
    * Show help information
    * @param stream
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async showHelp(stream: vscode.ChatResponseStream): Promise<void> {
     const availablePrompts = await this.promptLoader.getAvailablePrompts();
 
@@ -141,7 +141,7 @@ export class CopilotIntegration implements vscode.Disposable {
    * List available prompts
    * @param stream
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async listPrompts(stream: vscode.ChatResponseStream): Promise<void> {
     const availablePrompts = await this.promptLoader.getAvailablePrompts();
 
@@ -176,7 +176,7 @@ export class CopilotIntegration implements vscode.Disposable {
    * @param stream
    * @param token
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async executePrompt(
     command: string,
     userInput: string,
@@ -221,7 +221,7 @@ export class CopilotIntegration implements vscode.Disposable {
   /**
    * Get current editor context
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getEditorContext(): { selection?: string; fileName?: string; language?: string } {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {

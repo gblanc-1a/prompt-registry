@@ -21,11 +21,11 @@ import {
 } from '../utils/npm-cli-wrapper';
 
 export enum ScaffoldType {
-  // eslint-disable-next-line @typescript-eslint/naming-convention
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
   Skill = 'skill',
-  // eslint-disable-next-line @typescript-eslint/naming-convention
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
   GitHub = 'github',
-  // eslint-disable-next-line @typescript-eslint/naming-convention
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
   Apm = 'apm'
 }
 
@@ -34,13 +34,13 @@ export enum ScaffoldType {
  */
 export enum MigrationScenario {
   /** No migration needed */
-  // eslint-disable-next-line @typescript-eslint/naming-convention
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
   None = 'none',
   /** Has collections but no publish workflow */
-  // eslint-disable-next-line @typescript-eslint/naming-convention
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
   MissingWorkflow = 'missing-workflow',
   /** Has chatmode references that need updating */
-  // eslint-disable-next-line @typescript-eslint/naming-convention
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
   ChatmodeReferences = 'chatmode-references'
 }
 

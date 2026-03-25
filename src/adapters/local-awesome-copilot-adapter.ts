@@ -74,7 +74,7 @@ interface CollectionManifest {
   items: CollectionItem[];
   display?: {
     ordering?: string;
-    // eslint-disable-next-line @typescript-eslint/naming-convention
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API response shape
     show_badge?: boolean;
   };
   mcp?: {
@@ -184,7 +184,7 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
    * Check if directory exists and is accessible
    * @param dirPath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async directoryExists(dirPath: string): Promise<boolean> {
     try {
       await access(dirPath, fs.constants.R_OK);
@@ -375,7 +375,7 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
   /**
    * List all .collection.yml files in collections directory
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async listCollectionFiles(): Promise<string[]> {
     const collectionsPath = this.getCollectionsPath();
 
@@ -394,7 +394,7 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
    * Parse a collection file into a Bundle
    * @param collectionFile
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async parseCollection(collectionFile: string): Promise<Bundle | null> {
     try {
       const collectionsPath = this.getCollectionsPath();
@@ -451,7 +451,7 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
    * @param collection
    * @param _collectionFile
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async createBundleArchive(collection: CollectionManifest, _collectionFile: string): Promise<Buffer> {
     this.logger.debug(`Creating archive for collection: ${collection.name}`);
 
@@ -461,7 +461,7 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
         try {
           const archive = archiver('zip', { zlib: { level: 9 } });
           const chunks: Buffer[] = [];
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
           let totalSize = 0;
 
           // Collect data chunks
@@ -520,7 +520,7 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
           void archive.finalize();
         } catch (error) {
           this.logger.error('Failed to create archive', error as Error);
-          // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors
+          // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- rejection value is handled by caller
           reject(error);
         }
       })();
@@ -531,7 +531,7 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
    * Create deployment manifest from collection
    * @param collection
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private createDeploymentManifest(collection: CollectionManifest): any {
     const prompts = collection.items.map((item) => {
       const itemKind = item.kind;
@@ -587,7 +587,7 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
    * Map collection kind to Prompt Registry type
    * @param kind
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private mapKindToType(kind: string): 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill' {
     const kindMap: Record<string, 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill'> = {
       prompt: 'prompt',
@@ -604,7 +604,7 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
    * @param items
    * @param mcpServers
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private calculateBreakdown(items: CollectionItem[], mcpServers?: Record<string, any>): Record<string, number> {
     const breakdown = {
       prompts: 0,
@@ -647,7 +647,7 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
    * Infer environments from tags
    * @param tags
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private inferEnvironments(tags: string[]): string[] {
     const envMap: Record<string, string> = {
       azure: 'cloud',
@@ -675,7 +675,7 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
    * Convert kebab-case to Title Case
    * @param str
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private titleCase(str: string): string {
     return str
       .split(' ')

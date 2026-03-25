@@ -44,7 +44,7 @@ suite('ScopeSelectionUI', () => {
 
   // ===== Test Utilities =====
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
   const _createQuickPickItem = (
     scope: InstallationScope,
     commitMode?: RepositoryCommitMode,
@@ -87,7 +87,7 @@ suite('ScopeSelectionUI', () => {
     }
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
   const _resetAllMocks = (): void => {
     mockCreateQuickPick.reset();
     mockQuickPick.show.reset();

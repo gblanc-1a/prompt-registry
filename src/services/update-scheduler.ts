@@ -108,7 +108,7 @@ export class UpdateScheduler {
   /**
    * Initialize scheduler and perform startup check
    */
-  // eslint-disable-next-line @typescript-eslint/require-await
+  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   public async initialize(): Promise<void> {
     if (this.isInitialized) {
       this.logger.debug('UpdateScheduler already initialized');
@@ -135,7 +135,7 @@ export class UpdateScheduler {
    * Schedule startup update check
    * Triggers within configured delay after activation
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private scheduleStartupCheck(): void {
     this.logger.debug(`Scheduling startup check in ${this.config.startupCheckDelay}ms`);
 
@@ -242,7 +242,7 @@ export class UpdateScheduler {
    * CRITICAL: Triggers notifications when updates are detected
    * @param bypassCache
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async performUpdateCheck(bypassCache = false): Promise<void> {
     let timeoutHandle: NodeJS.Timeout | undefined;
     let checkPromise: Promise<any>;
@@ -341,7 +341,7 @@ export class UpdateScheduler {
   /**
    * Get check interval in milliseconds based on frequency
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getCheckInterval(): number {
     switch (this.config.frequency) {
       case 'daily': {
@@ -359,7 +359,7 @@ export class UpdateScheduler {
   /**
    * Load configuration from VS Code settings
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private loadConfiguration(): UpdateSchedulerConfig {
     const config = vscode.workspace.getConfiguration('promptregistry.updateCheck');
     const rawFrequency = config.get<string>('frequency', 'daily');

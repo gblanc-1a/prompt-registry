@@ -162,7 +162,7 @@ export class McpServerManager {
    * @param scope
    * @param removedServerNames
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async reEnableDuplicatesAfterRemoval(
     scope: 'user' | 'workspace',
     removedServerNames: string[]
@@ -240,14 +240,14 @@ export class McpServerManager {
   /**
    * Section header for Prompt Registry entries in .git/info/exclude
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private static readonly GIT_EXCLUDE_SECTION_HEADER = '# Prompt Registry (local)';
 
   /**
    * Get the path to .vscode/mcp.json in a workspace
    * @param workspaceRoot
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getWorkspaceMcpConfigPath(workspaceRoot: string): string {
     return path.join(workspaceRoot, '.vscode', 'mcp.json');
   }
@@ -256,7 +256,7 @@ export class McpServerManager {
    * Get the path to tracking metadata in a workspace
    * @param workspaceRoot
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getWorkspaceTrackingPath(workspaceRoot: string): string {
     return path.join(workspaceRoot, '.vscode', 'prompt-registry-mcp-tracking.json');
   }
@@ -265,7 +265,7 @@ export class McpServerManager {
    * Get the path to .git/info/exclude
    * @param workspaceRoot
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getGitExcludePath(workspaceRoot: string): string {
     return path.join(workspaceRoot, '.git', 'info', 'exclude');
   }
@@ -274,7 +274,7 @@ export class McpServerManager {
    * Check if .git directory exists in workspace
    * @param workspaceRoot
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private hasGitDirectory(workspaceRoot: string): boolean {
     return fs.existsSync(path.join(workspaceRoot, '.git'));
   }
@@ -283,7 +283,7 @@ export class McpServerManager {
    * Read MCP configuration from workspace .vscode/mcp.json
    * @param workspaceRoot
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async readWorkspaceMcpConfig(workspaceRoot: string): Promise<McpConfiguration> {
     const configPath = this.getWorkspaceMcpConfigPath(workspaceRoot);
 
@@ -306,7 +306,7 @@ export class McpServerManager {
    * @param config
    * @param createBackup
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async writeWorkspaceMcpConfig(workspaceRoot: string, config: McpConfiguration, createBackup = true): Promise<void> {
     const configPath = this.getWorkspaceMcpConfigPath(workspaceRoot);
     const configDir = path.dirname(configPath);
@@ -339,7 +339,7 @@ export class McpServerManager {
    * Read tracking metadata from workspace
    * @param workspaceRoot
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async readWorkspaceTrackingMetadata(workspaceRoot: string): Promise<McpTrackingMetadata> {
     const trackingPath = this.getWorkspaceTrackingPath(workspaceRoot);
 
@@ -365,7 +365,7 @@ export class McpServerManager {
    * @param workspaceRoot
    * @param metadata
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async writeWorkspaceTrackingMetadata(workspaceRoot: string, metadata: McpTrackingMetadata): Promise<void> {
     const trackingPath = this.getWorkspaceTrackingPath(workspaceRoot);
     const trackingDir = path.dirname(trackingPath);
@@ -389,7 +389,7 @@ export class McpServerManager {
    * @param workspaceRoot
    * @param pathToExclude
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async addToGitExclude(workspaceRoot: string, pathToExclude: string): Promise<void> {
     if (!this.hasGitDirectory(workspaceRoot)) {
       this.logger.warn('[McpServerManager] No .git directory found, skipping git exclude');
@@ -472,7 +472,7 @@ export class McpServerManager {
    * @param workspaceRoot
    * @param pathToRemove
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async removeFromGitExclude(workspaceRoot: string, pathToRemove: string): Promise<void> {
     if (!this.hasGitDirectory(workspaceRoot)) {
       return;

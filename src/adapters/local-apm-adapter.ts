@@ -199,7 +199,7 @@ export class LocalApmAdapter extends RepositoryAdapter {
    * @param baseDir
    * @param currentDepth
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async scanSubdirectories(
     baseDir: string,
     currentDepth: number
@@ -252,7 +252,7 @@ export class LocalApmAdapter extends RepositoryAdapter {
    * Read and parse apm.yml from a directory
    * @param dir
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async readApmManifest(dir: string): Promise<ApmManifest | null> {
     const manifestPath = path.join(dir, 'apm.yml');
 
@@ -270,7 +270,7 @@ export class LocalApmAdapter extends RepositoryAdapter {
    * @param packageDir
    * @param relativePath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private manifestToBundle(
     manifest: ApmManifest,
     packageDir: string,
@@ -328,7 +328,7 @@ export class LocalApmAdapter extends RepositoryAdapter {
    * @param bundle
    * @param packageDir
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private createBundleArchive(bundle: Bundle, packageDir: string): Promise<Buffer> {
     return new Promise<Buffer>((resolve, reject) => {
       const archive = archiver('zip', { zlib: { level: 9 } });
@@ -351,7 +351,7 @@ export class LocalApmAdapter extends RepositoryAdapter {
    * @param bundle
    * @param packageDir
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async populateArchive(
     archive: archiver.Archiver,
     bundle: Bundle,
@@ -380,7 +380,7 @@ export class LocalApmAdapter extends RepositoryAdapter {
    * @param bundle
    * @param packageDir
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async createDeploymentManifest(bundle: Bundle, packageDir: string): Promise<any> {
     const apmManifest: ApmManifest = await this.readApmManifest(packageDir) || { name: bundle.name };
     const promptFiles = await this.findPromptFiles(packageDir, true);
@@ -429,7 +429,7 @@ export class LocalApmAdapter extends RepositoryAdapter {
    * @param dir Directory to search
    * @param recursive Whether to search recursively
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async findPromptFiles(dir: string, recursive: boolean): Promise<string[]> {
     const files: string[] = [];
 
@@ -470,7 +470,7 @@ export class LocalApmAdapter extends RepositoryAdapter {
    * Detect file type from filename
    * @param filename
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private detectFileType(filename: string): 'prompt' | 'instructions' | 'chatmode' | 'agent' {
     if (filename.endsWith('.instructions.md')) {
       return 'instructions';
@@ -488,7 +488,7 @@ export class LocalApmAdapter extends RepositoryAdapter {
    * Convert string to title case
    * @param str
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private titleCase(str: string): string {
     return str.split(' ')
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())

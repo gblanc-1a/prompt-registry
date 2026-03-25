@@ -61,7 +61,7 @@ export class HubCommands {
     this.registerCommands();
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private readonly context: vscode.ExtensionContext;
 
   /**
@@ -193,7 +193,7 @@ export class HubCommands {
    * Sync a hub from its source
    * @param hubId Optional hub ID to sync (if not provided, user selects)
    */
-  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- union type kept for documentation clarity
   public async syncHub(hubId?: string | any): Promise<void> {
     try {
       // Extract hub ID from tree item if object is passed
@@ -270,7 +270,7 @@ export class HubCommands {
    * Delete a hub
    * @param hubId Optional hub ID to delete (if not provided, user selects)
    */
-  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- union type kept for documentation clarity
   public async deleteHub(hubId?: string | any): Promise<void> {
     try {
       // Extract hub ID from tree item if object is passed
@@ -411,7 +411,7 @@ export class HubCommands {
       // Get current profiles and sources
       const profiles = await this.registryManager.listProfiles();
       const sources = await this.registryManager.listSources();
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       const _installedBundles = await this.registryManager.listInstalledBundles();
 
       // Prompt for hub metadata
@@ -674,7 +674,7 @@ export class HubCommands {
    * @param reference.type
    * @param reference.location
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private referenceToUrl(reference: { type: string; location: string }): string | undefined {
     switch (reference.type) {
       case 'github': {
@@ -696,7 +696,7 @@ export class HubCommands {
    * Convert a source to a repository URL
    * @param source
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private sourceToUrl(source: any): string | undefined {
     if (!source) {
       return undefined;
@@ -753,10 +753,10 @@ export class HubCommands {
    * @param obj
    * @param indent
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private objectToYaml(obj: any, indent = 0): string {
     const spaces = ' '.repeat(indent);
-    // eslint-disable-next-line @typescript-eslint/no-shadow
+    // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
     let yaml = '';
 
     for (const [key, value] of Object.entries(obj)) {
@@ -814,7 +814,7 @@ export class HubCommands {
    * Format a value for YAML output
    * @param value
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private formatYamlValue(value: any): string {
     if (typeof value === 'string') {
       // Quote strings that contain special characters
@@ -836,7 +836,7 @@ export class HubCommands {
     /**
    * Select hub source type
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async selectSourceType(): Promise<'github' | 'url' | 'local' | undefined> {
     const options: HubSourceOption[] = [
       {
@@ -868,7 +868,7 @@ export class HubCommands {
    * Get hub reference based on source type
    * @param sourceType
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getHubReference(sourceType: 'github' | 'url' | 'local'): Promise<HubReference | undefined> {
     switch (sourceType) {
       case 'github': {
@@ -943,7 +943,7 @@ export class HubCommands {
   /**
    * Get hub ID from user (optional)
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getHubId(): Promise<string | null | undefined> {
     const hubId = await vscode.window.showInputBox({
       prompt: 'Enter hub ID (optional, will auto-generate if empty)',
@@ -967,12 +967,12 @@ export class HubCommands {
    * Show detailed information about a hub
    * @param hubId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async showHubDetails(hubId: string): Promise<void> {
     try {
       const info = await this.hubManager.getHubInfo(hubId);
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       const _message = [
         `**${info.config.metadata.name}**`,
         '',
@@ -1010,7 +1010,7 @@ export class HubCommands {
   /**
    * Sync all imported hubs
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async syncAllHubs(): Promise<void> {
     const hubs = await this.hubManager.listHubs();
 

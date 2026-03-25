@@ -581,7 +581,7 @@ suite('DeploymentManifestValidator - Resource Type Validation', () => {
         'prompts/subfolder/test.prompt.md'
       ];
 
-      // eslint-disable-next-line @typescript-eslint/no-shadow
+      // eslint-disable-next-line @typescript-eslint/no-shadow -- local scope intentionally narrows outer binding
       validPaths.forEach((path) => {
         assert.ok(path.startsWith('prompts/'));
       });
@@ -593,7 +593,7 @@ suite('DeploymentManifestValidator - Resource Type Validation', () => {
         'instructions/subfolder/test.instructions.md'
       ];
 
-      // eslint-disable-next-line @typescript-eslint/no-shadow
+      // eslint-disable-next-line @typescript-eslint/no-shadow -- local scope intentionally narrows outer binding
       validPaths.forEach((path) => {
         assert.ok(path.startsWith('instructions/'));
       });
@@ -605,7 +605,7 @@ suite('DeploymentManifestValidator - Resource Type Validation', () => {
         'chatmodes/subfolder/test.chatmode.md'
       ];
 
-      // eslint-disable-next-line @typescript-eslint/no-shadow
+      // eslint-disable-next-line @typescript-eslint/no-shadow -- local scope intentionally narrows outer binding
       validPaths.forEach((path) => {
         assert.ok(path.startsWith('chatmodes/'));
       });
@@ -617,7 +617,7 @@ suite('DeploymentManifestValidator - Resource Type Validation', () => {
         'agents/subfolder/test.agent.md'
       ];
 
-      // eslint-disable-next-line @typescript-eslint/no-shadow
+      // eslint-disable-next-line @typescript-eslint/no-shadow -- local scope intentionally narrows outer binding
       validPaths.forEach((path) => {
         assert.ok(path.startsWith('agents/'));
       });
@@ -710,7 +710,7 @@ suite('DeploymentManifestValidator - Integration with Real Fixtures', () => {
         .map((dirent) => dirent.name);
 
       let validCount = 0;
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       let _invalidCount = 0;
       const errors: string[] = [];
 

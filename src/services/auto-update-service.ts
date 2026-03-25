@@ -237,7 +237,7 @@ export class AutoUpdateService {
    * Validate update options
    * @param options
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private validateUpdateOptions(options: AutoUpdateOptions): void {
     if (!options.bundleId?.trim()) {
       throw new Error('Bundle ID is required and cannot be empty');
@@ -251,7 +251,7 @@ export class AutoUpdateService {
    * Ensure update is not already in progress
    * @param bundleId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private ensureUpdateNotInProgress(bundleId: string): void {
     if (this.isUpdateInProgress(bundleId)) {
       this.logger.warn(`Update already in progress for bundle '${bundleId}'`);
@@ -263,7 +263,7 @@ export class AutoUpdateService {
    * Capture current version before update for rollback
    * @param bundleId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async captureCurrentVersion(bundleId: string): Promise<string | null> {
     const installedBefore = await this.bundleOps.listInstalledBundles();
     return installedBefore.find((b) => b.bundleId === bundleId)?.version ?? null;
@@ -274,7 +274,7 @@ export class AutoUpdateService {
    * @param bundleId
    * @param targetVersion
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async performUpdateWithVerification(bundleId: string, targetVersion: string): Promise<void> {
     // CRITICAL: Sync source before updating (only for GitHub release sources)
     await this.syncSourceForBundle(bundleId);
@@ -294,7 +294,7 @@ export class AutoUpdateService {
    * @param previousVersion
    * @param targetVersion
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async showSuccessNotification(bundleId: string, previousVersion: string | null, targetVersion: string): Promise<void> {
     await this.bundleNotifications.showAutoUpdateComplete(
       bundleId,
@@ -309,7 +309,7 @@ export class AutoUpdateService {
    * @param errorMsg
    * @param previousVersion
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async handleUpdateFailure(bundleId: string, errorMsg: string, previousVersion: string | null): Promise<void> {
     if (previousVersion) {
       try {
@@ -338,7 +338,7 @@ export class AutoUpdateService {
    * @param bundleId
    * @param previousVersion
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async performRollback(bundleId: string, previousVersion: string): Promise<void> {
     this.logger.info(`Attempting rollback to version ${previousVersion}`);
     await this.bundleOps.updateBundle(bundleId, previousVersion);
@@ -354,7 +354,7 @@ export class AutoUpdateService {
    * @param bundleId
    * @param expectedVersion
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async verifyUpdate(bundleId: string, expectedVersion: string): Promise<boolean> {
     const updatedBundles = await this.bundleOps.listInstalledBundles();
     const bundle = updatedBundles.find((b) => b.bundleId === bundleId);
@@ -371,7 +371,7 @@ export class AutoUpdateService {
    * @param bundleId
    * @private
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async syncSourceForBundle(bundleId: string): Promise<void> {
     try {
       // Get bundle details to find its source

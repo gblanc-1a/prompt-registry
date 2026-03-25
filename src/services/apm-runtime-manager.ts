@@ -156,7 +156,7 @@ export class ApmRuntimeManager {
   /**
    * Show installation instructions
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async showInstallInstructions(): Promise<void> {
     const doc = await vscode.workspace.openTextDocument({
       content: this.getInstallInstructions(),
@@ -169,7 +169,7 @@ export class ApmRuntimeManager {
    * Install uv locally in extension storage
    * @param progress
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async installLocalUv(progress: vscode.Progress<{ message?: string }>): Promise<void> {
     if (!this.context) {
       throw new Error('Extension context not initialized');
@@ -214,7 +214,7 @@ export class ApmRuntimeManager {
   /**
    * Get uv binary download URL for current platform
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getUvDownloadUrl(): string {
     const platform = process.platform;
     const arch = process.arch;
@@ -245,7 +245,7 @@ export class ApmRuntimeManager {
    * @param url
    * @param dest
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private downloadFile(url: string, dest: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const file = fs.createWriteStream(dest);
@@ -278,7 +278,7 @@ export class ApmRuntimeManager {
    * @param archivePath
    * @param destDir
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async extractArchive(archivePath: string, destDir: string): Promise<void> {
     if (archivePath.endsWith('.zip')) {
       // Windows: use PowerShell
@@ -405,7 +405,7 @@ export class ApmRuntimeManager {
   /**
    * Get local uv path if exists
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getLocalUvPath(): string | undefined {
     if (!this.context) {
       return undefined;
@@ -419,7 +419,7 @@ export class ApmRuntimeManager {
    * Detect APM runtime installation
    * Security: Only executes known safe commands
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async detectRuntime(): Promise<ApmRuntimeStatus> {
     this.logger.debug('[ApmRuntime] Detecting APM installation...');
 
@@ -437,7 +437,7 @@ export class ApmRuntimeManager {
 
       if (!version) {
         // Fallback to checking uvx/uv
-        // eslint-disable-next-line @typescript-eslint/no-shadow
+        // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
         const uvxAvailable = await this.checkUvx();
         return {
           installed: false,
@@ -480,7 +480,7 @@ export class ApmRuntimeManager {
    * Get safe environment for command execution
    * Security: Removes potentially dangerous environment variables
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getSafeEnvironment(): NodeJS.ProcessEnv {
     const env = { ...process.env };
     // Keep PATH for command discovery
@@ -495,14 +495,14 @@ export class ApmRuntimeManager {
    * Security: Prevents injection via version output
    * @param version
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private sanitizeVersion(version: string): string {
     // Truncate to prevent abuse
     const truncated = version.substring(0, MAX_VERSION_LENGTH);
     // Remove any HTML special chars
     let sanitized = truncated.replace(/[<>'"&]/g, '');
     // Remove control characters (eslint-disable-next-line no-control-regex)
-    // eslint-disable-next-line no-control-regex
+    // eslint-disable-next-line no-control-regex -- control characters are intentionally matched
     sanitized = sanitized.replace(/[\u0000-\u001F\u007F]/g, '');
     return sanitized.trim();
   }
@@ -510,7 +510,7 @@ export class ApmRuntimeManager {
   /**
    * Detect how APM was installed
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async detectInstallMethod(): Promise<'pip' | 'brew' | 'binary' | 'unknown'> {
     // Check Homebrew (macOS)
     if (process.platform === 'darwin') {
@@ -553,7 +553,7 @@ export class ApmRuntimeManager {
   /**
    * Get Python version
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getPythonVersion(): Promise<string | undefined> {
     for (const cmd of ['python3 --version', 'python --version']) {
       try {
@@ -570,7 +570,7 @@ export class ApmRuntimeManager {
   /**
    * Check if uvx is available
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async checkUvx(): Promise<boolean> {
     try {
       await execAsync('uvx --version', { timeout: COMMAND_TIMEOUT });
@@ -583,7 +583,7 @@ export class ApmRuntimeManager {
   /**
    * Get APM executable path
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getApmPath(): Promise<string | undefined> {
     try {
       const cmd = process.platform === 'win32' ? 'where apm' : 'which apm';

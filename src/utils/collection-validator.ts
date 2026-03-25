@@ -58,7 +58,7 @@ interface Collection {
   items?: CollectionItem[];
   display?: {
     ordering?: string;
-    // eslint-disable-next-line @typescript-eslint/naming-convention
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API response shape
     show_badge?: boolean;
   };
 }
@@ -237,7 +237,7 @@ export class CollectionValidator {
    * @param fileName
    * @param errors
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private validateRequiredFields(collection: Collection, fileName: string, errors: ValidationError[]): void {
     if (!collection.id) {
       errors.push({
@@ -274,7 +274,7 @@ export class CollectionValidator {
    * @param fileName
    * @param errors
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private validateId(id: string, fileName: string, errors: ValidationError[]): void {
     if (!this.ID_PATTERN.test(id)) {
       errors.push({
@@ -290,7 +290,7 @@ export class CollectionValidator {
    * @param fileName
    * @param warnings
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private validateDescription(description: string, fileName: string, warnings: ValidationWarning[]): void {
     if (description.length > this.MAX_DESCRIPTION_LENGTH) {
       warnings.push({
@@ -308,7 +308,7 @@ export class CollectionValidator {
    * @param errors
    * @param warnings
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private validateItems(
     items: CollectionItem[],
     fileName: string,
@@ -374,7 +374,7 @@ export class CollectionValidator {
    * @param errors
    * @param warnings
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private validateTags(
     tags: any,
     fileName: string,

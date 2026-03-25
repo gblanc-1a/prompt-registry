@@ -28,7 +28,7 @@ import {
 suite('ScopeConflictResolver', () => {
   let sandbox: sinon.SinonSandbox;
   let mockStorage: sinon.SinonStubbedInstance<RegistryStorage>;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
   let _mockContext: vscode.ExtensionContext;
   let resolver: ScopeConflictResolver;
 

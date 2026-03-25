@@ -343,7 +343,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
    * @param event.sourceId
    * @param event.bundleCount
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private handleSourceSynced(event: { sourceId: string; bundleCount: number }): void {
     this.logger.debug(`Source synced: ${event.sourceId} (${event.bundleCount} bundles)`);
 
@@ -397,7 +397,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
    * Check if a bundle has an available update
    * @param bundleId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private hasUpdate(bundleId: string): boolean {
     return this.availableUpdates.has(bundleId);
   }
@@ -406,7 +406,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
    * Get update information for a bundle
    * @param bundleId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getUpdateInfo(bundleId: string): UpdateCheckResult | undefined {
     return this.availableUpdates.get(bundleId);
   }
@@ -417,7 +417,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
    * @param autoUpdateEnabled - Whether auto-update is enabled
    * @param filesMissing - Whether bundle files are missing (repository scope only)
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getBundleStatusPresentation(hasUpdate: boolean, autoUpdateEnabled: boolean, filesMissing?: boolean): {
     prefix: string;
     contextValue: string;
@@ -457,7 +457,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
    * @param bundleId
    * @param currentVersion
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private setVersionDisplay(treeItem: RegistryTreeItem, bundleId: string, currentVersion: string): void {
     const updateInfo = this.getUpdateInfo(bundleId);
 
@@ -479,7 +479,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
    * @param baseContextValue - The base context value (e.g., 'installed_bundle_auto_disabled')
    * @param bundle - The installed bundle with scope information
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getContextValue(baseContextValue: string, bundle?: InstalledBundle): string {
     if (!bundle) {
       return baseContextValue;
@@ -588,7 +588,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
   /**
    * Get root level items
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getRootItems(): RegistryTreeItem[] {
     const profileRootLabel = this.viewMode === 'all' ? 'Shared Profiles' : 'Favorites';
     const profileRootType = this.viewMode === 'all' ? TreeItemType.HUBS_ROOT : TreeItemType.FAVORITES_ROOT;
@@ -618,7 +618,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
   /**
    * Get hub items
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getHubsItems(): Promise<RegistryTreeItem[]> {
     const hubs = await this.hubManager.listHubs();
     return hubs.map((hub) => new RegistryTreeItem(
@@ -632,7 +632,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
   /**
    * Get favorite profile items
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getFavoritesItems(): Promise<RegistryTreeItem[]> {
     // Cleanup orphaned favorites (from previously deleted hubs)
     await this.hubManager.cleanupOrphanedFavorites();
@@ -707,7 +707,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
     return items;
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getActiveProfileItems(): Promise<RegistryTreeItem[]> {
     try {
       const localProfiles = await this.registryManager.listLocalProfiles();
@@ -768,7 +768,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
    * Get children for a hub
    * @param hub
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getHubChildren(hub: any): Promise<RegistryTreeItem[]> {
     const profiles = await this.hubManager.listProfilesFromHub(hub.id);
     const favoriteProfiles = await this.hubManager.getFavoriteProfiles() || {};
@@ -781,7 +781,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
    * Get children for a folder
    * @param folder
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getFolderChildren(folder: any): Promise<RegistryTreeItem[]> {
     const profiles = await this.hubManager.listProfilesFromHub(folder.hubId);
     const favoriteProfiles = await this.hubManager.getFavoriteProfiles() || {};
@@ -803,7 +803,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
    * @param currentPath
    * @param favorites
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private organizeProfiles(hubId: string, profiles: any[], currentPath: string[], favorites: string[] = []): RegistryTreeItem[] {
     const items: RegistryTreeItem[] = [];
     const folders = new Set<string>();
@@ -875,7 +875,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
   /**
    * Get local profile items (for Local Profiles folder in Favorites view)
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getLocalProfileItems(): Promise<RegistryTreeItem[]> {
     const items: RegistryTreeItem[] = [];
     try {
@@ -905,7 +905,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
   /**
    * Get profile items
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getProfileItems(): Promise<RegistryTreeItem[]> {
     try {
       const profiles = await this.registryManager.listProfiles();
@@ -948,7 +948,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
    * Get bundles for a profile
    * @param profile
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getProfileBundleItems(profile: Profile): Promise<RegistryTreeItem[]> {
     const items: RegistryTreeItem[] = [];
 
@@ -985,7 +985,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
   /**
    * Get installed bundle items
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getInstalledBundleItems(): Promise<RegistryTreeItem[]> {
     try {
       const installed = await this.registryManager.listInstalledBundles();
@@ -1082,7 +1082,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
   /**
    * Get discover section items
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getDiscoverItems(): RegistryTreeItem[] {
     return [
       new RegistryTreeItem(
@@ -1116,7 +1116,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
    * Get bundles by category
    * @param _category
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await
+  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
   private async getCategoryBundles(_category: string): Promise<RegistryTreeItem[]> {
     // TODO: Implement category filtering
     // For now, return empty
@@ -1126,7 +1126,7 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
   /**
    * Get source items
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getSourceItems(): Promise<RegistryTreeItem[]> {
     try {
       const sources = await this.registryManager.listSources();

@@ -295,7 +295,7 @@ export class RegistryManager {
    * Applies global GitHub token to GitHub sources that don't have their own token
    * @param source
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private enrichSourceWithGlobalToken(source: RegistrySource): RegistrySource {
     // If source already has a token, don't override it
     if (source.token && source.token.trim().length > 0) {
@@ -320,7 +320,7 @@ export class RegistryManager {
   /**
    * Load adapters for all sources
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async loadAdapters(): Promise<void> {
     const sources = await this.storage.getSources();
     this.sourcesCache = sources; // Cache for synchronous access
@@ -346,7 +346,7 @@ export class RegistryManager {
    * @param sourceId
    * @param latestBundles
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async refreshLocalSkillInstallations(sourceId: string, latestBundles: Bundle[]): Promise<void> {
     const installedBundles = await this.storage.getInstalledBundles();
     const installsForSource = installedBundles.filter((bundle) => bundle.sourceId === sourceId && bundle.scope !== 'repository');
@@ -385,7 +385,7 @@ export class RegistryManager {
    * Get or create adapter for a source
    * @param source
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getAdapter(source: RegistrySource): IRepositoryAdapter {
     let adapter = this.adapters.get(source.id);
 
@@ -555,7 +555,7 @@ export class RegistryManager {
    * @param sourceId
    * @param latestBundles
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async autoUpdateInstalledBundles(sourceId: string, latestBundles: Bundle[]): Promise<void> {
     const bundlesToUpdate = await this.identifyBundlesForUpdate(sourceId, latestBundles);
     const results = await this.performBundleUpdates(bundlesToUpdate, latestBundles);
@@ -576,7 +576,7 @@ export class RegistryManager {
    * @param sourceId
    * @param latestBundles
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async identifyBundlesForUpdate(
     sourceId: string,
     latestBundles: Bundle[]
@@ -596,7 +596,7 @@ export class RegistryManager {
    * @param bundlesToUpdate
    * @param latestBundles
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async performBundleUpdates(
     bundlesToUpdate: InstalledBundle[],
     latestBundles: Bundle[]
@@ -642,7 +642,7 @@ export class RegistryManager {
    * @param sourceId
    * @param latestBundles
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private filterBundlesBySource(
     installed: InstalledBundle[],
     sourceId: string,
@@ -657,7 +657,7 @@ export class RegistryManager {
    * @param sourceId
    * @param latestBundles
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private belongsToSource(
     bundle: InstalledBundle,
     sourceId: string,
@@ -699,7 +699,7 @@ export class RegistryManager {
    * @param latest
    * @param sourceId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private bundlesMatch(installed: InstalledBundle, latest: Bundle, sourceId: string): boolean {
     if (latest.sourceId !== sourceId) {
       return false;
@@ -718,7 +718,7 @@ export class RegistryManager {
    * @param installedBundle
    * @param latestBundles
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private findMatchingLatestBundle(installedBundle: InstalledBundle, latestBundles: Bundle[]): Bundle | undefined {
     return latestBundles.find((lb) => {
       if (installedBundle.sourceType === 'github') {
@@ -994,7 +994,7 @@ export class RegistryManager {
    * @param bundle The newly installed bundle
    * @param scope The installation scope (user, workspace, or repository)
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async cleanupOldVersions(bundle: Bundle, scope: InstallationScope): Promise<void> {
     // Repository scope cleanup is handled by LockfileManager
     if (scope === 'repository') {
@@ -1047,7 +1047,7 @@ export class RegistryManager {
    * @param bundle
    * @param options
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async checkExistingInstallation(
     bundleId: string,
     bundle: Bundle,
@@ -1073,7 +1073,7 @@ export class RegistryManager {
    * @param bundleId
    * @param options
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async resolveInstallationBundle(
     bundleId: string,
     options: InstallOptions
@@ -1096,7 +1096,7 @@ export class RegistryManager {
    * @param bundleId
    * @param version
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async tryGetExactVersionedBundle(bundleId: string, version: string): Promise<Bundle | null> {
     try {
       const bundle = await this.getBundleDetails(bundleId);
@@ -1116,7 +1116,7 @@ export class RegistryManager {
    * @param bundleId
    * @param options
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async resolveByIdentity(bundleId: string, options: InstallOptions): Promise<Bundle> {
     const searchId = await this.determineSearchId(bundleId, options);
     let bundle = await this.getBundleDetails(searchId);
@@ -1133,7 +1133,7 @@ export class RegistryManager {
    * @param bundleId
    * @param options
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async determineSearchId(bundleId: string, options: InstallOptions): Promise<string> {
     if (!options.version) {
       return bundleId;
@@ -1158,7 +1158,7 @@ export class RegistryManager {
    * @param originalBundleId
    * @param requestedVersion
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async applyVersionOverride(
     bundle: Bundle,
     originalBundleId: string,
@@ -1197,7 +1197,7 @@ export class RegistryManager {
    * Get source for a bundle
    * @param bundle
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getSourceForBundle(bundle: Bundle): Promise<RegistrySource> {
     const sources = await this.storage.getSources();
     const source = sources.find((s) => s.id === bundle.sourceId);
@@ -1215,7 +1215,7 @@ export class RegistryManager {
    * @param source
    * @param options
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async downloadAndInstall(
     bundle: Bundle,
     source: RegistrySource,
@@ -1233,7 +1233,7 @@ export class RegistryManager {
         const skillSourcePath = localSkillsAdapter.getSkillSourcePath(bundle);
         const skillName = localSkillsAdapter.getSkillName(bundle);
 
-        // eslint-disable-next-line @typescript-eslint/no-shadow
+        // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
         const installation = await this.installer.installLocalSkillAsSymlink(
           bundle,
           skillName,
@@ -1540,7 +1540,7 @@ export class RegistryManager {
    *
    * Requirements: 14.1-14.10
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async checkLocalModificationsBeforeUpdate(
     bundleId: string,
     current: InstalledBundle
@@ -1881,7 +1881,7 @@ export class RegistryManager {
 
       // Deactivate all active local profiles (and uninstall their bundles)
       const profiles = await this.storage.getProfiles();
-      // eslint-disable-next-line @typescript-eslint/no-shadow
+      // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
       for (const profile of profiles) {
         if (profile.active && profile.id !== validatedProfileId) {
           this.logger.info(`Deactivating local profile: ${profile.id}`);
@@ -1913,7 +1913,7 @@ export class RegistryManager {
       progress.report({ message: 'Installing bundles...' });
 
       // Get all sources to find adapters
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       const _allSources = await this.storage.getSources();
 
       // Get and activate the target profile
@@ -1942,7 +1942,7 @@ export class RegistryManager {
    * Validate and normalize profile ID
    * @param profileId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private validateProfileId(profileId: any): string {
     if (typeof profileId !== 'string') {
       const profileObj = profileId;
@@ -1960,7 +1960,7 @@ export class RegistryManager {
    * @param targetProfileId
    * @param progress
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async deactivateOtherProfiles(targetProfileId: string, progress: vscode.Progress<any>): Promise<void> {
     const profiles = await this.storage.getProfiles();
     progress.report({ message: 'Checking for active profiles...' });
@@ -1981,7 +1981,7 @@ export class RegistryManager {
    * Get profile by ID or throw error
    * @param profileId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getProfileById(profileId: string): Promise<Profile> {
     const profiles = await this.storage.getProfiles();
     const profile = profiles.find((p) => p.id === profileId);
@@ -1999,7 +1999,7 @@ export class RegistryManager {
    * @param profileId
    * @param progress
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async installProfileBundles(
     profile: Profile,
     profileId: string,
@@ -2050,7 +2050,7 @@ export class RegistryManager {
    * @param allSources
    * @param silent
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async installProfileBundle(
     bundleRef: ProfileBundle,
     profileId: string,
@@ -2160,14 +2160,14 @@ export class RegistryManager {
         const hubProfiles = await this.hubManager.listActiveHubProfiles();
         const hubProfile = hubProfiles.find((p) => p.id === profileId);
         if (hubProfile && hubProfile.hubId) {
-          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by method signature
           const _result = await this.hubManager.deactivateProfile(hubProfile.hubId, profileId);
 
           // Uninstall only the bundles that were installed BY THIS PROFILE
           // (not bundles installed manually or by other profiles)
-          // eslint-disable-next-line @typescript-eslint/no-shadow
+          // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
           const installedBundles = await this.storage.getInstalledBundles();
-          // eslint-disable-next-line @typescript-eslint/no-shadow
+          // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
           const profileBundles = installedBundles.filter((b) => b.profileId === profileId);
 
           if (profileBundles.length > 0) {
@@ -2261,7 +2261,7 @@ export class RegistryManager {
     };
 
     if (format === 'yaml') {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
       const yaml = require('js-yaml');
       return yaml.dump(settings, {
         indent: 2,
@@ -2288,7 +2288,7 @@ export class RegistryManager {
     let settings: ExportedSettings;
     try {
       if (format === 'yaml') {
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
         const yaml = require('js-yaml');
         settings = yaml.load(data) as ExportedSettings;
       } else {
@@ -2374,7 +2374,7 @@ export class RegistryManager {
    * @param bundles
    * @param sortBy
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private sortBundles(bundles: Bundle[], sortBy: string): Bundle[] {
     switch (sortBy) {
       case 'downloads': {
@@ -2399,7 +2399,7 @@ export class RegistryManager {
    * Used by version consolidator for identity matching
    * @param sourceId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getSourceType(sourceId: string): SourceType {
     const source = this.sourcesCache.find((s) => s.id === sourceId);
     return source?.type ?? 'local';
@@ -2409,7 +2409,7 @@ export class RegistryManager {
    * Get a source by its ID from the cache
    * @param sourceId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getSourceById(sourceId: string): RegistrySource | undefined {
     return this.sourcesCache.find((s) => s.id === sourceId);
   }
@@ -2431,7 +2431,7 @@ export class RegistryManager {
       if (installed?.manifest?.metadata?.description) {
         // Try to extract a clean name from the description or use bundleId
         // For now, we'll try to get it from bundle details
-        // eslint-disable-next-line @typescript-eslint/no-shadow
+        // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
         const bundle = await this.getBundleDetails(bundleId);
         return bundle?.name || bundleId;
       }

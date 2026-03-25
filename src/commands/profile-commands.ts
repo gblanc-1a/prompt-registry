@@ -264,7 +264,7 @@ export class ProfileCommands {
    * Edit an existing profile
    * @param profileId
    */
-  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- union type kept for documentation clarity
   public async editProfile(profileId?: string | any): Promise<void> {
     try {
       // Extract profile ID from tree item if object is passed
@@ -277,7 +277,7 @@ export class ProfileCommands {
 
       // If no profileId, let user select
       if (!targetProfileId) {
-        // eslint-disable-next-line @typescript-eslint/no-shadow
+        // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
         const profiles = await this.registryManager.listProfiles();
 
         if (profiles.length === 0) {
@@ -361,7 +361,7 @@ export class ProfileCommands {
    * Activate a profile
    */
 
-  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- union type kept for documentation clarity
   public async activateProfile(profileId?: string | any): Promise<void> {
     try {
       let targetProfileId: string;
@@ -417,7 +417,7 @@ export class ProfileCommands {
    * Deactivate a profile
    * @param profileIdOrItem
    */
-  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- union type kept for documentation clarity
   public async deactivateProfile(profileIdOrItem?: string | any): Promise<void> {
     try {
       let targetProfileId: string;
@@ -476,7 +476,7 @@ export class ProfileCommands {
    * For hub profiles (in favorites view): deactivates and removes from favorites
    * @param profileId
    */
-  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- union type kept for documentation clarity
   public async deleteProfile(profileId?: string | any): Promise<void> {
     try {
       let targetProfileId: string | undefined;
@@ -495,7 +495,7 @@ export class ProfileCommands {
 
       // If no profileId, let user select
       if (!targetProfileId) {
-        // eslint-disable-next-line @typescript-eslint/no-shadow
+        // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
         const profiles = await this.registryManager.listProfiles();
 
         if (profiles.length === 0) {
@@ -736,7 +736,7 @@ export class ProfileCommands {
   /**
    * Select bundles for profile
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async selectBundles(): Promise<ProfileBundle[]> {
     try {
       // Search all available bundles
@@ -803,7 +803,7 @@ export class ProfileCommands {
    * Select an icon from the expanded list
    * @param title
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async selectIcon(title: string): Promise<string | undefined> {
     const items = PROFILE_ICONS.map((i) => ({
       label: `${i.icon} ${i.label}`,
@@ -826,7 +826,7 @@ export class ProfileCommands {
    * Generate profile ID from name
    * @param name
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private generateProfileId(name: string): string {
     return generateSanitizedId(name);
   }
@@ -835,7 +835,7 @@ export class ProfileCommands {
    * Rename profile
    * @param profileId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async renameProfile(profileId: string): Promise<void> {
     const profiles = await this.registryManager.listProfiles();
     const profile = profiles.find((p) => p.id === profileId);
@@ -866,7 +866,7 @@ export class ProfileCommands {
    * Update profile description
    * @param profileId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async updateDescription(profileId: string): Promise<void> {
     const profiles = await this.registryManager.listProfiles();
     const profile = profiles.find((p) => p.id === profileId);
@@ -891,7 +891,7 @@ export class ProfileCommands {
    * Change profile icon
    * @param profileId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async changeIcon(profileId: string): Promise<void> {
     const selectedIcon = await this.selectIcon('Change Profile Icon');
 
@@ -905,7 +905,7 @@ export class ProfileCommands {
    * Manage profile bundles
    * @param profileId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async manageBundles(profileId: string): Promise<void> {
     const action = await vscode.window.showQuickPick([
       { label: '$(add) Add Bundles', value: 'add' },

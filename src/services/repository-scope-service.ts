@@ -151,7 +151,7 @@ export class RepositoryScopeService implements IScopeService {
    * Get the relative path from workspace root for git exclude
    * @param absolutePath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getRelativePath(absolutePath: string): string {
     return path.relative(this.workspaceRoot, absolutePath);
   }
@@ -220,7 +220,7 @@ export class RepositoryScopeService implements IScopeService {
    * @param commitMode - Whether to track in git or exclude
    * @returns Array of installed file paths (relative to workspace)
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async installFiles(
     bundlePath: string,
     manifest: DeploymentManifest,
@@ -254,7 +254,7 @@ export class RepositoryScopeService implements IScopeService {
    * @param manifest
    * @param tracker
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async copyBundleFiles(
     bundlePath: string,
     manifest: DeploymentManifest,
@@ -274,7 +274,7 @@ export class RepositoryScopeService implements IScopeService {
    * @param skillId
    * @param tracker
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async installSkillAndTrack(
     bundlePath: string,
     skillFile: string,
@@ -305,7 +305,7 @@ export class RepositoryScopeService implements IScopeService {
    * @param promptId
    * @param tracker
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async installFileAndTrack(
     bundlePath: string,
     promptDef: { file: string; type?: string; tags?: string[] },
@@ -337,7 +337,7 @@ export class RepositoryScopeService implements IScopeService {
    * Update git exclude for local-only mode, consolidating skill directories
    * @param relativePaths
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async updateGitExcludeForLocalOnly(relativePaths: string[]): Promise<void> {
     const pathsForExclude = this.consolidateSkillPathsForGitExclude(relativePaths);
     await this.addToGitExclude(pathsForExclude);
@@ -347,7 +347,7 @@ export class RepositoryScopeService implements IScopeService {
    * Rollback installation by removing all tracked files and directories
    * @param tracker
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async rollbackInstallation(tracker: InstallationTracker): Promise<void> {
     this.logger.error(`[RepositoryScopeService] Installation failed, rolling back...`);
 
@@ -388,7 +388,7 @@ export class RepositoryScopeService implements IScopeService {
    * @param skillId - The skill identifier
    * @returns Array of absolute paths to installed files
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async installSkillDirectory(
     bundlePath: string,
     skillFile: string,
@@ -440,7 +440,7 @@ export class RepositoryScopeService implements IScopeService {
    * @param targetDir - Target directory path
    * @returns Array of absolute paths to copied files
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async copyDirectoryRecursive(sourceDir: string, targetDir: string): Promise<string[]> {
     const copiedFiles: string[] = [];
 
@@ -590,7 +590,7 @@ export class RepositoryScopeService implements IScopeService {
    * Skill files like .github/skills/my-skill/SKILL.md are consolidated to .github/skills/my-skill
    * @param paths
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private consolidateSkillPathsForGitExclude(paths: string[]): string[] {
     const result: string[] = [];
     const skillDirs = new Set<string>();
@@ -618,7 +618,7 @@ export class RepositoryScopeService implements IScopeService {
    * @param mainLockfile
    * @param localLockfile
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private collectFilesUsedByOtherBundles(
     excludeBundleId: string,
     mainLockfile: { bundles?: Record<string, { files?: { path: string }[] }> } | null,
@@ -664,7 +664,7 @@ export class RepositoryScopeService implements IScopeService {
    * - .github folder itself (may contain unrelated files like workflows, CODEOWNERS)
    * - Any other directories in .github (workflows, ISSUE_TEMPLATE, etc.)
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async cleanupEmptyPromptRegistryDirectories(): Promise<void> {
     const githubDir = this.getGitHubDirectory();
 
@@ -703,7 +703,7 @@ export class RepositoryScopeService implements IScopeService {
    * Skills are directories, so we need to recursively check and remove empty ones.
    * @param skillsDir
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async cleanupEmptySkillDirectories(skillsDir: string): Promise<void> {
     if (!fs.existsSync(skillsDir)) {
       return;
@@ -728,7 +728,7 @@ export class RepositoryScopeService implements IScopeService {
    * Removes a directory only if it's empty (after cleaning up its subdirectories).
    * @param dir
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async cleanupEmptyDirectoryRecursive(dir: string): Promise<boolean> {
     if (!fs.existsSync(dir)) {
       return true; // Already removed
@@ -906,7 +906,7 @@ export class RepositoryScopeService implements IScopeService {
    * Add paths to .git/info/exclude under the Prompt Registry section
    * @param paths - Relative paths to add
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async addToGitExclude(paths: string[]): Promise<void> {
     if (!this.hasGitDirectory()) {
       this.logger.warn('[RepositoryScopeService] No .git directory found, skipping git exclude');
@@ -976,7 +976,7 @@ export class RepositoryScopeService implements IScopeService {
    * Remove paths from .git/info/exclude
    * @param paths - Relative paths to remove
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async removeFromGitExclude(paths: string[]): Promise<void> {
     if (!this.hasGitDirectory()) {
       return;

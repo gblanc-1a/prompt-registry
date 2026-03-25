@@ -120,7 +120,7 @@ export class HubProfileCommands {
       // Create quick pick items
       const items: (vscode.QuickPickItem & { profile?: HubProfile & { hubId: string; hubName: string } })[] = [];
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructuring with unused bindings
       for (const [_hubId, hubProfiles] of hubGroups) {
         const hubName = hubProfiles[0].hubName;
 
@@ -256,7 +256,7 @@ export class HubProfileCommands {
    * Show detailed information about a hub profile with actions
    * @param profile
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async showProfileDetails(profile: HubProfile & { hubId: string; hubName: string }): Promise<void> {
     const bundleList = profile.bundles.length > 0
       ? profile.bundles.map((b, i) => `   ${i + 1}. ${b.id}@${b.version}${b.required ? ' (required)' : ''}`).join('\n')
@@ -307,7 +307,7 @@ export class HubProfileCommands {
    * @param profile
    * @param _markdown
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getProfileDetailsHtml(profile: HubProfile & { hubId: string; hubName: string }, _markdown: string): string {
     const bundleRows = profile.bundles.map((b) => `
             <tr>
@@ -433,7 +433,7 @@ export class HubProfileCommands {
    * Copy a hub profile to local profiles
    * @param profile
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async copyProfileToLocal(profile: HubProfile & { hubId: string; hubName: string }): Promise<void> {
     try {
       const newName = await vscode.window.showInputBox({

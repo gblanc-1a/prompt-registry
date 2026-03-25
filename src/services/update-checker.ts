@@ -116,7 +116,7 @@ export class UpdateChecker {
    * Handles errors gracefully by categorizing them and skipping problematic bundles
    * @param updates
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async enrichUpdateResults(updates: { bundleId: string; currentVersion: string; latestVersion: string; changelog?: string }[]): Promise<UpdateCheckResult[]> {
     const enriched: UpdateCheckResult[] = [];
     const skipped: { bundleId: string; reason: string }[] = [];
@@ -150,7 +150,7 @@ export class UpdateChecker {
    * @param update.latestVersion
    * @param update.changelog
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async enrichSingleUpdate(update: { bundleId: string; currentVersion: string; latestVersion: string; changelog?: string }): Promise<{
     enriched?: UpdateCheckResult;
     skipped?: { bundleId: string; reason: string };
@@ -219,7 +219,7 @@ export class UpdateChecker {
    * Explicitly excludes: 'awesome-copilot', 'local-awesome-copilot', 'local'
    * Handles errors per source (don't fail entire check)
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async syncGitHubReleaseSources(): Promise<void> {
     this.logger.info('Syncing GitHub release sources before update check');
     const startTime = Date.now();

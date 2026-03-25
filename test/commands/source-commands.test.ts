@@ -8,7 +8,7 @@ import * as vscode from 'vscode';
 
 suite('Source Management Commands', () => {
   let sandbox: sinon.SinonSandbox;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
   let _mockContext: vscode.ExtensionContext;
 
   setup(() => {
@@ -46,7 +46,7 @@ suite('Source Management Commands', () => {
       showInputBoxStub.onFirstCall().resolves('Test Source');
       showInputBoxStub.onSecondCall().resolves('invalid-url');
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by method signature
       const _showErrorMessageStub = sandbox.stub(vscode.window, 'showErrorMessage');
 
       // Validation would typically happen in the command
@@ -343,7 +343,7 @@ suite('Source Management Commands', () => {
       assert.ok(enabledSources.every((s) => s.enabled));
     });
 
-    // eslint-disable-next-line @typescript-eslint/require-await
+    // eslint-disable-next-line @typescript-eslint/require-await -- async required by caller contract
     test('should skip disabled sources', async () => {
       const sources = [
         { id: 'source-1', name: 'Source 1', type: 'github', url: 'url1', enabled: false, priority: 1 },
@@ -363,7 +363,7 @@ suite('Source Management Commands', () => {
       ];
 
       const results = await Promise.allSettled(
-        // eslint-disable-next-line @typescript-eslint/await-thenable
+        // eslint-disable-next-line @typescript-eslint/await-thenable -- await used for consistency with async test pattern
         sources.map((source) => {
           if (source.id === 'source-2') {
             throw new Error('Sync failed');

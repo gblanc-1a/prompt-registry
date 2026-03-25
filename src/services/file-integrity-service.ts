@@ -69,7 +69,7 @@ export class FileIntegrityService {
    * Uses SHA-512 as fallback if BLAKE2b is not available in the extension environment
    * @param filePath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async calculateFileHashes(filePath: string): Promise<{ sha256: string; blake2b256: string }> {
     return new Promise((resolve, reject) => {
       const sha256Hash = crypto.createHash('sha256');
@@ -83,7 +83,7 @@ export class FileIntegrityService {
       } catch {
         // Fallback to SHA-512 if BLAKE2b is not supported in this environment
         secondaryHash = crypto.createHash('sha512');
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
         _useBlake2b = false;
         console.log('Prompt Registry: BLAKE2b not available, using SHA-512 fallback');
       }
@@ -270,7 +270,7 @@ export class FileIntegrityService {
    * @param patterns
    */
   public async findFiles(directoryPath: string, patterns?: string[]): Promise<string[]> {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    // eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
     const glob = require('glob');
     const files: string[] = [];
 

@@ -104,7 +104,7 @@ export abstract class CliWrapper {
    * Validate working directory exists and is a directory
    * @param cwd
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   protected validateCwd(cwd: string): void {
     if (!cwd || cwd.trim() === '') {
       throw new Error('Working directory cannot be empty');
@@ -152,7 +152,7 @@ export abstract class CliWrapper {
           title: 'Installing dependencies...',
           cancellable: true
         },
-        // eslint-disable-next-line @typescript-eslint/require-await
+        // eslint-disable-next-line @typescript-eslint/require-await -- async required by caller contract
         async (_progress, token) => {
           const proc = spawn(cmdName, ['install'], {
             cwd,
@@ -283,7 +283,7 @@ export abstract class CliWrapper {
    * @param err
    * @param cmdName
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   protected formatProcessError(err: Error, cmdName: string): string {
     if (err.message.includes('ENOENT')) {
       return `${cmdName} not found. Please install it first.`;

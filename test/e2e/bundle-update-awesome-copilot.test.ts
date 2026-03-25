@@ -124,7 +124,7 @@ Content: ${content}
    * @param promptContent
    * @param times
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
   function _setupSourceMocks(
         collectionYaml: string,
         promptContent: string,
@@ -160,7 +160,7 @@ Content: ${content}
   /**
    * Helper to set up mocks for validation
    */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
   function _setupValidationMocks(): void {
     nock('https://api.github.com')
       .get('/repos/test-owner/awesome-copilot-test/contents/collections')

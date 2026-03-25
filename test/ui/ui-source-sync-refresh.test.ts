@@ -25,7 +25,7 @@ function simulateDebouncedRefresh(
 ): void {
   let timer: NodeJS.Timeout | undefined;
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
   for (const _event of events) {
     if (timer) {
       clearTimeout(timer);

@@ -520,7 +520,7 @@ suite('LockfileManager Property Tests', () => {
 
             // Write file and get checksum
             fs.writeFileSync(filePath, content);
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
             const _originalChecksum = crypto.createHash('sha256')
               .update(fs.readFileSync(filePath))
               .digest('hex');
@@ -953,7 +953,7 @@ suite('Lockfile Separation Properties', () => {
     fs.writeFileSync(path.join(gitInfoDir, 'exclude'), '# Git exclude file\n');
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
   const _readGitExclude = (repoPath: string): string => {
     const excludePath = path.join(repoPath, '.git', 'info', 'exclude');
     if (fs.existsSync(excludePath)) {
@@ -962,7 +962,7 @@ suite('Lockfile Separation Properties', () => {
     return '';
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
   const _lockfileExists = (repoPath: string, lockfileName: string): boolean => {
     return fs.existsSync(path.join(repoPath, lockfileName));
   };

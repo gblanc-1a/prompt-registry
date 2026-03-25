@@ -459,13 +459,11 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
         return this.uninstallCalls;
       }
 
-      // eslint-disable-next-line @typescript-eslint/require-await
-      public async getInstallCalls() {
+      public getInstallCalls() {
         return this.installCalls;
       }
 
-      // eslint-disable-next-line @typescript-eslint/require-await
-      public async clearCalls() {
+      public clearCalls() {
         this.uninstallCalls = [];
         this.installCalls = [];
       }
@@ -481,9 +479,9 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
       mockManager.setInstalledBundle(bundleId, oldVersion, 'user');
 
       // Simulate update action: uninstall then install
-      // eslint-disable-next-line @typescript-eslint/await-thenable
+      // eslint-disable-next-line @typescript-eslint/await-thenable -- await used for consistency with async test pattern
       await mockManager.uninstallBundle(bundleId, 'user');
-      // eslint-disable-next-line @typescript-eslint/await-thenable
+      // eslint-disable-next-line @typescript-eslint/await-thenable -- await used for consistency with async test pattern
       await mockManager.installBundle(bundleId, { scope: 'user', version: newVersion });
 
       // Verify uninstall was called
@@ -508,16 +506,16 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
       mockManager.setInstalledBundle(bundleId, '1.0.0', 'user');
 
       // Override uninstallBundle to throw error
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       const _originalUninstall = mockManager.uninstallBundle.bind(mockManager);
-      // eslint-disable-next-line @typescript-eslint/require-await
+      // eslint-disable-next-line @typescript-eslint/require-await -- async required by caller contract
       mockManager.uninstallBundle = async () => {
         throw new Error('Uninstall failed');
       };
 
       // Attempt update - should fail at uninstall
       try {
-        // eslint-disable-next-line @typescript-eslint/await-thenable
+        // eslint-disable-next-line @typescript-eslint/await-thenable -- await used for consistency with async test pattern
         await mockManager.uninstallBundle(bundleId, 'user');
         assert.fail('Should have thrown error');
       } catch (error) {
@@ -538,18 +536,18 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
       mockManager.setInstalledBundle(bundleId, '1.0.0', 'user');
 
       // Uninstall succeeds
-      // eslint-disable-next-line @typescript-eslint/await-thenable
+      // eslint-disable-next-line @typescript-eslint/await-thenable -- await used for consistency with async test pattern
       await mockManager.uninstallBundle(bundleId, 'user');
 
       // Override installBundle to throw error
-      // eslint-disable-next-line @typescript-eslint/require-await
+      // eslint-disable-next-line @typescript-eslint/require-await -- async required by caller contract
       mockManager.installBundle = async () => {
         throw new Error('Install failed');
       };
 
       // Attempt install - should fail
       try {
-        // eslint-disable-next-line @typescript-eslint/await-thenable
+        // eslint-disable-next-line @typescript-eslint/await-thenable -- await used for consistency with async test pattern
         await mockManager.installBundle(bundleId, { scope: 'user', version: '2.0.0' });
         assert.fail('Should have thrown error');
       } catch (error) {
@@ -569,9 +567,9 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
       // Test with 'workspace' scope
       mockManager.setInstalledBundle(bundleId, '1.0.0', 'workspace');
 
-      // eslint-disable-next-line @typescript-eslint/await-thenable
+      // eslint-disable-next-line @typescript-eslint/await-thenable -- await used for consistency with async test pattern
       await mockManager.uninstallBundle(bundleId, 'workspace');
-      // eslint-disable-next-line @typescript-eslint/await-thenable
+      // eslint-disable-next-line @typescript-eslint/await-thenable -- await used for consistency with async test pattern
       await mockManager.installBundle(bundleId, { scope: 'workspace', version: '2.0.0' });
 
       const uninstallCalls = mockManager.getUninstallCalls();
@@ -590,9 +588,9 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
       mockManager.setInstalledBundle(bundleId, '1.0.0', 'user');
 
       // Update should uninstall old and install new
-      // eslint-disable-next-line @typescript-eslint/await-thenable
+      // eslint-disable-next-line @typescript-eslint/await-thenable -- await used for consistency with async test pattern
       await mockManager.uninstallBundle(bundleId, 'user');
-      // eslint-disable-next-line @typescript-eslint/await-thenable
+      // eslint-disable-next-line @typescript-eslint/await-thenable -- await used for consistency with async test pattern
       await mockManager.installBundle(newBundleId, { scope: 'user', version: '2.0.0' });
 
       const uninstallCalls = mockManager.getUninstallCalls();
@@ -610,18 +608,17 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
       mockManager.setInstalledBundle(bundleId, '1.0.0', 'user');
 
       // Update to v1.5.0
-      // eslint-disable-next-line @typescript-eslint/await-thenable
+      // eslint-disable-next-line @typescript-eslint/await-thenable -- await used for consistency with async test pattern
       await mockManager.uninstallBundle(bundleId, 'user');
-      // eslint-disable-next-line @typescript-eslint/await-thenable
+      // eslint-disable-next-line @typescript-eslint/await-thenable -- await used for consistency with async test pattern
       await mockManager.installBundle(bundleId, { scope: 'user', version: '1.5.0' });
-      // eslint-disable-next-line @typescript-eslint/no-floating-promises
       mockManager.clearCalls();
 
       // Update to v2.0.0
       mockManager.setInstalledBundle(bundleId, '1.5.0', 'user');
-      // eslint-disable-next-line @typescript-eslint/await-thenable
+      // eslint-disable-next-line @typescript-eslint/await-thenable -- await used for consistency with async test pattern
       await mockManager.uninstallBundle(bundleId, 'user');
-      // eslint-disable-next-line @typescript-eslint/await-thenable
+      // eslint-disable-next-line @typescript-eslint/await-thenable -- await used for consistency with async test pattern
       await mockManager.installBundle(bundleId, { scope: 'user', version: '2.0.0' });
 
       const uninstallCalls = mockManager.getUninstallCalls();
@@ -643,7 +640,7 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
       // 2. Throw an error
       // For this test, we'll verify the behavior
 
-      // eslint-disable-next-line @typescript-eslint/await-thenable
+      // eslint-disable-next-line @typescript-eslint/await-thenable -- await used for consistency with async test pattern
       const installedBundles = await mockManager.listInstalledBundles();
       const isInstalled = installedBundles.some((b) => b.bundleId === bundleId);
 
@@ -651,7 +648,7 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
 
       // If not installed, update should just install
       if (!isInstalled) {
-        // eslint-disable-next-line @typescript-eslint/await-thenable
+        // eslint-disable-next-line @typescript-eslint/await-thenable -- await used for consistency with async test pattern
         await mockManager.installBundle(bundleId, { scope: 'user', version: '2.0.0' });
       }
 
@@ -665,7 +662,7 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
       const version = '1.5.0';
 
       // Install specific version
-      // eslint-disable-next-line @typescript-eslint/await-thenable
+      // eslint-disable-next-line @typescript-eslint/await-thenable -- await used for consistency with async test pattern
       await mockManager.installBundle(bundleId, { scope: 'user', version });
 
       const installCalls = mockManager.getInstallCalls();
@@ -680,7 +677,7 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
       const requestedVersion = '1.0.0';
 
       // Simulate version-specific installation
-      // eslint-disable-next-line @typescript-eslint/await-thenable
+      // eslint-disable-next-line @typescript-eslint/await-thenable -- await used for consistency with async test pattern
       await mockManager.installBundle(bundleId, {
         scope: 'user',
         version: requestedVersion

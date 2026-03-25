@@ -13,7 +13,7 @@
 import * as fs from 'node:fs';
 import * as https from 'node:https';
 import * as path from 'node:path';
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- dynamic require needed at runtime
 import AdmZip = require('adm-zip');
 import * as vscode from 'vscode';
 import {
@@ -79,7 +79,7 @@ export class OlafRuntimeManager {
    * Detect current IDE type
    * Uses multiple detection methods for reliability
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private detectIDE(): 'vscode' | 'kiro' | 'windsurf' {
     // Method 1: Check executable path
     const executablePath = process.execPath.toLowerCase();
@@ -127,7 +127,7 @@ export class OlafRuntimeManager {
    * Get user runtime path for a specific version
    * @param version
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getUserRuntimePath(version: string): string {
     if (!this.context) {
       throw new Error('OlafRuntimeManager not initialized. Call initialize() first.');
@@ -140,7 +140,7 @@ export class OlafRuntimeManager {
   /**
    * Get IDE-specific folder name for symbolic links
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getIdeSpecificFolderName(): string {
     const ide = this.detectIDE();
     return `.${ide}`;
@@ -202,7 +202,7 @@ export class OlafRuntimeManager {
    * Get installation timestamp from runtime directory
    * @param installPath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getInstallationTimestamp(installPath: string): Promise<string | undefined> {
     try {
       const stats = await fs.promises.stat(installPath);
@@ -284,7 +284,7 @@ export class OlafRuntimeManager {
    * @param ide
    * @param version
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async downloadRuntimeBundle(ide: string, version: string): Promise<Buffer> {
     const owner = 'AmadeusITGroup';
     const repo = 'olaf';
@@ -300,9 +300,9 @@ export class OlafRuntimeManager {
     this.logger.info(`[OlafRuntime] Fetching release info from: ${releaseUrl}`);
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-shadow
+      // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
       const releaseInfo = await this.makeGitHubRequest(releaseUrl);
-      // eslint-disable-next-line @typescript-eslint/no-shadow
+      // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
       const actualVersion = releaseInfo.tag_name;
 
       this.logger.info(`[OlafRuntime] Found release: ${actualVersion}`);
@@ -346,7 +346,7 @@ export class OlafRuntimeManager {
    * Make authenticated GitHub API request
    * @param url
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async makeGitHubRequest(url: string): Promise<any> {
     return new Promise((resolve, reject) => {
       const options = {
@@ -401,7 +401,7 @@ export class OlafRuntimeManager {
    * Get GitHub authentication token
    * Uses the same fallback chain as GitHubAdapter
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getGitHubToken(): string | undefined {
     // Try VS Code configuration first
     const config = vscode.workspace.getConfiguration('promptregistry');
@@ -420,7 +420,7 @@ export class OlafRuntimeManager {
    * Download file from URL with progress tracking
    * @param url
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async downloadFile(url: string): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -488,7 +488,7 @@ export class OlafRuntimeManager {
    * @param buffer
    * @param targetPath
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async extractRuntime(buffer: Buffer, targetPath: string): Promise<void> {
     try {
       // Ensure target directory exists
@@ -584,7 +584,7 @@ export class OlafRuntimeManager {
    * @param source
    * @param target
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async createSymbolicLink(source: string, target: string): Promise<void> {
     try {
       // Check if target already exists using checkPathExists to detect broken symlinks
@@ -626,7 +626,7 @@ export class OlafRuntimeManager {
    * Handle existing file or directory at target path
    * @param target
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async handleExistingPath(target: string): Promise<void> {
     const stats = await fs.promises.lstat(target);
 
@@ -656,7 +656,7 @@ export class OlafRuntimeManager {
    * @param source
    * @param target
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async fallbackToCopy(source: string, target: string): Promise<void> {
     try {
       await this.copyDirectory(source, target);
@@ -671,7 +671,7 @@ export class OlafRuntimeManager {
    * @param source
    * @param target
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async copyDirectory(source: string, target: string): Promise<void> {
     await fs.promises.mkdir(target, { recursive: true });
 
@@ -689,7 +689,7 @@ export class OlafRuntimeManager {
    * Check if workspace has OLAF runtime links
    * @param workspacePath
    */
-  // eslint-disable-next-line @typescript-eslint/require-await
+  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   public async hasWorkspaceLinks(workspacePath: string): Promise<boolean> {
     const olafPath = path.join(workspacePath, '.olaf');
     const idePath = path.join(workspacePath, this.getIdeSpecificFolderName());

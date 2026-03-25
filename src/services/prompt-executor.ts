@@ -106,7 +106,7 @@ export class PromptExecutor {
    * @param context.fileName
    * @param context.language
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private buildMessages(
     promptContent: string,
     userInput: string,

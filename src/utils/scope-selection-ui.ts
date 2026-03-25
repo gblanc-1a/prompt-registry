@@ -128,7 +128,7 @@ export async function showScopeSelectionDialog(bundleName?: string): Promise<Sco
     quickPick.ignoreFocusOut = true;
 
     // Track if we're currently showing a warning to prevent re-triggering
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
     let isShowingWarning = false;
 
     // Handle selection changes - prevent disabled options from being accepted

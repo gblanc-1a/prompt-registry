@@ -197,7 +197,7 @@ export class LockfileManager {
    * - 1.1: Route local-only bundles to prompt-registry.local.lock.json
    * - 1.2: Route commit bundles to prompt-registry.lock.json
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getLockfilePathForMode(commitMode: RepositoryCommitMode): string {
     const filename = commitMode === 'local-only'
       ? LOCAL_LOCKFILE_NAME
@@ -231,7 +231,7 @@ export class LockfileManager {
    * Requirements covered:
    * - 3.1: Read from both Main_Lockfile and Local_Lockfile
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async readLockfileByMode(commitMode: RepositoryCommitMode): Promise<Lockfile | null> {
     const lockfilePath = this.getLockfilePathForMode(commitMode);
     try {
@@ -290,7 +290,7 @@ export class LockfileManager {
    * @param schemaFileName - Name of the schema file (e.g., 'lockfile.schema.json')
    * @returns Full path to the schema file
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private getSchemaPath(schemaFileName: string): string {
     // Try to get extension path first (works when extension is installed)
     try {
@@ -472,7 +472,7 @@ export class LockfileManager {
    * @param lockfile - The lockfile object containing the bundle
    * @param commitMode - The commit mode indicating which lockfile to update
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async removeFromLockfileByMode(
     bundleId: string,
     lockfile: Lockfile,
@@ -514,7 +514,7 @@ export class LockfileManager {
    * Delete a lockfile at a specific path.
    * @param lockfilePath - Path to the lockfile to delete
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async deleteLockfileAtPath(lockfilePath: string): Promise<void> {
     try {
       if (fs.existsSync(lockfilePath)) {
@@ -535,7 +535,7 @@ export class LockfileManager {
    * - 5.4: Remove prompt-registry.local.lock.json from .git/info/exclude when deleted
    * - 2.2: Remove local lockfile from git exclude when deleted
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async removeLocalLockfileFromGitExclude(): Promise<void> {
     try {
       const gitDir = path.join(this.repositoryPath, '.git');
@@ -605,7 +605,7 @@ export class LockfileManager {
    * @param lockfile
    * @param removedSourceId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private cleanupOrphanedSources(lockfile: Lockfile, removedSourceId: string): void {
     // Check if any other bundle references this source
     const isSourceReferenced = Object.values(lockfile.bundles)
@@ -675,7 +675,7 @@ export class LockfileManager {
   /**
    * Create an empty lockfile structure with required fields
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private createEmptyLockfile(): Lockfile {
     // Get extension version from package.json
     let extensionVersion = '0.0.0';
@@ -704,7 +704,7 @@ export class LockfileManager {
    * Uses a mutex to serialize concurrent writes
    * @param lockfile - Lockfile to write
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async writeAtomic(lockfile: Lockfile): Promise<void> {
     await this.writeAtomicToPath(lockfile, this.lockfilePath);
   }
@@ -716,7 +716,7 @@ export class LockfileManager {
    * @param lockfile - Lockfile to write
    * @param targetPath - Path to write the lockfile to
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async writeAtomicToPath(lockfile: Lockfile, targetPath: string): Promise<void> {
     // Serialize writes using a mutex pattern
     const previousLock = this.writeLock;
@@ -763,7 +763,7 @@ export class LockfileManager {
    * Requirements covered:
    * - 2.1: Add prompt-registry.local.lock.json to .git/info/exclude on creation
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async ensureLocalLockfileExcluded(): Promise<void> {
     try {
       const gitDir = path.join(this.repositoryPath, '.git');
@@ -827,7 +827,7 @@ export class LockfileManager {
    * Requirements covered:
    * - 3.5: If deletion fails, log an error and continue without throwing
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async deleteLockfile(): Promise<void> {
     await this.deleteLockfileAtPath(this.lockfilePath);
   }
@@ -991,7 +991,7 @@ export class LockfileManager {
    * - 3.1: Verify that bundle files exist in .github/ directories
    * - 3.2: Mark bundle with filesMissing flag if files are missing
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async checkFilesMissing(entry: LockfileBundleEntry): Promise<boolean> {
     if (!entry.files || entry.files.length === 0) {
       return false;

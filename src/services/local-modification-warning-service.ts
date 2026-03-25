@@ -139,7 +139,7 @@ export class LocalModificationWarningService {
    * @param modifiedFiles - Array of modified file information
    * @returns Formatted warning message
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private buildWarningMessage(bundleId: string, modifiedFiles: ModifiedFileInfo[]): string {
     const fileCount = modifiedFiles.length;
     const fileWord = fileCount === 1 ? 'file has' : 'files have';

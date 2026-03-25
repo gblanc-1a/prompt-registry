@@ -10,7 +10,7 @@ import {
 interface ValidationResult {
   errors: string[];
   warnings: string[];
-  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- union type kept for documentation clarity
   manifest: any | null;
 }
 
@@ -94,7 +94,7 @@ export class ValidateApmCommand {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async validateManifest(fileUri: vscode.Uri): Promise<ValidationResult> {
     const errors: string[] = [];
     const warnings: string[] = [];
@@ -127,7 +127,7 @@ export class ValidateApmCommand {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async scanPrompts(dirUri: vscode.Uri, fileList: string[] = []): Promise<string[]> {
     const PROMPT_EXTENSIONS = ['.prompt.md', '.instructions.md', '.chatmode.md', '.agent.md'];
 
@@ -151,7 +151,7 @@ export class ValidateApmCommand {
     return fileList;
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private log(message: string, type?: 'error' | 'warning' | 'success'): void {
     let prefix = '';
     switch (type) {

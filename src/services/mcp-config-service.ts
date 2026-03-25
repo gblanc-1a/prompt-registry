@@ -30,9 +30,9 @@ export interface DuplicateInfo {
 
 export class McpConfigService {
   private readonly logger: Logger;
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private static readonly BACKUP_SUFFIX = '.backup';
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private static readonly SCHEMA_VERSION = '1.0.0';
 
   constructor() {
@@ -186,7 +186,7 @@ export class McpConfigService {
    * @param definition
    * @param context
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private processStdioServerDefinition(
     definition: McpStdioServerConfig,
     context: McpVariableContext
@@ -214,7 +214,7 @@ export class McpConfigService {
    * @param definition
    * @param context
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private processRemoteServerDefinition(
     definition: McpRemoteServerConfig,
     context: McpVariableContext
@@ -304,7 +304,7 @@ export class McpConfigService {
     return { duplicatesDisabled, config };
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await
+  // eslint-disable-next-line @typescript-eslint/require-await -- async required by caller contract
   public async mergeServers(
     existingConfig: McpConfiguration,
     newServers: Record<string, McpServerConfig>,
@@ -361,7 +361,7 @@ export class McpConfigService {
     return removedServers;
   }
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async createBackup(configPath: string): Promise<void> {
     const backupPath = configPath + McpConfigService.BACKUP_SUFFIX;
     try {

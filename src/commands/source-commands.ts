@@ -303,7 +303,7 @@ export class SourceCommands {
    * Edit an existing source
    * @param sourceId
    */
-  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- union type kept for documentation clarity
   public async editSource(sourceId?: string | any): Promise<void> {
     try {
       // Extract source ID from tree item or string parameter
@@ -314,7 +314,7 @@ export class SourceCommands {
       if (extractedId) {
         finalId = extractedId!;
       } else {
-        // eslint-disable-next-line @typescript-eslint/no-shadow
+        // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
         const sources = await this.registryManager.listSources();
 
         if (sources.length === 0) {
@@ -403,7 +403,7 @@ export class SourceCommands {
    * Remove a source
    * @param sourceId
    */
-  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- union type kept for documentation clarity
   public async removeSource(sourceId?: string | any): Promise<void> {
     try {
       // Extract source ID from tree item or string parameter
@@ -414,7 +414,7 @@ export class SourceCommands {
       if (extractedId) {
         finalId = extractedId!;
       } else {
-        // eslint-disable-next-line @typescript-eslint/no-shadow
+        // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
         const sources = await this.registryManager.listSources();
 
         if (sources.length === 0) {
@@ -476,7 +476,7 @@ export class SourceCommands {
    * Sync a source (refresh bundle list)
    * @param sourceId
    */
-  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- union type kept for documentation clarity
   public async syncSource(sourceId?: string | any): Promise<void> {
     try {
       // Extract source ID from tree item or string parameter
@@ -487,7 +487,7 @@ export class SourceCommands {
       if (extractedId) {
         finalId = extractedId!;
       } else {
-        // eslint-disable-next-line @typescript-eslint/no-shadow
+        // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
         const sources = await this.registryManager.listSources();
 
         if (sources.length === 0) {
@@ -733,7 +733,7 @@ export class SourceCommands {
    * Get source URL based on type
    * @param type
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getSourceUrl(type: SourceType): Promise<string | undefined> {
     switch (type) {
       case 'github': {
@@ -903,7 +903,7 @@ export class SourceCommands {
    * Generate source ID from name
    * @param name
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private generateSourceId(name: string): string {
     return generateSanitizedId(name);
   }
@@ -912,7 +912,7 @@ export class SourceCommands {
    * Rename source
    * @param sourceId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async renameSource(sourceId: string): Promise<void> {
     const sources = await this.registryManager.listSources();
     const source = sources.find((s) => s.id === sourceId);
@@ -943,7 +943,7 @@ export class SourceCommands {
    * Change source URL
    * @param sourceId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async changeSourceUrl(sourceId: string): Promise<void> {
     const sources = await this.registryManager.listSources();
     const source = sources.find((s) => s.id === sourceId);
@@ -964,7 +964,7 @@ export class SourceCommands {
    * Configure access token
    * @param sourceId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async configureToken(sourceId: string): Promise<void> {
     const token = await vscode.window.showInputBox({
       prompt: 'Enter access token (leave empty to remove)',
@@ -986,7 +986,7 @@ export class SourceCommands {
    * Change source priority
    * @param sourceId
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async changePriority(sourceId: string): Promise<void> {
     const sources = await this.registryManager.listSources();
     const source = sources.find((s) => s.id === sourceId);
@@ -1018,7 +1018,7 @@ export class SourceCommands {
    * Toggle source enabled/disabled
    * @param sourceId
    */
-  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- union type kept for documentation clarity
   public async toggleSource(sourceId?: string | any): Promise<void> {
     try {
       // Extract source ID from tree item or string parameter
@@ -1029,7 +1029,7 @@ export class SourceCommands {
       if (extractedId) {
         finalId = extractedId!;
       } else {
-        // eslint-disable-next-line @typescript-eslint/no-shadow
+        // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
         const sources = await this.registryManager.listSources();
 
         if (sources.length === 0) {
@@ -1081,7 +1081,7 @@ export class SourceCommands {
    * Context menu passes tree item object, command palette passes string
    * @param sourceIdOrItem
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/no-redundant-type-constituents
+  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/no-redundant-type-constituents -- existing code structure; union type kept for documentation clarity
   private extractSourceId(sourceIdOrItem?: string | any): string | undefined {
     if (!sourceIdOrItem) {
       return undefined;

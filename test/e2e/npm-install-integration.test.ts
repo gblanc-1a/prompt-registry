@@ -139,7 +139,7 @@ suite('E2E: Npm Install Integration Tests', () => {
         });
 
       const npmWrapper = NpmCliWrapper.getInstance();
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       const _result = await npmWrapper.installWithProgress(testDir);
 
       assert.ok(spawnStub.called, 'Should attempt to spawn npm process');

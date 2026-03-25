@@ -45,7 +45,7 @@ suite('Profile Management Commands', () => {
     });
 
     test('should allow custom bundle selection', () => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       const _availableBundles = [
         { id: 'bundle-1', name: 'Bundle 1' },
         { id: 'bundle-2', name: 'Bundle 2' },
@@ -201,7 +201,7 @@ suite('Profile Management Commands', () => {
     });
 
     test('should sync bundles to Copilot', () => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       const _profile = {
         id: 'profile-1',
         name: 'My Profile',
@@ -241,7 +241,7 @@ suite('Profile Management Commands', () => {
     });
 
     test('should optionally uninstall bundles', () => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       const _profile = {
         id: 'profile-1',
         bundles: ['bundle-1', 'bundle-2']

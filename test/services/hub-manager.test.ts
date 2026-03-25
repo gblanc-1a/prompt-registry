@@ -430,7 +430,7 @@ suite('HubManager', () => {
 
     test('should list profiles from active hub only', async () => {
       const hubId1 = await hubManager.importHub(localRef, 'test-profiles-hub-1');
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by method signature
       const _hubId2 = await hubManager.importHub(localRef, 'test-profiles-hub-2');
 
       // Set first hub as active

@@ -131,7 +131,7 @@ suite('GitHubAdapter Authentication Tests', () => {
 
     // Mock gh CLI success
     const mockToken = 'ghp_cliToken123';
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructuring with unused bindings
     const { _exec } = require('node:child_process');
     const execStub = sandbox.stub(require('node:child_process'), 'exec');
     execStub.callsFake((...args: any[]) => {

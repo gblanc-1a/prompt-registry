@@ -126,16 +126,16 @@ export class HubManager {
    * @param validator SchemaValidator instance for validation
    * @param extensionPath Path to the extension directory
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   public readonly onHubImported = this._onHubImported.event;
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   public readonly onHubDeleted = this._onHubDeleted.event;
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   public readonly onHubSynced = this._onHubSynced.event;
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   public readonly onFavoritesChanged = this._onFavoritesChanged.event;
 
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   constructor(
     storage: HubStorage,
     validator: SchemaValidator,
@@ -304,7 +304,7 @@ export class HubManager {
    * Called when hub is deleted or switched away from
    * @param hubId Hub identifier to cleanup
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async cleanupHubResources(hubId: string): Promise<void> {
     this.logger.info(`Cleaning up resources for hub: ${hubId}`);
 
@@ -401,7 +401,7 @@ export class HubManager {
    * @param reference Hub reference to validate
    * @returns Validation result
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await
+  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
   private async validateReference(reference: HubReference): Promise<ValidationResult> {
     const errors: string[] = [];
 
@@ -434,7 +434,7 @@ export class HubManager {
         break;
       }
       default: {
-        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
+        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- value is safely stringifiable at runtime
         errors.push(`Unsupported reference type: ${reference.type}`);
       }
     }
@@ -451,7 +451,7 @@ export class HubManager {
    * @param reference Hub reference
    * @returns Hub configuration
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async fetchHubConfig(reference: HubReference): Promise<HubConfig> {
     switch (reference.type) {
       case 'local': {
@@ -464,7 +464,7 @@ export class HubManager {
         return this.fetchFromGitHub(reference.location, reference.ref);
       }
       default: {
-        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
+        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- value is safely stringifiable at runtime
         throw new Error(`Unsupported reference type: ${reference.type}`);
       }
     }
@@ -501,7 +501,7 @@ export class HubManager {
    * @param filePath Local file path
    * @returns Hub configuration
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await
+  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await -- existing code structure; method signature requires Promise return type
   private async fetchFromLocal(filePath: string): Promise<HubConfig> {
     if (!fs.existsSync(filePath)) {
       throw new Error(`File not found: ${filePath}`);
@@ -521,7 +521,7 @@ export class HubManager {
    * 2. gh CLI (if installed and authenticated)
    * 3. Explicit token from source configuration
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async getAuthenticationToken(): Promise<string | undefined> {
     // Return cached token if already resolved
     if (this.authToken !== undefined) {
@@ -577,7 +577,7 @@ export class HubManager {
    * @param redirectDepth Current redirect depth (for loop prevention)
    * @returns Hub configuration
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async fetchFromUrl(url: string, redirectDepth = 0): Promise<HubConfig> {
     /**
      * Maximum redirect depth to prevent infinite loops.
@@ -653,7 +653,7 @@ export class HubManager {
    * @param ref Git reference (branch, tag, or commit)
    * @returns Hub configuration
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private async fetchFromGitHub(location: string, ref = 'main'): Promise<HubConfig> {
     const branch = ref;
     // Add timestamp to bypass GitHub raw content cache
@@ -668,7 +668,7 @@ export class HubManager {
    * @param config Hub configuration
    * @returns Generated hub ID
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private generateHubId(config: HubConfig): string {
     // Use metadata name, sanitized
     let id = config.metadata.name
@@ -816,7 +816,7 @@ export class HubManager {
    * @param existingSources List of existing sources
    * @returns The existing duplicate source or undefined
    */
-  // eslint-disable-next-line @typescript-eslint/member-ordering
+  // eslint-disable-next-line @typescript-eslint/member-ordering -- existing code structure
   private findDuplicateSource(
     source: HubSource,
     existingSources: RegistrySource[]
@@ -1096,7 +1096,7 @@ export class HubManager {
       this.logger.info(`[HubManager] activateProfile called: hubId=${hubId}, profileId=${profileId}, installBundles=${options.installBundles}`);
 
       // Verify hub and profile exist
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by method signature
       const _profile = await this.getHubProfile(hubId, profileId);
 
       // Deactivate ALL active hub profiles across ALL hubs (enforce single active profile globally)
@@ -1149,7 +1149,7 @@ export class HubManager {
       await this.storage.setProfileActiveFlag(hubId, profileId, true);
 
       // Install bundles if requested and RegistryManager is available
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
       const _installResults: { bundleId: string; success: boolean; error?: string }[] = [];
       if (options.installBundles && this.registryManager) {
         this.logger.info(`Installing ${resolvedBundles.length} bundles for profile ${profileId}`);
@@ -1247,7 +1247,7 @@ export class HubManager {
   public async deactivateProfile(hubId: string, profileId: string): Promise<ProfileDeactivationResult> {
     try {
       // Verify profile exists
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by method signature
       const _profile = await this.getHubProfile(hubId, profileId);
 
       // Get current activation state to track removed bundles

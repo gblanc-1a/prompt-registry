@@ -73,6 +73,7 @@ export class SetupStateManager {
   /**
    * Get current setup state
    */
+  // eslint-disable-next-line @typescript-eslint/require-await
   public async getState(): Promise<SetupState> {
     const state = this.context.globalState.get<string>(this.SETUP_STATE_KEY);
 
@@ -180,6 +181,7 @@ export class SetupStateManager {
   /**
    * Mark resume prompt as shown for this session
    */
+  // eslint-disable-next-line @typescript-eslint/require-await
   public async markResumePromptShown(): Promise<void> {
     this.resumePromptShown = true;
     this.logger.debug('Resume prompt marked as shown for this session');
@@ -189,6 +191,7 @@ export class SetupStateManager {
    * Transition to a new state with logging
    * @param newState
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async transitionState(newState: SetupState): Promise<void> {
     const oldState = await this.getState();
 

@@ -44,7 +44,7 @@ export class BundleUpdateNotifications extends BaseNotificationService {
    * Groups multiple updates into a single notification
    * @param options
    */
-  async showUpdateNotification(options: BundleUpdateNotificationOptions): Promise<void> {
+  public async showUpdateNotification(options: BundleUpdateNotificationOptions): Promise<void> {
     if (this.shouldSkipNotification(options.updates, options.notificationPreference)) {
       return;
     }
@@ -66,6 +66,7 @@ export class BundleUpdateNotifications extends BaseNotificationService {
    * @param updates
    * @param preference
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private filterUpdatesByPreference(updates: UpdateCheckResult[], preference: string): UpdateCheckResult[] {
     if (preference === 'critical') {
       return updates.filter((update) => this.isCriticalUpdate(update));
@@ -80,7 +81,7 @@ export class BundleUpdateNotifications extends BaseNotificationService {
    * @param oldVersion
    * @param newVersion
    */
-  async showAutoUpdateComplete(
+  public async showAutoUpdateComplete(
     bundleId: string,
     oldVersion: string,
     newVersion: string
@@ -95,7 +96,7 @@ export class BundleUpdateNotifications extends BaseNotificationService {
    * @param bundleId
    * @param error
    */
-  async showUpdateFailure(
+  public async showUpdateFailure(
     bundleId: string,
     error: string
   ): Promise<void> {
@@ -117,7 +118,7 @@ export class BundleUpdateNotifications extends BaseNotificationService {
    * @param successful
    * @param failed
    */
-  async showBatchUpdateSummary(
+  public async showBatchUpdateSummary(
     successful: string[],
     failed: { bundleId: string; error: string }[]
   ): Promise<void> {
@@ -163,6 +164,7 @@ export class BundleUpdateNotifications extends BaseNotificationService {
    * Handles both single and multiple updates
    * @param updates
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async buildUpdateMessage(updates: UpdateCheckResult[]): Promise<string> {
     if (updates.length === 1) {
       const update = updates[0];
@@ -181,6 +183,7 @@ export class BundleUpdateNotifications extends BaseNotificationService {
     return `${updates.length} bundle updates available:\n${updateList.join('\n')}`;
   }
 
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private shouldSkipNotification(updates: UpdateCheckResult[], preference: string): boolean {
     if (preference === 'none') {
       return true;
@@ -205,6 +208,7 @@ export class BundleUpdateNotifications extends BaseNotificationService {
    * Critical updates are major version changes (e.g., 1.x.x -> 2.x.x)
    * @param update
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private isCriticalUpdate(update: UpdateCheckResult): boolean {
     try {
       const currentParts = update.currentVersion.split('.').map(Number);
@@ -219,6 +223,7 @@ export class BundleUpdateNotifications extends BaseNotificationService {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async handleNotificationAction(
     action: string | undefined,
     updates: UpdateCheckResult[]

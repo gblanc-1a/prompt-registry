@@ -72,7 +72,7 @@ export async function createE2ETestContext(): Promise<E2ETestContext> {
       get: <T>(key: string, defaultValue?: T): T | undefined => {
         return globalStateData.has(key) ? globalStateData.get(key) : defaultValue;
       },
-      update: async (key: string, value: any): Promise<void> => {
+      update: (key: string, value: any): Promise<void> => {
         globalStateData.set(key, value);
       },
       keys: () => Array.from(globalStateData.keys()),
@@ -82,7 +82,7 @@ export async function createE2ETestContext(): Promise<E2ETestContext> {
       get: <T>(key: string, defaultValue?: T): T | undefined => {
         return workspaceStateData.has(key) ? workspaceStateData.get(key) : defaultValue;
       },
-      update: async (key: string, value: any): Promise<void> => {
+      update: (key: string, value: any): Promise<void> => {
         workspaceStateData.set(key, value);
       },
       keys: () => Array.from(workspaceStateData.keys()),
@@ -97,7 +97,7 @@ export async function createE2ETestContext(): Promise<E2ETestContext> {
     globalStorageUri: vscode.Uri.file(tempStoragePath),
     logUri: vscode.Uri.file(path.join(tempStoragePath, 'logs')),
     secrets: {
-      get: async () => undefined,
+      get: () => undefined,
       store: async () => {},
       delete: async () => {},
       onDidChange: { dispose: () => {} } as any
@@ -129,11 +129,12 @@ export async function createE2ETestContext(): Promise<E2ETestContext> {
   (registryManager as any).sourcesCache = [];
 
   // Re-initialize the installer with the new context
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   const BundleInstaller = require('../../src/services/bundle-installer').BundleInstaller;
   (registryManager as any).installer = new BundleInstaller(mockContext);
 
   // Create cleanup function
-  const cleanup = async (): Promise<void> => {
+  const cleanup = (): Promise<void> => {
     try {
       // Remove temporary directory and all contents
       if (fs.existsSync(tempStoragePath)) {
@@ -269,6 +270,7 @@ export async function setupSourceAndGetBundleGeneric(
   setupReleaseMocks([{ tag: 'v1.0.0', version: '1.0.0', content }]);
 
   // Import vscode dynamically to avoid issues in non-VS Code environments
+  // eslint-disable-next-line @typescript-eslint/no-shadow
   const vscode = require('vscode');
   sandbox.stub(vscode.workspace, 'workspaceFolders').value([
     { uri: vscode.Uri.file(workspaceRoot), name: 'test-workspace', index: 0 }

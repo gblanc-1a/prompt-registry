@@ -37,7 +37,8 @@ suite('RepositoryActivationService', () => {
   let mockContext: vscode.ExtensionContext;
   let service: RepositoryActivationService;
   let showInformationMessageStub: sinon.SinonStub;
-  let showWarningMessageStub: sinon.SinonStub;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  let _showWarningMessageStub: sinon.SinonStub;
   const testWorkspaceRoot = '/test/workspace';
 
   setup(() => {
@@ -472,7 +473,8 @@ suite('RepositoryActivationService', () => {
       showInformationMessageStub.resolves('Add Sources');
 
       // Act
-      const result = await service.checkAndOfferMissingSources(lockfile);
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const _result = await service.checkAndOfferMissingSources(lockfile);
 
       // Assert
       const message = showInformationMessageStub.firstCall.args[0] as string;
@@ -599,7 +601,7 @@ suite('RepositoryActivationService - Workspace Switching Scenarios', () => {
     RepositoryActivationService.resetInstance();
   });
 
-  test('should maintain separate state for different workspaces', async () => {
+  test('should maintain separate state for different workspaces', () => {
     // Arrange
     const workspace1 = '/workspace/one';
     const workspace2 = '/workspace/two';
@@ -774,7 +776,8 @@ suite('RepositoryActivationService - Missing Bundle Installation', () => {
   let mockRegistryManager: any;
   let mockContext: vscode.ExtensionContext;
   let service: RepositoryActivationService;
-  let showInformationMessageStub: sinon.SinonStub;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  let _showInformationMessageStub: sinon.SinonStub;
   let withProgressStub: sinon.SinonStub;
   const testWorkspaceRoot = '/test/workspace/missing-bundles';
 
@@ -968,7 +971,7 @@ suite('RepositoryActivationService - Missing Bundle Installation', () => {
         };
 
         // Override installBundle to check cancellation
-        mockRegistryManager.installBundle.callsFake(async () => {
+        mockRegistryManager.installBundle.callsFake(() => {
           installCount++;
           if (installCount >= 2) {
             mockToken.isCancellationRequested = true;

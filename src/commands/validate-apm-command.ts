@@ -10,6 +10,7 @@ import {
 interface ValidationResult {
   errors: string[];
   warnings: string[];
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
   manifest: any | null;
 }
 
@@ -27,7 +28,7 @@ export class ValidateApmCommand {
     this.schemaValidator = new SchemaValidator(context.extensionPath);
   }
 
-  async execute(): Promise<void> {
+  public async execute(): Promise<void> {
     const workspaceFolders = vscode.workspace.workspaceFolders;
 
     if (!workspaceFolders || workspaceFolders.length === 0) {
@@ -93,6 +94,7 @@ export class ValidateApmCommand {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async validateManifest(fileUri: vscode.Uri): Promise<ValidationResult> {
     const errors: string[] = [];
     const warnings: string[] = [];
@@ -125,6 +127,7 @@ export class ValidateApmCommand {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async scanPrompts(dirUri: vscode.Uri, fileList: string[] = []): Promise<string[]> {
     const PROMPT_EXTENSIONS = ['.prompt.md', '.instructions.md', '.chatmode.md', '.agent.md'];
 
@@ -148,6 +151,7 @@ export class ValidateApmCommand {
     return fileList;
   }
 
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private log(message: string, type?: 'error' | 'warning' | 'success'): void {
     let prefix = '';
     switch (type) {
@@ -167,7 +171,7 @@ export class ValidateApmCommand {
     this.outputChannel.appendLine(prefix + message);
   }
 
-  dispose(): void {
+  public dispose(): void {
     this.outputChannel.dispose();
   }
 }

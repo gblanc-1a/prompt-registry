@@ -30,14 +30,16 @@ export interface DuplicateInfo {
 
 export class McpConfigService {
   private readonly logger: Logger;
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private static readonly BACKUP_SUFFIX = '.backup';
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private static readonly SCHEMA_VERSION = '1.0.0';
 
   constructor() {
     this.logger = Logger.getInstance();
   }
 
-  async readMcpConfig(scope: 'user' | 'workspace'): Promise<McpConfiguration> {
+  public async readMcpConfig(scope: 'user' | 'workspace'): Promise<McpConfiguration> {
     const location = McpConfigLocator.getMcpConfigLocation(scope);
     if (!location) {
       throw new Error(`Cannot determine ${scope}-level configuration path`);
@@ -63,7 +65,7 @@ export class McpConfigService {
     }
   }
 
-  async writeMcpConfig(config: McpConfiguration, scope: 'user' | 'workspace', createBackup = true): Promise<void> {
+  public async writeMcpConfig(config: McpConfiguration, scope: 'user' | 'workspace', createBackup = true): Promise<void> {
     const location = McpConfigLocator.getMcpConfigLocation(scope);
     if (!location) {
       throw new Error(`Cannot determine ${scope}-level configuration path`);
@@ -85,7 +87,7 @@ export class McpConfigService {
     }
   }
 
-  async readTrackingMetadata(scope: 'user' | 'workspace'): Promise<McpTrackingMetadata> {
+  public async readTrackingMetadata(scope: 'user' | 'workspace'): Promise<McpTrackingMetadata> {
     const location = McpConfigLocator.getMcpConfigLocation(scope);
     if (!location) {
       throw new Error(`Cannot determine ${scope}-level configuration path`);
@@ -108,7 +110,7 @@ export class McpConfigService {
     }
   }
 
-  async writeTrackingMetadata(metadata: McpTrackingMetadata, scope: 'user' | 'workspace'): Promise<void> {
+  public async writeTrackingMetadata(metadata: McpTrackingMetadata, scope: 'user' | 'workspace'): Promise<void> {
     const location = McpConfigLocator.getMcpConfigLocation(scope);
     if (!location) {
       throw new Error(`Cannot determine ${scope}-level configuration path`);
@@ -128,11 +130,11 @@ export class McpConfigService {
     }
   }
 
-  generatePrefixedServerName(bundleId: string, serverName: string): string {
+  public generatePrefixedServerName(bundleId: string, serverName: string): string {
     return `prompt-registry:${bundleId}:${serverName}`;
   }
 
-  parseServerPrefix(prefixedName: string): { bundleId: string; serverName: string } | null {
+  public parseServerPrefix(prefixedName: string): { bundleId: string; serverName: string } | null {
     const match = prefixedName.match(/^prompt-registry:([^:]+):(.+)$/);
     if (!match) {
       return null;
@@ -143,7 +145,7 @@ export class McpConfigService {
     };
   }
 
-  substituteVariables(value: string | undefined, context: McpVariableContext): string | undefined {
+  public substituteVariables(value: string | undefined, context: McpVariableContext): string | undefined {
     if (!value) {
       return value;
     }
@@ -161,7 +163,7 @@ export class McpConfigService {
     return result;
   }
 
-  processServerDefinition(
+  public processServerDefinition(
     serverName: string,
     definition: McpServerDefinition,
     bundleId: string,
@@ -184,6 +186,7 @@ export class McpConfigService {
    * @param definition
    * @param context
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private processStdioServerDefinition(
     definition: McpStdioServerConfig,
     context: McpVariableContext
@@ -211,6 +214,7 @@ export class McpConfigService {
    * @param definition
    * @param context
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private processRemoteServerDefinition(
     definition: McpRemoteServerConfig,
     context: McpVariableContext
@@ -239,7 +243,7 @@ export class McpConfigService {
    * For remote servers: identity is based on URL
    * @param config
    */
-  computeServerIdentity(config: McpServerConfig): string {
+  public computeServerIdentity(config: McpServerConfig): string {
     if (isRemoteServerConfig(config)) {
       return `remote:${config.url}`;
     } else {
@@ -259,7 +263,7 @@ export class McpConfigService {
    * The first enabled server encountered is kept enabled, subsequent duplicates are disabled.
    * @param scope
    */
-  async detectAndDisableDuplicates(
+  public async detectAndDisableDuplicates(
     scope: 'user' | 'workspace'
   ): Promise<{ duplicatesDisabled: DuplicateInfo[]; config: McpConfiguration }> {
     const config = await this.readMcpConfig(scope);
@@ -300,7 +304,8 @@ export class McpConfigService {
     return { duplicatesDisabled, config };
   }
 
-  async mergeServers(
+  // eslint-disable-next-line @typescript-eslint/require-await
+  public async mergeServers(
     existingConfig: McpConfiguration,
     newServers: Record<string, McpServerConfig>,
     options: McpInstallOptions
@@ -332,7 +337,7 @@ export class McpConfigService {
     return { config: result, conflicts, warnings };
   }
 
-  async removeServersForBundle(bundleId: string, scope: 'user' | 'workspace'): Promise<string[]> {
+  public async removeServersForBundle(bundleId: string, scope: 'user' | 'workspace'): Promise<string[]> {
     const config = await this.readMcpConfig(scope);
     const tracking = await this.readTrackingMetadata(scope);
     const removedServers: string[] = [];
@@ -356,6 +361,7 @@ export class McpConfigService {
     return removedServers;
   }
 
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async createBackup(configPath: string): Promise<void> {
     const backupPath = configPath + McpConfigService.BACKUP_SUFFIX;
     try {
@@ -366,7 +372,7 @@ export class McpConfigService {
     }
   }
 
-  async restoreBackup(scope: 'user' | 'workspace'): Promise<boolean> {
+  public async restoreBackup(scope: 'user' | 'workspace'): Promise<boolean> {
     const location = McpConfigLocator.getMcpConfigLocation(scope);
     if (!location) {
       return false;

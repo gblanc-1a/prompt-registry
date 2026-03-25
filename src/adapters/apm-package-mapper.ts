@@ -63,7 +63,7 @@ export class ApmPackageMapper {
    * @param context Package context (source, owner, repo, path)
    * @returns Bundle object compatible with Prompt Registry
    */
-  toBundle(manifest: ApmManifest, context: PackageContext): Bundle & { apmPackageRef: string } {
+  public toBundle(manifest: ApmManifest, context: PackageContext): Bundle & { apmPackageRef: string } {
     const packageRef = this.buildPackageRef(context);
     const tags = this.buildTags(manifest.tags);
 
@@ -93,6 +93,7 @@ export class ApmPackageMapper {
    * @param manifest
    * @param context
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private generateBundleId(manifest: ApmManifest, context: PackageContext): string {
     // Sanitize name: remove special characters, convert to lowercase
     const sanitizedName = manifest.name
@@ -112,6 +113,7 @@ export class ApmPackageMapper {
    * Build package reference string
    * @param context
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private buildPackageRef(context: PackageContext): string {
     return context.path
       ? `${context.owner}/${context.repo}/${context.path}`
@@ -122,6 +124,7 @@ export class ApmPackageMapper {
    * Build tags array, always including 'apm' tag
    * @param manifestTags
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private buildTags(manifestTags?: string[]): string[] {
     const tags = manifestTags ? [...manifestTags] : [];
     if (!tags.includes('apm')) {
@@ -134,6 +137,7 @@ export class ApmPackageMapper {
    * Infer environments from tags
    * @param tags
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private inferEnvironments(tags?: string[]): string[] {
     if (!tags || tags.length === 0) {
       return ['general'];
@@ -155,6 +159,7 @@ export class ApmPackageMapper {
    * Map APM dependencies to Bundle dependencies
    * @param apmDeps
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private mapDependencies(apmDeps?: string[]): {
     bundleId: string;
     versionRange: string;
@@ -175,6 +180,7 @@ export class ApmPackageMapper {
    * Format dependency count as human-readable string
    * @param deps
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private formatDependencyCount(deps?: string[]): string {
     const count = deps?.length || 0;
     if (count === 0) {
@@ -187,6 +193,7 @@ export class ApmPackageMapper {
    * Build manifest URL for GitHub raw content
    * @param context
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private buildManifestUrl(context: PackageContext): string {
     const pathPrefix = context.path ? `${context.path}/` : '';
     return `https://raw.githubusercontent.com/${context.owner}/${context.repo}/main/${pathPrefix}apm.yml`;

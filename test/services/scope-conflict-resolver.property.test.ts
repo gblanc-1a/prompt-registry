@@ -40,12 +40,13 @@ suite('ScopeConflictResolver Property Tests', () => {
   // ===== Test Utilities =====
   const ALL_SCOPES: InstallationScope[] = ['user', 'workspace', 'repository'];
 
-  const createMockContext = (): vscode.ExtensionContext => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _createMockContext = (): vscode.ExtensionContext => {
     const globalStateData = new Map<string, any>();
     return {
       globalState: {
         get: (key: string, defaultValue?: any) => globalStateData.get(key) ?? defaultValue,
-        update: async (key: string, value: any) => {
+        update: (key: string, value: any) => {
           globalStateData.set(key, value);
         },
         keys: () => Array.from(globalStateData.keys()),
@@ -249,13 +250,13 @@ suite('ScopeConflictResolver Property Tests', () => {
             let uninstallCalled = false;
             let installCalled = false;
 
-            const mockUninstall = async () => {
+            const mockUninstall = () => {
               uninstallCalled = true;
               // After uninstall, bundle no longer at fromScope
               mockStorage.getInstalledBundle.withArgs(bundleId, fromScope).resolves(undefined);
             };
 
-            const mockInstall = async () => {
+            const mockInstall = () => {
               installCalled = true;
               // After install, bundle at toScope
               const newBundle = createMockInstalledBundle(bundleId, version, { scope: toScope });

@@ -32,7 +32,7 @@ suite('Profile Management Commands', () => {
       assert.strictEqual(result, 'My Profile');
     });
 
-    test('should validate profile name uniqueness', async () => {
+    test('should validate profile name uniqueness', () => {
       const existingProfiles = [
         { id: 'profile-1', name: 'Profile 1' },
         { id: 'profile-2', name: 'Profile 2' }
@@ -44,8 +44,9 @@ suite('Profile Management Commands', () => {
       assert.strictEqual(isDuplicate, true);
     });
 
-    test('should allow custom bundle selection', async () => {
-      const availableBundles = [
+    test('should allow custom bundle selection', () => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const _availableBundles = [
         { id: 'bundle-1', name: 'Bundle 1' },
         { id: 'bundle-2', name: 'Bundle 2' },
         { id: 'bundle-3', name: 'Bundle 3' }
@@ -95,7 +96,7 @@ suite('Profile Management Commands', () => {
   });
 
   suite('editProfile', () => {
-    test('should allow renaming profile', async () => {
+    test('should allow renaming profile', () => {
       const profile = {
         id: 'profile-1',
         name: 'Old Name',
@@ -108,7 +109,7 @@ suite('Profile Management Commands', () => {
       assert.strictEqual(updated.id, profile.id);
     });
 
-    test('should allow adding bundles to profile', async () => {
+    test('should allow adding bundles to profile', () => {
       const profile = {
         id: 'profile-1',
         name: 'My Profile',
@@ -124,7 +125,7 @@ suite('Profile Management Commands', () => {
       assert.ok(updated.bundles.includes('bundle-2'));
     });
 
-    test('should allow removing bundles from profile', async () => {
+    test('should allow removing bundles from profile', () => {
       const profile = {
         id: 'profile-1',
         name: 'My Profile',
@@ -140,7 +141,7 @@ suite('Profile Management Commands', () => {
       assert.ok(!updated.bundles.includes('bundle-2'));
     });
 
-    test('should preserve profile ID when editing', async () => {
+    test('should preserve profile ID when editing', () => {
       const profile = {
         id: 'profile-abc',
         name: 'My Profile',
@@ -158,7 +159,7 @@ suite('Profile Management Commands', () => {
   });
 
   suite('activateProfile', () => {
-    test('should mark profile as active', async () => {
+    test('should mark profile as active', () => {
       const profile = {
         id: 'profile-1',
         name: 'My Profile',
@@ -170,7 +171,7 @@ suite('Profile Management Commands', () => {
       assert.strictEqual(activated.active, true);
     });
 
-    test('should deactivate other profiles', async () => {
+    test('should deactivate other profiles', () => {
       const profiles = [
         { id: 'profile-1', name: 'Profile 1', active: true },
         { id: 'profile-2', name: 'Profile 2', active: false },
@@ -186,7 +187,7 @@ suite('Profile Management Commands', () => {
       assert.strictEqual(updated.find((p) => p.id === 'profile-2')?.active, true);
     });
 
-    test('should install profile bundles', async () => {
+    test('should install profile bundles', () => {
       const profile = {
         id: 'profile-1',
         name: 'My Profile',
@@ -199,8 +200,9 @@ suite('Profile Management Commands', () => {
       assert.strictEqual(installedBundles.length, 2);
     });
 
-    test('should sync bundles to Copilot', async () => {
-      const profile = {
+    test('should sync bundles to Copilot', () => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const _profile = {
         id: 'profile-1',
         name: 'My Profile',
         bundles: ['bundle-1']
@@ -214,7 +216,7 @@ suite('Profile Management Commands', () => {
   });
 
   suite('deactivateProfile', () => {
-    test('should mark profile as inactive', async () => {
+    test('should mark profile as inactive', () => {
       const profile = {
         id: 'profile-1',
         name: 'My Profile',
@@ -238,8 +240,9 @@ suite('Profile Management Commands', () => {
       assert.ok(result);
     });
 
-    test('should optionally uninstall bundles', async () => {
-      const profile = {
+    test('should optionally uninstall bundles', () => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const _profile = {
         id: 'profile-1',
         bundles: ['bundle-1', 'bundle-2']
       };
@@ -255,13 +258,13 @@ suite('Profile Management Commands', () => {
   });
 
   suite('deleteProfile', () => {
-    test('should prompt for confirmation', async () => {
+    test('should prompt for confirmation', () => {
       // Simulated confirmation
       const confirmed = true;
       assert.strictEqual(confirmed, true);
     });
 
-    test('should prevent deleting active profile', async () => {
+    test('should prevent deleting active profile', () => {
       const profile = {
         id: 'profile-1',
         name: 'My Profile',
@@ -273,7 +276,7 @@ suite('Profile Management Commands', () => {
       assert.strictEqual(canDelete, false);
     });
 
-    test('should remove profile from storage', async () => {
+    test('should remove profile from storage', () => {
       const profiles = [
         { id: 'profile-1', name: 'Profile 1' },
         { id: 'profile-2', name: 'Profile 2' }
@@ -287,7 +290,7 @@ suite('Profile Management Commands', () => {
   });
 
   suite('exportProfile', () => {
-    test('should serialize profile to JSON', async () => {
+    test('should serialize profile to JSON', () => {
       const profile = {
         id: 'profile-1',
         name: 'My Profile',
@@ -302,7 +305,7 @@ suite('Profile Management Commands', () => {
       assert.strictEqual(parsed.name, profile.name);
     });
 
-    test('should include bundle configurations', async () => {
+    test('should include bundle configurations', () => {
       const profile = {
         id: 'profile-1',
         name: 'My Profile',
@@ -337,7 +340,7 @@ suite('Profile Management Commands', () => {
       assert.ok(result && result.length > 0);
     });
 
-    test('should validate imported profile structure', async () => {
+    test('should validate imported profile structure', () => {
       const importedData = {
         id: 'profile-1',
         name: 'Imported Profile',
@@ -349,7 +352,7 @@ suite('Profile Management Commands', () => {
       assert.strictEqual(isValid, true);
     });
 
-    test('should handle duplicate profile names', async () => {
+    test('should handle duplicate profile names', () => {
       const existingProfiles = [
         { id: 'profile-1', name: 'My Profile' }
       ];
@@ -364,7 +367,7 @@ suite('Profile Management Commands', () => {
       assert.strictEqual(isDuplicate, true);
     });
 
-    test('should generate new ID for imported profile', async () => {
+    test('should generate new ID for imported profile', () => {
       const imported = {
         id: 'old-id',
         name: 'Imported Profile',
@@ -380,7 +383,7 @@ suite('Profile Management Commands', () => {
   });
 
   suite('listProfiles', () => {
-    test('should show all profiles', async () => {
+    test('should show all profiles', () => {
       const profiles = [
         { id: 'profile-1', name: 'Profile 1', active: true },
         { id: 'profile-2', name: 'Profile 2', active: false },
@@ -390,7 +393,7 @@ suite('Profile Management Commands', () => {
       assert.strictEqual(profiles.length, 3);
     });
 
-    test('should indicate active profile', async () => {
+    test('should indicate active profile', () => {
       const profiles = [
         { id: 'profile-1', name: 'Profile 1', active: true },
         { id: 'profile-2', name: 'Profile 2', active: false }
@@ -402,7 +405,7 @@ suite('Profile Management Commands', () => {
       assert.strictEqual(activeProfile.id, 'profile-1');
     });
 
-    test('should sort profiles by name', async () => {
+    test('should sort profiles by name', () => {
       const profiles = [
         { id: 'profile-1', name: 'Charlie' },
         { id: 'profile-2', name: 'Alpha' },
@@ -418,7 +421,7 @@ suite('Profile Management Commands', () => {
   });
 
   suite('Profile Switching', () => {
-    test('should handle profile switch lifecycle', async () => {
+    test('should handle profile switch lifecycle', () => {
       let profiles = [
         { id: 'profile-1', name: 'Profile 1', active: true, bundles: ['bundle-1'] },
         { id: 'profile-2', name: 'Profile 2', active: false, bundles: ['bundle-2'] }
@@ -436,7 +439,7 @@ suite('Profile Management Commands', () => {
       assert.strictEqual(profiles.filter((p) => p.active).length, 1);
     });
 
-    test('should maintain profile state during switch', async () => {
+    test('should maintain profile state during switch', () => {
       const profile1 = {
         id: 'profile-1',
         name: 'Profile 1',

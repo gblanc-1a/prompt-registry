@@ -24,6 +24,7 @@ import {
 /**
  * Auto-update test utilities
  */
+// eslint-disable-next-line @typescript-eslint/naming-convention
 export const AutoUpdateTestHelpers = {
   /**
    * Setup storage mock for auto-update preferences

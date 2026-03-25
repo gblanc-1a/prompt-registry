@@ -105,7 +105,7 @@ export class RepositoryActivationService {
    * @returns RepositoryActivationService instance for the workspace
    * @throws Error if workspaceRoot is not provided on first call
    */
-  static getInstance(
+  public static getInstance(
     workspaceRoot?: string,
     lockfileManager?: LockfileManager,
     hubManager?: HubManager,
@@ -138,7 +138,7 @@ export class RepositoryActivationService {
    * @param workspaceRoot - Path to the workspace root
    * @returns RepositoryActivationService instance or undefined
    */
-  static getExistingInstance(workspaceRoot: string): RepositoryActivationService | undefined {
+  public static getExistingInstance(workspaceRoot: string): RepositoryActivationService | undefined {
     const normalizedPath = path.normalize(workspaceRoot);
     return RepositoryActivationService.instances.get(normalizedPath);
   }
@@ -147,7 +147,7 @@ export class RepositoryActivationService {
    * Reset instance(s) (for testing purposes)
    * @param workspaceRoot - If provided, reset only that workspace's instance. Otherwise, reset all instances.
    */
-  static resetInstance(workspaceRoot?: string): void {
+  public static resetInstance(workspaceRoot?: string): void {
     if (workspaceRoot) {
       const normalizedPath = path.normalize(workspaceRoot);
       RepositoryActivationService.instances.delete(normalizedPath);
@@ -160,7 +160,7 @@ export class RepositoryActivationService {
   /**
    * Get the workspace root path for this instance
    */
-  getWorkspaceRoot(): string {
+  public getWorkspaceRoot(): string {
     return this.workspaceRoot;
   }
 
@@ -176,7 +176,7 @@ export class RepositoryActivationService {
    * Note: No longer shows activation prompt - files are already present in repository.
    * Only checks for missing sources and hubs that need to be configured.
    */
-  async checkAndPromptActivation(): Promise<void> {
+  public async checkAndPromptActivation(): Promise<void> {
     try {
       // Check if setup is complete before proceeding
       if (!await this.isSetupComplete()) {
@@ -216,7 +216,7 @@ export class RepositoryActivationService {
    *
    * Requirements: 13.6 - "IF bundles are missing from the repository, THE Extension SHALL offer to download and install them"
    */
-  async installMissingBundles(lockfile: Lockfile, missingBundleIds: string[]): Promise<MissingBundleInstallResult> {
+  public async installMissingBundles(lockfile: Lockfile, missingBundleIds: string[]): Promise<MissingBundleInstallResult> {
     const result: MissingBundleInstallResult = {
       succeeded: [],
       failed: [],
@@ -303,7 +303,7 @@ export class RepositoryActivationService {
    * @param lockfile - The lockfile to check
    * @returns Result with missing sources/hubs and whether offer was made
    */
-  async checkAndOfferMissingSources(lockfile: Lockfile): Promise<MissingSourcesResult> {
+  public async checkAndOfferMissingSources(lockfile: Lockfile): Promise<MissingSourcesResult> {
     const result: MissingSourcesResult = {
       missingSources: [],
       missingHubs: [],
@@ -373,6 +373,7 @@ export class RepositoryActivationService {
    * @param repositoryPath - Path to the repository
    * @returns True if previously declined
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async wasDeclined(repositoryPath: string): Promise<boolean> {
     const declined = await this.getDeclinedRepositories();
     return declined.includes(repositoryPath);
@@ -382,6 +383,7 @@ export class RepositoryActivationService {
    * Get list of declined repositories from global state
    * @returns Array of repository paths
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await
   private async getDeclinedRepositories(): Promise<string[]> {
     const context = this.storage.getContext();
     return context.globalState.get<string[]>(this.DECLINED_KEY, []);
@@ -392,6 +394,7 @@ export class RepositoryActivationService {
    * @param lockfilePath - Full path to lockfile
    * @returns Repository root path
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private getRepositoryPath(lockfilePath: string): string {
     return path.dirname(lockfilePath);
   }
@@ -400,6 +403,7 @@ export class RepositoryActivationService {
    * Check if setup is complete before proceeding with source/hub detection.
    * Fail-open: if SetupStateManager is not available or throws, proceed with detection.
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async isSetupComplete(): Promise<boolean> {
     if (!this.setupStateManager) {
       this.logger.debug('SetupStateManager not available, proceeding with detection');

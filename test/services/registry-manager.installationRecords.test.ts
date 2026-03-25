@@ -20,8 +20,10 @@ import {
 } from '../../src/types/registry';
 
 suite('RegistryManager - Installation Record Management', () => {
-  let context: vscode.ExtensionContext;
-  let registryManager: RegistryManager;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  let _context: vscode.ExtensionContext;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  let _registryManager: RegistryManager;
   let storageStub: sinon.SinonStubbedInstance<RegistryStorage>;
   let installerStub: sinon.SinonStubbedInstance<BundleInstaller>;
 
@@ -96,7 +98,7 @@ suite('RegistryManager - Installation Record Management', () => {
       assert.ok(mockInstalled.bundleId.includes('v1.0.0'));
     });
 
-    test('should use bundleId from installation record for uninstall', async () => {
+    test('should use bundleId from installation record for uninstall', () => {
       const mockInstalled: InstalledBundle = {
         bundleId: 'owner-repo-v1.0.0',
         version: '1.0.0',
@@ -113,8 +115,9 @@ suite('RegistryManager - Installation Record Management', () => {
       installerStub.uninstall.resolves();
 
       // Track what bundleId is passed to removeInstallation
-      let removedBundleId: string | undefined;
-      storageStub.removeInstallation.callsFake(async (bundleId: string) => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      let _removedBundleId: string | undefined;
+      storageStub.removeInstallation.callsFake((bundleId: string) => {
         removedBundleId = bundleId;
       });
 

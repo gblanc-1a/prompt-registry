@@ -37,7 +37,7 @@ import {
  * Discovers skills from skills/ directory with SKILL.md files
  */
 export class SkillsAdapter extends RepositoryAdapter {
-  readonly type = 'skills';
+  public readonly type = 'skills';
   private readonly logger: Logger;
   private readonly githubAdapter: GitHubAdapter;
 
@@ -87,7 +87,7 @@ export class SkillsAdapter extends RepositoryAdapter {
    * Fetch all skills from the repository as bundles
    * Each skill becomes a separate bundle
    */
-  async fetchBundles(): Promise<Bundle[]> {
+  public async fetchBundles(): Promise<Bundle[]> {
     this.logger.info(`[SkillsAdapter] Fetching skills from repository: ${this.source.url}`);
 
     try {
@@ -117,6 +117,7 @@ export class SkillsAdapter extends RepositoryAdapter {
    * Scan skills/ directory for skill folders with SKILL.md files
    * Uses parallel fetching with concurrency limit for better performance
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async scanSkillsDirectory(): Promise<SkillItem[]> {
     const { owner, repo } = this.parseGitHubUrl();
     const apiBase = 'https://api.github.com';
@@ -167,6 +168,7 @@ export class SkillsAdapter extends RepositoryAdapter {
    * @param owner
    * @param repo
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async processSkillDirectory(dir: GitHubContentItem, owner: string, repo: string): Promise<SkillItem | null> {
     const skillPath = dir.path;
     const skillId = dir.name;
@@ -219,6 +221,7 @@ export class SkillsAdapter extends RepositoryAdapter {
    * Parse SKILL.md file content (YAML frontmatter + markdown)
    * @param downloadUrl
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async parseSkillMd(downloadUrl: string): Promise<ParsedSkillFile> {
     this.logger.debug(`[SkillsAdapter] Parsing SKILL.md from: ${downloadUrl}`);
 
@@ -263,6 +266,7 @@ export class SkillsAdapter extends RepositoryAdapter {
    * Create Bundle object from SkillItem
    * @param skill
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private createBundleFromSkill(skill: SkillItem): Bundle {
     const { owner, repo } = this.parseGitHubUrl();
 
@@ -295,6 +299,7 @@ export class SkillsAdapter extends RepositoryAdapter {
    * Calculate a stable hash from GitHub file metadata in the skill folder.
    * @param skillContents
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private calculateContentHash(skillContents: GitHubContentItem[]): string {
     const hash = crypto.createHash('sha256');
     const files = skillContents
@@ -317,6 +322,7 @@ export class SkillsAdapter extends RepositoryAdapter {
    * @param repo
    * @param initialEntries
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async collectSkillFiles(owner: string, repo: string, initialEntries: GitHubContentItem[]): Promise<GitHubContentItem[]> {
     const apiBase = 'https://api.github.com';
     const files: GitHubContentItem[] = [];
@@ -343,6 +349,7 @@ export class SkillsAdapter extends RepositoryAdapter {
     return files;
   }
 
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private getRelativeSkillPath(fullPath: string, skillPath: string): string {
     if (fullPath.startsWith(`${skillPath}/`)) {
       return fullPath.slice(skillPath.length + 1);
@@ -357,6 +364,7 @@ export class SkillsAdapter extends RepositoryAdapter {
    * Format skill version from content hash.
    * @param contentHash
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private formatSkillVersion(contentHash?: string): string {
     return contentHash ? `hash:${contentHash}` : '1.0.0';
   }
@@ -365,6 +373,7 @@ export class SkillsAdapter extends RepositoryAdapter {
    * Estimate skill size based on file count
    * @param files
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private estimateSkillSize(files: string[]): string {
     const estimatedBytes = files.length * 4096;
 
@@ -380,7 +389,7 @@ export class SkillsAdapter extends RepositoryAdapter {
   /**
    * Validate skills repository structure
    */
-  async validate(): Promise<ValidationResult> {
+  public async validate(): Promise<ValidationResult> {
     this.logger.info(`[SkillsAdapter] Validating skills repository: ${this.source.url}`);
 
     const errors: string[] = [];
@@ -452,7 +461,7 @@ export class SkillsAdapter extends RepositoryAdapter {
   /**
    * Fetch repository metadata
    */
-  async fetchMetadata(): Promise<SourceMetadata> {
+  public async fetchMetadata(): Promise<SourceMetadata> {
     try {
       const skills = await this.scanSkillsDirectory();
       const { owner, repo } = this.parseGitHubUrl();
@@ -472,9 +481,9 @@ export class SkillsAdapter extends RepositoryAdapter {
   /**
    * Get manifest URL for a skill
    * @param bundleId
-   * @param version
+   * @param _version
    */
-  getManifestUrl(bundleId: string, version?: string): string {
+  public getManifestUrl(bundleId: string, _version?: string): string {
     const { owner, repo } = this.parseGitHubUrl();
     const skillId = bundleId.replace(`skills-${owner}-${repo}-`, '');
     return `https://raw.githubusercontent.com/${owner}/${repo}/main/skills/${skillId}/SKILL.md`;
@@ -482,10 +491,10 @@ export class SkillsAdapter extends RepositoryAdapter {
 
   /**
    * Get download URL for a skill
-   * @param bundleId
-   * @param version
+   * @param _bundleId
+   * @param _version
    */
-  getDownloadUrl(bundleId: string, version?: string): string {
+  public getDownloadUrl(_bundleId: string, _version?: string): string {
     const { owner, repo } = this.parseGitHubUrl();
     return `https://github.com/${owner}/${repo}/archive/refs/heads/main.zip`;
   }
@@ -495,7 +504,7 @@ export class SkillsAdapter extends RepositoryAdapter {
    * Creates a ZIP with the skill folder and deployment manifest
    * @param bundle
    */
-  async downloadBundle(bundle: Bundle): Promise<Buffer> {
+  public async downloadBundle(bundle: Bundle): Promise<Buffer> {
     const { owner, repo } = this.parseGitHubUrl();
     const skillId = bundle.id.replace(`skills-${owner}-${repo}-`, '');
 
@@ -523,6 +532,7 @@ export class SkillsAdapter extends RepositoryAdapter {
    * Fetch a single skill by ID (optimized - doesn't scan all skills)
    * @param skillId
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async fetchSingleSkill(skillId: string): Promise<SkillItem | null> {
     const { owner, repo } = this.parseGitHubUrl();
     const apiBase = 'https://api.github.com';
@@ -579,9 +589,12 @@ export class SkillsAdapter extends RepositoryAdapter {
    * Package a skill as a ZIP bundle
    * @param skill
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async packageSkillAsZip(skill: SkillItem): Promise<Buffer> {
     const { owner, repo } = this.parseGitHubUrl();
+    // eslint-disable-next-line @typescript-eslint/naming-convention, @typescript-eslint/no-require-imports
     const AdmZip = require('adm-zip');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const yamlLib = require('js-yaml');
 
     this.logger.debug(`[SkillsAdapter] Packaging skill as ZIP: ${skill.id}`);
@@ -631,6 +644,7 @@ export class SkillsAdapter extends RepositoryAdapter {
    * @param dirPath
    * @param zipPath
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async addDirectoryToZip(zip: any, owner: string, repo: string, dirPath: string, zipPath: string): Promise<void> {
     try {
       const apiBase = 'https://api.github.com';
@@ -661,6 +675,7 @@ export class SkillsAdapter extends RepositoryAdapter {
    * @param owner
    * @param repo
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private generateDeploymentManifest(skill: SkillItem, owner: string, repo: string): any {
     return {
       id: `skills-${owner}-${repo}-${skill.id}`,
@@ -715,7 +730,9 @@ export class SkillsAdapter extends RepositoryAdapter {
    * Download file content from URL
    * @param url
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async downloadFileContent(url: string): Promise<Buffer> {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const https = require('node:https');
 
     return new Promise((resolve, reject) => {
@@ -752,10 +769,15 @@ export class SkillsAdapter extends RepositoryAdapter {
    * Make GitHub API request with authentication
    * @param url
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async makeGitHubRequest(url: string): Promise<any> {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const https = require('node:https');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const vscode = require('vscode');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { exec } = require('node:child_process');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { promisify } = require('node:util');
     const execAsync = promisify(exec);
 

@@ -64,7 +64,7 @@ export abstract class CliWrapper {
   /**
    * Check if the CLI tool is available in the system
    */
-  async isAvailable(): Promise<boolean> {
+  public async isAvailable(): Promise<boolean> {
     return new Promise((resolve) => {
       const proc = spawn(this.getCommandName(), ['--version'], { shell: USE_SHELL });
 
@@ -81,7 +81,7 @@ export abstract class CliWrapper {
   /**
    * Get the CLI tool version
    */
-  async getVersion(): Promise<string | undefined> {
+  public async getVersion(): Promise<string | undefined> {
     return new Promise((resolve) => {
       const proc = spawn(this.getCommandName(), ['--version'], { shell: USE_SHELL });
       let output = '';
@@ -104,6 +104,7 @@ export abstract class CliWrapper {
    * Validate working directory exists and is a directory
    * @param cwd
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   protected validateCwd(cwd: string): void {
     if (!cwd || cwd.trim() === '') {
       throw new Error('Working directory cannot be empty');
@@ -123,7 +124,7 @@ export abstract class CliWrapper {
    * Install dependencies with progress notification
    * @param cwd
    */
-  async installWithProgress(cwd: string): Promise<CliInstallResult> {
+  public async installWithProgress(cwd: string): Promise<CliInstallResult> {
     const cmdName = this.getCommandName();
     const displayName = this.getDisplayName();
 
@@ -151,6 +152,7 @@ export abstract class CliWrapper {
           title: 'Installing dependencies...',
           cancellable: true
         },
+        // eslint-disable-next-line @typescript-eslint/require-await
         async (_progress, token) => {
           const proc = spawn(cmdName, ['install'], {
             cwd,
@@ -203,7 +205,7 @@ export abstract class CliWrapper {
    * Install dependencies in terminal (visible to user)
    * @param cwd
    */
-  async installInTerminal(cwd: string): Promise<CliInstallResult> {
+  public async installInTerminal(cwd: string): Promise<CliInstallResult> {
     const cmdName = this.getCommandName();
     const displayName = this.getDisplayName();
 
@@ -254,7 +256,7 @@ export abstract class CliWrapper {
    * @param cwd
    * @param useProgress
    */
-  async promptAndInstall(cwd: string, useProgress = true): Promise<CliInstallResult> {
+  public async promptAndInstall(cwd: string, useProgress = true): Promise<CliInstallResult> {
     const cmdName = this.getCommandName();
 
     const choice = await vscode.window.showInformationMessage(
@@ -281,6 +283,7 @@ export abstract class CliWrapper {
    * @param err
    * @param cmdName
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   protected formatProcessError(err: Error, cmdName: string): string {
     if (err.message.includes('ENOENT')) {
       return `${cmdName} not found. Please install it first.`;

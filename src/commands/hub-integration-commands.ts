@@ -192,7 +192,7 @@ export class HubIntegrationCommands {
   /**
    * Get sync history instance for further integration
    */
-  getSyncHistory() {
+  public getSyncHistory() {
     return this.historyCommands.getSyncHistory();
   }
 }

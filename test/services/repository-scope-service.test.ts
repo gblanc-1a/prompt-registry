@@ -55,14 +55,15 @@ suite('RepositoryScopeService', () => {
 
     // Create deployment manifest
     // Extract id by removing the full type extension (e.g., .prompt.md, .agent.md)
-    const prompts = files.map((f, i) => ({
+    const prompts = files.map((f, _i) => ({
       id: f.name.replace(/\.(prompt|instructions|agent|chatmode|skill)\.md$/, '').replace(/\.md$/, ''),
       name: f.name,
       file: f.name,
       type: f.type || 'prompt'
     }));
 
-    const manifest = {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const _manifest = {
       id: bundleId,
       version: '1.0.0',
       prompts
@@ -543,7 +544,8 @@ suite('RepositoryScopeService', () => {
       const checksum = calculateChecksumSync(promptFile);
 
       const bundleId = 'test-bundle';
-      const bundlePath = createMockBundle(bundleId, [
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const _bundlePath = createMockBundle(bundleId, [
         { name: 'test.prompt.md', content: '# Test', type: 'prompt' }
       ]);
 
@@ -566,7 +568,8 @@ suite('RepositoryScopeService', () => {
 
       const bundleId = 'test-bundle';
       // Create the bundle directory with manifest so unsyncBundle can read it
-      const bundlePath = createMockBundle(bundleId, [
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const _bundlePath = createMockBundle(bundleId, [
         { name: 'test.prompt.md', content: '# Test', type: 'prompt' }
       ]);
 
@@ -762,7 +765,7 @@ suite('RepositoryScopeService', () => {
       );
     });
 
-    test('should keep section header when entries remain', async () => {
+    test('should keep section header when entries remain', () => {
       createGitDirectory();
       const excludePath = path.join(workspaceRoot, '.git', 'info', 'exclude');
       fs.writeFileSync(excludePath, '# Prompt Registry (local)\n.github/prompts/test1.prompt.md\n.github/prompts/test2.prompt.md\n');

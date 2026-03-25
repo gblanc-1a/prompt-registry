@@ -84,7 +84,7 @@ export class LockfileManager {
 
   // Event emitter for lockfile updates
   private readonly _onLockfileUpdated = new vscode.EventEmitter<Lockfile | null>();
-  readonly onLockfileUpdated = this._onLockfileUpdated.event;
+  public readonly onLockfileUpdated = this._onLockfileUpdated.event;
 
   /**
    * Create a new LockfileManager for a specific repository
@@ -106,7 +106,7 @@ export class LockfileManager {
    * @returns LockfileManager instance for the repository
    * @throws Error if repositoryPath is not provided
    */
-  static getInstance(repositoryPath?: string): LockfileManager {
+  public static getInstance(repositoryPath?: string): LockfileManager {
     if (!repositoryPath) {
       throw new Error('Repository path required for LockfileManager.getInstance()');
     }
@@ -124,7 +124,7 @@ export class LockfileManager {
    * Reset a specific instance (for testing purposes)
    * @param repositoryPath - Path to the repository to reset
    */
-  static resetInstance(repositoryPath?: string): void {
+  public static resetInstance(repositoryPath?: string): void {
     if (repositoryPath) {
       const normalizedPath = path.normalize(repositoryPath);
       const instance = LockfileManager.instances.get(normalizedPath);
@@ -151,12 +151,12 @@ export class LockfileManager {
 
       this.fileWatcher.onDidChange(() => {
         this.logger.debug('Lockfile changed externally');
-        this.emitLockfileUpdated();
+        void this.emitLockfileUpdated();
       });
 
       this.fileWatcher.onDidCreate(() => {
         this.logger.debug('Lockfile created externally');
-        this.emitLockfileUpdated();
+        void this.emitLockfileUpdated();
       });
 
       this.fileWatcher.onDidDelete(() => {
@@ -176,14 +176,14 @@ export class LockfileManager {
   /**
    * Get the path to the lockfile
    */
-  getLockfilePath(): string {
+  public getLockfilePath(): string {
     return this.lockfilePath;
   }
 
   /**
    * Get the path to the local lockfile (for local-only bundles)
    */
-  getLocalLockfilePath(): string {
+  public getLocalLockfilePath(): string {
     return path.join(this.repositoryPath, LOCAL_LOCKFILE_NAME);
   }
 
@@ -197,6 +197,7 @@ export class LockfileManager {
    * - 1.1: Route local-only bundles to prompt-registry.local.lock.json
    * - 1.2: Route commit bundles to prompt-registry.lock.json
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private getLockfilePathForMode(commitMode: RepositoryCommitMode): string {
     const filename = commitMode === 'local-only'
       ? LOCAL_LOCKFILE_NAME
@@ -208,7 +209,7 @@ export class LockfileManager {
    * Read the lockfile from disk
    * @returns The lockfile object or null if it doesn't exist
    */
-  async read(): Promise<Lockfile | null> {
+  public async read(): Promise<Lockfile | null> {
     try {
       if (!fs.existsSync(this.lockfilePath)) {
         return null;
@@ -230,6 +231,7 @@ export class LockfileManager {
    * Requirements covered:
    * - 3.1: Read from both Main_Lockfile and Local_Lockfile
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async readLockfileByMode(commitMode: RepositoryCommitMode): Promise<Lockfile | null> {
     const lockfilePath = this.getLockfilePathForMode(commitMode);
     try {
@@ -248,7 +250,7 @@ export class LockfileManager {
    * Validate the lockfile against the JSON schema
    * @returns Validation result with errors and warnings
    */
-  async validate(): Promise<LockfileValidationResult> {
+  public async validate(): Promise<LockfileValidationResult> {
     const lockfile = await this.read();
 
     if (!lockfile) {
@@ -288,6 +290,7 @@ export class LockfileManager {
    * @param schemaFileName - Name of the schema file (e.g., 'lockfile.schema.json')
    * @returns Full path to the schema file
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private getSchemaPath(schemaFileName: string): string {
     // Try to get extension path first (works when extension is installed)
     try {
@@ -330,7 +333,7 @@ export class LockfileManager {
    * - 1.5: Do not include commitMode field in main lockfile entries
    * - 2.1: Add local lockfile to git exclude on first creation
    */
-  async createOrUpdate(options: CreateOrUpdateOptions): Promise<void> {
+  public async createOrUpdate(options: CreateOrUpdateOptions): Promise<void> {
     // Validate required fields
     if (!options.bundleId || typeof options.bundleId !== 'string' || options.bundleId.trim() === '') {
       throw new Error('bundleId is required and must be a non-empty string');
@@ -443,7 +446,7 @@ export class LockfileManager {
    * - 5.4: Remove local lockfile from git exclude when deleted
    * - 5.5: Delete Main_Lockfile when last committed bundle is removed
    */
-  async remove(bundleId: string): Promise<void> {
+  public async remove(bundleId: string): Promise<void> {
     // First, try to find the bundle in the main lockfile
     const mainLockfile = await this.readLockfileByMode('commit');
     if (mainLockfile && mainLockfile.bundles[bundleId]) {
@@ -469,6 +472,7 @@ export class LockfileManager {
    * @param lockfile - The lockfile object containing the bundle
    * @param commitMode - The commit mode indicating which lockfile to update
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async removeFromLockfileByMode(
     bundleId: string,
     lockfile: Lockfile,
@@ -510,6 +514,7 @@ export class LockfileManager {
    * Delete a lockfile at a specific path.
    * @param lockfilePath - Path to the lockfile to delete
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async deleteLockfileAtPath(lockfilePath: string): Promise<void> {
     try {
       if (fs.existsSync(lockfilePath)) {
@@ -530,6 +535,7 @@ export class LockfileManager {
    * - 5.4: Remove prompt-registry.local.lock.json from .git/info/exclude when deleted
    * - 2.2: Remove local lockfile from git exclude when deleted
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async removeLocalLockfileFromGitExclude(): Promise<void> {
     try {
       const gitDir = path.join(this.repositoryPath, '.git');
@@ -599,6 +605,7 @@ export class LockfileManager {
    * @param lockfile
    * @param removedSourceId
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private cleanupOrphanedSources(lockfile: Lockfile, removedSourceId: string): void {
     // Check if any other bundle references this source
     const isSourceReferenced = Object.values(lockfile.bundles)
@@ -615,7 +622,7 @@ export class LockfileManager {
    * @param bundleId - ID of the bundle to check
    * @returns Array of modified file information
    */
-  async detectModifiedFiles(bundleId: string): Promise<ModifiedFileInfo[]> {
+  public async detectModifiedFiles(bundleId: string): Promise<ModifiedFileInfo[]> {
     const lockfile = await this.read();
 
     if (!lockfile || !lockfile.bundles[bundleId]) {
@@ -668,6 +675,7 @@ export class LockfileManager {
   /**
    * Create an empty lockfile structure with required fields
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private createEmptyLockfile(): Lockfile {
     // Get extension version from package.json
     let extensionVersion = '0.0.0';
@@ -696,6 +704,7 @@ export class LockfileManager {
    * Uses a mutex to serialize concurrent writes
    * @param lockfile - Lockfile to write
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async writeAtomic(lockfile: Lockfile): Promise<void> {
     await this.writeAtomicToPath(lockfile, this.lockfilePath);
   }
@@ -707,6 +716,7 @@ export class LockfileManager {
    * @param lockfile - Lockfile to write
    * @param targetPath - Path to write the lockfile to
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async writeAtomicToPath(lockfile: Lockfile, targetPath: string): Promise<void> {
     // Serialize writes using a mutex pattern
     const previousLock = this.writeLock;
@@ -753,6 +763,7 @@ export class LockfileManager {
    * Requirements covered:
    * - 2.1: Add prompt-registry.local.lock.json to .git/info/exclude on creation
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async ensureLocalLockfileExcluded(): Promise<void> {
     try {
       const gitDir = path.join(this.repositoryPath, '.git');
@@ -816,6 +827,7 @@ export class LockfileManager {
    * Requirements covered:
    * - 3.5: If deletion fails, log an error and continue without throwing
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async deleteLockfile(): Promise<void> {
     await this.deleteLockfileAtPath(this.lockfilePath);
   }
@@ -836,7 +848,7 @@ export class LockfileManager {
    * - 4.5: Remove local lockfile from git exclude when local lockfile becomes empty
    * - 4.6: Return error if bundle not found in source lockfile
    */
-  async updateCommitMode(bundleId: string, newMode: RepositoryCommitMode): Promise<void> {
+  public async updateCommitMode(bundleId: string, newMode: RepositoryCommitMode): Promise<void> {
     // Determine source lockfile (opposite of newMode)
     const currentMode: RepositoryCommitMode = newMode === 'commit' ? 'local-only' : 'commit';
 
@@ -919,7 +931,7 @@ export class LockfileManager {
    * - 3.3: Set commitMode: 'commit' on bundles from Main_Lockfile
    * - 3.4: Display error when bundle ID exists in both lockfiles
    */
-  async getInstalledBundles(): Promise<InstalledBundle[]> {
+  public async getInstalledBundles(): Promise<InstalledBundle[]> {
     const bundles: InstalledBundle[] = [];
     const seenIds = new Set<string>();
 
@@ -979,6 +991,7 @@ export class LockfileManager {
    * - 3.1: Verify that bundle files exist in .github/ directories
    * - 3.2: Mark bundle with filesMissing flag if files are missing
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async checkFilesMissing(entry: LockfileBundleEntry): Promise<boolean> {
     if (!entry.files || entry.files.length === 0) {
       return false;
@@ -1009,7 +1022,7 @@ export class LockfileManager {
   /**
    * Dispose of resources
    */
-  dispose(): void {
+  public dispose(): void {
     if (this.fileWatcher) {
       this.fileWatcher.dispose();
       this.fileWatcher = null;

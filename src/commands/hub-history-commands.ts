@@ -36,7 +36,7 @@ export class HubHistoryCommands {
   /**
    * View sync history for a profile
    */
-  async viewSyncHistory(): Promise<void> {
+  public async viewSyncHistory(): Promise<void> {
     try {
       // Get active profiles
       const activeProfiles = await this.hubManager.listAllActiveProfiles();
@@ -111,7 +111,7 @@ export class HubHistoryCommands {
   /**
    * Rollback a profile to a previous state
    */
-  async rollbackProfile(): Promise<void> {
+  public async rollbackProfile(): Promise<void> {
     try {
       // Get active profiles
       const activeProfiles = await this.hubManager.listAllActiveProfiles();
@@ -208,7 +208,7 @@ export class HubHistoryCommands {
   /**
    * Clear sync history for a profile
    */
-  async clearSyncHistory(): Promise<void> {
+  public async clearSyncHistory(): Promise<void> {
     try {
       // Get active profiles
       const activeProfiles = await this.hubManager.listAllActiveProfiles();
@@ -283,7 +283,7 @@ export class HubHistoryCommands {
   /**
    * Get the sync history instance for integration
    */
-  getSyncHistory(): HubSyncHistory {
+  public getSyncHistory(): HubSyncHistory {
     return this.syncHistory;
   }
 }

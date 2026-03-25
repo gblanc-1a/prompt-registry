@@ -241,7 +241,9 @@ export interface DeploymentManifest {
   common: {
     directories: string[];
     files: string[];
+    // eslint-disable-next-line @typescript-eslint/naming-convention
     include_patterns: string[];
+    // eslint-disable-next-line @typescript-eslint/naming-convention
     exclude_patterns: string[];
   };
   environments?: {
@@ -250,22 +252,33 @@ export interface DeploymentManifest {
       description: string;
       directories: string[];
       files: string[];
+      // eslint-disable-next-line @typescript-eslint/naming-convention
       include_patterns: string[];
+      // eslint-disable-next-line @typescript-eslint/naming-convention
       exclude_patterns: string[];
+      // eslint-disable-next-line @typescript-eslint/naming-convention
       bundle_structure?: {
+        // eslint-disable-next-line @typescript-eslint/naming-convention
         preserve_paths: boolean;
+        // eslint-disable-next-line @typescript-eslint/naming-convention
         root_folder: string;
       };
       metadata?: Record<string, any>;
     };
   };
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   bundle_settings: {
+    // eslint-disable-next-line @typescript-eslint/naming-convention
     include_common_in_environment_bundles: boolean;
+    // eslint-disable-next-line @typescript-eslint/naming-convention
     create_common_bundle: boolean;
     compression: CompressionFormat;
     naming: {
+      // eslint-disable-next-line @typescript-eslint/naming-convention
       common_bundle?: string;
+      // eslint-disable-next-line @typescript-eslint/naming-convention
       environment_bundle: string;
+      // eslint-disable-next-line @typescript-eslint/naming-convention
       full_bundle?: string;
     };
     isCurated?: boolean; // True if bundle is from a curated hub
@@ -274,11 +287,15 @@ export interface DeploymentManifest {
       enabled: boolean;
       algorithms: string[];
     };
+    // eslint-disable-next-line @typescript-eslint/naming-convention
     output_directory?: string;
   };
   metadata: {
+    // eslint-disable-next-line @typescript-eslint/naming-convention
     manifest_version: string;
+    // eslint-disable-next-line @typescript-eslint/naming-convention
     prompt_library_version?: string;
+    // eslint-disable-next-line @typescript-eslint/naming-convention
     last_updated?: string;
     description: string;
     author?: string;
@@ -291,14 +308,19 @@ export interface DeploymentManifest {
     license?: string;
     keywords?: string[];
     compatibility?: {
+      // eslint-disable-next-line @typescript-eslint/naming-convention
       min_manifest_version?: string;
       platforms?: string[];
     };
   };
   hooks?: {
+    // eslint-disable-next-line @typescript-eslint/naming-convention
     pre_bundle?: string[];
+    // eslint-disable-next-line @typescript-eslint/naming-convention
     post_bundle?: string[];
+    // eslint-disable-next-line @typescript-eslint/naming-convention
     pre_install?: string[];
+    // eslint-disable-next-line @typescript-eslint/naming-convention
     post_install?: string[];
   };
   prompts?: {

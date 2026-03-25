@@ -98,7 +98,9 @@ export class UserScopeService implements IScopeService {
       const baseDir = path.dirname(path.dirname(globalStoragePath));
 
       // Check if we're in a profiles structure
+      // eslint-disable-next-line @typescript-eslint/no-shadow
       const escapedSep = escapeRegex(path.sep);
+      // eslint-disable-next-line @typescript-eslint/no-shadow
       const profilesMatch = baseDir.match(new RegExp(`profiles${escapedSep}([^${escapedSep}]+)`));
       if (profilesMatch) {
         const profileId = profilesMatch[1];
@@ -273,7 +275,7 @@ export class UserScopeService implements IScopeService {
   /**
    * Sync all prompts from installed bundles to Copilot directory
    */
-  async syncAllBundles(): Promise<void> {
+  public async syncAllBundles(): Promise<void> {
     try {
       this.logger.info('Syncing bundles to GitHub Copilot...');
 
@@ -313,7 +315,7 @@ export class UserScopeService implements IScopeService {
    * @param bundlePath - The path to the installed bundle directory
    * @param _options - Ignored for user scope (commitMode only applies to repository scope)
    */
-  async syncBundle(bundleId: string, bundlePath: string, _options?: SyncBundleOptions): Promise<void> {
+  public async syncBundle(bundleId: string, bundlePath: string, _options?: SyncBundleOptions): Promise<void> {
     try {
       this.logger.debug(`Syncing bundle: ${bundleId}`);
 
@@ -372,6 +374,7 @@ export class UserScopeService implements IScopeService {
    * @param bundlePath
    * @param promptDef
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async syncSkillFromBundle(bundleId: string, bundlePath: string, promptDef: any): Promise<void> {
     try {
       // Extract skill name from the path (e.g., skills/my-skill/SKILL.md -> my-skill)
@@ -407,6 +410,7 @@ export class UserScopeService implements IScopeService {
    * @param sourcePath
    * @param bundleId
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private determineCopilotFileType(
     promptDef: any,
     sourcePath: string,
@@ -441,6 +445,7 @@ export class UserScopeService implements IScopeService {
    * returns false for broken symlinks.
    * @param file
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async createCopilotFile(file: CopilotFile): Promise<void> {
     try {
       // Check if target already exists using lstat() to detect broken symlinks
@@ -494,7 +499,7 @@ export class UserScopeService implements IScopeService {
    * Since we use a flat structure, we need to read the bundle's manifest to know which files to remove
    * @param bundleId
    */
-  async unsyncBundle(bundleId: string): Promise<void> {
+  public async unsyncBundle(bundleId: string): Promise<void> {
     try {
       this.logger.debug(`Removing Copilot files for bundle: ${bundleId}`);
 
@@ -588,7 +593,7 @@ export class UserScopeService implements IScopeService {
   /**
    * Clean all synced files (for extension uninstall)
    */
-  async cleanAll(): Promise<void> {
+  public async cleanAll(): Promise<void> {
     try {
       this.logger.info('Cleaning all Copilot synced files...');
 
@@ -624,7 +629,7 @@ export class UserScopeService implements IScopeService {
    * @param fileName - The name of the file (without extension)
    * @returns The full target path where the file should be placed
    */
-  getTargetPath(fileType: CopilotFileType, fileName: string): string {
+  public getTargetPath(fileType: CopilotFileType, fileName: string): string {
     const promptsDir = this.getCopilotPromptsDirectory();
     const targetFileName = getTargetFileName(fileName, fileType);
     return path.join(promptsDir, targetFileName);
@@ -636,7 +641,7 @@ export class UserScopeService implements IScopeService {
    *
    * Note: Returns both `baseDirectory` (IScopeService) and `copilotDir` (backward compatibility)
    */
-  async getStatus(): Promise<ScopeStatus & { copilotDir: string }> {
+  public async getStatus(): Promise<ScopeStatus & { copilotDir: string }> {
     const promptsDir = this.getCopilotPromptsDirectory();
     const status = {
       baseDirectory: promptsDir,
@@ -675,6 +680,7 @@ export class UserScopeService implements IScopeService {
    * Ensure directory exists
    * @param dir
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await
   private async ensureDirectory(dir: string): Promise<void> {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
@@ -689,7 +695,7 @@ export class UserScopeService implements IScopeService {
    * @param scope - Installation scope ('user' or 'workspace')
    * @returns Path to the skills directory
    */
-  getCopilotSkillsDirectory(scope: 'user' | 'workspace' = 'user'): string {
+  public getCopilotSkillsDirectory(scope: 'user' | 'workspace' = 'user'): string {
     if (scope === 'workspace') {
       const workspaceFolders = vscode.workspace.workspaceFolders;
       if (!workspaceFolders || workspaceFolders.length === 0) {
@@ -708,7 +714,7 @@ export class UserScopeService implements IScopeService {
    * @param scope - Installation scope ('user' or 'workspace')
    * @returns Path to the Claude skills directory
    */
-  getClaudeSkillsDirectory(scope: 'user' | 'workspace' = 'user'): string {
+  public getClaudeSkillsDirectory(scope: 'user' | 'workspace' = 'user'): string {
     if (scope === 'workspace') {
       const workspaceFolders = vscode.workspace.workspaceFolders;
       if (!workspaceFolders || workspaceFolders.length === 0) {
@@ -729,7 +735,7 @@ export class UserScopeService implements IScopeService {
    * @param scope - Installation scope ('user' or 'workspace')
    * @param syncToClaude - Also sync to ~/.claude/skills
    */
-  async syncSkill(skillName: string, sourceDir: string, scope: 'user' | 'workspace' = 'user', syncToClaude = false): Promise<void> {
+  public async syncSkill(skillName: string, sourceDir: string, scope: 'user' | 'workspace' = 'user', syncToClaude = false): Promise<void> {
     try {
       this.logger.info(`Syncing skill: ${skillName} (scope: ${scope})`);
 
@@ -774,7 +780,7 @@ export class UserScopeService implements IScopeService {
    * @param scope - Installation scope
    * @param removeFromClaude - Also remove from ~/.claude/skills
    */
-  async unsyncSkill(skillName: string, scope: 'user' | 'workspace' = 'user', removeFromClaude = false): Promise<void> {
+  public async unsyncSkill(skillName: string, scope: 'user' | 'workspace' = 'user', removeFromClaude = false): Promise<void> {
     try {
       this.logger.info(`Removing skill: ${skillName}`);
 
@@ -805,6 +811,7 @@ export class UserScopeService implements IScopeService {
    * @param sourceDir
    * @param targetDir
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async copySkillDirectory(sourceDir: string, targetDir: string): Promise<void> {
     await this.ensureDirectory(targetDir);
 
@@ -829,6 +836,7 @@ export class UserScopeService implements IScopeService {
    * Remove skill directory recursively
    * @param dir
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async removeSkillDirectory(dir: string): Promise<void> {
     if (!fs.existsSync(dir)) {
       return;
@@ -856,7 +864,7 @@ export class UserScopeService implements IScopeService {
    * Get skills status
    * @param scope
    */
-  async getSkillsStatus(scope: 'user' | 'workspace' = 'user'): Promise<{
+  public async getSkillsStatus(scope: 'user' | 'workspace' = 'user'): Promise<{
     skillsDir: string;
     dirExists: boolean;
     skills: string[];

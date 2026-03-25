@@ -112,7 +112,7 @@ suite('E2E: Npm Install Integration Tests', () => {
 
       // Mock child_process.spawn to prevent actual npm execution
       const childProcess = require('node:child_process');
-      const spawnStub = sandbox.stub(childProcess, 'spawn').callsFake((...spawnArgs: any[]) => {
+      const spawnStub = sandbox.stub(childProcess, 'spawn').callsFake((..._spawnArgs: any[]) => {
         const mockProcess = {
           on: (event: string, callback: (...args: unknown[]) => void) => {
             if (event === 'close') {
@@ -139,7 +139,8 @@ suite('E2E: Npm Install Integration Tests', () => {
         });
 
       const npmWrapper = NpmCliWrapper.getInstance();
-      const result = await npmWrapper.installWithProgress(testDir);
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const _result = await npmWrapper.installWithProgress(testDir);
 
       assert.ok(spawnStub.called, 'Should attempt to spawn npm process');
     });

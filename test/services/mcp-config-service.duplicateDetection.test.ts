@@ -34,7 +34,8 @@ suite('McpConfigService - Duplicate Detection', () => {
     await fs.writeFile(mockTrackingPath, JSON.stringify(tracking, null, 2));
   };
 
-  const readTestConfig = async (): Promise<McpConfiguration> => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _readTestConfig = async (): Promise<McpConfiguration> => {
     const content = await fs.readFile(mockConfigPath, 'utf8');
     return JSON.parse(content.toString());
   };

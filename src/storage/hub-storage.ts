@@ -86,7 +86,8 @@ export class HubStorage {
    * @param config Hub configuration to save
    * @param reference Hub reference information
    */
-  async saveHub(hubId: string, config: HubConfig, reference: HubReference): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/require-await
+  public async saveHub(hubId: string, config: HubConfig, reference: HubReference): Promise<void> {
     this.validateHubId(hubId);
 
     const paths = this.getHubPaths(hubId);
@@ -121,7 +122,8 @@ export class HubStorage {
    * @param forceReload Bypass cache and reload from disk
    * @returns Loaded hub configuration and reference
    */
-  async loadHub(hubId: string, forceReload = false): Promise<LoadHubResult> {
+  // eslint-disable-next-line @typescript-eslint/require-await
+  public async loadHub(hubId: string, forceReload = false): Promise<LoadHubResult> {
     this.validateHubId(hubId);
 
     // Check cache first
@@ -171,7 +173,8 @@ export class HubStorage {
    * @param hubId Hub identifier to check
    * @returns True if hub exists, false otherwise
    */
-  async hubExists(hubId: string): Promise<boolean> {
+  // eslint-disable-next-line @typescript-eslint/require-await
+  public async hubExists(hubId: string): Promise<boolean> {
     this.validateHubId(hubId);
 
     const paths = this.getHubPaths(hubId);
@@ -182,7 +185,8 @@ export class HubStorage {
    * Delete hub from storage
    * @param hubId Hub identifier to delete
    */
-  async deleteHub(hubId: string): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/require-await
+  public async deleteHub(hubId: string): Promise<void> {
     this.validateHubId(hubId);
 
     const paths = this.getHubPaths(hubId);
@@ -225,7 +229,8 @@ export class HubStorage {
    * List all stored hubs
    * @returns Array of hub IDs
    */
-  async listHubs(): Promise<string[]> {
+  // eslint-disable-next-line @typescript-eslint/require-await
+  public async listHubs(): Promise<string[]> {
     try {
       const files = fs.readdirSync(this.storagePath);
       const hubIds: string[] = [];
@@ -248,7 +253,8 @@ export class HubStorage {
    * @param hubId Hub identifier
    * @returns Hub metadata
    */
-  async getHubMetadata(hubId: string): Promise<HubMetadata> {
+  // eslint-disable-next-line @typescript-eslint/require-await
+  public async getHubMetadata(hubId: string): Promise<HubMetadata> {
     this.validateHubId(hubId);
 
     const paths = this.getHubPaths(hubId);
@@ -269,7 +275,7 @@ export class HubStorage {
    * Clear cache for specific hub or all hubs
    * @param hubId Optional hub ID to clear, or undefined to clear all
    */
-  clearCache(hubId?: string): void {
+  public clearCache(hubId?: string): void {
     if (hubId) {
       this.cache.delete(hubId);
     } else {
@@ -281,7 +287,7 @@ export class HubStorage {
    * Get storage path
    * @returns Absolute path to storage directory
    */
-  getStoragePath(): string {
+  public getStoragePath(): string {
     return this.storagePath;
   }
 
@@ -291,7 +297,7 @@ export class HubStorage {
    * @param profileId
    * @param state
    */
-  async saveProfileActivationState(
+  public async saveProfileActivationState(
     hubId: string,
     profileId: string,
     state: ProfileActivationState
@@ -308,7 +314,7 @@ export class HubStorage {
    * @param hubId
    * @param profileId
    */
-  async getProfileActivationState(
+  public async getProfileActivationState(
     hubId: string,
     profileId: string
   ): Promise<ProfileActivationState | null> {
@@ -331,7 +337,7 @@ export class HubStorage {
    * @param hubId
    * @param profileId
    */
-  async deleteProfileActivationState(
+  public async deleteProfileActivationState(
     hubId: string,
     profileId: string
   ): Promise<void> {
@@ -349,7 +355,7 @@ export class HubStorage {
   /**
    * List all active profiles
    */
-  async listActiveProfiles(): Promise<ProfileActivationState[]> {
+  public async listActiveProfiles(): Promise<ProfileActivationState[]> {
     const stateDir = path.join(this.storagePath, 'profile-activations');
 
     if (!fs.existsSync(stateDir)) {
@@ -376,7 +382,7 @@ export class HubStorage {
    * Get active profile for a specific hub
    * @param hubId
    */
-  async getActiveProfileForHub(hubId: string): Promise<ProfileActivationState | null> {
+  public async getActiveProfileForHub(hubId: string): Promise<ProfileActivationState | null> {
     const allActive = await this.listActiveProfiles();
     return allActive.find((state) => state.hubId === hubId) || null;
   }
@@ -387,7 +393,7 @@ export class HubStorage {
    * @param profileId
    * @param active
    */
-  async setProfileActiveFlag(
+  public async setProfileActiveFlag(
     hubId: string,
     profileId: string,
     active: boolean
@@ -408,7 +414,7 @@ export class HubStorage {
    * Get the ID of the currently active hub
    * @returns Active hub ID or null if none set
    */
-  async getActiveHubId(): Promise<string | null> {
+  public async getActiveHubId(): Promise<string | null> {
     const activeHubPath = path.join(this.storagePath, 'activeHubId.json');
 
     if (!fs.existsSync(activeHubPath)) {
@@ -429,7 +435,7 @@ export class HubStorage {
    * Set the currently active hub
    * @param hubId Hub identifier to set as active (or null to clear)
    */
-  async setActiveHubId(hubId: string | null): Promise<void> {
+  public async setActiveHubId(hubId: string | null): Promise<void> {
     const activeHubPath = path.join(this.storagePath, 'activeHubId.json');
 
     if (hubId === null) {
@@ -463,7 +469,7 @@ export class HubStorage {
    * Get favorite profiles
    * @returns Record<hubId, profileIds[]>
    */
-  async getFavoriteProfiles(): Promise<Record<string, string[]>> {
+  public async getFavoriteProfiles(): Promise<Record<string, string[]>> {
     const favoritesPath = path.join(this.storagePath, 'favorites.json');
     if (!fs.existsSync(favoritesPath)) {
       return {};
@@ -480,7 +486,7 @@ export class HubStorage {
    * Save favorite profiles
    * @param favorites
    */
-  async saveFavoriteProfiles(favorites: Record<string, string[]>): Promise<void> {
+  public async saveFavoriteProfiles(favorites: Record<string, string[]>): Promise<void> {
     const favoritesPath = path.join(this.storagePath, 'favorites.json');
     await fs.promises.writeFile(favoritesPath, JSON.stringify(favorites, null, 2), 'utf8');
   }

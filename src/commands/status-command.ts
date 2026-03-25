@@ -66,7 +66,7 @@ export class StatusCommand {
           if (action === 'Update Now') {
             vscode.commands.executeCommand('promptregistry.update');
           } else if (action === 'Show Details') {
-            this.showUpdateDetails(updateChecks);
+            void this.showUpdateDetails(updateChecks);
           }
         })
         : vscode.window.showInformationMessage(message));
@@ -124,7 +124,7 @@ export class StatusCommand {
         if (action === 'Check for Updates') {
           vscode.commands.executeCommand('promptregistry.checkUpdates');
         } else if (action === 'Show Installation Folder') {
-          this.showInstallationFolder(installedScopes[0]);
+          void this.showInstallationFolder(installedScopes[0]);
         }
       });
     } catch (error) {
@@ -229,6 +229,7 @@ export class StatusCommand {
   /**
    * Show help documentation
    */
+  // eslint-disable-next-line @typescript-eslint/require-await
   public async showHelp(): Promise<void> {
     const helpContent = `
 # Prompt Registry VSCode Extension Help
@@ -295,6 +296,7 @@ Configure Prompt Registry behavior in VS Code settings under "Prompt Registry" s
         `;
   }
 
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async showUpdateDetails(updateChecks: any[]): Promise<void> {
     const details = updateChecks.map((check) => {
       return check.hasUpdate ? `${check.scope}: ${check.currentVersion} → ${check.latestVersion}` : `${check.scope}: ${check.currentVersion} (up to date)`;
@@ -310,6 +312,7 @@ Configure Prompt Registry behavior in VS Code settings under "Prompt Registry" s
     });
   }
 
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async showInstallationFolder(scope: any): Promise<void> {
     try {
       const installationInfo = await this.installationManager.getInstallationInfo(scope);
@@ -322,6 +325,7 @@ Configure Prompt Registry behavior in VS Code settings under "Prompt Registry" s
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async selectUninstallScope(installedScopes: any[]): Promise<string | undefined> {
     if (installedScopes.length === 1) {
       return installedScopes[0];

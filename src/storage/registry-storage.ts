@@ -24,7 +24,8 @@ const writeFile = promisify(fs.writeFile);
 const mkdir = promisify(fs.mkdir);
 const readdir = promisify(fs.readdir);
 const unlink = promisify(fs.unlink);
-const stat = promisify(fs.stat);
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _stat = promisify(fs.stat);
 
 /**
  * Storage paths
@@ -72,7 +73,9 @@ export class RegistryStorage {
   private configCache?: RegistryConfig;
 
   // Constants for ID sanitization
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private static readonly MAX_FILENAME_LENGTH = 200;
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private static readonly ALLOWED_CHARS_REGEX = /[^A-Za-z0-9._-]/g;
 
   constructor(private readonly context: vscode.ExtensionContext) {
@@ -95,14 +98,14 @@ export class RegistryStorage {
   /**
    * Get the extension context
    */
-  getContext(): vscode.ExtensionContext {
+  public getContext(): vscode.ExtensionContext {
     return this.context;
   }
 
   /**
    * Initialize storage directories
    */
-  async initialize(): Promise<void> {
+  public async initialize(): Promise<void> {
     await this.ensureDirectories();
 
     // Create default config if doesn't exist
@@ -114,6 +117,7 @@ export class RegistryStorage {
   /**
    * Ensure all required directories exist
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async ensureDirectories(): Promise<void> {
     const dirs = [
       this.paths.root,
@@ -137,7 +141,7 @@ export class RegistryStorage {
   /**
    * Load registry configuration
    */
-  async loadConfig(): Promise<RegistryConfig> {
+  public async loadConfig(): Promise<RegistryConfig> {
     if (this.configCache) {
       return this.configCache;
     }
@@ -161,7 +165,7 @@ export class RegistryStorage {
    * Save registry configuration
    * @param config
    */
-  async saveConfig(config: RegistryConfig): Promise<void> {
+  public async saveConfig(config: RegistryConfig): Promise<void> {
     const data = JSON.stringify(config, null, 2);
     await writeFile(this.paths.config, data, 'utf8');
     this.configCache = config;
@@ -170,7 +174,7 @@ export class RegistryStorage {
   /**
    * Get storage paths
    */
-  getPaths(): StoragePaths {
+  public getPaths(): StoragePaths {
     return { ...this.paths };
   }
 
@@ -181,6 +185,7 @@ export class RegistryStorage {
    * @param id - The bundle ID, source ID, or other identifier
    * @returns Sanitized string safe for use in filenames
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private sanitizeFilename(id: string): string {
     if (!id || id.length === 0) {
       throw new Error('ID cannot be empty');
@@ -203,7 +208,7 @@ export class RegistryStorage {
    * Add a source to configuration
    * @param source
    */
-  async addSource(source: RegistrySource): Promise<void> {
+  public async addSource(source: RegistrySource): Promise<void> {
     const config = await this.loadConfig();
 
     // Check for duplicate IDs
@@ -220,7 +225,7 @@ export class RegistryStorage {
    * @param sourceId
    * @param updates
    */
-  async updateSource(sourceId: string, updates: Partial<RegistrySource>): Promise<void> {
+  public async updateSource(sourceId: string, updates: Partial<RegistrySource>): Promise<void> {
     const config = await this.loadConfig();
     const index = config.sources.findIndex((s) => s.id === sourceId);
 
@@ -236,7 +241,7 @@ export class RegistryStorage {
    * Remove a source
    * @param sourceId
    */
-  async removeSource(sourceId: string): Promise<void> {
+  public async removeSource(sourceId: string): Promise<void> {
     const config = await this.loadConfig();
     config.sources = config.sources.filter((s) => s.id !== sourceId);
     await this.saveConfig(config);
@@ -248,7 +253,7 @@ export class RegistryStorage {
   /**
    * Get all sources
    */
-  async getSources(): Promise<RegistrySource[]> {
+  public async getSources(): Promise<RegistrySource[]> {
     const config = await this.loadConfig();
     return config.sources;
   }
@@ -259,7 +264,7 @@ export class RegistryStorage {
    * Add a profile
    * @param profile
    */
-  async addProfile(profile: Profile): Promise<void> {
+  public async addProfile(profile: Profile): Promise<void> {
     const config = await this.loadConfig();
 
     if (config.profiles.some((p) => p.id === profile.id)) {
@@ -275,7 +280,7 @@ export class RegistryStorage {
    * @param profileId
    * @param updates
    */
-  async updateProfile(profileId: string, updates: Partial<Profile>): Promise<void> {
+  public async updateProfile(profileId: string, updates: Partial<Profile>): Promise<void> {
     const config = await this.loadConfig();
     const index = config.profiles.findIndex((p) => p.id === profileId);
 
@@ -291,7 +296,7 @@ export class RegistryStorage {
    * Remove a profile
    * @param profileId
    */
-  async removeProfile(profileId: string): Promise<void> {
+  public async removeProfile(profileId: string): Promise<void> {
     const config = await this.loadConfig();
     config.profiles = config.profiles.filter((p) => p.id !== profileId);
     await this.saveConfig(config);
@@ -300,7 +305,7 @@ export class RegistryStorage {
   /**
    * Get all profiles
    */
-  async getProfiles(): Promise<Profile[]> {
+  public async getProfiles(): Promise<Profile[]> {
     const config = await this.loadConfig();
     return config.profiles;
   }
@@ -308,7 +313,7 @@ export class RegistryStorage {
   /**
    * Get active profile
    */
-  async getActiveProfile(): Promise<Profile | undefined> {
+  public async getActiveProfile(): Promise<Profile | undefined> {
     const config = await this.loadConfig();
     return config.profiles.find((p) => p.active);
   }
@@ -319,7 +324,7 @@ export class RegistryStorage {
    * Cache bundle metadata
    * @param bundle
    */
-  async cacheBundleMetadata(bundle: Bundle): Promise<void> {
+  public async cacheBundleMetadata(bundle: Bundle): Promise<void> {
     const sanitizedId = this.sanitizeFilename(bundle.id);
     const filepath = path.join(this.paths.bundlesCache, `${sanitizedId}.json`);
     const data = JSON.stringify(bundle, null, 2);
@@ -330,7 +335,7 @@ export class RegistryStorage {
    * Get cached bundle metadata
    * @param bundleId
    */
-  async getCachedBundleMetadata(bundleId: string): Promise<Bundle | undefined> {
+  public async getCachedBundleMetadata(bundleId: string): Promise<Bundle | undefined> {
     try {
       const sanitizedId = this.sanitizeFilename(bundleId);
       const filepath = path.join(this.paths.bundlesCache, `${sanitizedId}.json`);
@@ -346,7 +351,7 @@ export class RegistryStorage {
    * @param sourceId
    * @param bundles
    */
-  async cacheSourceBundles(sourceId: string, bundles: Bundle[]): Promise<void> {
+  public async cacheSourceBundles(sourceId: string, bundles: Bundle[]): Promise<void> {
     const sanitizedId = this.sanitizeFilename(sourceId);
     const filepath = path.join(this.paths.sourcesCache, `${sanitizedId}.json`);
     const data = JSON.stringify(bundles, null, 2);
@@ -357,7 +362,7 @@ export class RegistryStorage {
    * Get cached source bundles
    * @param sourceId
    */
-  async getCachedSourceBundles(sourceId: string): Promise<Bundle[]> {
+  public async getCachedSourceBundles(sourceId: string): Promise<Bundle[]> {
     try {
       const sanitizedId = this.sanitizeFilename(sourceId);
       const filepath = path.join(this.paths.sourcesCache, `${sanitizedId}.json`);
@@ -372,7 +377,7 @@ export class RegistryStorage {
    * Clear source cache
    * @param sourceId
    */
-  async clearSourceCache(sourceId: string): Promise<void> {
+  public async clearSourceCache(sourceId: string): Promise<void> {
     try {
       const sanitizedId = this.sanitizeFilename(sourceId);
       const filepath = path.join(this.paths.sourcesCache, `${sanitizedId}.json`);
@@ -387,7 +392,7 @@ export class RegistryStorage {
   /**
    * Clear all caches
    */
-  async clearAllCaches(): Promise<void> {
+  public async clearAllCaches(): Promise<void> {
     try {
       const files = await readdir(this.paths.bundlesCache);
       for (const file of files) {
@@ -413,7 +418,7 @@ export class RegistryStorage {
    * Record installed bundle
    * @param bundle
    */
-  async recordInstallation(bundle: InstalledBundle): Promise<void> {
+  public async recordInstallation(bundle: InstalledBundle): Promise<void> {
     const filepath = this.getInstalledBundlePath(bundle);
     const data = JSON.stringify(bundle, null, 2);
     await writeFile(filepath, data, 'utf8');
@@ -424,7 +429,7 @@ export class RegistryStorage {
    * @param bundleId
    * @param scope
    */
-  async removeInstallation(bundleId: string, scope: InstallationScope): Promise<void> {
+  public async removeInstallation(bundleId: string, scope: InstallationScope): Promise<void> {
     // Repository scope bundles are tracked via LockfileManager, not RegistryStorage.
     // See: src/services/LockfileManager.ts - remove() method
     if (scope === 'repository') {
@@ -443,7 +448,7 @@ export class RegistryStorage {
    * Get all installed bundles
    * @param scope
    */
-  async getInstalledBundles(scope?: InstallationScope): Promise<InstalledBundle[]> {
+  public async getInstalledBundles(scope?: InstallationScope): Promise<InstalledBundle[]> {
     const bundles: InstalledBundle[] = [];
 
     // Get the list of scopes to query
@@ -481,6 +486,7 @@ export class RegistryStorage {
    * @param scope - Optional scope to filter by
    * @returns Array of supported scopes to query
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private getSupportedScopes(scope?: InstallationScope): ('user' | 'workspace')[] {
     // Repository scope bundles are tracked via LockfileManager, not RegistryStorage
     if (scope === 'repository') {
@@ -498,7 +504,7 @@ export class RegistryStorage {
    * @param bundleId
    * @param scope
    */
-  async getInstalledBundle(bundleId: string, scope: InstallationScope): Promise<InstalledBundle | undefined> {
+  public async getInstalledBundle(bundleId: string, scope: InstallationScope): Promise<InstalledBundle | undefined> {
     // Repository scope bundles are tracked via LockfileManager, not RegistryStorage.
     // See: src/services/LockfileManager.ts - read() method for repository bundle queries
     if (scope === 'repository') {
@@ -519,6 +525,7 @@ export class RegistryStorage {
    * Get installation path for bundle
    * @param bundle
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private getInstalledBundlePath(bundle: InstalledBundle): string {
     const scopePath = bundle.scope === 'user' ? this.paths.userInstalled : this.paths.installed;
     const sanitizedId = this.sanitizeFilename(bundle.bundleId);
@@ -531,7 +538,7 @@ export class RegistryStorage {
    * Update settings
    * @param updates
    */
-  async updateSettings(updates: Partial<RegistrySettings>): Promise<void> {
+  public async updateSettings(updates: Partial<RegistrySettings>): Promise<void> {
     const config = await this.loadConfig();
     config.settings = { ...config.settings, ...updates };
     await this.saveConfig(config);
@@ -540,7 +547,7 @@ export class RegistryStorage {
   /**
    * Get settings
    */
-  async getSettings(): Promise<RegistrySettings> {
+  public async getSettings(): Promise<RegistrySettings> {
     const config = await this.loadConfig();
     return config.settings;
   }
@@ -548,7 +555,7 @@ export class RegistryStorage {
   /**
    * Clear all data (sources, profiles, caches) - used for replace import strategy
    */
-  async clearAll(): Promise<void> {
+  public async clearAll(): Promise<void> {
     // Reset config to defaults
     const config: RegistryConfig = {
       version: '1.0.0',
@@ -567,12 +574,14 @@ export class RegistryStorage {
   /**
    * Bundle update preferences
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private readonly UPDATE_PREFERENCES_KEY = 'bundleUpdatePreferences';
 
   /**
    * Get all update preferences
    */
-  async getUpdatePreferences(): Promise<Record<string, { autoUpdate: boolean; lastChecked?: string }>> {
+  // eslint-disable-next-line @typescript-eslint/require-await
+  public async getUpdatePreferences(): Promise<Record<string, { autoUpdate: boolean; lastChecked?: string }>> {
     const prefs = this.context.globalState.get<Record<string, { autoUpdate: boolean; lastChecked?: string }>>(
       this.UPDATE_PREFERENCES_KEY,
       {}
@@ -585,7 +594,7 @@ export class RegistryStorage {
    * @param bundleId
    * @param autoUpdate
    */
-  async setUpdatePreference(bundleId: string, autoUpdate: boolean): Promise<void> {
+  public async setUpdatePreference(bundleId: string, autoUpdate: boolean): Promise<void> {
     const prefs = await this.getUpdatePreferences();
     prefs[bundleId] = {
       autoUpdate,
@@ -599,7 +608,7 @@ export class RegistryStorage {
    * Returns false if no preference is set
    * @param bundleId
    */
-  async getUpdatePreference(bundleId: string): Promise<boolean> {
+  public async getUpdatePreference(bundleId: string): Promise<boolean> {
     const prefs = await this.getUpdatePreferences();
     return prefs[bundleId]?.autoUpdate ?? false;
   }

@@ -37,7 +37,7 @@ export class PromptExecutor {
    * Execute a prompt with the language model
    * @param options
    */
-  async execute(options: PromptExecutionOptions): Promise<void> {
+  public async execute(options: PromptExecutionOptions): Promise<void> {
     const { promptContent, userInput, context, stream, token } = options;
 
     try {
@@ -106,6 +106,7 @@ export class PromptExecutor {
    * @param context.fileName
    * @param context.language
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private buildMessages(
     promptContent: string,
     userInput: string,
@@ -151,7 +152,7 @@ export class PromptExecutor {
    * @param variables
    * @param options
    */
-  async executeWithTemplates(
+  public async executeWithTemplates(
     promptTemplate: string,
     variables: Record<string, string>,
     options: PromptExecutionOptions
@@ -172,7 +173,7 @@ export class PromptExecutor {
   /**
    * Test if Language Model API is available
    */
-  async isAvailable(): Promise<boolean> {
+  public async isAvailable(): Promise<boolean> {
     try {
       if (!vscode.lm) {
         return false;
@@ -188,7 +189,7 @@ export class PromptExecutor {
   /**
    * Get available language models
    */
-  async getAvailableModels(): Promise<{ vendor: string; family: string; name: string }[]> {
+  public async getAvailableModels(): Promise<{ vendor: string; family: string; name: string }[]> {
     try {
       if (!vscode.lm) {
         return [];

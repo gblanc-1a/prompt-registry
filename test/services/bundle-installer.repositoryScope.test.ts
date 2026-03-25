@@ -124,7 +124,7 @@ suite('BundleInstaller - Repository Scope', () => {
     } as any;
 
     // Stub ScopeServiceFactory
-    sandbox.stub(ScopeServiceFactory, 'create').callsFake((scope, context, workspaceRoot, storage) => {
+    sandbox.stub(ScopeServiceFactory, 'create').callsFake((scope, _context, _workspaceRoot, _storage) => {
       if (scope === 'repository') {
         return mockRepositoryScopeService as unknown as IScopeService;
       }
@@ -167,6 +167,7 @@ suite('BundleInstaller - Repository Scope', () => {
       // (The current implementation throws "Repository scope installation is not yet implemented")
 
       // Create a minimal valid bundle buffer
+      // eslint-disable-next-line @typescript-eslint/naming-convention
       const AdmZip = require('adm-zip');
       const zip = new AdmZip();
       zip.addFile('deployment-manifest.yml', Buffer.from(`
@@ -193,7 +194,7 @@ prompts: []
       }
     });
 
-    test('should continue to support user scope', async () => {
+    test('should continue to support user scope', () => {
       // Requirements: 9.1-9.5 - Backward compatibility
       const options: InstallOptions = {
         scope: 'user'
@@ -203,7 +204,7 @@ prompts: []
       assert.strictEqual(options.scope, 'user');
     });
 
-    test('should continue to support workspace scope', async () => {
+    test('should continue to support workspace scope', () => {
       // Requirements: 9.1-9.5 - Backward compatibility
       const options: InstallOptions = {
         scope: 'workspace'
@@ -218,8 +219,8 @@ prompts: []
       // Requirements: 1.1, 1.8
       // Verify that installation uses ScopeServiceFactory for repository scope
 
-      // eslint-disable-next-line @typescript-eslint/unbound-method
-      const factoryStub = ScopeServiceFactory.create as sinon.SinonStub;
+      // eslint-disable-next-line @typescript-eslint/unbound-method, @typescript-eslint/no-unused-vars
+      const _factoryStub = ScopeServiceFactory.create as sinon.SinonStub;
 
       // Trigger installation (will fail but should call factory)
       const options: InstallOptions = {
@@ -228,6 +229,7 @@ prompts: []
       };
 
       try {
+        // eslint-disable-next-line @typescript-eslint/naming-convention
         const AdmZip = require('adm-zip');
         const zip = new AdmZip();
         zip.addFile('deployment-manifest.yml', Buffer.from(`
@@ -254,6 +256,7 @@ prompts: []
       };
 
       // Build a minimal skills bundle zip with deployment-manifest and SKILL.md
+      // eslint-disable-next-line @typescript-eslint/naming-convention
       const AdmZip = require('adm-zip');
       const zip = new AdmZip();
       zip.addFile('deployment-manifest.yml', Buffer.from(`
@@ -289,6 +292,7 @@ prompts:
       };
 
       try {
+        // eslint-disable-next-line @typescript-eslint/naming-convention
         const AdmZip = require('adm-zip');
         const zip = new AdmZip();
         zip.addFile('deployment-manifest.yml', Buffer.from(`
@@ -320,6 +324,7 @@ prompts: []
       mockLockfileManager.createOrUpdate.resetHistory();
 
       try {
+        // eslint-disable-next-line @typescript-eslint/naming-convention
         const AdmZip = require('adm-zip');
         const zip = new AdmZip();
         zip.addFile('deployment-manifest.yml', Buffer.from(`
@@ -349,6 +354,7 @@ prompts: []
       };
 
       try {
+        // eslint-disable-next-line @typescript-eslint/naming-convention
         const AdmZip = require('adm-zip');
         const zip = new AdmZip();
         zip.addFile('deployment-manifest.yml', Buffer.from(`
@@ -442,6 +448,7 @@ prompts: []
       };
 
       try {
+        // eslint-disable-next-line @typescript-eslint/naming-convention
         const AdmZip = require('adm-zip');
         const zip = new AdmZip();
         zip.addFile('deployment-manifest.yml', Buffer.from(`
@@ -468,6 +475,7 @@ prompts: []
       };
 
       try {
+        // eslint-disable-next-line @typescript-eslint/naming-convention
         const AdmZip = require('adm-zip');
         const zip = new AdmZip();
         zip.addFile('deployment-manifest.yml', Buffer.from(`
@@ -478,7 +486,8 @@ description: Test
 author: test
 prompts: []
 `));
-        const result = await installer.installFromBuffer(testBundle, zip.toBuffer(), options, 'github', 'test-source');
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const _result = await installer.installFromBuffer(testBundle, zip.toBuffer(), options, 'github', 'test-source');
 
         // After implementation, verify commitMode is in the result
         // assert.strictEqual(result.commitMode, 'commit', 'Should record commitMode in InstalledBundle');
@@ -497,6 +506,7 @@ prompts: []
       };
 
       try {
+        // eslint-disable-next-line @typescript-eslint/naming-convention
         const AdmZip = require('adm-zip');
         const zip = new AdmZip();
         zip.addFile('deployment-manifest.yml', Buffer.from(`
@@ -525,6 +535,7 @@ prompts: []
       };
 
       try {
+        // eslint-disable-next-line @typescript-eslint/naming-convention
         const AdmZip = require('adm-zip');
         const zip = new AdmZip();
         zip.addFile('deployment-manifest.yml', Buffer.from(`
@@ -567,6 +578,7 @@ prompts:
       };
 
       try {
+        // eslint-disable-next-line @typescript-eslint/naming-convention
         const AdmZip = require('adm-zip');
         const zip = new AdmZip();
         zip.addFile('deployment-manifest.yml', Buffer.from(`
@@ -600,6 +612,7 @@ prompts: []
       };
 
       try {
+        // eslint-disable-next-line @typescript-eslint/naming-convention
         const AdmZip = require('adm-zip');
         const zip = new AdmZip();
         zip.addFile('deployment-manifest.yml', Buffer.from(`
@@ -632,6 +645,7 @@ prompts: []
       };
 
       try {
+        // eslint-disable-next-line @typescript-eslint/naming-convention
         const AdmZip = require('adm-zip');
         const zip = new AdmZip();
         zip.addFile('deployment-manifest.yml', Buffer.from(`
@@ -663,6 +677,7 @@ prompts: []
       };
 
       try {
+        // eslint-disable-next-line @typescript-eslint/naming-convention
         const AdmZip = require('adm-zip');
         const zip = new AdmZip();
         zip.addFile('deployment-manifest.yml', Buffer.from(`

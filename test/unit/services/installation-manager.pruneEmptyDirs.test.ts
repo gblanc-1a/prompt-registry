@@ -13,10 +13,10 @@ import {
  * Mock Logger for testing - captures logs for verification
  */
 class MockLogger {
-  info(_message: string): void { /* no-op */ }
-  warn(_message: string): void { /* no-op */ }
-  debug(_message: string, _error?: Error): void { /* no-op */ }
-  error(_message: string, _error?: Error): void { /* no-op */ }
+  public info(_message: string): void { /* no-op */ }
+  public warn(_message: string): void { /* no-op */ }
+  public debug(_message: string, _error?: Error): void { /* no-op */ }
+  public error(_message: string, _error?: Error): void { /* no-op */ }
 }
 
 /**
@@ -25,11 +25,11 @@ class MockLogger {
 class MockPlatformDetector {
   constructor(private readonly testInstallPath: string) {}
 
-  async detectPlatform() {
+  public detectPlatform() {
     return { platform: 'vscode' };
   }
 
-  getInstallationPath(_platform: string, scope: InstallationScope): string {
+  public getInstallationPath(_platform: string, scope: InstallationScope): string {
     return path.join(this.testInstallPath, `.olaf-${scope}`);
   }
 }
@@ -40,7 +40,7 @@ suite('InstallationManager.pruneEmptyDirs Test Suite', () => {
   let originalLogger: unknown;
   let originalPlatformDetector: unknown;
 
-  setup(async () => {
+  setup(() => {
     // Create temporary directory for testing
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'olaf-test-'));
 

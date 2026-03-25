@@ -82,7 +82,7 @@ export class AutoUpdateService {
    * Prevents concurrent updates and shows notifications on completion
    * @param options
    */
-  async autoUpdateBundle(options: AutoUpdateOptions): Promise<void> {
+  public async autoUpdateBundle(options: AutoUpdateOptions): Promise<void> {
     this.validateUpdateOptions(options);
 
     const { bundleId, targetVersion } = options;
@@ -115,7 +115,7 @@ export class AutoUpdateService {
    * Processes bundles in parallel batches and reports summary
    * @param updates
    */
-  async autoUpdateBundles(updates: UpdateCheckResult[]): Promise<void> {
+  public async autoUpdateBundles(updates: UpdateCheckResult[]): Promise<void> {
     // Input validation
     if (!Array.isArray(updates)) {
       throw new TypeError('Updates must be an array');
@@ -183,7 +183,7 @@ export class AutoUpdateService {
    * Check if auto-update is enabled for a bundle
    * @param bundleId
    */
-  async isAutoUpdateEnabled(bundleId: string): Promise<boolean> {
+  public async isAutoUpdateEnabled(bundleId: string): Promise<boolean> {
     return await this.storage.getUpdatePreference(bundleId);
   }
 
@@ -193,7 +193,7 @@ export class AutoUpdateService {
    * This is used by UI layers (tree view, marketplace) to avoid
    * per-bundle storage I/O when rendering lists of bundles.
    */
-  async getAllAutoUpdatePreferences(): Promise<Record<string, boolean>> {
+  public async getAllAutoUpdatePreferences(): Promise<Record<string, boolean>> {
     const rawPrefs = await this.storage.getUpdatePreferences();
     const result: Record<string, boolean> = {};
 
@@ -213,7 +213,7 @@ export class AutoUpdateService {
    * @param bundleId The bundle ID
    * @param enabled Whether to enable auto-update
    */
-  async setAutoUpdate(bundleId: string, enabled: boolean): Promise<void> {
+  public async setAutoUpdate(bundleId: string, enabled: boolean): Promise<void> {
     this.logger.info(`Setting auto-update for bundle '${bundleId}' to ${enabled}`);
     await this.storage.setUpdatePreference(bundleId, enabled);
   }
@@ -222,14 +222,14 @@ export class AutoUpdateService {
    * Check if an update is currently in progress for a bundle
    * @param bundleId
    */
-  isUpdateInProgress(bundleId: string): boolean {
+  public isUpdateInProgress(bundleId: string): boolean {
     return this.activeUpdates.has(bundleId);
   }
 
   /**
    * Get list of bundles currently being updated
    */
-  getActiveUpdates(): string[] {
+  public getActiveUpdates(): string[] {
     return Array.from(this.activeUpdates);
   }
 
@@ -237,6 +237,7 @@ export class AutoUpdateService {
    * Validate update options
    * @param options
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private validateUpdateOptions(options: AutoUpdateOptions): void {
     if (!options.bundleId?.trim()) {
       throw new Error('Bundle ID is required and cannot be empty');
@@ -250,6 +251,7 @@ export class AutoUpdateService {
    * Ensure update is not already in progress
    * @param bundleId
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private ensureUpdateNotInProgress(bundleId: string): void {
     if (this.isUpdateInProgress(bundleId)) {
       this.logger.warn(`Update already in progress for bundle '${bundleId}'`);
@@ -261,6 +263,7 @@ export class AutoUpdateService {
    * Capture current version before update for rollback
    * @param bundleId
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async captureCurrentVersion(bundleId: string): Promise<string | null> {
     const installedBefore = await this.bundleOps.listInstalledBundles();
     return installedBefore.find((b) => b.bundleId === bundleId)?.version ?? null;
@@ -271,6 +274,7 @@ export class AutoUpdateService {
    * @param bundleId
    * @param targetVersion
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async performUpdateWithVerification(bundleId: string, targetVersion: string): Promise<void> {
     // CRITICAL: Sync source before updating (only for GitHub release sources)
     await this.syncSourceForBundle(bundleId);
@@ -290,6 +294,7 @@ export class AutoUpdateService {
    * @param previousVersion
    * @param targetVersion
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async showSuccessNotification(bundleId: string, previousVersion: string | null, targetVersion: string): Promise<void> {
     await this.bundleNotifications.showAutoUpdateComplete(
       bundleId,
@@ -304,6 +309,7 @@ export class AutoUpdateService {
    * @param errorMsg
    * @param previousVersion
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async handleUpdateFailure(bundleId: string, errorMsg: string, previousVersion: string | null): Promise<void> {
     if (previousVersion) {
       try {
@@ -332,6 +338,7 @@ export class AutoUpdateService {
    * @param bundleId
    * @param previousVersion
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async performRollback(bundleId: string, previousVersion: string): Promise<void> {
     this.logger.info(`Attempting rollback to version ${previousVersion}`);
     await this.bundleOps.updateBundle(bundleId, previousVersion);
@@ -347,6 +354,7 @@ export class AutoUpdateService {
    * @param bundleId
    * @param expectedVersion
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async verifyUpdate(bundleId: string, expectedVersion: string): Promise<boolean> {
     const updatedBundles = await this.bundleOps.listInstalledBundles();
     const bundle = updatedBundles.find((b) => b.bundleId === bundleId);
@@ -363,6 +371,7 @@ export class AutoUpdateService {
    * @param bundleId
    * @private
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async syncSourceForBundle(bundleId: string): Promise<void> {
     try {
       // Get bundle details to find its source

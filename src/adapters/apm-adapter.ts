@@ -99,7 +99,7 @@ interface CacheEntry {
  * ApmAdapter - Handles remote GitHub-based APM packages
  */
 export class ApmAdapter extends RepositoryAdapter {
-  readonly type = 'apm';
+  public readonly type = 'apm';
 
   private readonly config: Required<ApmAdapterConfig>;
   private readonly mapper: ApmPackageMapper;
@@ -148,6 +148,7 @@ export class ApmAdapter extends RepositoryAdapter {
    * 2. gh CLI (if installed and authenticated)
    * 3. Explicit token from source configuration
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async getAuthenticationToken(): Promise<string | undefined> {
     // Return cached token if already resolved
     if (this.authToken !== undefined) {
@@ -211,6 +212,7 @@ export class ApmAdapter extends RepositoryAdapter {
    * Security: Prevents URL injection attacks
    * @param url
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private isValidGitHubUrl(url: string): boolean {
     return GITHUB_URL_PATTERN.test(url);
   }
@@ -218,6 +220,7 @@ export class ApmAdapter extends RepositoryAdapter {
   /**
    * Parse owner and repo from GitHub URL
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private parseGitHubUrl(): { owner: string; repo: string } {
     const match = this.source.url.match(GITHUB_URL_PATTERN);
     if (!match) {
@@ -232,6 +235,7 @@ export class ApmAdapter extends RepositoryAdapter {
   /**
    * Ensure APM runtime is available
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async ensureRuntime(): Promise<void> {
     const status = await this.runtime.getStatus();
     if (!status.installed && !status.uvxAvailable) {
@@ -248,7 +252,7 @@ export class ApmAdapter extends RepositoryAdapter {
   /**
    * Fetch available bundles from GitHub repository
    */
-  async fetchBundles(): Promise<Bundle[]> {
+  public async fetchBundles(): Promise<Bundle[]> {
     this.logger.debug('[ApmAdapter] Fetching bundles...');
 
     // Check cache
@@ -274,6 +278,7 @@ export class ApmAdapter extends RepositoryAdapter {
   /**
    * Fetch packages from GitHub
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async fetchFromGitHub(): Promise<ApmBundle[]> {
     const { owner, repo } = this.parseGitHubUrl();
     const bundles: ApmBundle[] = [];
@@ -326,6 +331,7 @@ export class ApmAdapter extends RepositoryAdapter {
    * @param repo
    * @param branch
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async fetchGitTree(owner: string, repo: string, branch: string): Promise<{ path: string; type: string; sha: string }[]> {
     const url = `https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`;
 
@@ -352,6 +358,7 @@ export class ApmAdapter extends RepositoryAdapter {
    * @param repo
    * @param subpath
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async fetchApmManifest(
     owner: string,
     repo: string,
@@ -373,6 +380,7 @@ export class ApmAdapter extends RepositoryAdapter {
    * @param url
    * @param extraHeaders
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async httpsGet(url: string, extraHeaders?: Record<string, string>): Promise<string> {
     const token = await this.getAuthenticationToken();
 
@@ -409,7 +417,7 @@ export class ApmAdapter extends RepositoryAdapter {
    * Download a bundle by installing via APM CLI
    * @param bundle
    */
-  async downloadBundle(bundle: Bundle): Promise<Buffer> {
+  public async downloadBundle(bundle: Bundle): Promise<Buffer> {
     this.logger.debug(`[ApmAdapter] Downloading: ${bundle.id}`);
 
     await this.ensureRuntime();
@@ -437,6 +445,7 @@ export class ApmAdapter extends RepositoryAdapter {
   /**
    * Create temporary directory
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async createTempDir(): Promise<string> {
     const tempBase = path.join(os.tmpdir(), 'prompt-registry-apm');
     await fs.promises.mkdir(tempBase, { recursive: true });
@@ -447,6 +456,7 @@ export class ApmAdapter extends RepositoryAdapter {
    * Cleanup temporary directory
    * @param dir
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async cleanupTempDir(dir: string): Promise<void> {
     try {
       await fs.promises.rm(dir, { recursive: true, force: true });
@@ -460,6 +470,7 @@ export class ApmAdapter extends RepositoryAdapter {
    * @param bundle
    * @param installDir
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private createBundleArchive(bundle: Bundle, installDir: string): Promise<Buffer> {
     return new Promise<Buffer>((resolve, reject) => {
       const archive = archiver('zip', { zlib: { level: 9 } });
@@ -481,6 +492,7 @@ export class ApmAdapter extends RepositoryAdapter {
    * @param bundle
    * @param installDir
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async populateArchive(
     archive: archiver.Archiver,
     bundle: Bundle,
@@ -502,7 +514,8 @@ export class ApmAdapter extends RepositoryAdapter {
       const promptFiles = await this.findPromptFiles(modulesDir);
       for (const file of promptFiles) {
         const content = await fs.promises.readFile(file, 'utf8');
-        const relativePath = path.relative(modulesDir, file);
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const _relativePath = path.relative(modulesDir, file);
         archive.append(content, { name: `prompts/${path.basename(file)}` });
       }
     }
@@ -520,6 +533,7 @@ export class ApmAdapter extends RepositoryAdapter {
    * @param bundle
    * @param installDir
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async createDeploymentManifest(bundle: Bundle, installDir: string): Promise<any> {
     const apmManifestPath = path.join(installDir, 'apm.yml');
     let apmManifest: ApmManifest = { name: bundle.name };
@@ -575,6 +589,7 @@ export class ApmAdapter extends RepositoryAdapter {
    * @param dir
    * @param recursive
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async findPromptFiles(dir: string, recursive = true): Promise<string[]> {
     const files: string[] = [];
 
@@ -613,6 +628,7 @@ export class ApmAdapter extends RepositoryAdapter {
    * Detect file type from extension
    * @param filename
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private detectFileType(filename: string): 'prompt' | 'instructions' | 'chatmode' | 'agent' {
     if (filename.endsWith('.instructions.md')) {
       return 'instructions';
@@ -630,6 +646,7 @@ export class ApmAdapter extends RepositoryAdapter {
    * Convert to title case
    * @param str
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private titleCase(str: string): string {
     return str.split(' ')
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
@@ -639,7 +656,7 @@ export class ApmAdapter extends RepositoryAdapter {
   /**
    * Fetch source metadata
    */
-  async fetchMetadata(): Promise<SourceMetadata> {
+  public async fetchMetadata(): Promise<SourceMetadata> {
     const { owner, repo } = this.parseGitHubUrl();
     const bundles = await this.fetchBundles();
     const runtimeStatus = await this.runtime.getStatus();
@@ -656,7 +673,7 @@ export class ApmAdapter extends RepositoryAdapter {
   /**
    * Validate source
    */
-  async validate(): Promise<ValidationResult> {
+  public async validate(): Promise<ValidationResult> {
     const errors: string[] = [];
     const warnings: string[] = [];
 
@@ -682,12 +699,12 @@ export class ApmAdapter extends RepositoryAdapter {
     }
   }
 
-  getManifestUrl(bundleId: string, version?: string): string {
+  public getManifestUrl(_bundleId: string, _version?: string): string {
     const { owner, repo } = this.parseGitHubUrl();
     return `https://raw.githubusercontent.com/${owner}/${repo}/${this.config.branch}/apm.yml`;
   }
 
-  getDownloadUrl(bundleId: string, version?: string): string {
+  public getDownloadUrl(bundleId: string, version?: string): string {
     return this.getManifestUrl(bundleId, version);
   }
 }

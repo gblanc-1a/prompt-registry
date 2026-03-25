@@ -166,13 +166,13 @@ describe('Prompt Registry Integration Test Scenarios', () => {
       cleanupTestWorkspace(workspaceRoot);
     });
 
-    it('should successfully install and track all files with proper metadata', async () => {
+    it('should successfully install and track all files with proper metadata', () => {
       // TODO: Implement when InstallationManager is available
       // This test validates complete install workflow with metadata tracking
       console.log('Test placeholder: Install and track files with metadata validation');
     });
 
-    it('should successfully uninstall and restore all files', async () => {
+    it('should successfully uninstall and restore all files', () => {
       // TODO: Implement when InstallationManager is available
       // This test validates complete uninstall workflow with file restoration
       console.log('Test placeholder: Uninstall and restore files with cleanup validation');
@@ -200,7 +200,7 @@ describe('Prompt Registry Integration Test Scenarios', () => {
       cleanupTestWorkspace(workspaceRoot);
     });
 
-    it('should handle file modifications after installation', async () => {
+    it('should handle file modifications after installation', () => {
       // TODO: Implement when InstallationManager is available
       // This test validates handling of user-modified files during uninstall
       console.log('Test placeholder: Handle post-installation file modifications');
@@ -223,7 +223,7 @@ describe('Prompt Registry Integration Test Scenarios', () => {
       cleanupTestWorkspace(workspaceRoot);
     });
 
-    it('should handle file conflicts with overwrite enabled', async () => {
+    it('should handle file conflicts with overwrite enabled', () => {
       // TODO: Implement when InstallationManager conflict resolution is available
       // This test validates overwrite conflict resolution with backup creation
       console.log('Test placeholder: Handle conflicts with overwrite and backup');
@@ -246,13 +246,13 @@ describe('Prompt Registry Integration Test Scenarios', () => {
       cleanupTestWorkspace(workspaceRoot);
     });
 
-    it('should handle file conflicts with skip option', async () => {
+    it('should handle file conflicts with skip option', () => {
       // TODO: Implement when InstallationManager conflict resolution is available
       // This test validates skip conflict resolution
       console.log('Test placeholder: Handle conflicts with skip option');
     });
 
-    it('should handle file conflicts with prompt option (mock user choice)', async () => {
+    it('should handle file conflicts with prompt option (mock user choice)', () => {
       // TODO: Implement when InstallationManager prompt handling is available
       // This test validates prompt-based conflict resolution
       console.log('Test placeholder: Handle conflicts with user prompt (mocked)');

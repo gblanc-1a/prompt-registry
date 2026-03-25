@@ -29,7 +29,8 @@ export class CopilotIntegration implements vscode.Disposable {
   /**
    * Activate Copilot integration
    */
-  async activate(): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/require-await
+  public async activate(): Promise<void> {
     try {
       // Register chat participant
       this.participant = vscode.chat.createChatParticipant(
@@ -64,6 +65,7 @@ export class CopilotIntegration implements vscode.Disposable {
    * @param stream
    * @param token
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async handleRequest(
     request: vscode.ChatRequest,
     context: vscode.ChatContext,
@@ -101,6 +103,7 @@ export class CopilotIntegration implements vscode.Disposable {
    * Show help information
    * @param stream
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async showHelp(stream: vscode.ChatResponseStream): Promise<void> {
     const availablePrompts = await this.promptLoader.getAvailablePrompts();
 
@@ -138,6 +141,7 @@ export class CopilotIntegration implements vscode.Disposable {
    * List available prompts
    * @param stream
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async listPrompts(stream: vscode.ChatResponseStream): Promise<void> {
     const availablePrompts = await this.promptLoader.getAvailablePrompts();
 
@@ -172,6 +176,7 @@ export class CopilotIntegration implements vscode.Disposable {
    * @param stream
    * @param token
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async executePrompt(
     command: string,
     userInput: string,
@@ -216,6 +221,7 @@ export class CopilotIntegration implements vscode.Disposable {
   /**
    * Get current editor context
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private getEditorContext(): { selection?: string; fileName?: string; language?: string } {
     const editor = vscode.window.activeTextEditor;
     if (!editor) {
@@ -236,7 +242,7 @@ export class CopilotIntegration implements vscode.Disposable {
   /**
    * Dispose resources
    */
-  dispose(): void {
+  public dispose(): void {
     this.participant?.dispose();
     this.logger.debug('Copilot integration disposed');
   }

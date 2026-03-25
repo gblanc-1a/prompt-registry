@@ -112,7 +112,7 @@ suite('RepositoryScopeService Property Tests', () => {
   suite('Property 1: File Type to Directory Mapping', function () {
     this.timeout(PropertyTestConfig.TIMEOUT);
 
-    test('getRepositoryTargetDirectory returns valid .github/ path for any file type', async () => {
+    test('getRepositoryTargetDirectory returns valid .github/ path for any file type', () => {
       fc.assert(
         fc.property(fileTypeGen(), (fileType) => {
           const directory = getRepositoryTargetDirectory(fileType);
@@ -138,7 +138,7 @@ suite('RepositoryScopeService Property Tests', () => {
       );
     });
 
-    test('getTargetPath returns absolute path within workspace for any file type and name', async () => {
+    test('getTargetPath returns absolute path within workspace for any file type and name', () => {
       fc.assert(
         fc.property(fileTypeGen(), fileNameGen(), (fileType, fileName) => {
           const targetPath = service.getTargetPath(fileType, fileName);
@@ -170,7 +170,7 @@ suite('RepositoryScopeService Property Tests', () => {
       );
     });
 
-    test('file type to directory mapping is deterministic', async () => {
+    test('file type to directory mapping is deterministic', () => {
       fc.assert(
         fc.property(fileTypeGen(), fileNameGen(), (fileType, fileName) => {
           // Call twice with same inputs
@@ -193,7 +193,7 @@ suite('RepositoryScopeService Property Tests', () => {
       );
     });
 
-    test('each file type maps to a distinct directory (except chatmode)', async () => {
+    test('each file type maps to a distinct directory (except chatmode)', () => {
       // Get all directories for each type
       const directories: Record<CopilotFileType, string> = {
         prompt: getRepositoryTargetDirectory('prompt'),
@@ -264,7 +264,7 @@ suite('RepositoryScopeService Property Tests', () => {
 
     test('all added paths appear under Prompt Registry section', async () => {
       await fc.assert(
-        fc.asyncProperty(uniquePathsGen(1, 3), async (paths) => {
+        fc.asyncProperty(uniquePathsGen(1, 3), (paths) => {
           // Reset workspace for each test
           if (fs.existsSync(workspaceRoot)) {
             fs.rmSync(workspaceRoot, { recursive: true, force: true });
@@ -310,7 +310,7 @@ suite('RepositoryScopeService Property Tests', () => {
 
     test('section header present when entries exist', async () => {
       await fc.assert(
-        fc.asyncProperty(uniquePathsGen(1, 3), async (paths) => {
+        fc.asyncProperty(uniquePathsGen(1, 3), (paths) => {
           // Reset workspace
           if (fs.existsSync(workspaceRoot)) {
             fs.rmSync(workspaceRoot, { recursive: true, force: true });
@@ -343,7 +343,7 @@ suite('RepositoryScopeService Property Tests', () => {
 
     test('paths are correctly formatted in git exclude', async () => {
       await fc.assert(
-        fc.asyncProperty(relativePathGen(), async (relativePath) => {
+        fc.asyncProperty(relativePathGen(), (relativePath) => {
           // Reset workspace
           if (fs.existsSync(workspaceRoot)) {
             fs.rmSync(workspaceRoot, { recursive: true, force: true });
@@ -383,7 +383,7 @@ suite('RepositoryScopeService Property Tests', () => {
         fc.asyncProperty(
           fc.string({ minLength: 1, maxLength: 50 }).filter((s) => !s.includes('Prompt Registry')),
           uniquePathsGen(1, 2),
-          async (existingContent, newPaths) => {
+          (existingContent, newPaths) => {
             // Reset workspace
             if (fs.existsSync(workspaceRoot)) {
               fs.rmSync(workspaceRoot, { recursive: true, force: true });

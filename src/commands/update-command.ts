@@ -166,6 +166,7 @@ export class UpdateCommand {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async selectUpdateOption(availableUpdates: any[]): Promise<string | undefined> {
     if (availableUpdates.length === 1) {
       // Only one scope has updates, ask for confirmation

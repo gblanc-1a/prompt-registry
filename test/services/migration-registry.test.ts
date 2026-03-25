@@ -21,7 +21,7 @@ suite('MigrationRegistry', () => {
     mockContext = {
       globalState: {
         get: (key: string, defaultValue?: any) => globalStateData.get(key) ?? defaultValue,
-        update: async (key: string, value: any) => {
+        update: (key: string, value: any) => {
           globalStateData.set(key, value);
         },
         keys: () => Array.from(globalStateData.keys()),
@@ -120,7 +120,7 @@ suite('MigrationRegistry', () => {
       const registry = MigrationRegistry.getInstance(mockContext);
       let executed = false;
 
-      await registry.runMigration('test-migration', async () => {
+      await registry.runMigration('test-migration', () => {
         executed = true;
       });
 
@@ -134,7 +134,7 @@ suite('MigrationRegistry', () => {
       await registry.markMigrationComplete('test-migration');
 
       let executed = false;
-      await registry.runMigration('test-migration', async () => {
+      await registry.runMigration('test-migration', () => {
         executed = true;
       });
 
@@ -147,7 +147,7 @@ suite('MigrationRegistry', () => {
       await registry.markMigrationSkipped('test-migration');
 
       let executed = false;
-      await registry.runMigration('test-migration', async () => {
+      await registry.runMigration('test-migration', () => {
         executed = true;
       });
 
@@ -158,7 +158,7 @@ suite('MigrationRegistry', () => {
       const registry = MigrationRegistry.getInstance(mockContext);
 
       await assert.rejects(
-        () => registry.runMigration('test-migration', async () => {
+        () => registry.runMigration('test-migration', () => {
           throw new Error('migration failed');
         }),
         /migration failed/

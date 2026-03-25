@@ -172,7 +172,7 @@ export class ProfileCommands {
   /**
    * Create a new profile
    */
-  async createProfile(): Promise<void> {
+  public async createProfile(): Promise<void> {
     try {
       // Step 1: Get profile name
       const name = await vscode.window.showInputBox({
@@ -251,7 +251,7 @@ export class ProfileCommands {
         'Activate Now', 'View Profiles'
       ).then((action) => {
         if (action === 'Activate Now') {
-          this.activateProfile(profile.id);
+          void this.activateProfile(profile.id);
         }
       });
     } catch (error) {
@@ -264,7 +264,8 @@ export class ProfileCommands {
    * Edit an existing profile
    * @param profileId
    */
-  async editProfile(profileId?: string | any): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
+  public async editProfile(profileId?: string | any): Promise<void> {
     try {
       // Extract profile ID from tree item if object is passed
       let targetProfileId: string | undefined;
@@ -276,6 +277,7 @@ export class ProfileCommands {
 
       // If no profileId, let user select
       if (!targetProfileId) {
+        // eslint-disable-next-line @typescript-eslint/no-shadow
         const profiles = await this.registryManager.listProfiles();
 
         if (profiles.length === 0) {
@@ -359,7 +361,8 @@ export class ProfileCommands {
    * Activate a profile
    */
 
-  async activateProfile(profileId?: string | any): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
+  public async activateProfile(profileId?: string | any): Promise<void> {
     try {
       let targetProfileId: string;
 
@@ -414,7 +417,8 @@ export class ProfileCommands {
    * Deactivate a profile
    * @param profileIdOrItem
    */
-  async deactivateProfile(profileIdOrItem?: string | any): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
+  public async deactivateProfile(profileIdOrItem?: string | any): Promise<void> {
     try {
       let targetProfileId: string;
 
@@ -472,7 +476,8 @@ export class ProfileCommands {
    * For hub profiles (in favorites view): deactivates and removes from favorites
    * @param profileId
    */
-  async deleteProfile(profileId?: string | any): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
+  public async deleteProfile(profileId?: string | any): Promise<void> {
     try {
       let targetProfileId: string | undefined;
       let hubId: string | undefined;
@@ -490,6 +495,7 @@ export class ProfileCommands {
 
       // If no profileId, let user select
       if (!targetProfileId) {
+        // eslint-disable-next-line @typescript-eslint/no-shadow
         const profiles = await this.registryManager.listProfiles();
 
         if (profiles.length === 0) {
@@ -554,7 +560,7 @@ export class ProfileCommands {
    * Export a profile
    * @param profileId
    */
-  async exportProfile(profileId?: string): Promise<void> {
+  public async exportProfile(profileId?: string): Promise<void> {
     try {
       // If no profileId, let user select
       if (!profileId) {
@@ -621,7 +627,7 @@ export class ProfileCommands {
   /**
    * Import a profile
    */
-  async importProfile(): Promise<void> {
+  public async importProfile(): Promise<void> {
     try {
       // Ask for file
       const uris = await vscode.window.showOpenDialog({
@@ -645,7 +651,7 @@ export class ProfileCommands {
         'Activate Now', 'View Profiles'
       ).then((action) => {
         if (action === 'Activate Now') {
-          this.activateProfile(profile.id);
+          void this.activateProfile(profile.id);
         }
       });
     } catch (error) {
@@ -657,7 +663,7 @@ export class ProfileCommands {
   /**
    * List all profiles
    */
-  async listProfiles(): Promise<void> {
+  public async listProfiles(): Promise<void> {
     try {
       const profiles = await this.registryManager.listProfiles();
 
@@ -667,7 +673,7 @@ export class ProfileCommands {
           'Create Profile'
         ).then((action) => {
           if (action === 'Create Profile') {
-            this.createProfile();
+            void this.createProfile();
           }
         });
         return;
@@ -730,6 +736,7 @@ export class ProfileCommands {
   /**
    * Select bundles for profile
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async selectBundles(): Promise<ProfileBundle[]> {
     try {
       // Search all available bundles
@@ -796,6 +803,7 @@ export class ProfileCommands {
    * Select an icon from the expanded list
    * @param title
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async selectIcon(title: string): Promise<string | undefined> {
     const items = PROFILE_ICONS.map((i) => ({
       label: `${i.icon} ${i.label}`,
@@ -818,6 +826,7 @@ export class ProfileCommands {
    * Generate profile ID from name
    * @param name
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private generateProfileId(name: string): string {
     return generateSanitizedId(name);
   }
@@ -826,6 +835,7 @@ export class ProfileCommands {
    * Rename profile
    * @param profileId
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async renameProfile(profileId: string): Promise<void> {
     const profiles = await this.registryManager.listProfiles();
     const profile = profiles.find((p) => p.id === profileId);
@@ -856,6 +866,7 @@ export class ProfileCommands {
    * Update profile description
    * @param profileId
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async updateDescription(profileId: string): Promise<void> {
     const profiles = await this.registryManager.listProfiles();
     const profile = profiles.find((p) => p.id === profileId);
@@ -880,6 +891,7 @@ export class ProfileCommands {
    * Change profile icon
    * @param profileId
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async changeIcon(profileId: string): Promise<void> {
     const selectedIcon = await this.selectIcon('Change Profile Icon');
 
@@ -893,6 +905,7 @@ export class ProfileCommands {
    * Manage profile bundles
    * @param profileId
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async manageBundles(profileId: string): Promise<void> {
     const action = await vscode.window.showQuickPick([
       { label: '$(add) Add Bundles', value: 'add' },

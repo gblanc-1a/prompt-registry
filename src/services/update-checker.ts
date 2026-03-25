@@ -49,7 +49,7 @@ export class UpdateChecker {
    * Enriches results with auto-update preferences
    * @param bypassCache
    */
-  async checkForUpdates(bypassCache = false): Promise<UpdateCheckResult[]> {
+  public async checkForUpdates(bypassCache = false): Promise<UpdateCheckResult[]> {
     this.logger.info('Checking for bundle updates');
 
     // Try cache first unless bypassed
@@ -89,7 +89,7 @@ export class UpdateChecker {
    * Check a specific bundle for updates
    * @param bundleId
    */
-  async checkBundleUpdate(bundleId: string): Promise<UpdateCheckResult | null> {
+  public async checkBundleUpdate(bundleId: string): Promise<UpdateCheckResult | null> {
     this.logger.debug(`Checking update for bundle: ${bundleId}`);
 
     const updates = await this.checkForUpdates();
@@ -99,14 +99,14 @@ export class UpdateChecker {
   /**
    * Get cached update results without triggering a new check
    */
-  async getCachedResults(): Promise<UpdateCheckResult[] | null> {
+  public async getCachedResults(): Promise<UpdateCheckResult[] | null> {
     return await this.cache.get();
   }
 
   /**
    * Clear update cache
    */
-  async clearCache(): Promise<void> {
+  public async clearCache(): Promise<void> {
     this.logger.debug('Clearing update cache');
     await this.cache.clear();
   }
@@ -116,6 +116,7 @@ export class UpdateChecker {
    * Handles errors gracefully by categorizing them and skipping problematic bundles
    * @param updates
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async enrichUpdateResults(updates: { bundleId: string; currentVersion: string; latestVersion: string; changelog?: string }[]): Promise<UpdateCheckResult[]> {
     const enriched: UpdateCheckResult[] = [];
     const skipped: { bundleId: string; reason: string }[] = [];
@@ -149,6 +150,7 @@ export class UpdateChecker {
    * @param update.latestVersion
    * @param update.changelog
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async enrichSingleUpdate(update: { bundleId: string; currentVersion: string; latestVersion: string; changelog?: string }): Promise<{
     enriched?: UpdateCheckResult;
     skipped?: { bundleId: string; reason: string };
@@ -200,14 +202,14 @@ export class UpdateChecker {
   /**
    * Check if cache is valid
    */
-  isCacheValid(): boolean {
+  public isCacheValid(): boolean {
     return this.cache.isValid();
   }
 
   /**
    * Get cache age in milliseconds
    */
-  getCacheAge(): number {
+  public getCacheAge(): number {
     return this.cache.getCacheAge();
   }
 
@@ -217,6 +219,7 @@ export class UpdateChecker {
    * Explicitly excludes: 'awesome-copilot', 'local-awesome-copilot', 'local'
    * Handles errors per source (don't fail entire check)
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async syncGitHubReleaseSources(): Promise<void> {
     this.logger.info('Syncing GitHub release sources before update check');
     const startTime = Date.now();

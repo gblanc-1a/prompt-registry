@@ -13,6 +13,7 @@
 import * as fs from 'node:fs';
 import * as https from 'node:https';
 import * as path from 'node:path';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 import AdmZip = require('adm-zip');
 import * as vscode from 'vscode';
 import {
@@ -58,7 +59,7 @@ export class OlafRuntimeManager {
   /**
    * Get singleton instance
    */
-  static getInstance(): OlafRuntimeManager {
+  public static getInstance(): OlafRuntimeManager {
     if (!OlafRuntimeManager.instance) {
       OlafRuntimeManager.instance = new OlafRuntimeManager();
     }
@@ -69,7 +70,7 @@ export class OlafRuntimeManager {
    * Initialize manager with extension context
    * @param context
    */
-  initialize(context: vscode.ExtensionContext): void {
+  public initialize(context: vscode.ExtensionContext): void {
     this.context = context;
     this.logger.info('[OlafRuntime] Manager initialized');
   }
@@ -78,6 +79,7 @@ export class OlafRuntimeManager {
    * Detect current IDE type
    * Uses multiple detection methods for reliability
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private detectIDE(): 'vscode' | 'kiro' | 'windsurf' {
     // Method 1: Check executable path
     const executablePath = process.execPath.toLowerCase();
@@ -125,6 +127,7 @@ export class OlafRuntimeManager {
    * Get user runtime path for a specific version
    * @param version
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private getUserRuntimePath(version: string): string {
     if (!this.context) {
       throw new Error('OlafRuntimeManager not initialized. Call initialize() first.');
@@ -137,6 +140,7 @@ export class OlafRuntimeManager {
   /**
    * Get IDE-specific folder name for symbolic links
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private getIdeSpecificFolderName(): string {
     const ide = this.detectIDE();
     return `.${ide}`;
@@ -146,7 +150,7 @@ export class OlafRuntimeManager {
    * Check if runtime is installed for a specific version
    * @param version
    */
-  isRuntimeInstalled(version = 'latest'): boolean {
+  public isRuntimeInstalled(version = 'latest'): boolean {
     try {
       const runtimePath = this.getUserRuntimePath(version);
       const olafPath = path.join(runtimePath, '.olaf');
@@ -164,7 +168,7 @@ export class OlafRuntimeManager {
    * @param version
    * @param forceRefresh
    */
-  async getRuntimeInfo(version = 'latest', forceRefresh = false): Promise<OlafRuntimeInfo> {
+  public async getRuntimeInfo(version = 'latest', forceRefresh = false): Promise<OlafRuntimeInfo> {
     const cacheKey = version;
     const cached = this.runtimeStatusCache.get(cacheKey);
 
@@ -198,6 +202,7 @@ export class OlafRuntimeManager {
    * Get installation timestamp from runtime directory
    * @param installPath
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async getInstallationTimestamp(installPath: string): Promise<string | undefined> {
     try {
       const stats = await fs.promises.stat(installPath);
@@ -210,7 +215,7 @@ export class OlafRuntimeManager {
   /**
    * Clear runtime status cache
    */
-  clearCache(): void {
+  public clearCache(): void {
     this.runtimeStatusCache.clear();
     this.workspaceConfigCache.clear();
     this.logger.debug('[OlafRuntime] Cache cleared');
@@ -219,9 +224,9 @@ export class OlafRuntimeManager {
   /**
    * Ensure runtime is installed for the current workspace
    * Downloads and installs if not present
-   * @param workspacePath
+   * @param _workspacePath
    */
-  async ensureRuntimeInstalled(workspacePath?: string): Promise<boolean> {
+  public async ensureRuntimeInstalled(_workspacePath?: string): Promise<boolean> {
     const version = 'latest'; // For now, always use latest
     const runtimeInfo = await this.getRuntimeInfo(version);
 
@@ -253,7 +258,7 @@ export class OlafRuntimeManager {
    * Install OLAF runtime for a specific version
    * @param version
    */
-  async installRuntime(version = 'latest'): Promise<void> {
+  public async installRuntime(version = 'latest'): Promise<void> {
     if (!this.context) {
       throw new Error('OlafRuntimeManager not initialized. Call initialize() first.');
     }
@@ -279,6 +284,7 @@ export class OlafRuntimeManager {
    * @param ide
    * @param version
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async downloadRuntimeBundle(ide: string, version: string): Promise<Buffer> {
     const owner = 'AmadeusITGroup';
     const repo = 'olaf';
@@ -294,7 +300,9 @@ export class OlafRuntimeManager {
     this.logger.info(`[OlafRuntime] Fetching release info from: ${releaseUrl}`);
 
     try {
+      // eslint-disable-next-line @typescript-eslint/no-shadow
       const releaseInfo = await this.makeGitHubRequest(releaseUrl);
+      // eslint-disable-next-line @typescript-eslint/no-shadow
       const actualVersion = releaseInfo.tag_name;
 
       this.logger.info(`[OlafRuntime] Found release: ${actualVersion}`);
@@ -338,6 +346,7 @@ export class OlafRuntimeManager {
    * Make authenticated GitHub API request
    * @param url
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async makeGitHubRequest(url: string): Promise<any> {
     return new Promise((resolve, reject) => {
       const options = {
@@ -392,6 +401,7 @@ export class OlafRuntimeManager {
    * Get GitHub authentication token
    * Uses the same fallback chain as GitHubAdapter
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private getGitHubToken(): string | undefined {
     // Try VS Code configuration first
     const config = vscode.workspace.getConfiguration('promptregistry');
@@ -410,6 +420,7 @@ export class OlafRuntimeManager {
    * Download file from URL with progress tracking
    * @param url
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async downloadFile(url: string): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -477,6 +488,7 @@ export class OlafRuntimeManager {
    * @param buffer
    * @param targetPath
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async extractRuntime(buffer: Buffer, targetPath: string): Promise<void> {
     try {
       // Ensure target directory exists
@@ -512,7 +524,7 @@ export class OlafRuntimeManager {
    * @param workspacePath
    * @param version
    */
-  async createWorkspaceLinks(workspacePath: string, version = 'latest'): Promise<void> {
+  public async createWorkspaceLinks(workspacePath: string, version = 'latest'): Promise<void> {
     if (!this.context) {
       throw new Error('OlafRuntimeManager not initialized. Call initialize() first.');
     }
@@ -572,6 +584,7 @@ export class OlafRuntimeManager {
    * @param source
    * @param target
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async createSymbolicLink(source: string, target: string): Promise<void> {
     try {
       // Check if target already exists using checkPathExists to detect broken symlinks
@@ -613,6 +626,7 @@ export class OlafRuntimeManager {
    * Handle existing file or directory at target path
    * @param target
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async handleExistingPath(target: string): Promise<void> {
     const stats = await fs.promises.lstat(target);
 
@@ -642,6 +656,7 @@ export class OlafRuntimeManager {
    * @param source
    * @param target
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async fallbackToCopy(source: string, target: string): Promise<void> {
     try {
       await this.copyDirectory(source, target);
@@ -656,6 +671,7 @@ export class OlafRuntimeManager {
    * @param source
    * @param target
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async copyDirectory(source: string, target: string): Promise<void> {
     await fs.promises.mkdir(target, { recursive: true });
 
@@ -673,7 +689,8 @@ export class OlafRuntimeManager {
    * Check if workspace has OLAF runtime links
    * @param workspacePath
    */
-  async hasWorkspaceLinks(workspacePath: string): Promise<boolean> {
+  // eslint-disable-next-line @typescript-eslint/require-await
+  public async hasWorkspaceLinks(workspacePath: string): Promise<boolean> {
     const olafPath = path.join(workspacePath, '.olaf');
     const idePath = path.join(workspacePath, this.getIdeSpecificFolderName());
 
@@ -691,7 +708,7 @@ export class OlafRuntimeManager {
    * Get workspace configuration
    * @param workspacePath
    */
-  getWorkspaceConfig(workspacePath: string): OlafWorkspaceConfig | undefined {
+  public getWorkspaceConfig(workspacePath: string): OlafWorkspaceConfig | undefined {
     return this.workspaceConfigCache.get(workspacePath);
   }
 
@@ -701,7 +718,7 @@ export class OlafRuntimeManager {
    * Uses checkPathExists() to properly detect and clean up broken symlinks.
    * @param workspacePath
    */
-  async removeWorkspaceLinks(workspacePath: string): Promise<void> {
+  public async removeWorkspaceLinks(workspacePath: string): Promise<void> {
     const olafPath = path.join(workspacePath, '.olaf');
     const idePath = path.join(workspacePath, this.getIdeSpecificFolderName());
 
@@ -753,7 +770,7 @@ export class OlafRuntimeManager {
   /**
    * Reset singleton instance (for testing)
    */
-  static resetInstance(): void {
+  public static resetInstance(): void {
     OlafRuntimeManager.instance = null;
   }
 }

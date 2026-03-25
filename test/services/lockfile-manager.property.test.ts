@@ -96,7 +96,7 @@ suite('LockfileManager Property Tests', () => {
       await fc.assert(
         fc.asyncProperty(
           LockfileGenerators.lockfile({ minBundles: 0, maxBundles: 3 }),
-          async (lockfile: Lockfile) => {
+          (lockfile: Lockfile) => {
             // Property: All required fields must be present
             assert.ok(lockfile.$schema, 'Missing $schema field');
             assert.ok(lockfile.version, 'Missing version field');
@@ -118,7 +118,7 @@ suite('LockfileManager Property Tests', () => {
       await fc.assert(
         fc.asyncProperty(
           LockfileGenerators.lockfile(),
-          async (lockfile: Lockfile) => {
+          (lockfile: Lockfile) => {
             // Property: Version should match semver pattern
             const semverPattern = /^\d+\.\d+\.\d+$/;
             assert.ok(
@@ -139,7 +139,7 @@ suite('LockfileManager Property Tests', () => {
       await fc.assert(
         fc.asyncProperty(
           LockfileGenerators.lockfile(),
-          async (lockfile: Lockfile) => {
+          (lockfile: Lockfile) => {
             // Property: generatedAt should be parseable as ISO date
             const date = new Date(lockfile.generatedAt);
             assert.ok(
@@ -160,7 +160,7 @@ suite('LockfileManager Property Tests', () => {
       await fc.assert(
         fc.asyncProperty(
           LockfileGenerators.consistentLockfile({ minBundles: 1, maxBundles: 3 }),
-          async (lockfile: Lockfile) => {
+          (lockfile: Lockfile) => {
             // Property: Each bundle entry must have required fields
             for (const [bundleId, entry] of Object.entries(lockfile.bundles)) {
               assert.ok(entry.version, `Bundle ${bundleId} missing version`);
@@ -184,7 +184,7 @@ suite('LockfileManager Property Tests', () => {
       await fc.assert(
         fc.asyncProperty(
           LockfileGenerators.consistentLockfile({ minBundles: 1, maxBundles: 2 }),
-          async (lockfile: Lockfile) => {
+          (lockfile: Lockfile) => {
             // Property: All file checksums should be 64 hex characters
             const sha256Pattern = /^[a-f0-9]{64}$/;
             for (const [bundleId, entry] of Object.entries(lockfile.bundles)) {
@@ -226,7 +226,7 @@ suite('LockfileManager Property Tests', () => {
       await fc.assert(
         fc.asyncProperty(
           LockfileGenerators.consistentLockfile({ minBundles: 1, maxBundles: 3 }),
-          async (lockfile: Lockfile) => {
+          (lockfile: Lockfile) => {
             // Property: JSON round-trip should preserve structure
             // Note: undefined values are not preserved in JSON
             const serialized = JSON.stringify(lockfile, null, 2);
@@ -253,7 +253,7 @@ suite('LockfileManager Property Tests', () => {
       await fc.assert(
         fc.asyncProperty(
           LockfileGenerators.consistentLockfile({ minBundles: 1, maxBundles: 2 }),
-          async (lockfile: Lockfile) => {
+          (lockfile: Lockfile) => {
             // Property: File I/O round-trip should preserve content
             const lockfilePath = path.join(tempDir, `lockfile-${Date.now()}.json`);
             const normalized = normalizeLockfile(lockfile);
@@ -288,7 +288,7 @@ suite('LockfileManager Property Tests', () => {
       await fc.assert(
         fc.asyncProperty(
           LockfileGenerators.consistentLockfile({ minBundles: 1, maxBundles: 2 }),
-          async (lockfile: Lockfile) => {
+          (lockfile: Lockfile) => {
             // Property: 2-space indentation should be used
             const serialized = JSON.stringify(lockfile, null, 2);
 
@@ -336,7 +336,7 @@ suite('LockfileManager Property Tests', () => {
         fc.asyncProperty(
           LockfileGenerators.consistentLockfile({ minBundles: 1, maxBundles: 2 }),
           LockfileGenerators.consistentLockfile({ minBundles: 1, maxBundles: 2 }),
-          async (originalLockfile: Lockfile, newLockfile: Lockfile) => {
+          (originalLockfile: Lockfile, newLockfile: Lockfile) => {
             const lockfilePath = path.join(tempDir, `atomic-test-${Date.now()}.json`);
             const tempPath = lockfilePath + '.tmp';
 
@@ -379,7 +379,7 @@ suite('LockfileManager Property Tests', () => {
       await fc.assert(
         fc.asyncProperty(
           LockfileGenerators.consistentLockfile({ minBundles: 1, maxBundles: 2 }),
-          async (lockfile: Lockfile) => {
+          (lockfile: Lockfile) => {
             const lockfilePath = path.join(tempDir, `atomic-cleanup-${Date.now()}.json`);
             const tempPath = lockfilePath + '.tmp';
 
@@ -420,7 +420,7 @@ suite('LockfileManager Property Tests', () => {
       await fc.assert(
         fc.asyncProperty(
           fc.string({ minLength: 1, maxLength: 1000 }),
-          async (content: string) => {
+          (content: string) => {
             // Property: Same content should always produce same checksum
             const checksum1 = crypto.createHash('sha256').update(content).digest('hex');
             const checksum2 = crypto.createHash('sha256').update(content).digest('hex');
@@ -445,7 +445,7 @@ suite('LockfileManager Property Tests', () => {
         fc.asyncProperty(
           fc.string({ minLength: 1, maxLength: 500 }),
           fc.string({ minLength: 1, maxLength: 500 }),
-          async (content1: string, content2: string) => {
+          (content1: string, content2: string) => {
             // Skip if contents are identical
             fc.pre(content1 !== content2);
 
@@ -473,7 +473,7 @@ suite('LockfileManager Property Tests', () => {
         fc.asyncProperty(
           fc.string({ minLength: 1, maxLength: 500 }),
           fc.string({ minLength: 1, maxLength: 500 }),
-          async (originalContent: string, modifiedContent: string) => {
+          (originalContent: string, modifiedContent: string) => {
             // Skip if contents are identical
             fc.pre(originalContent !== modifiedContent);
 
@@ -515,12 +515,13 @@ suite('LockfileManager Property Tests', () => {
       await fc.assert(
         fc.asyncProperty(
           fc.string({ minLength: 1, maxLength: 100 }),
-          async (content: string) => {
+          (content: string) => {
             const filePath = path.join(tempDir, `missing-test-${Date.now()}.txt`);
 
             // Write file and get checksum
             fs.writeFileSync(filePath, content);
-            const originalChecksum = crypto.createHash('sha256')
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
+            const _originalChecksum = crypto.createHash('sha256')
               .update(fs.readFileSync(filePath))
               .digest('hex');
 
@@ -559,7 +560,7 @@ suite('LockfileManager Property Tests', () => {
       await fc.assert(
         fc.asyncProperty(
           LockfileGenerators.consistentLockfile({ minBundles: 1, maxBundles: 5 }),
-          async (lockfile: Lockfile) => {
+          (lockfile: Lockfile) => {
             // Property: Every bundle's sourceId should exist in sources
             for (const [bundleId, entry] of Object.entries(lockfile.bundles)) {
               assert.ok(
@@ -581,7 +582,7 @@ suite('LockfileManager Property Tests', () => {
       await fc.assert(
         fc.asyncProperty(
           LockfileGenerators.consistentLockfile({ minBundles: 1, maxBundles: 3 }),
-          async (lockfile: Lockfile) => {
+          (lockfile: Lockfile) => {
             // Property: All sources should have type and url
             for (const [sourceId, source] of Object.entries(lockfile.sources)) {
               assert.ok(
@@ -607,7 +608,7 @@ suite('LockfileManager Property Tests', () => {
       await fc.assert(
         fc.asyncProperty(
           LockfileGenerators.lockfile({ minBundles: 1, maxBundles: 2, includeHubs: true }),
-          async (lockfile: Lockfile) => {
+          (lockfile: Lockfile) => {
             // Property: All hubs should have name and url
             if (lockfile.hubs) {
               for (const [hubId, hub] of Object.entries(lockfile.hubs)) {
@@ -635,7 +636,7 @@ suite('LockfileManager Property Tests', () => {
       await fc.assert(
         fc.asyncProperty(
           LockfileGenerators.lockfile({ minBundles: 1, maxBundles: 2, includeProfiles: true }),
-          async (lockfile: Lockfile) => {
+          (lockfile: Lockfile) => {
             // Property: All profiles should have name and bundleIds
             if (lockfile.profiles) {
               for (const [profileId, profile] of Object.entries(lockfile.profiles)) {
@@ -669,7 +670,7 @@ suite('LockfileManager Property Tests', () => {
       await fc.assert(
         fc.asyncProperty(
           LockfileGenerators.consistentLockfile({ minBundles: 1, maxBundles: 3 }),
-          async (lockfile: Lockfile) => {
+          (lockfile: Lockfile) => {
             // Property: All source types should be valid
             for (const [sourceId, source] of Object.entries(lockfile.sources)) {
               assert.ok(
@@ -952,7 +953,8 @@ suite('Lockfile Separation Properties', () => {
     fs.writeFileSync(path.join(gitInfoDir, 'exclude'), '# Git exclude file\n');
   };
 
-  const readGitExclude = (repoPath: string): string => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _readGitExclude = (repoPath: string): string => {
     const excludePath = path.join(repoPath, '.git', 'info', 'exclude');
     if (fs.existsSync(excludePath)) {
       return fs.readFileSync(excludePath, 'utf8');
@@ -960,7 +962,8 @@ suite('Lockfile Separation Properties', () => {
     return '';
   };
 
-  const lockfileExists = (repoPath: string, lockfileName: string): boolean => {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const _lockfileExists = (repoPath: string, lockfileName: string): boolean => {
     return fs.existsSync(path.join(repoPath, lockfileName));
   };
 

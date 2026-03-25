@@ -27,7 +27,7 @@ suite('SetupStateManager - Unit Tests', () => {
     mockContext = {
       globalState: {
         get: (key: string, defaultValue?: any) => globalStateData.get(key) ?? defaultValue,
-        update: async (key: string, value: any) => {
+        update: (key: string, value: any) => {
           globalStateData.set(key, value);
         },
         keys: () => Array.from(globalStateData.keys()),

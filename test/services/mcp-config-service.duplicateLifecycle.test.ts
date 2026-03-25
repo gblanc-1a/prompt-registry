@@ -33,6 +33,7 @@ suite('McpConfigService - Duplicate Server Lifecycle', () => {
     servers: Record<string, McpStdioServerConfig | McpRemoteServerConfig>,
     config: McpConfiguration,
     tracking: McpTrackingMetadata
+  // eslint-disable-next-line @typescript-eslint/require-await
   ): Promise<{ config: McpConfiguration; tracking: McpTrackingMetadata }> => {
     for (const [serverName, serverConfig] of Object.entries(servers)) {
       const prefixedName = configService.generatePrefixedServerName(bundleId, serverName);
@@ -54,6 +55,7 @@ suite('McpConfigService - Duplicate Server Lifecycle', () => {
     bundleId: string,
     config: McpConfiguration,
     tracking: McpTrackingMetadata
+  // eslint-disable-next-line @typescript-eslint/require-await
   ): Promise<{ config: McpConfiguration; tracking: McpTrackingMetadata; removed: string[] }> => {
     const removed: string[] = [];
     for (const [serverName, metadata] of Object.entries(tracking.managedServers)) {

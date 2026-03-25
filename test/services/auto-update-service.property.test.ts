@@ -103,7 +103,7 @@ suite('AutoUpdateService - Property Tests', () => {
     const bundles: InstalledBundle[] = updates.map((u) => createInstalledBundle(u));
 
     let callCount = 0;
-    mockRegistryManager.listInstalledBundles.callsFake(async () => {
+    mockRegistryManager.listInstalledBundles.callsFake(() => {
       callCount++;
       return bundles.map((b, index) => {
         const shouldFail = failureFlags[index];
@@ -231,7 +231,7 @@ suite('AutoUpdateService - Property Tests', () => {
           bundleIdArb,
           versionArb,
           fc.string({ minLength: 1, maxLength: 50 }),
-          async (bundleId, version, errorMessage) => {
+          async (bundleId, version, _errorMessage) => {
             resetAllMocks();
 
             setupSingleBundleUpdate(bundleId, '1.0.0', version, false);
@@ -667,7 +667,7 @@ suite('AutoUpdateService - Property Tests', () => {
             const bundleVersions = new Map<string, string>();
             updates.forEach((u) => bundleVersions.set(u.bundleId, u.currentVersion));
 
-            mockRegistryManager.listInstalledBundles.callsFake(async () => {
+            mockRegistryManager.listInstalledBundles.callsFake(() => {
               // Return all bundles with their current versions
               return Array.from(bundleVersions.entries()).map(([bundleId, version]) =>
                 createMockInstalledBundle(bundleId, version)

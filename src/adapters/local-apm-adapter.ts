@@ -85,7 +85,7 @@ const CACHE_TTL = 5 * 60 * 1000;
  * LocalApmAdapter - Handles local filesystem APM packages
  */
 export class LocalApmAdapter extends RepositoryAdapter {
-  readonly type = 'local-apm';
+  public readonly type = 'local-apm';
 
   private readonly config: Required<LocalApmConfig>;
   private readonly mapper: ApmPackageMapper;
@@ -159,7 +159,7 @@ export class LocalApmAdapter extends RepositoryAdapter {
   /**
    * Fetch list of available bundles from local filesystem
    */
-  async fetchBundles(): Promise<Bundle[]> {
+  public async fetchBundles(): Promise<Bundle[]> {
     const cacheKey = this.source.url;
     const cached = this.cache.get(cacheKey);
     if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
@@ -199,6 +199,7 @@ export class LocalApmAdapter extends RepositoryAdapter {
    * @param baseDir
    * @param currentDepth
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async scanSubdirectories(
     baseDir: string,
     currentDepth: number
@@ -251,6 +252,7 @@ export class LocalApmAdapter extends RepositoryAdapter {
    * Read and parse apm.yml from a directory
    * @param dir
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async readApmManifest(dir: string): Promise<ApmManifest | null> {
     const manifestPath = path.join(dir, 'apm.yml');
 
@@ -268,6 +270,7 @@ export class LocalApmAdapter extends RepositoryAdapter {
    * @param packageDir
    * @param relativePath
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private manifestToBundle(
     manifest: ApmManifest,
     packageDir: string,
@@ -305,7 +308,7 @@ export class LocalApmAdapter extends RepositoryAdapter {
    * Download a bundle by creating ZIP from local directory
    * @param bundle
    */
-  async downloadBundle(bundle: Bundle): Promise<Buffer> {
+  public async downloadBundle(bundle: Bundle): Promise<Buffer> {
     const packageDir = (bundle as LocalApmBundle).localPackagePath;
 
     if (!packageDir) {
@@ -325,6 +328,7 @@ export class LocalApmAdapter extends RepositoryAdapter {
    * @param bundle
    * @param packageDir
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private createBundleArchive(bundle: Bundle, packageDir: string): Promise<Buffer> {
     return new Promise<Buffer>((resolve, reject) => {
       const archive = archiver('zip', { zlib: { level: 9 } });
@@ -347,6 +351,7 @@ export class LocalApmAdapter extends RepositoryAdapter {
    * @param bundle
    * @param packageDir
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async populateArchive(
     archive: archiver.Archiver,
     bundle: Bundle,
@@ -375,6 +380,7 @@ export class LocalApmAdapter extends RepositoryAdapter {
    * @param bundle
    * @param packageDir
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async createDeploymentManifest(bundle: Bundle, packageDir: string): Promise<any> {
     const apmManifest: ApmManifest = await this.readApmManifest(packageDir) || { name: bundle.name };
     const promptFiles = await this.findPromptFiles(packageDir, true);
@@ -423,6 +429,7 @@ export class LocalApmAdapter extends RepositoryAdapter {
    * @param dir Directory to search
    * @param recursive Whether to search recursively
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async findPromptFiles(dir: string, recursive: boolean): Promise<string[]> {
     const files: string[] = [];
 
@@ -463,6 +470,7 @@ export class LocalApmAdapter extends RepositoryAdapter {
    * Detect file type from filename
    * @param filename
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private detectFileType(filename: string): 'prompt' | 'instructions' | 'chatmode' | 'agent' {
     if (filename.endsWith('.instructions.md')) {
       return 'instructions';
@@ -480,6 +488,7 @@ export class LocalApmAdapter extends RepositoryAdapter {
    * Convert string to title case
    * @param str
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private titleCase(str: string): string {
     return str.split(' ')
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
@@ -489,7 +498,7 @@ export class LocalApmAdapter extends RepositoryAdapter {
   /**
    * Fetch source metadata
    */
-  async fetchMetadata(): Promise<SourceMetadata> {
+  public async fetchMetadata(): Promise<SourceMetadata> {
     const localPath = this.getLocalPath();
 
     const exists = await this.directoryExists(localPath);
@@ -519,7 +528,7 @@ export class LocalApmAdapter extends RepositoryAdapter {
   /**
    * Validate local directory
    */
-  async validate(): Promise<ValidationResult> {
+  public async validate(): Promise<ValidationResult> {
     const localPath = this.getLocalPath();
 
     const exists = await this.directoryExists(localPath);
@@ -553,12 +562,12 @@ export class LocalApmAdapter extends RepositoryAdapter {
     }
   }
 
-  getManifestUrl(bundleId: string, version?: string): string {
+  public getManifestUrl(bundleId: string, _version?: string): string {
     const localPath = this.getLocalPath();
     return `file://${path.join(localPath, bundleId, 'apm.yml')}`;
   }
 
-  getDownloadUrl(bundleId: string, version?: string): string {
+  public getDownloadUrl(bundleId: string, version?: string): string {
     return this.getManifestUrl(bundleId, version);
   }
 }

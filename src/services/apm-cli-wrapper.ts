@@ -78,7 +78,7 @@ export class ApmCliWrapper {
   /**
    * Check if APM runtime is available
    */
-  async isRuntimeAvailable(): Promise<boolean> {
+  public async isRuntimeAvailable(): Promise<boolean> {
     try {
       const status = await this.runtime.getStatus();
       return status.installed || !!status.uvxAvailable;
@@ -90,7 +90,7 @@ export class ApmCliWrapper {
   /**
    * Get APM version
    */
-  async getVersion(): Promise<string | undefined> {
+  public async getVersion(): Promise<string | undefined> {
     try {
       const status = await this.runtime.getStatus();
       return status.installed ? status.version : undefined;
@@ -104,7 +104,7 @@ export class ApmCliWrapper {
    * Security: Prevents command injection through malicious package names
    * @param ref Package reference (e.g., "owner/repo" or "owner/repo/path")
    */
-  validatePackageRef(ref: string): boolean {
+  public validatePackageRef(ref: string): boolean {
     // Empty check
     if (!ref || ref.trim().length === 0) {
       return false;
@@ -140,6 +140,7 @@ export class ApmCliWrapper {
    * Security: Prevents path traversal and injection
    * @param targetPath
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private validateTargetPath(targetPath: string): boolean {
     if (!targetPath || targetPath.trim().length === 0) {
       return false;
@@ -165,7 +166,7 @@ export class ApmCliWrapper {
    * @param targetDir Directory where to install
    * @param token Optional GitHub token for authentication
    */
-  async install(packageRef: string, targetDir: string, token?: string): Promise<ApmInstallResult> {
+  public async install(packageRef: string, targetDir: string, token?: string): Promise<ApmInstallResult> {
     // Validate inputs
     if (!this.validatePackageRef(packageRef)) {
       return {
@@ -242,6 +243,7 @@ dependencies:
    * @param cwd
    * @param token
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async executeCommand(args: string[], cwd: string, token?: string): Promise<{ stdout: string; stderr: string }> {
     // Validate args don't contain dangerous characters
     for (const arg of args) {
@@ -277,6 +279,7 @@ dependencies:
    * Get safe environment for command execution
    * @param explicitToken
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private getSafeEnvironment(explicitToken?: string): NodeJS.ProcessEnv {
     const env = { ...process.env };
 
@@ -298,7 +301,7 @@ dependencies:
    * List installed dependencies
    * @param projectDir
    */
-  async listDeps(projectDir: string): Promise<{ packages: string[] }> {
+  public async listDeps(projectDir: string): Promise<{ packages: string[] }> {
     if (!this.validateTargetPath(projectDir)) {
       return { packages: [] };
     }
@@ -323,7 +326,7 @@ dependencies:
    * Compile AGENTS.md
    * @param projectDir
    */
-  async compile(projectDir: string): Promise<boolean> {
+  public async compile(projectDir: string): Promise<boolean> {
     if (!this.validateTargetPath(projectDir)) {
       return false;
     }

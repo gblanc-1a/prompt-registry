@@ -322,15 +322,15 @@ suite('Repository Fixture Helpers', () => {
 
       const mockDeps: SourceSetupDependencies = {
         registryManager: {
-          addSource: async (source) => {
+          addSource: (source) => {
             addedSource = source;
           },
-          syncSource: async (sourceId) => {
+          syncSource: (sourceId) => {
             syncedSourceId = sourceId;
           }
         },
         storage: {
-          getCachedSourceBundles: async (sourceId) => [
+          getCachedSourceBundles: (_sourceId) => [
             { id: expectedBundleId, name: 'Test Bundle' }
           ]
         }
@@ -366,7 +366,7 @@ suite('Repository Fixture Helpers', () => {
           syncSource: async () => {}
         },
         storage: {
-          getCachedSourceBundles: async () => [
+          getCachedSourceBundles: () => [
             { id: 'other-bundle-1.0.0', name: 'Other Bundle' }
           ]
         }
@@ -389,7 +389,7 @@ suite('Repository Fixture Helpers', () => {
           syncSource: async () => {}
         },
         storage: {
-          getCachedSourceBundles: async () => [{ id: expectedBundleId }]
+          getCachedSourceBundles: () => [{ id: expectedBundleId }]
         }
       };
 

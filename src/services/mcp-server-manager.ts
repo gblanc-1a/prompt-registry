@@ -25,7 +25,7 @@ export class McpServerManager {
     this.configService = new McpConfigService();
   }
 
-  async installServers(
+  public async installServers(
     bundleId: string,
     bundleVersion: string,
     bundlePath: string,
@@ -119,7 +119,7 @@ export class McpServerManager {
     return result;
   }
 
-  async uninstallServers(
+  public async uninstallServers(
     bundleId: string,
     scope: 'user' | 'workspace'
   ): Promise<McpUninstallResult> {
@@ -162,6 +162,7 @@ export class McpServerManager {
    * @param scope
    * @param removedServerNames
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async reEnableDuplicatesAfterRemoval(
     scope: 'user' | 'workspace',
     removedServerNames: string[]
@@ -198,7 +199,7 @@ export class McpServerManager {
     }
   }
 
-  async listInstalledServers(scope: 'user' | 'workspace'): Promise<{
+  public async listInstalledServers(scope: 'user' | 'workspace'): Promise<{
     serverName: string;
     bundleId: string;
     bundleVersion: string;
@@ -221,7 +222,7 @@ export class McpServerManager {
     }
   }
 
-  async getServersForBundle(bundleId: string, scope: 'user' | 'workspace'): Promise<string[]> {
+  public async getServersForBundle(bundleId: string, scope: 'user' | 'workspace'): Promise<string[]> {
     try {
       const tracking = await this.configService.readTrackingMetadata(scope);
 
@@ -239,12 +240,14 @@ export class McpServerManager {
   /**
    * Section header for Prompt Registry entries in .git/info/exclude
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private static readonly GIT_EXCLUDE_SECTION_HEADER = '# Prompt Registry (local)';
 
   /**
    * Get the path to .vscode/mcp.json in a workspace
    * @param workspaceRoot
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private getWorkspaceMcpConfigPath(workspaceRoot: string): string {
     return path.join(workspaceRoot, '.vscode', 'mcp.json');
   }
@@ -253,6 +256,7 @@ export class McpServerManager {
    * Get the path to tracking metadata in a workspace
    * @param workspaceRoot
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private getWorkspaceTrackingPath(workspaceRoot: string): string {
     return path.join(workspaceRoot, '.vscode', 'prompt-registry-mcp-tracking.json');
   }
@@ -261,6 +265,7 @@ export class McpServerManager {
    * Get the path to .git/info/exclude
    * @param workspaceRoot
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private getGitExcludePath(workspaceRoot: string): string {
     return path.join(workspaceRoot, '.git', 'info', 'exclude');
   }
@@ -269,6 +274,7 @@ export class McpServerManager {
    * Check if .git directory exists in workspace
    * @param workspaceRoot
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private hasGitDirectory(workspaceRoot: string): boolean {
     return fs.existsSync(path.join(workspaceRoot, '.git'));
   }
@@ -277,6 +283,7 @@ export class McpServerManager {
    * Read MCP configuration from workspace .vscode/mcp.json
    * @param workspaceRoot
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async readWorkspaceMcpConfig(workspaceRoot: string): Promise<McpConfiguration> {
     const configPath = this.getWorkspaceMcpConfigPath(workspaceRoot);
 
@@ -299,6 +306,7 @@ export class McpServerManager {
    * @param config
    * @param createBackup
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async writeWorkspaceMcpConfig(workspaceRoot: string, config: McpConfiguration, createBackup = true): Promise<void> {
     const configPath = this.getWorkspaceMcpConfigPath(workspaceRoot);
     const configDir = path.dirname(configPath);
@@ -331,6 +339,7 @@ export class McpServerManager {
    * Read tracking metadata from workspace
    * @param workspaceRoot
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async readWorkspaceTrackingMetadata(workspaceRoot: string): Promise<McpTrackingMetadata> {
     const trackingPath = this.getWorkspaceTrackingPath(workspaceRoot);
 
@@ -356,6 +365,7 @@ export class McpServerManager {
    * @param workspaceRoot
    * @param metadata
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async writeWorkspaceTrackingMetadata(workspaceRoot: string, metadata: McpTrackingMetadata): Promise<void> {
     const trackingPath = this.getWorkspaceTrackingPath(workspaceRoot);
     const trackingDir = path.dirname(trackingPath);
@@ -379,6 +389,7 @@ export class McpServerManager {
    * @param workspaceRoot
    * @param pathToExclude
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async addToGitExclude(workspaceRoot: string, pathToExclude: string): Promise<void> {
     if (!this.hasGitDirectory(workspaceRoot)) {
       this.logger.warn('[McpServerManager] No .git directory found, skipping git exclude');
@@ -461,6 +472,7 @@ export class McpServerManager {
    * @param workspaceRoot
    * @param pathToRemove
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async removeFromGitExclude(workspaceRoot: string, pathToRemove: string): Promise<void> {
     if (!this.hasGitDirectory(workspaceRoot)) {
       return;
@@ -527,7 +539,7 @@ export class McpServerManager {
    * @param serversManifest - MCP servers to install
    * @param options - Installation options including commitMode
    */
-  async installServersToWorkspace(
+  public async installServersToWorkspace(
     bundleId: string,
     bundleVersion: string,
     workspaceRoot: string,
@@ -635,7 +647,7 @@ export class McpServerManager {
    * @param bundleId - Bundle identifier
    * @param workspaceRoot - Path to workspace root
    */
-  async uninstallServersFromWorkspace(
+  public async uninstallServersFromWorkspace(
     bundleId: string,
     workspaceRoot: string
   ): Promise<McpUninstallResult> {
@@ -696,7 +708,7 @@ export class McpServerManager {
    * @param bundleId - Bundle identifier
    * @param workspaceRoot - Path to workspace root
    */
-  async getServersForBundleInWorkspace(bundleId: string, workspaceRoot: string): Promise<string[]> {
+  public async getServersForBundleInWorkspace(bundleId: string, workspaceRoot: string): Promise<string[]> {
     try {
       const tracking = await this.readWorkspaceTrackingMetadata(workspaceRoot);
 

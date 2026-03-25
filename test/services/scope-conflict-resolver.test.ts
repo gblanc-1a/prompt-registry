@@ -28,7 +28,8 @@ import {
 suite('ScopeConflictResolver', () => {
   let sandbox: sinon.SinonSandbox;
   let mockStorage: sinon.SinonStubbedInstance<RegistryStorage>;
-  let mockContext: vscode.ExtensionContext;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  let _mockContext: vscode.ExtensionContext;
   let resolver: ScopeConflictResolver;
 
   // ===== Test Utilities =====
@@ -37,7 +38,7 @@ suite('ScopeConflictResolver', () => {
     return {
       globalState: {
         get: (key: string, defaultValue?: any) => globalStateData.get(key) ?? defaultValue,
-        update: async (key: string, value: any) => {
+        update: (key: string, value: any) => {
           globalStateData.set(key, value);
         },
         keys: () => Array.from(globalStateData.keys()),

@@ -48,7 +48,7 @@ export class PromptLoader {
   /**
    * Get list of available prompts from all installed bundles
    */
-  async getAvailablePrompts(): Promise<PromptInfo[]> {
+  public async getAvailablePrompts(): Promise<PromptInfo[]> {
     const prompts: PromptInfo[] = [];
 
     try {
@@ -90,6 +90,7 @@ export class PromptLoader {
    * @param bundleId
    * @param bundlePath
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async getPromptsFromBundle(bundleId: string, bundlePath: string): Promise<PromptInfo[]> {
     const prompts: PromptInfo[] = [];
 
@@ -140,7 +141,7 @@ export class PromptLoader {
    * Load a specific prompt by ID
    * @param promptId
    */
-  async loadPrompt(promptId: string): Promise<PromptContent | null> {
+  public async loadPrompt(promptId: string): Promise<PromptContent | null> {
     try {
       // Check cache first
       if (this.promptCache.has(promptId)) {
@@ -179,7 +180,7 @@ export class PromptLoader {
   /**
    * Clear prompt cache (call when bundles are installed/uninstalled)
    */
-  clearCache(): void {
+  public clearCache(): void {
     this.promptCache.clear();
     this.logger.debug('Prompt cache cleared');
   }
@@ -188,7 +189,7 @@ export class PromptLoader {
    * Search prompts by tag
    * @param tag
    */
-  async searchByTag(tag: string): Promise<PromptInfo[]> {
+  public async searchByTag(tag: string): Promise<PromptInfo[]> {
     const allPrompts = await this.getAvailablePrompts();
     return allPrompts.filter((p) => p.tags.includes(tag));
   }
@@ -197,7 +198,7 @@ export class PromptLoader {
    * Search prompts by keyword in name or description
    * @param keyword
    */
-  async search(keyword: string): Promise<PromptInfo[]> {
+  public async search(keyword: string): Promise<PromptInfo[]> {
     const allPrompts = await this.getAvailablePrompts();
     const lowerKeyword = keyword.toLowerCase();
 

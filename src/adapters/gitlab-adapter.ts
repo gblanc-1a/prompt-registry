@@ -18,6 +18,7 @@ import {
  * GitLab API response types
  */
 interface GitLabRelease {
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   tag_name: string;
   name: string;
   description: string;
@@ -27,11 +28,15 @@ interface GitLabRelease {
       url: string;
     }[];
   };
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   released_at: string;
 }
 
-interface GitLabFile {
+// eslint-disable-next-line @typescript-eslint/naming-convention, @typescript-eslint/no-unused-vars
+interface _GitLabFile {
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   file_name: string;
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   file_path: string;
   type: string;
 }
@@ -40,7 +45,7 @@ interface GitLabFile {
  * GitLab repository adapter implementation
  */
 export class GitLabAdapter extends RepositoryAdapter {
-  readonly type = 'gitlab';
+  public readonly type = 'gitlab';
   private readonly apiBase: string = 'https://gitlab.com/api/v4';
 
   constructor(source: RegistrySource) {
@@ -125,7 +130,7 @@ export class GitLabAdapter extends RepositoryAdapter {
    * Check if URL is valid GitLab URL
    * @param url
    */
-  isValidUrl(url: string): boolean {
+  public isValidUrl(url: string): boolean {
     return url.includes('gitlab.com')
       || url.match(/https?:\/\/[^/]+\/[^/]+\/[^/]+/) !== null;
   }
@@ -133,7 +138,7 @@ export class GitLabAdapter extends RepositoryAdapter {
   /**
    * Fetch repository metadata
    */
-  async fetchMetadata(): Promise<SourceMetadata> {
+  public async fetchMetadata(): Promise<SourceMetadata> {
     try {
       const projectPath = this.parseGitLabUrl();
       const url = `${this.apiBase}/projects/${projectPath}`;
@@ -155,7 +160,7 @@ export class GitLabAdapter extends RepositoryAdapter {
   /**
    * Fetch bundles from repository
    */
-  async fetchBundles(): Promise<Bundle[]> {
+  public async fetchBundles(): Promise<Bundle[]> {
     try {
       const projectPath = this.parseGitLabUrl();
       const releasesUrl = `${this.apiBase}/projects/${projectPath}/releases`;
@@ -225,7 +230,7 @@ export class GitLabAdapter extends RepositoryAdapter {
   /**
    * Validate repository
    */
-  async validate(): Promise<ValidationResult> {
+  public async validate(): Promise<ValidationResult> {
     try {
       await this.fetchMetadata();
       return {
@@ -247,7 +252,7 @@ export class GitLabAdapter extends RepositoryAdapter {
    * @param bundleId
    * @param version
    */
-  getManifestUrl(bundleId: string, version?: string): string {
+  public getManifestUrl(bundleId: string, version?: string): string {
     const projectPath = this.parseGitLabUrl();
     const ref = version || 'main';
     return `${this.apiBase}/projects/${projectPath}/repository/files/deployment-manifest.yml/raw?ref=${ref}`;
@@ -258,7 +263,7 @@ export class GitLabAdapter extends RepositoryAdapter {
    * @param bundleId
    * @param version
    */
-  getDownloadUrl(bundleId: string, version?: string): string {
+  public getDownloadUrl(bundleId: string, version?: string): string {
     const projectPath = this.parseGitLabUrl();
     const tag = version || 'latest';
     return `${this.apiBase}/projects/${projectPath}/repository/archive.zip?ref=${tag}`;
@@ -268,7 +273,7 @@ export class GitLabAdapter extends RepositoryAdapter {
    * Download a bundle
    * @param bundle
    */
-  async downloadBundle(bundle: Bundle): Promise<Buffer> {
+  public async downloadBundle(bundle: Bundle): Promise<Buffer> {
     return new Promise((resolve, reject) => {
       const headers = this.getHeaders();
 

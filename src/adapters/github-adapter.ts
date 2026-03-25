@@ -37,21 +37,26 @@ const execAsync = promisify(exec);
  * GitHub API response types
  */
 interface GitHubRelease {
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   tag_name: string;
   name: string;
   body: string;
   assets: {
     name: string;
+    // eslint-disable-next-line @typescript-eslint/naming-convention
     browser_download_url: string;
     url: string; // API endpoint for downloading the asset
     size: number;
   }[];
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   published_at: string;
 }
 
-interface GitHubContent {
+// eslint-disable-next-line @typescript-eslint/naming-convention, @typescript-eslint/no-unused-vars
+interface _GitHubContent {
   name: string;
   path: string;
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   download_url: string;
   type: string;
 }
@@ -60,7 +65,7 @@ interface GitHubContent {
  * GitHub repository adapter implementation
  */
 export class GitHubAdapter extends RepositoryAdapter {
-  readonly type = 'github';
+  public readonly type = 'github';
   private readonly apiBase = 'https://api.github.com';
   private authToken: string | undefined;
   private authMethod: 'vscode' | 'gh-cli' | 'explicit' | 'none' = 'none';
@@ -351,6 +356,7 @@ export class GitHubAdapter extends RepositoryAdapter {
             this.logger.error(`[GitHubAdapter] Response: ${data.substring(0, 500)}`);
 
             // Validate response format before processing error
+            // eslint-disable-next-line @typescript-eslint/no-shadow
             const validation = this.validateResponse(res, data);
             if (!validation.isValid) {
               this.logger.error(`[GitHubAdapter] ${validation.error}`);
@@ -538,7 +544,7 @@ export class GitHubAdapter extends RepositoryAdapter {
    * @returns Promise resolving to array of Bundle objects
    * @throws Error if GitHub API request fails or authentication issues occur
    */
-  async fetchBundles(): Promise<Bundle[]> {
+  public async fetchBundles(): Promise<Bundle[]> {
     const { owner, repo } = this.parseGitHubUrl();
     const url = `${this.apiBase}/repos/${owner}/${repo}/releases`;
 
@@ -590,6 +596,7 @@ export class GitHubAdapter extends RepositoryAdapter {
    * @param repo - Repository name
    * @returns Bundle object or null if processing fails
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async processSingleRelease(
     release: GitHubRelease,
     owner: string,
@@ -666,6 +673,7 @@ export class GitHubAdapter extends RepositoryAdapter {
    * @param filename - Manifest filename (for determining parse format)
    * @returns Parsed manifest object
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async fetchManifestWithCache(url: string, filename: string): Promise<any> {
     // Check cache first
     if (this.manifestCache.has(url)) {
@@ -682,6 +690,7 @@ export class GitHubAdapter extends RepositoryAdapter {
       manifest = JSON.parse(manifestText);
     } else {
       // Assume YAML for .yml or .yaml
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const yaml = require('js-yaml');
       manifest = yaml.load(manifestText);
     }
@@ -697,7 +706,7 @@ export class GitHubAdapter extends RepositoryAdapter {
    * Clear the manifest cache.
    * Should be called when sources are re-synced to ensure fresh data.
    */
-  clearManifestCache(): void {
+  public clearManifestCache(): void {
     this.manifestCache.clear();
     this.logger.debug('[GitHubAdapter] Manifest cache cleared');
   }
@@ -708,7 +717,7 @@ export class GitHubAdapter extends RepositoryAdapter {
    * @returns Promise resolving to Buffer containing bundle ZIP file
    * @throws Error if download fails or network issues occur
    */
-  async downloadBundle(bundle: Bundle): Promise<Buffer> {
+  public async downloadBundle(bundle: Bundle): Promise<Buffer> {
     try {
       return await this.downloadFile(bundle.downloadUrl);
     } catch (error) {
@@ -722,7 +731,7 @@ export class GitHubAdapter extends RepositoryAdapter {
    * @returns Promise resolving to SourceMetadata object
    * @throws Error if repository not found or API request fails
    */
-  async fetchMetadata(): Promise<SourceMetadata> {
+  public async fetchMetadata(): Promise<SourceMetadata> {
     const { owner, repo } = this.parseGitHubUrl();
     const url = `${this.apiBase}/repos/${owner}/${repo}`;
 
@@ -748,7 +757,7 @@ export class GitHubAdapter extends RepositoryAdapter {
    * Checks if the repository exists and is accessible with current authentication.
    * @returns Promise resolving to ValidationResult with status and any errors/warnings
    */
-  async validate(): Promise<ValidationResult> {
+  public async validate(): Promise<ValidationResult> {
     try {
       const { owner, repo } = this.parseGitHubUrl();
       const url = `${this.apiBase}/repos/${owner}/${repo}`;
@@ -782,7 +791,7 @@ export class GitHubAdapter extends RepositoryAdapter {
    * @param version - Optional version tag (defaults to 'latest')
    * @returns URL string pointing to deployment-manifest.json in release assets
    */
-  getManifestUrl(bundleId: string, version?: string): string {
+  public getManifestUrl(bundleId: string, version?: string): string {
     const { owner, repo } = this.parseGitHubUrl();
     const tag = version ? `v${version}` : 'latest';
     return `https://github.com/${owner}/${repo}/releases/download/${tag}/deployment-manifest.json`;
@@ -795,7 +804,7 @@ export class GitHubAdapter extends RepositoryAdapter {
    * @param version - Optional version tag (defaults to 'latest')
    * @returns URL string pointing to bundle.zip in release assets
    */
-  getDownloadUrl(bundleId: string, version?: string): string {
+  public getDownloadUrl(bundleId: string, version?: string): string {
     const { owner, repo } = this.parseGitHubUrl();
     const tag = version ? `v${version}` : 'latest';
     return `https://github.com/${owner}/${repo}/releases/download/${tag}/bundle.zip`;
@@ -828,6 +837,7 @@ export class GitHubAdapter extends RepositoryAdapter {
    * Extract description from release body
    * @param body
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private extractDescription(body: string): string {
     if (!body) {
       return '';
@@ -853,6 +863,7 @@ export class GitHubAdapter extends RepositoryAdapter {
    * Extract environments from release body
    * @param body
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private extractEnvironments(body: string): string[] {
     const envs = [];
     const envRegex = /(?:environments?|platforms?):\s*([^\n]+)/i;
@@ -870,6 +881,7 @@ export class GitHubAdapter extends RepositoryAdapter {
    * Extract tags from release body
    * @param body
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private extractTags(body: string): string[] {
     const tags = [];
     const tagRegex = /(?:tags?):\s*([^\n]+)/i;

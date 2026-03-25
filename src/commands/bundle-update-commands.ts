@@ -49,7 +49,7 @@ export class BundleUpdateCommands {
    * Check for updates on a single bundle and show update dialog
    * @param bundleId
    */
-  async checkSingleBundleUpdate(bundleId: string): Promise<void> {
+  public async checkSingleBundleUpdate(bundleId: string): Promise<void> {
     await this.withErrorHandling(async () => {
       await vscode.window.withProgress(
         {
@@ -94,7 +94,7 @@ export class BundleUpdateCommands {
   /**
    * Check for updates on all installed bundles
    */
-  async checkAllUpdates(): Promise<void> {
+  public async checkAllUpdates(): Promise<void> {
     await this.withErrorHandling(async () => {
       await vscode.window.withProgress(
         {
@@ -158,7 +158,7 @@ export class BundleUpdateCommands {
    * Update a specific bundle
    * @param bundleId
    */
-  async updateBundle(bundleId: string): Promise<void> {
+  public async updateBundle(bundleId: string): Promise<void> {
     await this.withErrorHandling(async () => {
       // Get bundle name for display (try to get details, but don't fail if not found)
       let bundleName = bundleId;
@@ -192,7 +192,7 @@ export class BundleUpdateCommands {
   /**
    * Update all bundles with available updates
    */
-  async updateAllBundles(): Promise<void> {
+  public async updateAllBundles(): Promise<void> {
     await this.withErrorHandling(async () => {
       this.logger.info('Starting batch update for all bundles');
 
@@ -224,7 +224,7 @@ export class BundleUpdateCommands {
    * Enable auto-update for a bundle
    * @param bundleId
    */
-  async enableAutoUpdate(bundleId?: string): Promise<void> {
+  public async enableAutoUpdate(bundleId?: string): Promise<void> {
     await this.withErrorHandling(async () => {
       if (!bundleId) {
         vscode.window.showErrorMessage('No bundle selected');
@@ -252,7 +252,7 @@ export class BundleUpdateCommands {
    * Disable auto-update for a bundle
    * @param bundleId
    */
-  async disableAutoUpdate(bundleId?: string): Promise<void> {
+  public async disableAutoUpdate(bundleId?: string): Promise<void> {
     await this.withErrorHandling(async () => {
       if (!bundleId) {
         vscode.window.showErrorMessage('No bundle selected');
@@ -283,6 +283,7 @@ export class BundleUpdateCommands {
    * Delegates to shared utility for consistency across the codebase.
    * @param bundleId
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async getBundleDisplayName(bundleId: string): Promise<string> {
     return getBundleDisplayName(bundleId, this.registryManager);
   }
@@ -294,6 +295,7 @@ export class BundleUpdateCommands {
    * @param operationName
    * @param fallbackValue
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async withErrorHandling<T>(
     operation: () => Promise<T>,
     operationName: string,
@@ -315,6 +317,7 @@ export class BundleUpdateCommands {
   /**
    * Check for available updates with progress indicator
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async checkForAvailableUpdates(): Promise<BundleUpdate[]> {
     return await vscode.window.withProgress(
       {
@@ -332,6 +335,7 @@ export class BundleUpdateCommands {
    * Confirm batch update with user
    * @param updateCount
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async confirmBatchUpdate(updateCount: number): Promise<boolean> {
     const confirmation = await vscode.window.showInformationMessage(
       `${updateCount} bundle update(s) available. Update all now?`,
@@ -345,6 +349,7 @@ export class BundleUpdateCommands {
    * Perform batch update with controlled concurrency and progress reporting
    * @param updates
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async performBatchUpdate(updates: BundleUpdate[]): Promise<{
     successful: string[];
     failed: { bundleId: string; error: string }[];
@@ -389,6 +394,7 @@ export class BundleUpdateCommands {
    * Process a batch of updates in parallel
    * @param batch
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async processBatch(batch: BundleUpdate[]): Promise<PromiseSettledResult<{
     bundleId: string;
     bundleName: string;
@@ -431,6 +437,7 @@ export class BundleUpdateCommands {
    * @param completed
    * @param totalUpdates
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private collectBatchResults(
     results: PromiseSettledResult<{
       bundleId: string;
@@ -476,6 +483,7 @@ export class BundleUpdateCommands {
    * @param successful
    * @param failed
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async showBatchUpdateSummary(
     successful: string[],
     failed: { bundleId: string; error: string }[]

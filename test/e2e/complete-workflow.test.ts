@@ -30,7 +30,7 @@ suite('E2E: Complete Workflow Tests', () => {
   // Real E2E tests should be added when running in VS Code extension host.
   // See test/e2e/AGENTS.md for guidance on writing E2E tests.
 
-  test('Extension activates successfully', async function () {
+  test('Extension activates successfully', function () {
     this.timeout(10_000);
 
     const ext = vscode.extensions.getExtension('AmadeusITGroup.prompt-registry');

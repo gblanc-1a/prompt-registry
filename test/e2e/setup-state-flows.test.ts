@@ -54,7 +54,7 @@ suite('E2E: Setup State Flows', () => {
         get: (key: string, defaultValue?: any) => {
           return globalStateStorage.has(key) ? globalStateStorage.get(key) : defaultValue;
         },
-        update: async (key: string, value: any) => {
+        update: (key: string, value: any) => {
           globalStateStorage.set(key, value);
         },
         keys: () => Array.from(globalStateStorage.keys()),
@@ -458,7 +458,7 @@ suite('E2E: Setup State Flows', () => {
     /**
      * Test that test environment detection works with both methods
      */
-    test('should detect test environment via both VSCODE_TEST and ExtensionMode', async () => {
+    test('should detect test environment via both VSCODE_TEST and ExtensionMode', () => {
       // Test VSCODE_TEST detection
       const originalEnv = process.env.VSCODE_TEST;
 

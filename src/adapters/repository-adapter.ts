@@ -82,22 +82,22 @@ export interface IRepositoryAdapter {
  * Base abstract class with common adapter functionality
  */
 export abstract class RepositoryAdapter implements IRepositoryAdapter {
-  abstract readonly type: string;
+  public abstract readonly type: string;
 
   constructor(public readonly source: RegistrySource) {}
 
-  abstract fetchBundles(): Promise<Bundle[]>;
-  abstract downloadBundle(bundle: Bundle): Promise<Buffer>;
-  abstract fetchMetadata(): Promise<SourceMetadata>;
-  abstract validate(): Promise<ValidationResult>;
-  abstract getManifestUrl(bundleId: string, version?: string): string;
-  abstract getDownloadUrl(bundleId: string, version?: string): string;
+  public abstract fetchBundles(): Promise<Bundle[]>;
+  public abstract downloadBundle(bundle: Bundle): Promise<Buffer>;
+  public abstract fetchMetadata(): Promise<SourceMetadata>;
+  public abstract validate(): Promise<ValidationResult>;
+  public abstract getManifestUrl(bundleId: string, version?: string): string;
+  public abstract getDownloadUrl(bundleId: string, version?: string): string;
 
   /**
    * Force re-authentication
    * Default implementation does nothing
    */
-  async forceAuthentication(): Promise<void> {
+  public async forceAuthentication(): Promise<void> {
     // Default implementation does nothing
     return Promise.resolve();
   }
@@ -105,7 +105,7 @@ export abstract class RepositoryAdapter implements IRepositoryAdapter {
   /**
    * Check if source requires authentication
    */
-  requiresAuthentication(): boolean {
+  public requiresAuthentication(): boolean {
     return this.source.private === true;
   }
 
@@ -113,6 +113,7 @@ export abstract class RepositoryAdapter implements IRepositoryAdapter {
    * Get authentication token from source config
    * @returns Token or undefined
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   protected getAuthToken(): string | undefined {
     return this.source.token;
   }
@@ -121,6 +122,7 @@ export abstract class RepositoryAdapter implements IRepositoryAdapter {
    * Create common HTTP headers for requests
    * @returns Headers object
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   protected getHeaders(): Record<string, string> {
     const headers: Record<string, string> = {
       'User-Agent': 'Prompt-Registry-VSCode-Extension/1.0',
@@ -140,6 +142,7 @@ export abstract class RepositoryAdapter implements IRepositoryAdapter {
    * @param response HTTP response
    * @param context Error context
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   protected async handleHttpError(response: any, context: string): Promise<never> {
     const statusText = response.statusText || 'Unknown';
     const body = await response.text?.().catch(() => '') || '';
@@ -154,6 +157,7 @@ export abstract class RepositoryAdapter implements IRepositoryAdapter {
    * @param url URL to validate
    * @returns True if valid
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   protected isValidUrl(url: string): boolean {
     try {
       new URL(url);
@@ -180,7 +184,7 @@ export class RepositoryAdapterFactory {
    * @param type Source type
    * @param adapterClass Adapter class constructor
    */
-  static register(type: string, adapterClass: AdapterConstructor): void {
+  public static register(type: string, adapterClass: AdapterConstructor): void {
     this.adapters.set(type, adapterClass);
   }
 
@@ -189,7 +193,8 @@ export class RepositoryAdapterFactory {
    * @param source Registry source
    * @returns Repository adapter instance
    */
-  static create(source: RegistrySource): IRepositoryAdapter {
+  public static create(source: RegistrySource): IRepositoryAdapter {
+    // eslint-disable-next-line @typescript-eslint/naming-convention
     const AdapterClass = this.adapters.get(source.type);
 
     if (!AdapterClass) {
@@ -204,7 +209,7 @@ export class RepositoryAdapterFactory {
    * @param type Source type
    * @returns True if adapter exists
    */
-  static hasAdapter(type: string): boolean {
+  public static hasAdapter(type: string): boolean {
     return this.adapters.has(type);
   }
 
@@ -212,7 +217,7 @@ export class RepositoryAdapterFactory {
    * Get all registered adapter types
    * @returns Array of adapter types
    */
-  static getRegisteredTypes(): string[] {
+  public static getRegisteredTypes(): string[] {
     return Array.from(this.adapters.keys());
   }
 }

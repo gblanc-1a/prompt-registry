@@ -34,6 +34,7 @@ export class SchemaValidator {
 
   constructor(extensionPath?: string) {
     // Use default export for AJV v6
+    // eslint-disable-next-line @typescript-eslint/naming-convention
     const AjvConstructor = (Ajv as any).default || Ajv;
     this.ajv = new AjvConstructor({
       allErrors: true, // Collect all errors, not just first
@@ -53,6 +54,7 @@ export class SchemaValidator {
    * @param schemaPath Path to the JSON schema file
    * @returns Compiled validation function
    */
+  // eslint-disable-next-line @typescript-eslint/require-await
   private async loadSchema(schemaPath: string): Promise<Ajv.ValidateFunction> {
     // Check cache first
     if (this.schemaCache.has(schemaPath)) {
@@ -81,7 +83,7 @@ export class SchemaValidator {
    * @param options Validation options
    * @returns Validation result with errors and warnings
    */
-  async validate(
+  public async validate(
     data: any,
     schemaPath: string,
     options: ValidationOptions = {}
@@ -128,7 +130,7 @@ export class SchemaValidator {
    * @param options Validation options
    * @returns Validation result
    */
-  async validateCollection(
+  public async validateCollection(
     data: any,
     options: ValidationOptions = {}
   ): Promise<ValidationResult> {
@@ -142,7 +144,7 @@ export class SchemaValidator {
    * @param options Validation options
    * @returns Validation result
    */
-  async validateApm(
+  public async validateApm(
     data: any,
     options: ValidationOptions = {}
   ): Promise<ValidationResult> {
@@ -155,6 +157,7 @@ export class SchemaValidator {
    * @param errors AJV error objects
    * @returns Formatted error messages
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private formatErrors(errors: Ajv.ErrorObject[]): string[] {
     return errors.map((error) => {
       const dataPath = error.dataPath || '';
@@ -202,6 +205,7 @@ export class SchemaValidator {
    * @param workspaceRoot Root directory for resolving paths
    * @returns Errors and warnings for missing files
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private validateFileReferences(data: any, workspaceRoot: string): { errors: string[]; warnings: string[] } {
     const errors: string[] = [];
     const warnings: string[] = [];
@@ -225,6 +229,7 @@ export class SchemaValidator {
    * @param data Collection data
    * @returns Warning messages
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private generateWarnings(data: any): string[] {
     const warnings: string[] = [];
 
@@ -259,7 +264,7 @@ export class SchemaValidator {
   /**
    * Clear the schema cache (useful for testing)
    */
-  clearCache(): void {
+  public clearCache(): void {
     this.schemaCache.clear();
   }
 }

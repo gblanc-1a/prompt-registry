@@ -328,6 +328,7 @@ export class PromptRegistryExtension {
   /**
    * Initialize telemetry service and subscribe to bundle lifecycle events.
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private initializeTelemetry(): void {
     try {
       this.telemetryService = TelemetryService.getInstance();
@@ -341,6 +342,7 @@ export class PromptRegistryExtension {
    * Run data migrations (idempotent).
    * Migrations use MigrationRegistry (globalState) to track completion.
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async runMigrations(): Promise<void> {
     try {
       const migrationRegistry = MigrationRegistry.getInstance(this.context);
@@ -355,6 +357,7 @@ export class PromptRegistryExtension {
   /**
    * Register all extension commands
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private registerCommands(): void {
     // Initialize Command Handlers
     this.profileCommands = new ProfileCommands(this.registryManager);
@@ -425,10 +428,10 @@ export class PromptRegistryExtension {
         const bundleId = this.extractBundleId(arg);
         if (bundleId) {
           // Check single bundle update - show dialog instead of directly updating
-          this.bundleCommands!.checkSingleBundleUpdate(bundleId);
+          void this.bundleCommands!.checkSingleBundleUpdate(bundleId);
         } else {
           // Check all bundles
-          this.bundleCommands!.checkAllUpdates();
+          void this.bundleCommands!.checkAllUpdates();
         }
       }),
       vscode.commands.registerCommand('promptRegistry.manualCheckForUpdates', async () => {
@@ -453,31 +456,31 @@ export class PromptRegistryExtension {
       vscode.commands.registerCommand('promptRegistry.moveToRepositoryCommit', (arg?) => {
         const bundleId = this.extractBundleId(arg);
         if (bundleId && this.bundleScopeCommands) {
-          this.bundleScopeCommands.moveToRepository(bundleId, 'commit');
+          void this.bundleScopeCommands.moveToRepository(bundleId, 'commit');
         }
       }),
       vscode.commands.registerCommand('promptRegistry.moveToRepositoryLocalOnly', (arg?) => {
         const bundleId = this.extractBundleId(arg);
         if (bundleId && this.bundleScopeCommands) {
-          this.bundleScopeCommands.moveToRepository(bundleId, 'local-only');
+          void this.bundleScopeCommands.moveToRepository(bundleId, 'local-only');
         }
       }),
       vscode.commands.registerCommand('promptRegistry.moveToUser', (arg?) => {
         const bundleId = this.extractBundleId(arg);
         if (bundleId && this.bundleScopeCommands) {
-          this.bundleScopeCommands.moveToUser(bundleId);
+          void this.bundleScopeCommands.moveToUser(bundleId);
         }
       }),
       vscode.commands.registerCommand('promptRegistry.switchToLocalOnly', (arg?) => {
         const bundleId = this.extractBundleId(arg);
         if (bundleId && this.bundleScopeCommands) {
-          this.bundleScopeCommands.switchCommitMode(bundleId, 'local-only');
+          void this.bundleScopeCommands.switchCommitMode(bundleId, 'local-only');
         }
       }),
       vscode.commands.registerCommand('promptRegistry.switchToCommit', (arg?) => {
         const bundleId = this.extractBundleId(arg);
         if (bundleId && this.bundleScopeCommands) {
-          this.bundleScopeCommands.switchCommitMode(bundleId, 'commit');
+          void this.bundleScopeCommands.switchCommitMode(bundleId, 'commit');
         }
       }),
 
@@ -572,6 +575,7 @@ export class PromptRegistryExtension {
   /**
    * Register TreeView for Registry Explorer
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await
   private async registerTreeView(): Promise<void> {
     this.logger.info('Registering Registry Explorer TreeView...');
 
@@ -614,6 +618,7 @@ export class PromptRegistryExtension {
   /**
    * Register Marketplace View for browsing and installing bundles
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await
   private async registerMarketplaceView(): Promise<void> {
     this.logger.info('Registering Marketplace View...');
 
@@ -640,6 +645,7 @@ export class PromptRegistryExtension {
   /**
    * Initialize Copilot Integration
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async initializeCopilot(): Promise<void> {
     try {
       this.logger.info('Initializing Copilot integration...');
@@ -660,6 +666,7 @@ export class PromptRegistryExtension {
    * Sets up UpdateScheduler, UpdateChecker, NotificationManager, and AutoUpdateService
    * Uses dependency injection to avoid circular dependencies
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async initializeUpdateSystem(): Promise<void> {
     try {
       this.logger.info('Initializing update notification system...');
@@ -739,6 +746,7 @@ export class PromptRegistryExtension {
    * Register configuration change listeners for update system
    * Applies configuration changes immediately without requiring restart
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private registerUpdateConfigurationListeners(): void {
     // Listen for update check configuration changes
     const configListener = vscode.workspace.onDidChangeConfiguration((e) => {
@@ -755,6 +763,7 @@ export class PromptRegistryExtension {
    * Handle update configuration changes
    * Applies new settings immediately to UpdateScheduler
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private handleUpdateConfigurationChange(): void {
     if (!this.updateScheduler) {
       return;
@@ -785,6 +794,7 @@ export class PromptRegistryExtension {
    * Handle manual update check command
    * Bypasses cache and displays results immediately
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async handleManualUpdateCheck(): Promise<void> {
     if (!this.updateScheduler || !this.updateChecker || !this.notificationManager) {
       this.logger.warn('Update system not initialized');
@@ -856,6 +866,7 @@ export class PromptRegistryExtension {
    * @param lockfileManager - The LockfileManager instance for the workspace
    * @returns Disposable subscription that should be added to disposables
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private subscribeLockfileChanges(lockfileManager: LockfileManager): vscode.Disposable {
     return lockfileManager.onLockfileUpdated(() => {
       this.logger.debug('Lockfile changed externally, refreshing repository bundles');
@@ -867,6 +878,7 @@ export class PromptRegistryExtension {
    * Initialize repository-level installation services
    * Sets up LockfileManager and RepositoryActivationService per workspace folder
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async initializeRepositoryServices(): Promise<void> {
     try {
       this.logger.info('Initializing repository-level installation services...');
@@ -903,7 +915,8 @@ export class PromptRegistryExtension {
 
       // Register BundleScopeCommands (requires scope services from RegistryManager)
       const bundleInstaller = this.registryManager.getBundleInstaller();
-      const userScopeService = bundleInstaller.getUserScopeService();
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const _userScopeService = bundleInstaller.getUserScopeService();
       const repositoryScopeService = bundleInstaller.createRepositoryScopeService();
 
       if (repositoryScopeService) {
@@ -932,6 +945,7 @@ export class PromptRegistryExtension {
    * Used when workspace folders are added dynamically
    * @param workspaceFolder - The workspace folder to initialize services for
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async initializeRepositoryServicesForWorkspace(workspaceFolder: vscode.WorkspaceFolder): Promise<void> {
     try {
       const repositoryPath = workspaceFolder.uri.fsPath;
@@ -967,6 +981,7 @@ export class PromptRegistryExtension {
    * Register workspace folder change listener
    * Re-initializes repository services when workspace folders change
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private registerWorkspaceFolderListener(): void {
     const workspaceListener = vscode.workspace.onDidChangeWorkspaceFolders(async (event) => {
       // Initialize services for newly added folders
@@ -997,6 +1012,7 @@ export class PromptRegistryExtension {
   /**
    * Initialize UI components
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async initializeUI(): Promise<void> {
     try {
       // Initialize status bar
@@ -1014,6 +1030,7 @@ export class PromptRegistryExtension {
   /**
    * Check if current workspace is an awesome-copilot repository
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async isAwesomeCopilotRepository(): Promise<boolean> {
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders || workspaceFolders.length === 0) {
@@ -1045,6 +1062,7 @@ export class PromptRegistryExtension {
   /**
    * Check if current workspace is an APM repository
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async isApmRepository(): Promise<boolean> {
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders || workspaceFolders.length === 0) {
@@ -1065,6 +1083,7 @@ export class PromptRegistryExtension {
   /**
    * Show command menu with all available extension commands
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async showCommandMenu(): Promise<void> {
     interface CommandItem extends vscode.QuickPickItem {
       command?: string;
@@ -1236,6 +1255,7 @@ export class PromptRegistryExtension {
    * Ensure only one profile is active during startup
    * Fixes cases where multiple profiles may be marked as active from previous sessions
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async ensureSingleActiveProfile(): Promise<void> {
     try {
       const allProfiles = await this.registryManager.listProfiles();
@@ -1268,6 +1288,7 @@ export class PromptRegistryExtension {
   /**
    * Check for automatic updates on extension activation
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await
   private async checkForAutomaticUpdates(): Promise<void> {
     try {
       const config = vscode.workspace.getConfiguration('promptregistry');
@@ -1289,6 +1310,7 @@ export class PromptRegistryExtension {
      * Initialize default sources on first run
      */
 
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async initializeDefaultSources(): Promise<void> {
     try {
       // Check if any sources already exist
@@ -1331,6 +1353,7 @@ export class PromptRegistryExtension {
    * Detects test/CI environments via VSCODE_TEST env var or extensionMode
    * @returns true if running in test environment, false otherwise
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private shouldSkipFirstRun(): boolean {
     return process.env.VSCODE_TEST === '1'
       || this.context.extensionMode === vscode.ExtensionMode.Test;
@@ -1342,6 +1365,7 @@ export class PromptRegistryExtension {
    * can render the "Setup Not Complete" empty state while the user decides.
    * @returns true if setup is incomplete (caller should skip fresh-install flow), false otherwise
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async handleIncompleteSetup(): Promise<boolean> {
     // Check for incomplete setup from previous session
     const isIncomplete = await this.setupStateManager!.detectIncompleteSetup();
@@ -1361,6 +1385,7 @@ export class PromptRegistryExtension {
    * Handle fresh install flow
    * Initializes default sources, hub, and shows welcome notification
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async handleFreshInstall(): Promise<void> {
     // Check if this is first run
     const state = await this.setupStateManager!.getState();
@@ -1397,6 +1422,7 @@ export class PromptRegistryExtension {
   /**
    * Check if this is the first run and show welcome message
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async checkFirstRun(): Promise<void> {
     if (!this.setupStateManager) {
       this.logger.warn('SetupStateManager not initialized, skipping first-run check');
@@ -1434,6 +1460,7 @@ export class PromptRegistryExtension {
    * marketplace button, clicking "Complete Setup" on the notification is a
    * safe no-op.
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private showResumeSetupPrompt(): void {
     if (!this.setupStateManager) {
       this.logger.warn('SetupStateManager not initialized, skipping resume prompt');
@@ -1441,7 +1468,7 @@ export class PromptRegistryExtension {
     }
 
     // Mark prompt as shown to prevent showing it multiple times in the same session
-    this.setupStateManager.markResumePromptShown();
+    void this.setupStateManager.markResumePromptShown();
 
     // Fire-and-forget: the .then() handler runs when the user clicks a button
     vscode.window.showInformationMessage(
@@ -1486,6 +1513,7 @@ export class PromptRegistryExtension {
    * Sync active hub configuration on every activation
    * Ensures users always have the latest hub configuration
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async syncActiveHub(): Promise<void> {
     try {
       const hubManager = this.hubManager;
@@ -1538,6 +1566,7 @@ export class PromptRegistryExtension {
    * State Management: On error or cancellation, this method calls markIncomplete()
    * and re-throws. The caller is responsible for calling markComplete() on success.
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async initializeHub(): Promise<void> {
     if (!this.hubManager) {
       throw new Error('HubManager not initialized');
@@ -1589,6 +1618,7 @@ export class PromptRegistryExtension {
   /**
    * Show first-run hub selector with preset options
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async showFirstRunHubSelector(): Promise<void> {
     const hubManager = this.hubManager!;
 
@@ -1698,11 +1728,13 @@ export class PromptRegistryExtension {
    * Migrate existing multi-hub installation to active hub model
    * @param hubs
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async migrateToActiveHub(hubs: any[]): Promise<void> {
     const hubManager = this.hubManager!;
 
     if (hubs.length === 1) {
       // Auto-activate the only hub
+      // eslint-disable-next-line @typescript-eslint/no-shadow
       const hubId = hubs[0].id;
       this.logger.info(`Auto-activating single hub: ${hubId}`);
       await hubManager.setActiveHub(hubId);

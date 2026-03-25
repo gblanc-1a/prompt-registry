@@ -18,7 +18,7 @@ export class FileIntegrityService {
    * Calculate comprehensive integrity information for a single file
    * @param filePath
    */
-  async calculateFileIntegrity(filePath: string): Promise<FileIntegrityInfo> {
+  public async calculateFileIntegrity(filePath: string): Promise<FileIntegrityInfo> {
     const stats = await fs.promises.stat(filePath);
 
     // Calculate both hash algorithms efficiently in a single pass
@@ -42,7 +42,7 @@ export class FileIntegrityService {
    * @param filePaths
    * @param concurrency
    */
-  async calculateFilesIntegrity(filePaths: string[], concurrency = 5): Promise<FileIntegrityInfo[]> {
+  public async calculateFilesIntegrity(filePaths: string[], concurrency = 5): Promise<FileIntegrityInfo[]> {
     const results: FileIntegrityInfo[] = [];
     const semaphore = new Semaphore(concurrency);
 
@@ -69,20 +69,22 @@ export class FileIntegrityService {
    * Uses SHA-512 as fallback if BLAKE2b is not available in the extension environment
    * @param filePath
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async calculateFileHashes(filePath: string): Promise<{ sha256: string; blake2b256: string }> {
     return new Promise((resolve, reject) => {
       const sha256Hash = crypto.createHash('sha256');
 
       // Try BLAKE2b first, fallback to SHA-512 if not supported
       let secondaryHash: crypto.Hash;
-      let useBlake2b = true;
+      let _useBlake2b = true;
 
       try {
         secondaryHash = crypto.createHash('blake2b512');
       } catch {
         // Fallback to SHA-512 if BLAKE2b is not supported in this environment
         secondaryHash = crypto.createHash('sha512');
-        useBlake2b = false;
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        _useBlake2b = false;
         console.log('Prompt Registry: BLAKE2b not available, using SHA-512 fallback');
       }
 
@@ -110,7 +112,7 @@ export class FileIntegrityService {
    * @param filePath
    * @param expectedIntegrity
    */
-  async verifyFileIntegrity(filePath: string, expectedIntegrity: FileIntegrityInfo): Promise<ModificationInfo> {
+  public async verifyFileIntegrity(filePath: string, expectedIntegrity: FileIntegrityInfo): Promise<ModificationInfo> {
     try {
       const currentIntegrity = await this.calculateFileIntegrity(filePath);
 
@@ -143,7 +145,7 @@ export class FileIntegrityService {
    * @param files
    * @param existingFiles
    */
-  async generateIntegrityReport(files: FileIntegrityInfo[], existingFiles: FileIntegrityInfo[]): Promise<IntegrityReport> {
+  public async generateIntegrityReport(files: FileIntegrityInfo[], existingFiles: FileIntegrityInfo[]): Promise<IntegrityReport> {
     const modifications: {
       file: string;
       type: 'modified' | 'deleted' | 'corrupted' | 'intact';
@@ -238,7 +240,7 @@ export class FileIntegrityService {
    * @param expectedSha256
    * @param expectedBlake2b
    */
-  async quickVerifyFile(filePath: string, expectedSha256: string, expectedBlake2b?: string): Promise<boolean> {
+  public async quickVerifyFile(filePath: string, expectedSha256: string, expectedBlake2b?: string): Promise<boolean> {
     try {
       const buffer = await fs.promises.readFile(filePath);
 
@@ -267,7 +269,8 @@ export class FileIntegrityService {
    * @param directoryPath
    * @param patterns
    */
-  async findFiles(directoryPath: string, patterns?: string[]): Promise<string[]> {
+  public async findFiles(directoryPath: string, patterns?: string[]): Promise<string[]> {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const glob = require('glob');
     const files: string[] = [];
 
@@ -292,7 +295,7 @@ export class FileIntegrityService {
    * Calculate directory summary statistics
    * @param directoryPath
    */
-  async calculateDirectoryStats(directoryPath: string): Promise<{
+  public async calculateDirectoryStats(directoryPath: string): Promise<{
     totalFiles: number;
     totalSize: number;
     largestFile: string;
@@ -340,7 +343,7 @@ class Semaphore {
     this.permits = permits;
   }
 
-  async acquire(): Promise<void> {
+  public async acquire(): Promise<void> {
     return new Promise<void>((resolve) => {
       if (this.permits > 0) {
         this.permits--;
@@ -351,7 +354,7 @@ class Semaphore {
     });
   }
 
-  release(): void {
+  public release(): void {
     if (this.waiting.length > 0) {
       const resolve = this.waiting.shift()!;
       resolve();

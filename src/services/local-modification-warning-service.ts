@@ -47,7 +47,7 @@ export class LocalModificationWarningService {
    *
    * Requirements: 14.1-14.3
    */
-  async checkForModifications(bundleId: string): Promise<ModifiedFileInfo[]> {
+  public async checkForModifications(bundleId: string): Promise<ModifiedFileInfo[]> {
     try {
       return await this.lockfileManager.detectModifiedFiles(bundleId);
     } catch (error) {
@@ -70,7 +70,7 @@ export class LocalModificationWarningService {
    *
    * Requirements: 14.4-14.10
    */
-  async showWarningDialog(
+  public async showWarningDialog(
     bundleId: string,
     modifiedFiles: ModifiedFileInfo[],
     bundleRepoUrl?: string
@@ -117,7 +117,7 @@ export class LocalModificationWarningService {
    *
    * Requirements: 14.1-14.10
    */
-  async checkAndWarn(
+  public async checkAndWarn(
     bundleId: string,
     bundleRepoUrl?: string
   ): Promise<ModificationWarningResult | null> {
@@ -139,6 +139,7 @@ export class LocalModificationWarningService {
    * @param modifiedFiles - Array of modified file information
    * @returns Formatted warning message
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private buildWarningMessage(bundleId: string, modifiedFiles: ModifiedFileInfo[]): string {
     const fileCount = modifiedFiles.length;
     const fileWord = fileCount === 1 ? 'file has' : 'files have';

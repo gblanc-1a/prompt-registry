@@ -58,7 +58,8 @@ suite('HubStorage - TDD', () => {
   suite('Initialization', () => {
     test('should create storage directory if it does not exist', () => {
       const newDir = path.join(tempDir, 'new-storage');
-      const newStorage = new HubStorage(newDir);
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const _newStorage = new HubStorage(newDir);
 
       assert.ok(fs.existsSync(newDir), 'Storage directory should be created');
     });
@@ -67,7 +68,8 @@ suite('HubStorage - TDD', () => {
       const existingDir = path.join(tempDir, 'existing');
       fs.mkdirSync(existingDir, { recursive: true });
 
-      const newStorage = new HubStorage(existingDir);
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const _newStorage = new HubStorage(existingDir);
       assert.ok(fs.existsSync(existingDir));
     });
 
@@ -204,7 +206,8 @@ suite('HubStorage - TDD', () => {
       await storage.saveHub(hubId, testHubConfig, testHubReference);
 
       // First load
-      const result1 = await storage.loadHub(hubId);
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const _result1 = await storage.loadHub(hubId);
 
       // Second load should use cache (modify file to verify)
       const configPath = path.join(tempDir, `${hubId}.yml`);
@@ -407,7 +410,7 @@ suite('HubStorage - TDD', () => {
       }
     });
 
-    test('should handle file system errors gracefully', async () => {
+    test('should handle file system errors gracefully', () => {
       // This test is already covered by "should handle save errors gracefully"
       assert.ok(true);
     });

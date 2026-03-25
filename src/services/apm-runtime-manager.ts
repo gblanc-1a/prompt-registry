@@ -86,7 +86,7 @@ export class ApmRuntimeManager {
   /**
    * Get singleton instance
    */
-  static getInstance(): ApmRuntimeManager {
+  public static getInstance(): ApmRuntimeManager {
     if (!ApmRuntimeManager.instance) {
       ApmRuntimeManager.instance = new ApmRuntimeManager();
     }
@@ -97,7 +97,7 @@ export class ApmRuntimeManager {
    * Initialize manager with extension context
    * @param context
    */
-  initialize(context: vscode.ExtensionContext): void {
+  public initialize(context: vscode.ExtensionContext): void {
     this.context = context;
   }
 
@@ -105,7 +105,7 @@ export class ApmRuntimeManager {
    * Setup runtime (install if missing)
    * Shows progress in UI
    */
-  async setupRuntime(): Promise<boolean> {
+  public async setupRuntime(): Promise<boolean> {
     const status = await this.getStatus(true);
     if (status.installed || status.uvxAvailable) {
       return true;
@@ -143,19 +143,20 @@ export class ApmRuntimeManager {
           'View Instructions'
         );
         if (selection === 'View Instructions') {
-          this.showInstallInstructions();
+          void this.showInstallInstructions();
         }
         return false;
       });
     }
 
-    this.showInstallInstructions();
+    void this.showInstallInstructions();
     return false;
   }
 
   /**
    * Show installation instructions
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async showInstallInstructions(): Promise<void> {
     const doc = await vscode.workspace.openTextDocument({
       content: this.getInstallInstructions(),
@@ -168,6 +169,7 @@ export class ApmRuntimeManager {
    * Install uv locally in extension storage
    * @param progress
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async installLocalUv(progress: vscode.Progress<{ message?: string }>): Promise<void> {
     if (!this.context) {
       throw new Error('Extension context not initialized');
@@ -212,6 +214,7 @@ export class ApmRuntimeManager {
   /**
    * Get uv binary download URL for current platform
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private getUvDownloadUrl(): string {
     const platform = process.platform;
     const arch = process.arch;
@@ -242,6 +245,7 @@ export class ApmRuntimeManager {
    * @param url
    * @param dest
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private downloadFile(url: string, dest: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const file = fs.createWriteStream(dest);
@@ -274,6 +278,7 @@ export class ApmRuntimeManager {
    * @param archivePath
    * @param destDir
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async extractArchive(archivePath: string, destDir: string): Promise<void> {
     if (archivePath.endsWith('.zip')) {
       // Windows: use PowerShell
@@ -317,7 +322,7 @@ export class ApmRuntimeManager {
   /**
    * Reset singleton instance (for testing)
    */
-  static resetInstance(): void {
+  public static resetInstance(): void {
     ApmRuntimeManager.instance = null;
   }
 
@@ -325,7 +330,7 @@ export class ApmRuntimeManager {
    * Get current APM runtime status
    * @param forceRefresh Force refresh ignoring cache
    */
-  async getStatus(forceRefresh = false): Promise<ApmRuntimeStatus> {
+  public async getStatus(forceRefresh = false): Promise<ApmRuntimeStatus> {
     // Check cache
     if (!forceRefresh && this.statusCache
       && Date.now() - this.statusCache.timestamp < CACHE_TTL) {
@@ -347,7 +352,7 @@ export class ApmRuntimeManager {
   /**
    * Check if APM is available
    */
-  async isAvailable(): Promise<boolean> {
+  public async isAvailable(): Promise<boolean> {
     const status = await this.getStatus();
     return status.installed;
   }
@@ -355,14 +360,14 @@ export class ApmRuntimeManager {
   /**
    * Clear cached status
    */
-  clearCache(): void {
+  public clearCache(): void {
     this.statusCache = null;
   }
 
   /**
    * Get platform-appropriate installation instructions
    */
-  getInstallInstructions(): string {
+  public getInstallInstructions(): string {
     const platform = process.platform;
 
     let instructions = '# APM CLI Installation\n\n';
@@ -400,6 +405,7 @@ export class ApmRuntimeManager {
   /**
    * Get local uv path if exists
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private getLocalUvPath(): string | undefined {
     if (!this.context) {
       return undefined;
@@ -413,6 +419,7 @@ export class ApmRuntimeManager {
    * Detect APM runtime installation
    * Security: Only executes known safe commands
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async detectRuntime(): Promise<ApmRuntimeStatus> {
     this.logger.debug('[ApmRuntime] Detecting APM installation...');
 
@@ -430,6 +437,7 @@ export class ApmRuntimeManager {
 
       if (!version) {
         // Fallback to checking uvx/uv
+        // eslint-disable-next-line @typescript-eslint/no-shadow
         const uvxAvailable = await this.checkUvx();
         return {
           installed: false,
@@ -472,6 +480,7 @@ export class ApmRuntimeManager {
    * Get safe environment for command execution
    * Security: Removes potentially dangerous environment variables
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private getSafeEnvironment(): NodeJS.ProcessEnv {
     const env = { ...process.env };
     // Keep PATH for command discovery
@@ -486,6 +495,7 @@ export class ApmRuntimeManager {
    * Security: Prevents injection via version output
    * @param version
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private sanitizeVersion(version: string): string {
     // Truncate to prevent abuse
     const truncated = version.substring(0, MAX_VERSION_LENGTH);
@@ -500,6 +510,7 @@ export class ApmRuntimeManager {
   /**
    * Detect how APM was installed
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async detectInstallMethod(): Promise<'pip' | 'brew' | 'binary' | 'unknown'> {
     // Check Homebrew (macOS)
     if (process.platform === 'darwin') {
@@ -542,6 +553,7 @@ export class ApmRuntimeManager {
   /**
    * Get Python version
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async getPythonVersion(): Promise<string | undefined> {
     for (const cmd of ['python3 --version', 'python --version']) {
       try {
@@ -558,6 +570,7 @@ export class ApmRuntimeManager {
   /**
    * Check if uvx is available
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async checkUvx(): Promise<boolean> {
     try {
       await execAsync('uvx --version', { timeout: COMMAND_TIMEOUT });
@@ -570,6 +583,7 @@ export class ApmRuntimeManager {
   /**
    * Get APM executable path
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async getApmPath(): Promise<string | undefined> {
     try {
       const cmd = process.platform === 'win32' ? 'where apm' : 'which apm';

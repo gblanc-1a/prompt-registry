@@ -29,7 +29,8 @@ suite('OlafAdapter Integration Tests', () => {
   };
 
   let runtimeManagerStub: sinon.SinonStubbedInstance<OlafRuntimeManager>;
-  let workspaceStub: sinon.SinonStub;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  let _workspaceStub: sinon.SinonStub;
 
   /**
    * Helper to set up mock GitHub API responses for bundle structure
@@ -44,7 +45,9 @@ suite('OlafAdapter Integration Tests', () => {
       metadata: { name: string; description: string; version?: string; author?: string; tags?: string[] };
       skills: { name: string; description: string; path: string; manifest: string }[];
     }[];
+    // eslint-disable-next-line @typescript-eslint/naming-convention
     skillManifests?: Record<string, { name: string; version?: string; entry_points: { protocol: string; path: string; patterns: string[] }[] }>;
+    // eslint-disable-next-line @typescript-eslint/naming-convention
     skillFiles?: Record<string, { name: string; type: 'file' | 'dir'; download_url?: string }[]>;
   }) {
     const { bundleDefinitions = [], skillManifests = {}, skillFiles = {} } = options;
@@ -419,7 +422,8 @@ suite('OlafAdapter Integration Tests', () => {
       const workspacePath = '/test/workspace';
       // Install path is now: .olaf/external-skills/<source-name>/ (without bundle/skill name)
       const installPath = path.join(workspacePath, '.olaf', 'external-skills', 'test-source');
-      const competencyIndexPath = path.join(workspacePath, '.olaf', 'olaf-core', 'reference', 'competency-index.json');
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const _competencyIndexPath = path.join(workspacePath, '.olaf', 'olaf-core', 'reference', 'competency-index.json');
 
       // Mock bundle definition with skill entry points
       const bundleDefinition = {
@@ -478,7 +482,8 @@ suite('OlafAdapter Integration Tests', () => {
       // Mock file system operations
       const existsSyncStub = sinon.stub(fs, 'existsSync');
       const mkdirSyncStub = sinon.stub(fs, 'mkdirSync');
-      const readFileSyncStub = sinon.stub(fs, 'readFileSync');
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const _readFileSyncStub = sinon.stub(fs, 'readFileSync');
       const writeFileSyncStub = sinon.stub(fs, 'writeFileSync');
 
       // Setup: competency index doesn't exist yet
@@ -574,7 +579,8 @@ suite('OlafAdapter Integration Tests', () => {
         .reply(200, JSON.stringify(skillManifest));
 
       const existsSyncStub = sinon.stub(fs, 'existsSync');
-      const mkdirSyncStub = sinon.stub(fs, 'mkdirSync');
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const _mkdirSyncStub = sinon.stub(fs, 'mkdirSync');
       const readFileSyncStub = sinon.stub(fs, 'readFileSync');
       const writeFileSyncStub = sinon.stub(fs, 'writeFileSync');
 

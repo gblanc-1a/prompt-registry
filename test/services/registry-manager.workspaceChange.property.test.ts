@@ -32,6 +32,7 @@ suite('RegistryManager Workspace Change Property Tests', () => {
    * Uses sinon sandbox for proper cleanup.
    * @param sandbox
    */
+  // eslint-disable-next-line @typescript-eslint/no-shadow
   const createMockContext = (sandbox: sinon.SinonSandbox): vscode.ExtensionContext => {
     return {
       globalState: {
@@ -100,7 +101,7 @@ suite('RegistryManager Workspace Change Property Tests', () => {
       await fc.assert(
         fc.asyncProperty(
           fc.integer({ min: 1, max: 10 }),
-          async (callCount: number) => {
+          (callCount: number) => {
             // Create fresh manager for each iteration
             const manager = createFreshManager();
 
@@ -142,7 +143,7 @@ suite('RegistryManager Workspace Change Property Tests', () => {
       await fc.assert(
         fc.asyncProperty(
           fc.integer({ min: 1, max: 5 }),
-          async (listenerCount: number) => {
+          (listenerCount: number) => {
             // Create fresh manager for each iteration
             const manager = createFreshManager();
 
@@ -186,7 +187,7 @@ suite('RegistryManager Workspace Change Property Tests', () => {
       );
     });
 
-    test('disposed listener should not receive events', async () => {
+    test('disposed listener should not receive events', () => {
       // Create fresh manager for this test
       const manager = createFreshManager();
 
@@ -226,7 +227,7 @@ suite('RegistryManager Workspace Change Property Tests', () => {
       }
     });
 
-    test('event should fire synchronously when handleWorkspaceFoldersChanged is called', async () => {
+    test('event should fire synchronously when handleWorkspaceFoldersChanged is called', () => {
       // Create fresh manager for this test
       const manager = createFreshManager();
 

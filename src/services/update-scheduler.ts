@@ -65,7 +65,7 @@ export class UpdateScheduler {
 
   // Event emitter for update detection - typed with UpdateCheckResult[]
   private readonly _onUpdatesDetected = new vscode.EventEmitter<UpdateCheckResult[]>();
-  readonly onUpdatesDetected = this._onUpdatesDetected.event;
+  public readonly onUpdatesDetected = this._onUpdatesDetected.event;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -108,7 +108,8 @@ export class UpdateScheduler {
   /**
    * Initialize scheduler and perform startup check
    */
-  async initialize(): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/require-await
+  public async initialize(): Promise<void> {
     if (this.isInitialized) {
       this.logger.debug('UpdateScheduler already initialized');
       return;
@@ -134,6 +135,7 @@ export class UpdateScheduler {
    * Schedule startup update check
    * Triggers within configured delay after activation
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private scheduleStartupCheck(): void {
     this.logger.debug(`Scheduling startup check in ${this.config.startupCheckDelay}ms`);
 
@@ -152,7 +154,7 @@ export class UpdateScheduler {
   /**
    * Schedule periodic update checks based on configuration
    */
-  schedulePeriodicChecks(): void {
+  public schedulePeriodicChecks(): void {
     if (this.isTestEnvironment) {
       this.logger.debug('Test environment detected, skipping periodic check timers');
       return;
@@ -199,7 +201,7 @@ export class UpdateScheduler {
    * Manually trigger an update check
    * Bypasses cache and schedule
    */
-  async checkNow(): Promise<void> {
+  public async checkNow(): Promise<void> {
     this.logger.info('Manual update check triggered');
     await this.performUpdateCheck(true);
   }
@@ -208,7 +210,7 @@ export class UpdateScheduler {
    * Update check frequency when settings change
    * @param frequency
    */
-  updateSchedule(frequency: UpdateCheckFrequency): void {
+  public updateSchedule(frequency: UpdateCheckFrequency): void {
     this.logger.info(`Updating check frequency to: ${frequency}`);
     this.config.frequency = frequency;
 
@@ -220,7 +222,7 @@ export class UpdateScheduler {
    * Update enabled state when settings change
    * @param enabled
    */
-  updateEnabled(enabled: boolean): void {
+  public updateEnabled(enabled: boolean): void {
     this.logger.info(`Updating enabled state to: ${enabled}`);
     this.config.enabled = enabled;
 
@@ -240,6 +242,7 @@ export class UpdateScheduler {
    * CRITICAL: Triggers notifications when updates are detected
    * @param bypassCache
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async performUpdateCheck(bypassCache = false): Promise<void> {
     let timeoutHandle: NodeJS.Timeout | undefined;
     let checkPromise: Promise<any>;
@@ -338,6 +341,7 @@ export class UpdateScheduler {
   /**
    * Get check interval in milliseconds based on frequency
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private getCheckInterval(): number {
     switch (this.config.frequency) {
       case 'daily': {
@@ -355,6 +359,7 @@ export class UpdateScheduler {
   /**
    * Load configuration from VS Code settings
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private loadConfiguration(): UpdateSchedulerConfig {
     const config = vscode.workspace.getConfiguration('promptregistry.updateCheck');
     const rawFrequency = config.get<string>('frequency', 'daily');
@@ -379,21 +384,21 @@ export class UpdateScheduler {
   /**
    * Get last check time
    */
-  getLastCheckTime(): Date | undefined {
+  public getLastCheckTime(): Date | undefined {
     return this.lastCheckTime;
   }
 
   /**
    * Check if scheduler is initialized
    */
-  isSchedulerInitialized(): boolean {
+  public isSchedulerInitialized(): boolean {
     return this.isInitialized;
   }
 
   /**
    * Cleanup timers
    */
-  dispose(): void {
+  public dispose(): void {
     this.logger.debug('Disposing UpdateScheduler');
 
     if (this.startupCheckTimer) {

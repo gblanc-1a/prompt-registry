@@ -55,7 +55,7 @@ export class BundleCommands {
   /**
    * Search and install a bundle
    */
-  async searchAndInstall(): Promise<void> {
+  public async searchAndInstall(): Promise<void> {
     return await this.installationCommands.searchAndInstall();
   }
 
@@ -63,7 +63,7 @@ export class BundleCommands {
    * Install a specific bundle
    * @param bundleId
    */
-  async installBundle(bundleId?: string): Promise<void> {
+  public async installBundle(bundleId?: string): Promise<void> {
     return await this.installationCommands.installBundle(bundleId);
   }
 
@@ -71,7 +71,7 @@ export class BundleCommands {
    * Uninstall a bundle
    * @param bundleId
    */
-  async uninstallBundle(bundleId?: string): Promise<void> {
+  public async uninstallBundle(bundleId?: string): Promise<void> {
     return await this.installationCommands.uninstallBundle(bundleId);
   }
 
@@ -81,7 +81,7 @@ export class BundleCommands {
    * Update a bundle
    * @param bundleId
    */
-  async updateBundle(bundleId?: string): Promise<void> {
+  public async updateBundle(bundleId?: string): Promise<void> {
     if (!bundleId) {
       return await this.updateCommands.checkAllUpdates();
     }
@@ -92,21 +92,21 @@ export class BundleCommands {
    * Check for updates on a single bundle and show update dialog
    * @param bundleId
    */
-  async checkSingleBundleUpdate(bundleId: string): Promise<void> {
+  public async checkSingleBundleUpdate(bundleId: string): Promise<void> {
     return await this.updateCommands.checkSingleBundleUpdate(bundleId);
   }
 
   /**
    * Check for updates on all installed bundles
    */
-  async checkAllUpdates(): Promise<void> {
+  public async checkAllUpdates(): Promise<void> {
     return await this.updateCommands.checkAllUpdates();
   }
 
   /**
    * Update all bundles with available updates
    */
-  async updateAllBundles(): Promise<void> {
+  public async updateAllBundles(): Promise<void> {
     return await this.updateCommands.updateAllBundles();
   }
 
@@ -114,7 +114,7 @@ export class BundleCommands {
    * Enable auto-update for a bundle
    * @param bundleId
    */
-  async enableAutoUpdate(bundleId?: string): Promise<void> {
+  public async enableAutoUpdate(bundleId?: string): Promise<void> {
     return await this.updateCommands.enableAutoUpdate(bundleId);
   }
 
@@ -122,7 +122,7 @@ export class BundleCommands {
    * Disable auto-update for a bundle
    * @param bundleId
    */
-  async disableAutoUpdate(bundleId?: string): Promise<void> {
+  public async disableAutoUpdate(bundleId?: string): Promise<void> {
     return await this.updateCommands.disableAutoUpdate(bundleId);
   }
 
@@ -132,28 +132,28 @@ export class BundleCommands {
    * View bundle details
    * @param bundleId
    */
-  async viewBundle(bundleId?: string): Promise<void> {
+  public async viewBundle(bundleId?: string): Promise<void> {
     return await this.browsingCommands.viewBundle(bundleId);
   }
 
   /**
    * Browse bundles by category
    */
-  async browseByCategory(): Promise<void> {
+  public async browseByCategory(): Promise<void> {
     return await this.browsingCommands.browseByCategory();
   }
 
   /**
    * Show popular bundles
    */
-  async showPopular(): Promise<void> {
+  public async showPopular(): Promise<void> {
     return await this.browsingCommands.showPopular();
   }
 
   /**
    * List installed bundles
    */
-  async listInstalled(): Promise<void> {
+  public async listInstalled(): Promise<void> {
     return await this.browsingCommands.listInstalled();
   }
 
@@ -167,7 +167,7 @@ export class BundleCommands {
    * Requirements covered:
    * - 3.4: Provide command to clean up stale lockfile entries
    */
-  async cleanupStaleLockfileEntries(): Promise<void> {
+  public async cleanupStaleLockfileEntries(): Promise<void> {
     const workspaceRoot = getWorkspaceRoot();
 
     if (!workspaceRoot) {

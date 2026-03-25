@@ -60,7 +60,7 @@ export class HubProfileComparisonView {
    * @param hubId
    * @param profileId
    */
-  async getProfileComparisonData(
+  public async getProfileComparisonData(
     hubId: string,
     profileId: string
   ): Promise<ProfileComparisonData | null> {
@@ -169,7 +169,7 @@ export class HubProfileComparisonView {
    * @param status
    * @param oldVersion
    */
-  formatBundleComparison(
+  public formatBundleComparison(
     bundle: HubProfileBundle | string,
     status: 'added' | 'updated' | 'removed' | 'unchanged',
     oldVersion?: string
@@ -204,7 +204,7 @@ export class HubProfileComparisonView {
    * Generate a text summary of the comparison
    * @param comparison
    */
-  generateComparisonSummary(comparison: ProfileComparisonData): string {
+  public generateComparisonSummary(comparison: ProfileComparisonData): string {
     const lines: string[] = [`Profile Comparison: ${comparison.profileId}`, ''];
 
     // Metadata changes
@@ -254,7 +254,7 @@ export class HubProfileComparisonView {
    * Create QuickPick items for bundle comparison
    * @param comparison
    */
-  createComparisonQuickPickItems(
+  public createComparisonQuickPickItems(
     comparison: ProfileComparisonData
   ): ComparisonQuickPickItem[] {
     const items: ComparisonQuickPickItem[] = [];
@@ -319,7 +319,7 @@ export class HubProfileComparisonView {
    * Generate side-by-side comparison text
    * @param comparison
    */
-  getSideBySideComparison(comparison: ProfileComparisonData): string {
+  public getSideBySideComparison(comparison: ProfileComparisonData): string {
     const lines: string[] = [];
     const width = 40;
 
@@ -388,6 +388,7 @@ export class HubProfileComparisonView {
    * @param str
    * @param length
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private padRight(str: string, length: number): string {
     if (str.length >= length) {
       return str.substring(0, length - 3) + '...';

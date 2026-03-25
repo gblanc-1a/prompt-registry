@@ -124,7 +124,8 @@ Content: ${content}
    * @param promptContent
    * @param times
    */
-  function setupSourceMocks(
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  function _setupSourceMocks(
         collectionYaml: string,
         promptContent: string,
         times = 1
@@ -159,7 +160,8 @@ Content: ${content}
   /**
    * Helper to set up mocks for validation
    */
-  function setupValidationMocks(): void {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  function _setupValidationMocks(): void {
     nock('https://api.github.com')
       .get('/repos/test-owner/awesome-copilot-test/contents/collections')
       .query({ ref: 'main' })
@@ -169,7 +171,7 @@ Content: ${content}
   }
 
   suite('Test Setup Validation', () => {
-    test('should create isolated test context with unique storage path', async function () {
+    test('should create isolated test context with unique storage path', function () {
       this.timeout(10_000);
 
       // Verify test context was created

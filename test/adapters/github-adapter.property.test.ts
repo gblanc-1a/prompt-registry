@@ -253,7 +253,8 @@ suite('GitHubAdapter Property-Based Tests', () => {
     };
 
     const adapter = new GitHubAdapter(source);
-    const token = await (adapter as any).getAuthenticationToken();
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const _token = await (adapter as any).getAuthenticationToken();
     const method = adapter.getAuthenticationMethod();
 
     // Should not use the whitespace token

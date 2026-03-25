@@ -329,7 +329,7 @@ suite('RegistryStorage', () => {
       reads.forEach((r) => assert.deepStrictEqual(r, data));
     });
 
-    test('should prevent concurrent write conflicts', async () => {
+    test('should prevent concurrent write conflicts', () => {
       const data = { counter: 0 };
 
       // Simulate sequential writes (no conflicts)

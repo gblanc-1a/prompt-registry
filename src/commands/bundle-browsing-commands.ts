@@ -30,7 +30,7 @@ export class BundleBrowsingCommands {
    * View bundle details
    * @param bundleId
    */
-  async viewBundle(bundleId?: string): Promise<void> {
+  public async viewBundle(bundleId?: string): Promise<void> {
     try {
       // If no bundleId, let user search
       if (!bundleId) {
@@ -161,7 +161,7 @@ export class BundleBrowsingCommands {
   /**
    * Browse bundles by category
    */
-  async browseByCategory(): Promise<void> {
+  public async browseByCategory(): Promise<void> {
     try {
       const category = await vscode.window.showQuickPick(
         [
@@ -234,7 +234,7 @@ export class BundleBrowsingCommands {
   /**
    * Show popular bundles
    */
-  async showPopular(): Promise<void> {
+  public async showPopular(): Promise<void> {
     try {
       await vscode.window.withProgress(
         {
@@ -283,7 +283,7 @@ export class BundleBrowsingCommands {
   /**
    * List installed bundles
    */
-  async listInstalled(): Promise<void> {
+  public async listInstalled(): Promise<void> {
     try {
       const installed = await this.registryManager.listInstalledBundles();
 
@@ -344,6 +344,7 @@ export class BundleBrowsingCommands {
    * @param bundle
    * @param isInstalled
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private formatBundleInfo(bundle: Bundle, isInstalled: boolean): string {
     const parts: string[] = [`Name: ${bundle.name}`, `Version: ${bundle.version}`, `Author: ${bundle.author}`, `Description: ${bundle.description}`];
 

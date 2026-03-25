@@ -43,7 +43,7 @@ export class TemplateEngine {
   /**
    * Load template manifest
    */
-  async loadManifest(): Promise<TemplateManifest> {
+  public async loadManifest(): Promise<TemplateManifest> {
     if (this.manifestCache) {
       return this.manifestCache;
     }
@@ -71,7 +71,7 @@ export class TemplateEngine {
    * @param name
    * @param context
    */
-  async renderTemplate(name: string, context: TemplateContext): Promise<string> {
+  public async renderTemplate(name: string, context: TemplateContext): Promise<string> {
     const manifest = await this.loadManifest();
     const template = manifest.templates[name];
 
@@ -107,7 +107,7 @@ export class TemplateEngine {
    * @param targetPath
    * @param context
    */
-  async copyTemplate(name: string, targetPath: string | vscode.Uri, context: TemplateContext): Promise<void> {
+  public async copyTemplate(name: string, targetPath: string | vscode.Uri, context: TemplateContext): Promise<void> {
     const content = await this.renderTemplate(name, context);
 
     // Resolve target URI
@@ -131,7 +131,7 @@ export class TemplateEngine {
    * @param targetPath
    * @param context
    */
-  async scaffoldProject(targetPath: string | vscode.Uri, context: TemplateContext): Promise<void> {
+  public async scaffoldProject(targetPath: string | vscode.Uri, context: TemplateContext): Promise<void> {
     const targetUri = typeof targetPath === 'string' ? vscode.Uri.file(targetPath) : targetPath;
     this.logger.info(`Scaffolding project at: ${targetUri.fsPath}`);
 
@@ -166,7 +166,7 @@ export class TemplateEngine {
   /**
    * Get templates metadata
    */
-  async getTemplates(): Promise<{ [key: string]: TemplateInfo }> {
+  public async getTemplates(): Promise<{ [key: string]: TemplateInfo }> {
     const manifest = await this.loadManifest();
     return manifest.templates;
   }
@@ -177,6 +177,7 @@ export class TemplateEngine {
    * @param name
    * @param templatePath
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private resolveRelativePath(name: string, templatePath: string): string {
     let relativePath = templatePath;
 
@@ -232,6 +233,7 @@ export class TemplateEngine {
    * Enhance context with computed values
    * @param context
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private enhanceContext(context: TemplateContext): Record<string, any> {
     const enhanced: Record<string, string> = { ...context };
 

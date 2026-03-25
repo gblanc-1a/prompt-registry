@@ -5,11 +5,16 @@ export interface GitHubAsset {
   id: number;
   name: string;
   label: string | null;
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   content_type: string;
   size: number;
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   download_count: number;
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   created_at: string;
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   updated_at: string;
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   browser_download_url: string;
 }
 
@@ -18,16 +23,22 @@ export interface GitHubAsset {
  */
 export interface GitHubRelease {
   id: number;
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   tag_name: string;
   name: string;
   body: string;
   draft: boolean;
   prerelease: boolean;
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   created_at: string;
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   published_at: string;
   assets: GitHubAsset[];
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   html_url: string;
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   tarball_url: string;
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   zipball_url: string;
 }
 

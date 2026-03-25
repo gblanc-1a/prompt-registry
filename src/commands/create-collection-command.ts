@@ -14,6 +14,7 @@ interface CollectionTemplate {
   }[];
   display: {
     ordering: string;
+    // eslint-disable-next-line @typescript-eslint/naming-convention
     show_badge: boolean;
   };
 }
@@ -31,7 +32,7 @@ export class CreateCollectionCommand {
     this.outputChannel = vscode.window.createOutputChannel('Collection Creator');
   }
 
-  async execute(): Promise<void> {
+  public async execute(): Promise<void> {
     const workspaceFolders = vscode.workspace.workspaceFolders;
 
     if (!workspaceFolders || workspaceFolders.length === 0) {
@@ -172,12 +173,14 @@ export class CreateCollectionCommand {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private generateDefaultName(id: string): string {
     return id.split('-')
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
       .join(' ') + ' Collection';
   }
 
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private generateTemplate(
     id: string,
     name: string,
@@ -202,11 +205,12 @@ export class CreateCollectionCommand {
     };
   }
 
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private log(message: string): void {
     this.outputChannel.appendLine(message);
   }
 
-  dispose(): void {
+  public dispose(): void {
     this.outputChannel.dispose();
   }
 }

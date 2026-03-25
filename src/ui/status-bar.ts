@@ -35,6 +35,7 @@ export class StatusBar {
   /**
    * Initialize the status bar
    */
+  // eslint-disable-next-line @typescript-eslint/require-await
   public async initialize(): Promise<void> {
     try {
       this.statusBarItem.show();

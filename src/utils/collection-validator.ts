@@ -58,6 +58,7 @@ interface Collection {
   items?: CollectionItem[];
   display?: {
     ordering?: string;
+    // eslint-disable-next-line @typescript-eslint/naming-convention
     show_badge?: boolean;
   };
 }
@@ -88,7 +89,7 @@ export class CollectionValidator {
    * @param projectRoot - Project root directory for resolving item paths
    * @returns Validation result with errors and warnings
    */
-  validateCollection(collectionPath: string, projectRoot: string): ValidationResult {
+  public validateCollection(collectionPath: string, projectRoot: string): ValidationResult {
     const errors: ValidationError[] = [];
     const warnings: ValidationWarning[] = [];
     const fileName = path.basename(collectionPath);
@@ -179,7 +180,7 @@ export class CollectionValidator {
    * @param collectionsDir - Absolute path to collections directory
    * @returns Aggregated validation result
    */
-  validateAllCollections(collectionsDir: string): ValidationResult {
+  public validateAllCollections(collectionsDir: string): ValidationResult {
     const allErrors: ValidationError[] = [];
     const allWarnings: ValidationWarning[] = [];
 
@@ -236,6 +237,7 @@ export class CollectionValidator {
    * @param fileName
    * @param errors
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private validateRequiredFields(collection: Collection, fileName: string, errors: ValidationError[]): void {
     if (!collection.id) {
       errors.push({
@@ -272,6 +274,7 @@ export class CollectionValidator {
    * @param fileName
    * @param errors
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private validateId(id: string, fileName: string, errors: ValidationError[]): void {
     if (!this.ID_PATTERN.test(id)) {
       errors.push({
@@ -287,6 +290,7 @@ export class CollectionValidator {
    * @param fileName
    * @param warnings
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private validateDescription(description: string, fileName: string, warnings: ValidationWarning[]): void {
     if (description.length > this.MAX_DESCRIPTION_LENGTH) {
       warnings.push({
@@ -304,6 +308,7 @@ export class CollectionValidator {
    * @param errors
    * @param warnings
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private validateItems(
     items: CollectionItem[],
     fileName: string,
@@ -369,6 +374,7 @@ export class CollectionValidator {
    * @param errors
    * @param warnings
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private validateTags(
     tags: any,
     fileName: string,

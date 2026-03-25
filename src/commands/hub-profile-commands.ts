@@ -59,7 +59,7 @@ export class HubProfileCommands {
    * Toggle profile favorite status
    * @param arg
    */
-  async toggleProfileFavorite(arg: any): Promise<void> {
+  public async toggleProfileFavorite(arg: any): Promise<void> {
     try {
       let hubId: string;
       let profileId: string;
@@ -92,7 +92,7 @@ export class HubProfileCommands {
   /**
    * List all hub profiles from all imported hubs
    */
-  async listHubProfiles(): Promise<void> {
+  public async listHubProfiles(): Promise<void> {
     try {
       const profiles = await this.hubManager.listAllHubProfiles();
 
@@ -120,7 +120,8 @@ export class HubProfileCommands {
       // Create quick pick items
       const items: (vscode.QuickPickItem & { profile?: HubProfile & { hubId: string; hubName: string } })[] = [];
 
-      for (const [hubId, hubProfiles] of hubGroups) {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      for (const [_hubId, hubProfiles] of hubGroups) {
         const hubName = hubProfiles[0].hubName;
 
         // Hub separator
@@ -158,7 +159,7 @@ export class HubProfileCommands {
   /**
    * Browse hub profiles with filtering and search
    */
-  async browseHubProfiles(): Promise<void> {
+  public async browseHubProfiles(): Promise<void> {
     try {
       const hubs = await this.hubManager.listHubs();
 
@@ -235,7 +236,7 @@ export class HubProfileCommands {
    * @param hubId
    * @param profileId
    */
-  async viewHubProfile(hubId: string, profileId: string): Promise<void> {
+  public async viewHubProfile(hubId: string, profileId: string): Promise<void> {
     try {
       const profile = await this.hubManager.getHubProfile(hubId, profileId);
       const hubInfo = await this.hubManager.getHubInfo(hubId);
@@ -255,6 +256,7 @@ export class HubProfileCommands {
    * Show detailed information about a hub profile with actions
    * @param profile
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async showProfileDetails(profile: HubProfile & { hubId: string; hubName: string }): Promise<void> {
     const bundleList = profile.bundles.length > 0
       ? profile.bundles.map((b, i) => `   ${i + 1}. ${b.id}@${b.version}${b.required ? ' (required)' : ''}`).join('\n')
@@ -303,9 +305,10 @@ export class HubProfileCommands {
   /**
    * Generate HTML for profile details webview
    * @param profile
-   * @param markdown
+   * @param _markdown
    */
-  private getProfileDetailsHtml(profile: HubProfile & { hubId: string; hubName: string }, markdown: string): string {
+  // eslint-disable-next-line @typescript-eslint/member-ordering
+  private getProfileDetailsHtml(profile: HubProfile & { hubId: string; hubName: string }, _markdown: string): string {
     const bundleRows = profile.bundles.map((b) => `
             <tr>
                 <td>${b.id}</td>
@@ -430,6 +433,7 @@ export class HubProfileCommands {
    * Copy a hub profile to local profiles
    * @param profile
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async copyProfileToLocal(profile: HubProfile & { hubId: string; hubName: string }): Promise<void> {
     try {
       const newName = await vscode.window.showInputBox({

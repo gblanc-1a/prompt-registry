@@ -41,6 +41,7 @@ interface GitHubDirectoryContent {
   name: string;
   path: string;
   type: 'file' | 'dir';
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   download_url: string | null;
   url: string;
 }
@@ -50,7 +51,7 @@ interface GitHubDirectoryContent {
  * Discovers and packages AI skills from bundles/ and skills/ directory structure
  */
 export class OlafAdapter extends RepositoryAdapter {
-  readonly type = 'olaf';
+  public readonly type = 'olaf';
   private readonly logger: Logger;
   private readonly githubAdapter: GitHubAdapter;
   private readonly runtimeManager: OlafRuntimeManager;
@@ -105,7 +106,7 @@ export class OlafAdapter extends RepositoryAdapter {
    * Override fetchBundles to implement OLAF-specific bundle discovery
    * Scans bundles/ directory for bundle definitions and converts them to Bundle objects
    */
-  async fetchBundles(): Promise<Bundle[]> {
+  public async fetchBundles(): Promise<Bundle[]> {
     this.logger.info(`[OlafAdapter] Fetching bundles from OLAF repository: ${this.source.url}`);
 
     try {
@@ -139,6 +140,7 @@ export class OlafAdapter extends RepositoryAdapter {
    * Maps bundle definition metadata to Bundle properties
    * @param bundleInfo
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private createBundleFromDefinition(bundleInfo: BundleDefinitionInfo): Bundle {
     const { owner, repo } = this.parseGitHubUrl();
     const metadata = bundleInfo.definition.metadata;
@@ -181,6 +183,7 @@ export class OlafAdapter extends RepositoryAdapter {
    * Estimate bundle size based on total skill files
    * @param skills
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private estimateBundleSize(skills: SkillInfo[]): string {
     // Sum up estimated sizes for all skills
     let totalFiles = 0;
@@ -204,7 +207,7 @@ export class OlafAdapter extends RepositoryAdapter {
    * Validate OLAF repository structure
    * Checks for bundles/ and skills/ directories at root level and validates accessibility
    */
-  async validate(): Promise<ValidationResult> {
+  public async validate(): Promise<ValidationResult> {
     this.logger.info(`[OlafAdapter] Validating OLAF repository: ${this.source.url}`);
 
     const errors: string[] = [];
@@ -296,6 +299,7 @@ export class OlafAdapter extends RepositoryAdapter {
    * Scan bundles/ directory for JSON bundle definition files
    * Returns list of bundle definition file paths for further processing
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async scanBundleDefinitions(): Promise<BundleDefinitionInfo[]> {
     const { owner, repo } = this.parseGitHubUrl();
     const apiBase = 'https://api.github.com';
@@ -369,6 +373,7 @@ export class OlafAdapter extends RepositoryAdapter {
    * Extracts metadata fields and skill references
    * @param jsonFile
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async parseBundleDefinition(jsonFile: GitHubDirectoryContent): Promise<BundleDefinition> {
     this.logger.debug(`[OlafAdapter] Parsing bundle definition: ${jsonFile.name}`);
 
@@ -434,6 +439,7 @@ export class OlafAdapter extends RepositoryAdapter {
    * Returns validated SkillInfo[] for valid skills, logs warnings for invalid ones
    * @param bundleDefinition
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async validateSkillReferences(bundleDefinition: BundleDefinition): Promise<SkillInfo[]> {
     const { owner, repo } = this.parseGitHubUrl();
     const apiBase = 'https://api.github.com';
@@ -523,6 +529,7 @@ export class OlafAdapter extends RepositoryAdapter {
    * Parse skill manifest from GitHub and validate entry_points field
    * @param manifestFile
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async parseLocalSkillManifest(manifestFile: GitHubDirectoryContent): Promise<LocalOlafSkillManifest> {
     if (!manifestFile.download_url) {
       throw new Error('No download URL for manifest file');
@@ -609,6 +616,7 @@ export class OlafAdapter extends RepositoryAdapter {
    * @param owner
    * @param repo
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async fetchSingleSkill(skillName: string, skillPath: string, owner: string, repo: string): Promise<SkillInfo | null> {
     this.logger.debug(`[OlafAdapter] Fetching single skill: ${skillName}`);
 
@@ -633,6 +641,7 @@ export class OlafAdapter extends RepositoryAdapter {
    * Scan .olaf/core/skills directory for skills
    * Discovers skill folders and parses their manifests
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async scanSkillsDirectory(): Promise<SkillInfo[]> {
     const { owner, repo } = this.parseGitHubUrl();
     const apiBase = 'https://api.github.com';
@@ -678,6 +687,7 @@ export class OlafAdapter extends RepositoryAdapter {
    * @param owner
    * @param repo
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async processSkillDirectory(skillDir: GitHubDirectoryContent, owner: string, repo: string): Promise<SkillInfo | null> {
     const skillPath = skillDir.path;
     const skillName = skillDir.name;
@@ -730,6 +740,7 @@ export class OlafAdapter extends RepositoryAdapter {
    * @param manifestUrl
    * @param skillFolderName
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async parseSkillManifest(manifestUrl: string, skillFolderName?: string): Promise<SkillManifest> {
     this.logger.debug(`[OlafAdapter] Parsing skill manifest from: ${manifestUrl}`);
 
@@ -784,7 +795,9 @@ export class OlafAdapter extends RepositoryAdapter {
    * Handles authentication and error cases
    * @param url
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async downloadManifestContent(url: string): Promise<Buffer> {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const https = require('node:https');
 
     return new Promise((resolve, reject) => {
@@ -824,6 +837,7 @@ export class OlafAdapter extends RepositoryAdapter {
    * Maps skill manifest properties to bundle properties with defaults
    * @param skill
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private createBundleFromSkill(skill: SkillInfo): Bundle {
     const { owner, repo } = this.parseGitHubUrl();
     const manifest = skill.manifest;
@@ -870,6 +884,7 @@ export class OlafAdapter extends RepositoryAdapter {
    * Ensures 'olaf' and 'skill' tags are always present
    * @param manifestTags
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private normalizeTags(manifestTags?: string[]): string[] {
     const baseTags = ['olaf', 'skill'];
 
@@ -887,6 +902,7 @@ export class OlafAdapter extends RepositoryAdapter {
    * Converts string array to BundleDependency array
    * @param manifestDependencies
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private normalizeDependencies(manifestDependencies?: string[]): BundleDependency[] {
     if (!manifestDependencies || !Array.isArray(manifestDependencies)) {
       return [];
@@ -906,6 +922,7 @@ export class OlafAdapter extends RepositoryAdapter {
    * Provides a rough size estimate since we don't have actual file sizes
    * @param files
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private estimateSkillSize(files: string[]): string {
     // Rough estimation: assume average file size and add manifest overhead
     const estimatedBytes = files.length * 2048; // 2KB average per file
@@ -924,7 +941,9 @@ export class OlafAdapter extends RepositoryAdapter {
    * Maps skill files to bundle structure with proper paths
    * @param skill
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private generateDeploymentManifest(skill: SkillInfo): any {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { owner, repo } = this.parseGitHubUrl();
     const manifest = skill.manifest;
 
@@ -988,7 +1007,7 @@ export class OlafAdapter extends RepositoryAdapter {
    * Ensures OLAF runtime is installed before bundle installation
    * @param bundle
    */
-  async downloadBundle(bundle: Bundle): Promise<Buffer> {
+  public async downloadBundle(bundle: Bundle): Promise<Buffer> {
     const { owner, repo } = this.parseGitHubUrl();
 
     // Extract bundle file name from bundle ID (format: olaf-{owner}-{repo}-{bundleFileName})
@@ -1028,8 +1047,10 @@ export class OlafAdapter extends RepositoryAdapter {
    * Returns Buffer compatible with BundleInstaller.installFromBuffer()
    * @param bundleInfo
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async packageBundleAsZip(bundleInfo: BundleDefinitionInfo): Promise<Buffer> {
     const { owner, repo } = this.parseGitHubUrl();
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/naming-convention
     const AdmZip = require('adm-zip');
 
     this.logger.debug(`[OlafAdapter] Packaging bundle as ZIP: ${bundleInfo.fileName}`);
@@ -1040,6 +1061,7 @@ export class OlafAdapter extends RepositoryAdapter {
 
       // Generate and add deployment manifest with all skills
       const deploymentManifest = this.generateBundleDeploymentManifest(bundleInfo);
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const yaml = require('js-yaml');
       const manifestYaml = yaml.dump(deploymentManifest);
       zip.addFile('deployment-manifest.yml', Buffer.from(manifestYaml, 'utf8'));
@@ -1090,7 +1112,9 @@ export class OlafAdapter extends RepositoryAdapter {
    * Adds required root-level fields (id, version, name) for BundleInstaller validation
    * @param bundleInfo
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private generateBundleDeploymentManifest(bundleInfo: BundleDefinitionInfo): any {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { owner, repo } = this.parseGitHubUrl();
     const { definition, validatedSkills } = bundleInfo;
 
@@ -1156,6 +1180,7 @@ export class OlafAdapter extends RepositoryAdapter {
    * Ensure OLAF runtime is installed and create workspace links
    * Runtime installation is REQUIRED for OLAF skills to function
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async ensureRuntimeInstalled(): Promise<void> {
     try {
       this.logger.info('[OlafAdapter] Ensuring OLAF runtime is installed (required for OLAF skills)');
@@ -1210,6 +1235,7 @@ export class OlafAdapter extends RepositoryAdapter {
   /**
    * Get current workspace path from VSCode API
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private getCurrentWorkspacePath(): string | undefined {
     try {
       const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -1228,8 +1254,10 @@ export class OlafAdapter extends RepositoryAdapter {
    * Downloads all files within the skill folder and creates in-memory ZIP
    * @param skill
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async packageSkillAsBundle(skill: SkillInfo): Promise<Buffer> {
     const { owner, repo } = this.parseGitHubUrl();
+    // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/naming-convention
     const AdmZip = require('adm-zip');
 
     this.logger.debug(`[OlafAdapter] Packaging skill as bundle: ${skill.folderName}`);
@@ -1240,6 +1268,7 @@ export class OlafAdapter extends RepositoryAdapter {
 
       // Generate and add deployment manifest
       const deploymentManifest = this.generateDeploymentManifest(skill);
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const manifestYaml = require('js-yaml').dump(deploymentManifest);
       zip.addFile('deployment-manifest.yml', Buffer.from(manifestYaml, 'utf8'));
 
@@ -1286,6 +1315,7 @@ export class OlafAdapter extends RepositoryAdapter {
    * @param dirPath
    * @param zipPath
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async addDirectoryToZip(zip: any, owner: string, repo: string, dirPath: string, zipPath: string): Promise<void> {
     try {
       const apiBase = 'https://api.github.com';
@@ -1316,8 +1346,11 @@ export class OlafAdapter extends RepositoryAdapter {
   /**
    * Download file content from GitHub
    * @param url
+   // eslint-disable-next-line @typescript-eslint/no-require-imports
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async downloadFileContent(url: string): Promise<Buffer> {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const https = require('node:https');
 
     return new Promise((resolve, reject) => {
@@ -1355,7 +1388,7 @@ export class OlafAdapter extends RepositoryAdapter {
    * Fetch metadata about the OLAF repository
    * Delegates to GitHub adapter and adds OLAF-specific information
    */
-  async fetchMetadata(): Promise<SourceMetadata> {
+  public async fetchMetadata(): Promise<SourceMetadata> {
     try {
       const githubMetadata = await this.githubAdapter.fetchMetadata();
       const bundleDefinitions = await this.scanBundleDefinitions();
@@ -1381,9 +1414,9 @@ export class OlafAdapter extends RepositoryAdapter {
    * Get manifest URL for a bundle
    * Points to the bundle definition JSON file in bundles/ directory
    * @param bundleId
-   * @param version
+   * @param _version
    */
-  getManifestUrl(bundleId: string, version?: string): string {
+  public getManifestUrl(bundleId: string, _version?: string): string {
     const { owner, repo } = this.parseGitHubUrl();
     // Extract bundle file name from bundle ID (format: olaf-{owner}-{repo}-{bundleFileName})
     const bundleFileName = bundleId.replace(`olaf-${owner}-${repo}-`, '');
@@ -1394,9 +1427,9 @@ export class OlafAdapter extends RepositoryAdapter {
    * Get download URL for a bundle
    * Points to the bundle definition file which contains skill references
    * @param bundleId
-   * @param version
+   * @param _version
    */
-  getDownloadUrl(bundleId: string, version?: string): string {
+  public getDownloadUrl(bundleId: string, _version?: string): string {
     const { owner, repo } = this.parseGitHubUrl();
     // Extract bundle file name from bundle ID (format: olaf-{owner}-{repo}-{bundleFileName})
     const bundleFileName = bundleId.replace(`olaf-${owner}-${repo}-`, '');
@@ -1409,7 +1442,7 @@ export class OlafAdapter extends RepositoryAdapter {
    * @param bundleId
    * @param installPath
    */
-  async postInstall(bundleId: string, installPath: string): Promise<void> {
+  public async postInstall(bundleId: string, installPath: string): Promise<void> {
     this.logger.info(`[OlafAdapter] Running post-installation for bundle: ${bundleId}`);
 
     try {
@@ -1427,7 +1460,7 @@ export class OlafAdapter extends RepositoryAdapter {
    * @param bundleId
    * @param installPath
    */
-  async postUninstall(bundleId: string, installPath: string): Promise<void> {
+  public async postUninstall(bundleId: string, installPath: string): Promise<void> {
     this.logger.info(`[OlafAdapter] Running post-uninstallation for bundle: ${bundleId}`);
 
     try {
@@ -1445,12 +1478,15 @@ export class OlafAdapter extends RepositoryAdapter {
    * @param bundleId
    * @param installPath
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async registerBundleInCompetencyIndex(bundleId: string, installPath: string): Promise<void> {
     this.logger.info(`[OlafAdapter] Registering bundle skills in competency index: ${bundleId}`);
     this.logger.info(`[OlafAdapter] Install path: ${installPath}`);
 
     try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const fs = require('node:fs');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const path = require('node:path');
 
       // Get workspace path
@@ -1554,6 +1590,7 @@ export class OlafAdapter extends RepositoryAdapter {
    * Get source name for competency index paths
    * Uses source.name with fallback to source.id
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private getSourceName(): string {
     return this.source.name || this.source.id;
   }
@@ -1564,6 +1601,7 @@ export class OlafAdapter extends RepositoryAdapter {
    * @param sourceName
    * @param competencyIndex
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await
   private async registerSkillEntryPoints(skill: SkillInfo, sourceName: string, competencyIndex: any[]): Promise<void> {
     try {
       // Extract entry points from skill manifest
@@ -1615,12 +1653,15 @@ export class OlafAdapter extends RepositoryAdapter {
    * @param bundleId
    * @param installPath
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async unregisterBundleFromCompetencyIndex(bundleId: string, installPath: string): Promise<void> {
     this.logger.info(`[OlafAdapter] Unregistering bundle from competency index: ${bundleId}`);
     this.logger.info(`[OlafAdapter] Install path: ${installPath}`);
 
     try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const fs = require('node:fs');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const path = require('node:path');
 
       // Get workspace path
@@ -1738,10 +1779,15 @@ export class OlafAdapter extends RepositoryAdapter {
    * Uses the same authentication logic as GitHubAdapter
    * @param url
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async makeGitHubRequest(url: string): Promise<any> {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const https = require('node:https');
+    // eslint-disable-next-line @typescript-eslint/no-shadow, @typescript-eslint/no-require-imports
     const vscode = require('vscode');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { exec } = require('node:child_process');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     const { promisify } = require('node:util');
     const execAsync = promisify(exec);
 

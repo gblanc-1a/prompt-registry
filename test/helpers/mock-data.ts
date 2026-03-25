@@ -5,15 +5,19 @@
 export interface MockBundleAsset {
   id: number;
   name: string;
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   browser_download_url: string;
   size: number;
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   content_type: string;
 }
 
 export interface MockReleaseResponse {
   id: number;
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   tag_name: string;
   name: string;
+  // eslint-disable-next-line @typescript-eslint/naming-convention
   published_at: string;
   assets: MockBundleAsset[];
 }

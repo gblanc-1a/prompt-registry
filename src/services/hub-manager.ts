@@ -126,11 +126,16 @@ export class HubManager {
    * @param validator SchemaValidator instance for validation
    * @param extensionPath Path to the extension directory
    */
-  readonly onHubImported = this._onHubImported.event;
-  readonly onHubDeleted = this._onHubDeleted.event;
-  readonly onHubSynced = this._onHubSynced.event;
-  readonly onFavoritesChanged = this._onFavoritesChanged.event;
+  // eslint-disable-next-line @typescript-eslint/member-ordering
+  public readonly onHubImported = this._onHubImported.event;
+  // eslint-disable-next-line @typescript-eslint/member-ordering
+  public readonly onHubDeleted = this._onHubDeleted.event;
+  // eslint-disable-next-line @typescript-eslint/member-ordering
+  public readonly onHubSynced = this._onHubSynced.event;
+  // eslint-disable-next-line @typescript-eslint/member-ordering
+  public readonly onFavoritesChanged = this._onFavoritesChanged.event;
 
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   constructor(
     storage: HubStorage,
     validator: SchemaValidator,
@@ -160,7 +165,7 @@ export class HubManager {
    * @param hubId Optional hub identifier (auto-generated if not provided)
    * @returns Hub identifier
    */
-  async importHub(reference: HubReference, hubId?: string): Promise<string> {
+  public async importHub(reference: HubReference, hubId?: string): Promise<string> {
     // Validate reference
     const refValidation = await this.validateReference(reference);
     if (!refValidation.valid) {
@@ -210,7 +215,7 @@ export class HubManager {
    * @param hubId Hub identifier
    * @returns Loaded hub configuration and reference
    */
-  async loadHub(hubId: string): Promise<LoadHubResult> {
+  public async loadHub(hubId: string): Promise<LoadHubResult> {
     const result = await this.storage.loadHub(hubId);
 
     // Validate loaded config
@@ -232,7 +237,7 @@ export class HubManager {
    * @param config Hub configuration to validate
    * @returns Validation result
    */
-  async validateHub(config: HubConfig): Promise<ValidationResult> {
+  public async validateHub(config: HubConfig): Promise<ValidationResult> {
     // Schema validation
     const schemaResult = await this.validator.validate(config, this.hubSchemaPath);
     if (!schemaResult.valid) {
@@ -260,7 +265,7 @@ export class HubManager {
    * List all imported hubs
    * @returns Array of hub list items
    */
-  async listHubs(): Promise<HubListItem[]> {
+  public async listHubs(): Promise<HubListItem[]> {
     const hubIds = await this.storage.listHubs();
     const hubs: HubListItem[] = [];
 
@@ -286,7 +291,7 @@ export class HubManager {
    * Delete hub from storage
    * @param hubId Hub identifier to delete
    */
-  async deleteHub(hubId: string): Promise<void> {
+  public async deleteHub(hubId: string): Promise<void> {
     // Cleanup resources linked to this hub before deleting
     await this.cleanupHubResources(hubId);
 
@@ -299,6 +304,7 @@ export class HubManager {
    * Called when hub is deleted or switched away from
    * @param hubId Hub identifier to cleanup
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async cleanupHubResources(hubId: string): Promise<void> {
     this.logger.info(`Cleaning up resources for hub: ${hubId}`);
 
@@ -344,7 +350,7 @@ export class HubManager {
    * Sync hub from remote source
    * @param hubId Hub identifier to sync
    */
-  async syncHub(hubId: string): Promise<void> {
+  public async syncHub(hubId: string): Promise<void> {
     // Load existing hub to get reference
     const existing = await this.storage.loadHub(hubId);
 
@@ -373,7 +379,7 @@ export class HubManager {
    * @param hubId Hub identifier
    * @returns Hub information
    */
-  async getHubInfo(hubId: string): Promise<HubInfo> {
+  public async getHubInfo(hubId: string): Promise<HubInfo> {
     const result = await this.storage.loadHub(hubId);
     const metadata = await this.storage.getHubMetadata(hubId);
 
@@ -395,6 +401,7 @@ export class HubManager {
    * @param reference Hub reference to validate
    * @returns Validation result
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await
   private async validateReference(reference: HubReference): Promise<ValidationResult> {
     const errors: string[] = [];
 
@@ -427,6 +434,7 @@ export class HubManager {
         break;
       }
       default: {
+        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
         errors.push(`Unsupported reference type: ${reference.type}`);
       }
     }
@@ -443,6 +451,7 @@ export class HubManager {
    * @param reference Hub reference
    * @returns Hub configuration
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async fetchHubConfig(reference: HubReference): Promise<HubConfig> {
     switch (reference.type) {
       case 'local': {
@@ -455,6 +464,7 @@ export class HubManager {
         return this.fetchFromGitHub(reference.location, reference.ref);
       }
       default: {
+        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
         throw new Error(`Unsupported reference type: ${reference.type}`);
       }
     }
@@ -466,7 +476,7 @@ export class HubManager {
    * @param reference Hub reference to verify
    * @returns true if hub is accessible, false otherwise
    */
-  async verifyHubAvailability(reference: HubReference): Promise<boolean> {
+  public async verifyHubAvailability(reference: HubReference): Promise<boolean> {
     try {
       // Validate reference format
       const refValidation = await this.validateReference(reference);
@@ -491,6 +501,7 @@ export class HubManager {
    * @param filePath Local file path
    * @returns Hub configuration
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/require-await
   private async fetchFromLocal(filePath: string): Promise<HubConfig> {
     if (!fs.existsSync(filePath)) {
       throw new Error(`File not found: ${filePath}`);
@@ -510,6 +521,7 @@ export class HubManager {
    * 2. gh CLI (if installed and authenticated)
    * 3. Explicit token from source configuration
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async getAuthenticationToken(): Promise<string | undefined> {
     // Return cached token if already resolved
     if (this.authToken !== undefined) {
@@ -565,6 +577,7 @@ export class HubManager {
    * @param redirectDepth Current redirect depth (for loop prevention)
    * @returns Hub configuration
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async fetchFromUrl(url: string, redirectDepth = 0): Promise<HubConfig> {
     /**
      * Maximum redirect depth to prevent infinite loops.
@@ -640,6 +653,7 @@ export class HubManager {
    * @param ref Git reference (branch, tag, or commit)
    * @returns Hub configuration
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async fetchFromGitHub(location: string, ref = 'main'): Promise<HubConfig> {
     const branch = ref;
     // Add timestamp to bypass GitHub raw content cache
@@ -654,6 +668,7 @@ export class HubManager {
    * @param config Hub configuration
    * @returns Generated hub ID
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private generateHubId(config: HubConfig): string {
     // Use metadata name, sanitized
     let id = config.metadata.name
@@ -674,7 +689,7 @@ export class HubManager {
    * @param hubId Hub identifier
    * @returns Array of profiles from the hub
    */
-  async listProfilesFromHub(hubId: string): Promise<HubProfile[]> {
+  public async listProfilesFromHub(hubId: string): Promise<HubProfile[]> {
     const hub = await this.storage.loadHub(hubId);
     if (!hub) {
       throw new Error(`Hub not found: ${hubId}`);
@@ -704,7 +719,7 @@ export class HubManager {
    * @param profileId Profile identifier
    * @returns The requested profile
    */
-  async getHubProfile(hubId: string, profileId: string): Promise<HubProfile> {
+  public async getHubProfile(hubId: string, profileId: string): Promise<HubProfile> {
     const profiles = await this.listProfilesFromHub(hubId);
     this.logger.info(`Found ${profiles.length} profiles in hub ${hubId}`);
 
@@ -725,7 +740,7 @@ export class HubManager {
    * List all profiles from all imported hubs
    * @returns Array of profiles with hub information
    */
-  async listAllHubProfiles(): Promise<HubProfileWithMetadata[]> {
+  public async listAllHubProfiles(): Promise<HubProfileWithMetadata[]> {
     const hubs = await this.listHubs();
     const allProfiles: HubProfileWithMetadata[] = [];
 
@@ -747,7 +762,7 @@ export class HubManager {
    * Get the currently active hub
    * @returns Active hub ID, config and reference, or null if no hub is active
    */
-  async getActiveHub(): Promise<LoadHubResult | null> {
+  public async getActiveHub(): Promise<LoadHubResult | null> {
     const activeHubId = await this.storage.getActiveHubId();
 
     if (!activeHubId) {
@@ -767,7 +782,7 @@ export class HubManager {
    * Set the currently active hub
    * @param hubId Hub identifier to set as active
    */
-  async setActiveHub(hubId: string | null): Promise<void> {
+  public async setActiveHub(hubId: string | null): Promise<void> {
     // Get current active hub to check if we're switching
     const currentActiveHubId = await this.storage.getActiveHubId();
 
@@ -801,6 +816,7 @@ export class HubManager {
    * @param existingSources List of existing sources
    * @returns The existing duplicate source or undefined
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private findDuplicateSource(
     source: HubSource,
     existingSources: RegistrySource[]
@@ -850,7 +866,7 @@ export class HubManager {
    * matching, not ID matching, to handle both formats.
    * @param hubId Hub identifier
    */
-  async loadHubSources(hubId: string): Promise<void> {
+  public async loadHubSources(hubId: string): Promise<void> {
     if (!this.registryManager) {
       this.logger.warn('RegistryManager not available, skipping source loading');
       return;
@@ -960,7 +976,7 @@ export class HubManager {
    * List profiles from the active hub only
    * @returns Profiles from active hub, or empty array if no hub is active
    */
-  async listActiveHubProfiles(): Promise<HubProfileWithMetadata[]> {
+  public async listActiveHubProfiles(): Promise<HubProfileWithMetadata[]> {
     const activeHubId = await this.storage.getActiveHubId();
 
     if (!activeHubId) {
@@ -985,7 +1001,7 @@ export class HubManager {
    * @param hubId
    * @param sourceId
    */
-  async resolveSource(hubId: string, sourceId: string): Promise<HubSource> {
+  public async resolveSource(hubId: string, sourceId: string): Promise<HubSource> {
     const hubData = await this.storage.loadHub(hubId);
     const source = hubData.config.sources.find((s) => s.id === sourceId);
 
@@ -1001,7 +1017,7 @@ export class HubManager {
    * @param hubId
    * @param bundle
    */
-  async resolveBundleUrl(hubId: string, bundle: HubProfileBundle): Promise<string> {
+  public async resolveBundleUrl(hubId: string, bundle: HubProfileBundle): Promise<string> {
     const source = await this.resolveSource(hubId, bundle.source);
     const githubMatch = source.url.match(/github:(.+)/);
 
@@ -1039,7 +1055,7 @@ export class HubManager {
    * @param hubId
    * @param profileId
    */
-  async resolveProfileBundles(
+  public async resolveProfileBundles(
     hubId: string,
     profileId: string
   ): Promise<ResolvedBundle[]> {
@@ -1071,7 +1087,7 @@ export class HubManager {
    * @param profileId
    * @param options
    */
-  async activateProfile(
+  public async activateProfile(
     hubId: string,
     profileId: string,
     options: ProfileActivationOptions
@@ -1080,7 +1096,8 @@ export class HubManager {
       this.logger.info(`[HubManager] activateProfile called: hubId=${hubId}, profileId=${profileId}, installBundles=${options.installBundles}`);
 
       // Verify hub and profile exist
-      const profile = await this.getHubProfile(hubId, profileId);
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const _profile = await this.getHubProfile(hubId, profileId);
 
       // Deactivate ALL active hub profiles across ALL hubs (enforce single active profile globally)
       // This will uninstall bundles from previously active profiles
@@ -1132,7 +1149,8 @@ export class HubManager {
       await this.storage.setProfileActiveFlag(hubId, profileId, true);
 
       // Install bundles if requested and RegistryManager is available
-      const installResults: { bundleId: string; success: boolean; error?: string }[] = [];
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const _installResults: { bundleId: string; success: boolean; error?: string }[] = [];
       if (options.installBundles && this.registryManager) {
         this.logger.info(`Installing ${resolvedBundles.length} bundles for profile ${profileId}`);
 
@@ -1226,10 +1244,11 @@ export class HubManager {
    * @param hubId
    * @param profileId
    */
-  async deactivateProfile(hubId: string, profileId: string): Promise<ProfileDeactivationResult> {
+  public async deactivateProfile(hubId: string, profileId: string): Promise<ProfileDeactivationResult> {
     try {
       // Verify profile exists
-      const profile = await this.getHubProfile(hubId, profileId);
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const _profile = await this.getHubProfile(hubId, profileId);
 
       // Get current activation state to track removed bundles
       const currentState = await this.storage.getProfileActivationState(hubId, profileId);
@@ -1261,14 +1280,14 @@ export class HubManager {
    * Get the currently active profile for a hub
    * @param hubId
    */
-  async getActiveProfile(hubId: string): Promise<ProfileActivationState | null> {
+  public async getActiveProfile(hubId: string): Promise<ProfileActivationState | null> {
     return this.storage.getActiveProfileForHub(hubId);
   }
 
   /**
    * List all active profiles across all hubs
    */
-  async listAllActiveProfiles(): Promise<ProfileActivationState[]> {
+  public async listAllActiveProfiles(): Promise<ProfileActivationState[]> {
     return this.storage.listActiveProfiles();
   }
 
@@ -1276,7 +1295,7 @@ export class HubManager {
    * Get a single hub by ID
    * @param hubId
    */
-  async getHub(hubId: string): Promise<{ id: string; config: HubConfig; reference: HubReference } | null> {
+  public async getHub(hubId: string): Promise<{ id: string; config: HubConfig; reference: HubReference } | null> {
     try {
       const result = await this.storage.loadHub(hubId);
       return {
@@ -1294,7 +1313,7 @@ export class HubManager {
    * @param hubId
    * @param profileId
    */
-  async hasProfileChanges(hubId: string, profileId: string): Promise<boolean> {
+  public async hasProfileChanges(hubId: string, profileId: string): Promise<boolean> {
     const changes = await this.getProfileChanges(hubId, profileId);
     if (!changes) {
       return false;
@@ -1312,7 +1331,7 @@ export class HubManager {
    * @param hubId
    * @param profileId
    */
-  async getProfileChanges(hubId: string, profileId: string): Promise<ProfileChanges | null> {
+  public async getProfileChanges(hubId: string, profileId: string): Promise<ProfileChanges | null> {
     // Get activation state
     const state = await this.storage.getProfileActivationState(hubId, profileId);
     if (!state) {
@@ -1377,7 +1396,7 @@ export class HubManager {
    * @param hubId
    * @param profileId
    */
-  async syncProfile(hubId: string, profileId: string): Promise<void> {
+  public async syncProfile(hubId: string, profileId: string): Promise<void> {
     // Re-activate to update the state
     await this.activateProfile(hubId, profileId, { installBundles: false });
   }
@@ -1387,7 +1406,7 @@ export class HubManager {
    * @param hubId
    * @param profileId
    */
-  async getTimeSinceLastSync(hubId: string, profileId: string): Promise<number | null> {
+  public async getTimeSinceLastSync(hubId: string, profileId: string): Promise<number | null> {
     const state = await this.storage.getProfileActivationState(hubId, profileId);
     if (!state) {
       return null;
@@ -1399,7 +1418,7 @@ export class HubManager {
    * Check if hub has updates (any profile has changes)
    * @param hubId
    */
-  async hasHubUpdates(hubId: string): Promise<boolean> {
+  public async hasHubUpdates(hubId: string): Promise<boolean> {
     const profilesWithUpdates = await this.getProfilesWithUpdates(hubId);
     return profilesWithUpdates.length > 0;
   }
@@ -1408,7 +1427,7 @@ export class HubManager {
    * Get list of profiles with pending updates
    * @param hubId
    */
-  async getProfilesWithUpdates(hubId: string): Promise<ProfileWithUpdates[]> {
+  public async getProfilesWithUpdates(hubId: string): Promise<ProfileWithUpdates[]> {
     const hub = await this.getHubInfo(hubId);
     if (!hub) {
       return [];
@@ -1443,7 +1462,7 @@ export class HubManager {
    * @param hubId Hub identifier
    * @param profileId Profile identifier
    */
-  async isProfileFavorite(hubId: string, profileId: string): Promise<boolean> {
+  public async isProfileFavorite(hubId: string, profileId: string): Promise<boolean> {
     const favorites = await this.storage.getFavoriteProfiles();
     return favorites[hubId]?.includes(profileId) || false;
   }
@@ -1452,7 +1471,7 @@ export class HubManager {
    * Get favorite profiles
    * @returns Map of hub ID to list of profile IDs
    */
-  async getFavoriteProfiles(): Promise<Record<string, string[]>> {
+  public async getFavoriteProfiles(): Promise<Record<string, string[]>> {
     return this.storage.getFavoriteProfiles();
   }
 
@@ -1461,7 +1480,7 @@ export class HubManager {
    * @param hubId Hub identifier
    * @param profileId Profile identifier
    */
-  async toggleProfileFavorite(hubId: string, profileId: string): Promise<void> {
+  public async toggleProfileFavorite(hubId: string, profileId: string): Promise<void> {
     const favorites = await this.getFavoriteProfiles();
     const hubFavorites = favorites[hubId] || [];
 
@@ -1489,7 +1508,7 @@ export class HubManager {
    * Cleanup orphaned favorites - remove favorites for hubs that no longer exist
    * This handles stale data from hubs that were deleted before cleanup logic was implemented
    */
-  async cleanupOrphanedFavorites(): Promise<void> {
+  public async cleanupOrphanedFavorites(): Promise<void> {
     const favorites = await this.getFavoriteProfiles();
     const existingHubs = await this.listHubs();
     const existingHubIds = new Set(existingHubs.map((h) => h.id));
@@ -1513,7 +1532,7 @@ export class HubManager {
    * Format change summary as human-readable string
    * @param changes
    */
-  formatChangeSummary(changes: ProfileChanges): string {
+  public formatChangeSummary(changes: ProfileChanges): string {
     const lines: string[] = [];
 
     if (changes.bundlesAdded && changes.bundlesAdded.length > 0) {
@@ -1557,7 +1576,7 @@ export class HubManager {
    * Create QuickPick items for displaying changes
    * @param changes
    */
-  createChangeQuickPickItems(changes: ProfileChanges): ChangeQuickPickItem[] {
+  public createChangeQuickPickItems(changes: ProfileChanges): ChangeQuickPickItem[] {
     const items: ChangeQuickPickItem[] = [];
 
     if (changes.bundlesAdded) {
@@ -1616,7 +1635,7 @@ export class HubManager {
    * Create conflict resolution dialog
    * @param changes
    */
-  createConflictResolutionDialog(changes: ProfileChanges): ConflictResolutionDialog {
+  public createConflictResolutionDialog(changes: ProfileChanges): ConflictResolutionDialog {
     const changeCount =
       (changes.bundlesAdded?.length || 0)
       + (changes.bundlesRemoved?.length || 0)
@@ -1650,7 +1669,7 @@ export class HubManager {
    * Format detailed bundle addition info
    * @param bundle
    */
-  formatBundleAdditionDetail(bundle: HubProfileBundle): string {
+  public formatBundleAdditionDetail(bundle: HubProfileBundle): string {
     return `Bundle: ${bundle.id}\nVersion: ${bundle.version}\nSource: ${bundle.source}\n${bundle.required ? 'required' : 'optional'}`;
   }
 
@@ -1658,7 +1677,7 @@ export class HubManager {
    * Format detailed bundle removal info
    * @param bundleId
    */
-  formatBundleRemovalDetail(bundleId: string): string {
+  public formatBundleRemovalDetail(bundleId: string): string {
     return `Bundle: ${bundleId}\nStatus: Will be removed`;
   }
 
@@ -1669,7 +1688,7 @@ export class HubManager {
    * @param update.oldVersion
    * @param update.newVersion
    */
-  formatBundleUpdateDetail(update: { id: string; oldVersion: string; newVersion: string }): string {
+  public formatBundleUpdateDetail(update: { id: string; oldVersion: string; newVersion: string }): string {
     return `Bundle: ${update.id}\nOld Version: ${update.oldVersion}\nNew Version: ${update.newVersion}`;
   }
 }

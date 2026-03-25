@@ -77,7 +77,7 @@ export class VersionConsolidator {
    * instead of relying on heuristics.
    * @param resolver - Function that maps sourceId to SourceType
    */
-  setSourceTypeResolver(resolver: (sourceId: string) => SourceType): void {
+  public setSourceTypeResolver(resolver: (sourceId: string) => SourceType): void {
     this.sourceTypeResolver = resolver;
   }
 
@@ -90,7 +90,7 @@ export class VersionConsolidator {
    * @param bundles - Array of bundles from various sources
    * @returns Consolidated bundles with latest version metadata
    */
-  consolidateBundles(bundles: Bundle[]): ConsolidatedBundle[] {
+  public consolidateBundles(bundles: Bundle[]): ConsolidatedBundle[] {
     this.logger.debug(`Consolidating ${bundles.length} bundles`);
 
     // Pre-calculate identities to avoid redundant computation
@@ -115,6 +115,7 @@ export class VersionConsolidator {
     const consolidated: ConsolidatedBundle[] = [];
 
     for (const [identity, items] of grouped.entries()) {
+      // eslint-disable-next-line @typescript-eslint/no-shadow
       const bundles = items.map((item) => item.bundle);
 
       if (bundles.length === 1) {
@@ -157,7 +158,7 @@ export class VersionConsolidator {
    * @param identity - Unique identifier for the bundle
    * @returns Array of version metadata sorted by version descending
    */
-  getAllVersions(identity: string): BundleVersion[] {
+  public getAllVersions(identity: string): BundleVersion[] {
     const entry = this.versionCache.get(identity);
     if (entry) {
       // Update access order for LRU tracking
@@ -176,7 +177,7 @@ export class VersionConsolidator {
    * @param version - Specific version to retrieve
    * @returns Bundle version metadata, or undefined if not found
    */
-  getBundleVersion(bundleIdentity: string, version: string): BundleVersion | undefined {
+  public getBundleVersion(bundleIdentity: string, version: string): BundleVersion | undefined {
     const entry = this.versionCache.get(bundleIdentity);
     if (entry) {
       // Update access order for LRU tracking
@@ -189,7 +190,7 @@ export class VersionConsolidator {
   /**
    * Clear version cache
    */
-  clearCache(): void {
+  public clearCache(): void {
     this.versionCache.clear();
     this.accessOrder = [];
     this.logger.debug('Version cache cleared');
@@ -204,6 +205,7 @@ export class VersionConsolidator {
    * @param key - Bundle identity key
    * @param versions - Array of bundle versions to cache
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private addToCache(key: string, versions: BundleVersion[]): void {
     const isUpdate = this.versionCache.has(key);
 
@@ -227,6 +229,7 @@ export class VersionConsolidator {
    * Moves the key to the end of the access order array (most recently used)
    * @param key
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private updateAccessOrder(key: string): void {
     // Remove key from current position if it exists
     const index = this.accessOrder.indexOf(key);
@@ -242,6 +245,7 @@ export class VersionConsolidator {
    * Evict the least recently used entry from cache (O(1) operation)
    * Uses the access order array to identify the LRU entry
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private evictLRU(): void {
     if (this.accessOrder.length === 0) {
       return;
@@ -269,6 +273,7 @@ export class VersionConsolidator {
    * For others: use bundle ID as-is
    * @param bundle
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private getBundleIdentity(bundle: Bundle): string {
     // Use custom resolver if provided, otherwise fall back to heuristic
     const sourceType = this.sourceTypeResolver
@@ -285,6 +290,7 @@ export class VersionConsolidator {
    * @param sourceId - Source identifier to analyze
    * @returns Inferred source type (defaults to 'local' for unknown types)
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private inferSourceType(sourceId: string): SourceType {
     if (sourceId.includes('github')) {
       return 'github';
@@ -306,6 +312,7 @@ export class VersionConsolidator {
    * Sort bundles by version in descending order (latest first)
    * @param bundles
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private sortBundlesByVersion(bundles: Bundle[]): Bundle[] {
     return bundles.toSorted((a, b) => {
       try {
@@ -332,6 +339,7 @@ export class VersionConsolidator {
    * Convert Bundle to BundleVersion metadata
    * @param bundle
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private toBundleVersion(bundle: Bundle): BundleVersion {
     return {
       version: bundle.version,

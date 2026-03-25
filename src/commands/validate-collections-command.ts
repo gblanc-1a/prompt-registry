@@ -21,6 +21,7 @@ interface Collection {
   author?: string;
   display?: {
     ordering?: string;
+    // eslint-disable-next-line @typescript-eslint/naming-convention
     show_badge?: boolean;
   };
 }
@@ -48,7 +49,7 @@ export class ValidateCollectionsCommand {
     this.schemaValidator = new SchemaValidator(context.extensionPath);
   }
 
-  async execute(options?: { listOnly?: boolean }): Promise<void> {
+  public async execute(options?: { listOnly?: boolean }): Promise<void> {
     const workspaceFolders = vscode.workspace.workspaceFolders;
 
     if (!workspaceFolders || workspaceFolders.length === 0) {
@@ -188,6 +189,7 @@ export class ValidateCollectionsCommand {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async validateCollection(
     filePath: string,
     workspaceRoot: string,
@@ -250,6 +252,7 @@ export class ValidateCollectionsCommand {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private log(message: string, type?: 'error' | 'warning' | 'success'): void {
     let prefix = '';
     switch (type) {
@@ -269,7 +272,7 @@ export class ValidateCollectionsCommand {
     this.outputChannel.appendLine(prefix + message);
   }
 
-  dispose(): void {
+  public dispose(): void {
     this.outputChannel.dispose();
   }
 }

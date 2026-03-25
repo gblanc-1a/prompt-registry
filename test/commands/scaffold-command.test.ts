@@ -516,6 +516,7 @@ suite('Skill Scaffold', () => {
   setup(() => {
     testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-scaffold-test-'));
     // Import ScaffoldType to create skill-specific command
+    // eslint-disable-next-line @typescript-eslint/no-shadow
     const { ScaffoldType } = require('../../src/commands/scaffold-command');
     const skillTemplateRoot = path.join(process.cwd(), 'templates/scaffolds/skill');
     skillScaffoldCommand = new ScaffoldCommand(skillTemplateRoot, ScaffoldType.Skill);

@@ -34,7 +34,7 @@ export class SourceCommands {
   /**
    * Add a new registry source
    */
-  async addSource(): Promise<void> {
+  public async addSource(): Promise<void> {
     try {
       // Step 1: Select source type
       const sourceType = await vscode.window.showQuickPick(
@@ -288,9 +288,9 @@ export class SourceCommands {
         'Sync Now', 'View Sources'
       ).then((action) => {
         if (action === 'Sync Now') {
-          this.syncSource(source.id);
+          void this.syncSource(source.id);
         } else if (action === 'View Sources') {
-          this.listSources();
+          void this.listSources();
         }
       });
     } catch (error) {
@@ -303,7 +303,8 @@ export class SourceCommands {
    * Edit an existing source
    * @param sourceId
    */
-  async editSource(sourceId?: string | any): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
+  public async editSource(sourceId?: string | any): Promise<void> {
     try {
       // Extract source ID from tree item or string parameter
       const extractedId = this.extractSourceId(sourceId);
@@ -313,6 +314,7 @@ export class SourceCommands {
       if (extractedId) {
         finalId = extractedId!;
       } else {
+        // eslint-disable-next-line @typescript-eslint/no-shadow
         const sources = await this.registryManager.listSources();
 
         if (sources.length === 0) {
@@ -401,7 +403,8 @@ export class SourceCommands {
    * Remove a source
    * @param sourceId
    */
-  async removeSource(sourceId?: string | any): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
+  public async removeSource(sourceId?: string | any): Promise<void> {
     try {
       // Extract source ID from tree item or string parameter
       const extractedId = this.extractSourceId(sourceId);
@@ -411,6 +414,7 @@ export class SourceCommands {
       if (extractedId) {
         finalId = extractedId!;
       } else {
+        // eslint-disable-next-line @typescript-eslint/no-shadow
         const sources = await this.registryManager.listSources();
 
         if (sources.length === 0) {
@@ -472,7 +476,8 @@ export class SourceCommands {
    * Sync a source (refresh bundle list)
    * @param sourceId
    */
-  async syncSource(sourceId?: string | any): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
+  public async syncSource(sourceId?: string | any): Promise<void> {
     try {
       // Extract source ID from tree item or string parameter
       const extractedId = this.extractSourceId(sourceId);
@@ -482,6 +487,7 @@ export class SourceCommands {
       if (extractedId) {
         finalId = extractedId!;
       } else {
+        // eslint-disable-next-line @typescript-eslint/no-shadow
         const sources = await this.registryManager.listSources();
 
         if (sources.length === 0) {
@@ -545,7 +551,7 @@ export class SourceCommands {
    * @param options
    * @param options.silent - When true, suppresses all user-facing notifications (used for auto-sync on activation)
    */
-  async syncAllSources(options?: { silent?: boolean }): Promise<void> {
+  public async syncAllSources(options?: { silent?: boolean }): Promise<void> {
     const silent = options?.silent ?? false;
 
     try {
@@ -651,7 +657,7 @@ export class SourceCommands {
   /**
    * List all sources
    */
-  async listSources(): Promise<void> {
+  public async listSources(): Promise<void> {
     try {
       const sources = await this.registryManager.listSources();
 
@@ -661,7 +667,7 @@ export class SourceCommands {
           'Add Source'
         ).then((action) => {
           if (action === 'Add Source') {
-            this.addSource();
+            void this.addSource();
           }
         });
         return;
@@ -727,6 +733,7 @@ export class SourceCommands {
    * Get source URL based on type
    * @param type
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async getSourceUrl(type: SourceType): Promise<string | undefined> {
     switch (type) {
       case 'github': {
@@ -896,6 +903,7 @@ export class SourceCommands {
    * Generate source ID from name
    * @param name
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private generateSourceId(name: string): string {
     return generateSanitizedId(name);
   }
@@ -904,6 +912,7 @@ export class SourceCommands {
    * Rename source
    * @param sourceId
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async renameSource(sourceId: string): Promise<void> {
     const sources = await this.registryManager.listSources();
     const source = sources.find((s) => s.id === sourceId);
@@ -934,6 +943,7 @@ export class SourceCommands {
    * Change source URL
    * @param sourceId
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async changeSourceUrl(sourceId: string): Promise<void> {
     const sources = await this.registryManager.listSources();
     const source = sources.find((s) => s.id === sourceId);
@@ -954,6 +964,7 @@ export class SourceCommands {
    * Configure access token
    * @param sourceId
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async configureToken(sourceId: string): Promise<void> {
     const token = await vscode.window.showInputBox({
       prompt: 'Enter access token (leave empty to remove)',
@@ -975,6 +986,7 @@ export class SourceCommands {
    * Change source priority
    * @param sourceId
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering
   private async changePriority(sourceId: string): Promise<void> {
     const sources = await this.registryManager.listSources();
     const source = sources.find((s) => s.id === sourceId);
@@ -1006,7 +1018,8 @@ export class SourceCommands {
    * Toggle source enabled/disabled
    * @param sourceId
    */
-  async toggleSource(sourceId?: string | any): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents
+  public async toggleSource(sourceId?: string | any): Promise<void> {
     try {
       // Extract source ID from tree item or string parameter
       const extractedId = this.extractSourceId(sourceId);
@@ -1016,6 +1029,7 @@ export class SourceCommands {
       if (extractedId) {
         finalId = extractedId!;
       } else {
+        // eslint-disable-next-line @typescript-eslint/no-shadow
         const sources = await this.registryManager.listSources();
 
         if (sources.length === 0) {
@@ -1067,6 +1081,7 @@ export class SourceCommands {
    * Context menu passes tree item object, command palette passes string
    * @param sourceIdOrItem
    */
+  // eslint-disable-next-line @typescript-eslint/member-ordering, @typescript-eslint/no-redundant-type-constituents
   private extractSourceId(sourceIdOrItem?: string | any): string | undefined {
     if (!sourceIdOrItem) {
       return undefined;

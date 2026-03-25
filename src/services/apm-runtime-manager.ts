@@ -295,11 +295,10 @@ export class ApmRuntimeManager {
 
       if (!version) {
         // Fallback to checking uvx/uv
-        // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-        const uvxAvailable = await this.checkUvx();
+        const isUvxAvailable = await this.checkUvx();
         return {
           installed: false,
-          uvxAvailable: uvxAvailable || !!localUvPath,
+          uvxAvailable: isUvxAvailable || !!localUvPath,
           localUvPath
         };
       }

@@ -130,7 +130,6 @@ Provide example interactions or use cases.
    * @param collectionPath
    * @param skillName
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   public async addSkillToCollection(collectionPath: string, skillName: string): Promise<void> {
     const content = fs.readFileSync(collectionPath, 'utf8');
     const collection = yaml.load(content) as { items?: { path: string; kind: string }[] };

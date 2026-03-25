@@ -51,8 +51,6 @@ suite('MarketplaceViewProvider - Event Handling', () => {
   let mockContext: vscode.ExtensionContext;
   let mockRegistryManager: sinon.SinonStubbedInstance<RegistryManager>;
   let mockSetupStateManager: sinon.SinonStubbedInstance<SetupStateManager>;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-  let _marketplaceProvider: MarketplaceViewProvider;
   let onBundleInstalledCallback: ((installation: InstalledBundle) => void) | undefined;
   let onBundleUninstalledCallback: ((bundleId: string) => void) | undefined;
   let onBundleUpdatedCallback: ((installation: InstalledBundle) => void) | undefined;
@@ -103,7 +101,7 @@ suite('MarketplaceViewProvider - Event Handling', () => {
     } as any;
 
     // Create MarketplaceViewProvider
-    marketplaceProvider = new MarketplaceViewProvider(mockContext, mockRegistryManager as any, mockSetupStateManager as any);
+    new MarketplaceViewProvider(mockContext, mockRegistryManager as any, mockSetupStateManager as any);
   });
 
   teardown(() => {

@@ -86,7 +86,6 @@ export class HubStorage {
    * @param config Hub configuration to save
    * @param reference Hub reference information
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   public async saveHub(hubId: string, config: HubConfig, reference: HubReference): Promise<void> {
     this.validateHubId(hubId);
 
@@ -122,7 +121,6 @@ export class HubStorage {
    * @param forceReload Bypass cache and reload from disk
    * @returns Loaded hub configuration and reference
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   public async loadHub(hubId: string, forceReload = false): Promise<LoadHubResult> {
     this.validateHubId(hubId);
 
@@ -173,7 +171,6 @@ export class HubStorage {
    * @param hubId Hub identifier to check
    * @returns True if hub exists, false otherwise
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   public async hubExists(hubId: string): Promise<boolean> {
     this.validateHubId(hubId);
 
@@ -185,7 +182,6 @@ export class HubStorage {
    * Delete hub from storage
    * @param hubId Hub identifier to delete
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   public async deleteHub(hubId: string): Promise<void> {
     this.validateHubId(hubId);
 
@@ -229,7 +225,6 @@ export class HubStorage {
    * List all stored hubs
    * @returns Array of hub IDs
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   public async listHubs(): Promise<string[]> {
     try {
       const files = fs.readdirSync(this.storagePath);
@@ -253,7 +248,6 @@ export class HubStorage {
    * @param hubId Hub identifier
    * @returns Hub metadata
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   public async getHubMetadata(hubId: string): Promise<HubMetadata> {
     this.validateHubId(hubId);
 

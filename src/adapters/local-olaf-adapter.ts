@@ -4,6 +4,7 @@
  */
 
 import * as fs from 'node:fs';
+import * as os from 'node:os';
 import * as path from 'node:path';
 import {
   promisify,
@@ -78,8 +79,6 @@ export class LocalOlafAdapter extends RepositoryAdapter {
 
     // Expand home directory
     if (localPath.startsWith('~/')) {
-      // eslint-disable-next-line @typescript-eslint/no-require-imports -- sync method cannot use await import
-      const os = require('node:os');
       localPath = path.join(os.homedir(), localPath.slice(2));
     }
 
@@ -1049,11 +1048,10 @@ export class LocalOlafAdapter extends RepositoryAdapter {
   /**
    * Register a single skill in the competency index
    * @param skill
-   * @param installPath
+   * @param _installPath
    * @param competencyIndex
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
-  private async registerSkillInCompetencyIndex(skill: SkillInfo, installPath: string, competencyIndex: any[]): Promise<void> {
+  private async registerSkillInCompetencyIndex(skill: SkillInfo, _installPath: string, competencyIndex: any[]): Promise<void> {
     try {
       // Extract entry points from skill manifest
       const entryPoints = skill.manifest.entry_points || [];
@@ -1203,7 +1201,6 @@ export class LocalOlafAdapter extends RepositoryAdapter {
    * For local OLAF bundles, skills are linked symbolically rather than copied
    * @param bundleInfo
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   private async createMinimalBundle(bundleInfo: BundleDefinitionInfo): Promise<Buffer> {
     try {
       const zip = new AdmZip();

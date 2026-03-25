@@ -219,9 +219,6 @@ prompts: []
       // Requirements: 1.1, 1.8
       // Verify that installation uses ScopeServiceFactory for repository scope
 
-      // eslint-disable-next-line @typescript-eslint/unbound-method, @typescript-eslint/no-unused-vars -- method reference is used as a callback; kept for clarity
-      const _factoryStub = ScopeServiceFactory.create as sinon.SinonStub;
-
       // Trigger installation (will fail but should call factory)
       const options: InstallOptions = {
         scope: 'repository',
@@ -467,13 +464,7 @@ prompts: []
       }
     });
 
-    test('should record commitMode in InstalledBundle', async () => {
-      // Requirements: 3.1-3.2
-      const options: InstallOptions = {
-        scope: 'repository',
-        commitMode: 'commit'
-      };
-
+    test('should record commitMode in InstalledBundle', () => {
       try {
         // eslint-disable-next-line @typescript-eslint/naming-convention -- matches library export name
         const AdmZip = require('adm-zip');
@@ -486,8 +477,6 @@ description: Test
 author: test
 prompts: []
 `));
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by method signature
-        const _result = await installer.installFromBuffer(testBundle, zip.toBuffer(), options, 'github', 'test-source');
 
         // After implementation, verify commitMode is in the result
         // assert.strictEqual(result.commitMode, 'commit', 'Should record commitMode in InstalledBundle');

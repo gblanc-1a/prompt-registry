@@ -310,7 +310,6 @@ export class McpConfigService {
     return { duplicatesDisabled, config };
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await -- async required by caller contract
   public async mergeServers(
     existingConfig: McpConfiguration,
     newServers: Record<string, McpServerConfig>,

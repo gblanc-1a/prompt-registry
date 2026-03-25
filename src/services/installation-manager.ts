@@ -308,25 +308,21 @@ export class InstallationManager {
     }
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   private async updateVSCodeConfiguration(scope: InstallationScope, _installationPath: string): Promise<void> {
     // Add VSCode-specific configuration updates here
     this.logger.debug(`Updating VSCode configuration for scope: ${scope}`);
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   private async updateWindsurfConfiguration(scope: InstallationScope, _installationPath: string): Promise<void> {
     // Add Windsurf-specific configuration updates here
     this.logger.debug(`Updating Windsurf configuration for scope: ${scope}`);
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   private async updateKiroConfiguration(scope: InstallationScope, _installationPath: string): Promise<void> {
     // Add Kiro-specific configuration updates here
     this.logger.debug(`Updating Kiro configuration for scope: ${scope}`);
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   private async updateCursorConfiguration(scope: InstallationScope, _installationPath: string): Promise<void> {
     // Add Cursor-specific configuration updates here
     this.logger.debug(`Updating Cursor configuration for scope: ${scope}`);

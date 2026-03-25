@@ -175,13 +175,10 @@ export class OlafRuntimeManager {
     this.logger.info(`[OlafRuntime] Fetching release info from: ${releaseUrl}`);
 
     try {
-      // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-      const releaseInfo = await this.makeGitHubRequest(releaseUrl);
-      // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-      const actualVersion = releaseInfo.tag_name;
+      const { tag_name: githubReleaseTagName, assets } = await this.makeGitHubRequest(releaseUrl);
 
-      this.logger.info(`[OlafRuntime] Found release: ${actualVersion}`);
-      this.logger.info(`[OlafRuntime] Available assets: ${releaseInfo.assets?.map((a: any) => a.name).join(', ') || 'none'}`);
+      this.logger.info(`[OlafRuntime] Found release: ${githubReleaseTagName}`);
+      this.logger.info(`[OlafRuntime] Available assets: ${assets?.map((a: any) => a.name).join(', ') || 'none'}`);
     } catch (error) {
       this.logger.error(`[OlafRuntime] Failed to fetch release information: ${error}`);
       throw error;
@@ -684,7 +681,6 @@ export class OlafRuntimeManager {
    * Check if workspace has OLAF runtime links
    * @param workspacePath
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   public async hasWorkspaceLinks(workspacePath: string): Promise<boolean> {
     const olafPath = path.join(workspacePath, '.olaf');
     const idePath = path.join(workspacePath, this.getIdeSpecificFolderName());

@@ -503,8 +503,7 @@ prompts:
       const userPath = path.join(tempDir, 'Library', 'Application Support', 'Code', 'User');
       const globalStoragePath = path.join(userPath, 'profiles', profileId, 'globalStorage', 'publisher.extension');
 
-      // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-      const mockContext = {
+      mockContext = {
         globalStorageUri: { fsPath: globalStoragePath },
         storageUri: { fsPath: path.join(tempDir, 'workspace') },
         extensionPath: __dirname,
@@ -523,8 +522,7 @@ prompts:
       const profileId = 'abc-profile';
       const globalStoragePath = path.join(customDataDir, 'profiles', profileId, 'globalStorage', 'publisher.extension');
 
-      // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-      const mockContext = {
+      mockContext = {
         globalStorageUri: { fsPath: globalStoragePath },
         storageUri: { fsPath: path.join(tempDir, 'workspace') },
         extensionPath: __dirname,
@@ -542,8 +540,7 @@ prompts:
       const customDataDir = path.join(tempDir, 'custom-data-no-profile');
       const globalStoragePath = path.join(customDataDir, 'globalStorage', 'publisher.extension');
 
-      // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-      const mockContext = {
+      mockContext = {
         globalStorageUri: { fsPath: globalStoragePath },
         storageUri: { fsPath: path.join(tempDir, 'workspace') },
         extensionPath: __dirname,

@@ -296,16 +296,6 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
       // Create a stale RegistryStorage record for repository scope
       // This simulates a scenario where RegistryStorage has old data
       const staleBundleId = 'stale-bundle-v1.0.0';
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-      const _staleRecord = {
-        bundleId: staleBundleId,
-        version: '1.0.0',
-        sourceId: 'stale-source',
-        sourceType: 'github',
-        installedAt: new Date().toISOString(),
-        scope: 'repository' as const,
-        installPath: path.join(workspaceRoot, '.github')
-      };
 
       // Note: RegistryStorage.getInstalledBundles('repository') returns empty array by design
       // This test verifies that listInstalledBundles queries the lockfile, not RegistryStorage
@@ -683,8 +673,7 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
         manifestId: 'bundle-1',
         baseVersion: '1.0.0'
       };
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructuring with unused bindings
-      const { sourceId: _sourceId1, bundle: bundle1 } = await setupSourceWithCustomConfig(
+      const { bundle: bundle1 } = await setupSourceWithCustomConfig(
         deps, testId, 'partial-source-1', config1, 'bundle1'
       );
       await installBundleOrSkip(this, bundle1.id, { scope: 'repository', commitMode: 'commit', version: '1.0.0' });

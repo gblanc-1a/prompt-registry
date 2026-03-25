@@ -91,6 +91,7 @@ export class UserScopeService implements IScopeService {
 
     // Find the User directory by looking for '/User/' or '\User\' in the path
     const userIndex = globalStoragePath.lastIndexOf(path.sep + 'User' + path.sep);
+    const escapedSep = escapeRegex(path.sep);
 
     if (userIndex === -1) {
       // Fallback: Custom user-data-dir without 'User' directory
@@ -98,12 +99,8 @@ export class UserScopeService implements IScopeService {
       const baseDir = path.dirname(path.dirname(globalStoragePath));
 
       // Check if we're in a profiles structure
-      // eslint-disable-next-line @typescript-eslint/no-shadow -- local scope intentionally narrows outer binding
-      const escapedSep = escapeRegex(path.sep);
-      // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-      const profilesMatch = baseDir.match(new RegExp(`profiles${escapedSep}([^${escapedSep}]+)`));
-      if (profilesMatch) {
-        const profileId = profilesMatch[1];
+      const [, profileId] = baseDir.match(new RegExp(`profiles${escapedSep}([^${escapedSep}]+)`)) || [];
+      if (profileId) {
         const profileName = this.getActiveProfileName(baseDir) || profileId;
         this.logger.info(`[UserScopeService] Using profile: ${profileName}`);
         return path.join(baseDir, 'prompts');
@@ -118,7 +115,6 @@ export class UserScopeService implements IScopeService {
     // Check if this is a profile-based path by looking for '/profiles/' after User
     // Path structure: .../User/profiles/<profile-id>/globalStorage/...
     const remainingPath = globalStoragePath.substring(userDir.length);
-    const escapedSep = escapeRegex(path.sep);
     const profilesMatch = remainingPath.match(new RegExp(`^${escapedSep}profiles${escapedSep}([^${escapedSep}]+)`));
 
     if (profilesMatch) {
@@ -399,7 +395,6 @@ export class UserScopeService implements IScopeService {
    * Ensure directory exists
    * @param dir
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   private async ensureDirectory(dir: string): Promise<void> {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });

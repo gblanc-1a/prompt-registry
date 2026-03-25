@@ -619,16 +619,15 @@ export class SourceCommands {
       if (extractedId) {
         finalId = extractedId!;
       } else {
-        // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-        const sources = await this.registryManager.listSources();
+        const loadedSources = await this.registryManager.listSources();
 
-        if (sources.length === 0) {
+        if (loadedSources.length === 0) {
           vscode.window.showInformationMessage('No sources found. Add one first.');
           return;
         }
 
         const selected = await vscode.window.showQuickPick(
-          sources.map((s) => ({
+          loadedSources.map((s) => ({
             label: s.enabled ? `✓ ${s.name}` : `○ ${s.name}`,
             description: s.url,
             detail: `${s.type} • Priority: ${s.priority}${s.private ? ' • Private' : ''}`,
@@ -719,16 +718,15 @@ export class SourceCommands {
       if (extractedId) {
         finalId = extractedId!;
       } else {
-        // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-        const sources = await this.registryManager.listSources();
+        const loadedSources = await this.registryManager.listSources();
 
-        if (sources.length === 0) {
+        if (loadedSources.length === 0) {
           vscode.window.showInformationMessage('No sources found.');
           return;
         }
 
         const selected = await vscode.window.showQuickPick(
-          sources.map((s) => ({
+          loadedSources.map((s) => ({
             label: s.name,
             description: s.url,
             source: s
@@ -792,16 +790,15 @@ export class SourceCommands {
       if (extractedId) {
         finalId = extractedId!;
       } else {
-        // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-        const sources = await this.registryManager.listSources();
+        const loadedSources = await this.registryManager.listSources();
 
-        if (sources.length === 0) {
+        if (loadedSources.length === 0) {
           vscode.window.showInformationMessage('No sources found.');
           return;
         }
 
         const selected = await vscode.window.showQuickPick(
-          sources.filter((s) => s.enabled).map((s) => ({
+          loadedSources.filter((s) => s.enabled).map((s) => ({
             label: s.name,
             description: s.url,
             source: s
@@ -1047,16 +1044,15 @@ export class SourceCommands {
       if (extractedId) {
         finalId = extractedId!;
       } else {
-        // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-        const sources = await this.registryManager.listSources();
+        const loadedSources = await this.registryManager.listSources();
 
-        if (sources.length === 0) {
+        if (loadedSources.length === 0) {
           vscode.window.showInformationMessage('No sources found.');
           return;
         }
 
         const selected = await vscode.window.showQuickPick(
-          sources.map((s) => ({
+          loadedSources.map((s) => ({
             label: s.enabled ? `✓ ${s.name}` : `○ ${s.name}`,
             description: s.url,
             detail: `${s.type} • Priority: ${s.priority}`,

@@ -32,7 +32,6 @@ export class PlatformDetector {
     this.logger = Logger.getInstance();
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   private async detectByExecutablePath(): Promise<PlatformDetectionResult> {
     const executablePath = process.execPath;
 
@@ -71,7 +70,6 @@ export class PlatformDetector {
     return { platform: Platform.UNKNOWN, confidence: 0 };
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   private async detectByEnvironmentVariables(): Promise<PlatformDetectionResult> {
     const env = process.env;
 
@@ -122,7 +120,6 @@ export class PlatformDetector {
     return { platform: Platform.UNKNOWN, confidence: 0 };
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   private async detectByProcessInfo(): Promise<PlatformDetectionResult> {
     try {
       const processTitle = process.title?.toLowerCase() || '';
@@ -150,7 +147,6 @@ export class PlatformDetector {
     return { platform: Platform.UNKNOWN, confidence: 0 };
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   private async detectByConfigFiles(): Promise<PlatformDetectionResult> {
     try {
       const userDataPaths = [
@@ -176,7 +172,6 @@ export class PlatformDetector {
     return { platform: Platform.UNKNOWN, confidence: 0 };
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   private async detectByVSCodeAPI(): Promise<PlatformDetectionResult> {
     try {
       // Try to detect using VSCode API information

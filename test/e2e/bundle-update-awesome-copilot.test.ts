@@ -117,59 +117,6 @@ Content: ${content}
     nock.enableNetConnect();
   });
 
-  /**
-   * Helper to set up nock mocks for Awesome Copilot source listing and fetching
-   * Uses matchHeader to handle authorization headers
-   * @param collectionYaml
-   * @param promptContent
-   * @param times
-   */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
-  function _setupSourceMocks(
-        collectionYaml: string,
-        promptContent: string,
-        times = 1
-  ): void {
-    // Mock GitHub API for collections directory listing
-    // Match any authorization header (or none)
-    nock('https://api.github.com')
-      .get('/repos/test-owner/awesome-copilot-test/contents/collections')
-      .query({ ref: 'main' })
-      .times(times)
-      .reply(200, [
-        {
-          name: 'test-collection.collection.yml',
-          type: 'file',
-          download_url: 'https://raw.githubusercontent.com/test-owner/awesome-copilot-test/main/collections/test-collection.collection.yml'
-        }
-      ]);
-
-    // Mock raw content for collection YAML
-    nock('https://raw.githubusercontent.com')
-      .get('/test-owner/awesome-copilot-test/main/collections/test-collection.collection.yml')
-      .times(times)
-      .reply(200, collectionYaml);
-
-    // Mock raw content for prompt file (for download)
-    nock('https://raw.githubusercontent.com')
-      .get('/test-owner/awesome-copilot-test/main/prompts/test.prompt.md')
-      .times(times)
-      .reply(200, promptContent);
-  }
-
-  /**
-   * Helper to set up mocks for validation
-   */
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
-  function _setupValidationMocks(): void {
-    nock('https://api.github.com')
-      .get('/repos/test-owner/awesome-copilot-test/contents/collections')
-      .query({ ref: 'main' })
-      .reply(200, [
-        { name: 'test-collection.collection.yml', type: 'file' }
-      ]);
-  }
-
   suite('Test Setup Validation', () => {
     test('should create isolated test context with unique storage path', function () {
       this.timeout(10_000);

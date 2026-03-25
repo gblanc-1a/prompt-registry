@@ -5,13 +5,9 @@
 
 import * as assert from 'node:assert';
 import * as sinon from 'sinon';
-import * as vscode from 'vscode';
 import {
   BundleInstaller,
 } from '../../src/services/bundle-installer';
-import {
-  RegistryManager,
-} from '../../src/services/registry-manager';
 import {
   RegistryStorage,
 } from '../../src/storage/registry-storage';
@@ -20,20 +16,10 @@ import {
 } from '../../src/types/registry';
 
 suite('RegistryManager - Installation Record Management', () => {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-  let _context: vscode.ExtensionContext;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-  let _registryManager: RegistryManager;
   let storageStub: sinon.SinonStubbedInstance<RegistryStorage>;
   let installerStub: sinon.SinonStubbedInstance<BundleInstaller>;
 
   setup(() => {
-    // Create mock context
-    context = {
-      globalStorageUri: { fsPath: '/mock/storage' },
-      storageUri: { fsPath: '/mock/workspace' }
-    } as any;
-
     // Create stubs
     storageStub = sinon.createStubInstance(RegistryStorage);
     installerStub = sinon.createStubInstance(BundleInstaller);
@@ -113,13 +99,6 @@ suite('RegistryManager - Installation Record Management', () => {
       storageStub.getInstalledBundle.resolves(mockInstalled);
       storageStub.removeInstallation.resolves();
       installerStub.uninstall.resolves();
-
-      // Track what bundleId is passed to removeInstallation
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-      let _removedBundleId: string | undefined;
-      storageStub.removeInstallation.callsFake((bundleId: string) => {
-        removedBundleId = bundleId;
-      });
 
       // The actual uninstall would use the stored bundleId
       // Verify it matches the installation record

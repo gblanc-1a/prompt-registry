@@ -37,8 +37,6 @@ suite('RepositoryActivationService', () => {
   let mockContext: vscode.ExtensionContext;
   let service: RepositoryActivationService;
   let showInformationMessageStub: sinon.SinonStub;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-  let _showWarningMessageStub: sinon.SinonStub;
   const testWorkspaceRoot = '/test/workspace';
 
   setup(() => {
@@ -70,7 +68,7 @@ suite('RepositoryActivationService', () => {
 
     // Mock VS Code APIs
     showInformationMessageStub = sandbox.stub(vscode.window, 'showInformationMessage');
-    showWarningMessageStub = sandbox.stub(vscode.window, 'showWarningMessage');
+    sandbox.stub(vscode.window, 'showWarningMessage');
   });
 
   teardown(() => {
@@ -473,8 +471,7 @@ suite('RepositoryActivationService', () => {
       showInformationMessageStub.resolves('Add Sources');
 
       // Act
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-      const _result = await service.checkAndOfferMissingSources(lockfile);
+      await service.checkAndOfferMissingSources(lockfile);
 
       // Assert
       const message = showInformationMessageStub.firstCall.args[0] as string;
@@ -776,8 +773,6 @@ suite('RepositoryActivationService - Missing Bundle Installation', () => {
   let mockRegistryManager: any;
   let mockContext: vscode.ExtensionContext;
   let service: RepositoryActivationService;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-  let _showInformationMessageStub: sinon.SinonStub;
   let withProgressStub: sinon.SinonStub;
   const testWorkspaceRoot = '/test/workspace/missing-bundles';
 
@@ -810,7 +805,6 @@ suite('RepositoryActivationService - Missing Bundle Installation', () => {
     RepositoryActivationService.resetInstance();
 
     // Mock VS Code APIs
-    showInformationMessageStub = sandbox.stub(vscode.window, 'showInformationMessage');
     withProgressStub = sandbox.stub(vscode.window, 'withProgress');
 
     // Default withProgress behavior - execute the task immediately

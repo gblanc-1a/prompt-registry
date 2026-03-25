@@ -369,8 +369,7 @@ suite('E2E: Repository-Level Installation Tests', () => {
     test('Requirement 5.5-5.6, 13.6: Missing bundles detected and reinstalled from lockfile', async function () {
       this.timeout(90_000);
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- destructuring with unused bindings
-      const { _sourceId, bundle } = await setupSourceAndGetBundle('reinstall-source', TEST_CONTENT.REINSTALL);
+      const { bundle } = await setupSourceAndGetBundle('reinstall-source', TEST_CONTENT.REINSTALL);
 
       await installBundleOrSkip(this, bundle.id, {
         scope: 'repository', commitMode: 'commit', version: '1.0.0'

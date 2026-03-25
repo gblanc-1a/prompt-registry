@@ -40,17 +40,17 @@ class MockSchemaValidator {
 
   public validate(_data: any, _schemaPath: string): Promise<ValidationResult> {
     if (this.shouldFail) {
-      return {
+      return Promise.resolve({
         valid: false,
         errors: this.errors.length > 0 ? this.errors : ['Schema validation failed'],
         warnings: []
-      };
+      });
     }
-    return {
+    return Promise.resolve({
       valid: true,
       errors: [],
       warnings: []
-    };
+    });
   }
 }
 
@@ -430,8 +430,6 @@ suite('HubManager', () => {
 
     test('should list profiles from active hub only', async () => {
       const hubId1 = await hubManager.importHub(localRef, 'test-profiles-hub-1');
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by method signature
-      const _hubId2 = await hubManager.importHub(localRef, 'test-profiles-hub-2');
 
       // Set first hub as active
       await hubManager.setActiveHub(hubId1);
@@ -603,16 +601,16 @@ suite('Hub Source Loading - SourceId Format', () => {
     public addSourceCalls: RegistrySource[] = [];
     public updateSourceCalls: { id: string; updates: Partial<RegistrySource> }[] = [];
 
-    public listSources(): Promise<RegistrySource[]> {
+    public async listSources(): Promise<RegistrySource[]> {
       return [...this.sources];
     }
 
-    public addSource(source: RegistrySource): Promise<void> {
+    public async addSource(source: RegistrySource): Promise<void> {
       this.sources.push(source);
       this.addSourceCalls.push(source);
     }
 
-    public updateSource(id: string, updates: Partial<RegistrySource>): Promise<void> {
+    public async updateSource(id: string, updates: Partial<RegistrySource>): Promise<void> {
       const index = this.sources.findIndex((s) => s.id === id);
       if (index !== -1) {
         this.sources[index] = { ...this.sources[index], ...updates };

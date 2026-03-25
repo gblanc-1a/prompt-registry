@@ -172,7 +172,6 @@ export class RepositoryActivationService {
    * Get list of declined repositories from global state
    * @returns Array of repository paths
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   private async getDeclinedRepositories(): Promise<string[]> {
     const context = this.storage.getContext();
     return context.globalState.get<string[]>(this.DECLINED_KEY, []);

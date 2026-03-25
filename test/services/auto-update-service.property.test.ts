@@ -105,14 +105,14 @@ suite('AutoUpdateService - Property Tests', () => {
     let callCount = 0;
     mockRegistryManager.listInstalledBundles.callsFake(() => {
       callCount++;
-      return bundles.map((b, index) => {
+      return Promise.resolve(bundles.map((b, index) => {
         const shouldFail = failureFlags[index];
         // After first call, successful updates show new version
         if (callCount > 1 && !shouldFail) {
           return { ...b, version: updates[index].latestVersion };
         }
         return b;
-      });
+      }));
     });
 
     updates.forEach((update, index) => {
@@ -669,8 +669,10 @@ suite('AutoUpdateService - Property Tests', () => {
 
             mockRegistryManager.listInstalledBundles.callsFake(() => {
               // Return all bundles with their current versions
-              return Array.from(bundleVersions.entries()).map(([bundleId, version]) =>
-                createMockInstalledBundle(bundleId, version)
+              return Promise.resolve(
+                Array.from(bundleVersions.entries()).map(([bundleId, version]) =>
+                  createMockInstalledBundle(bundleId, version)
+                )
               );
             });
 

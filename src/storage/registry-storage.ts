@@ -570,7 +570,6 @@ export class RegistryStorage {
   /**
    * Get all update preferences
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   public async getUpdatePreferences(): Promise<Record<string, { autoUpdate: boolean; lastChecked?: string }>> {
     const prefs = this.context.globalState.get<Record<string, { autoUpdate: boolean; lastChecked?: string }>>(
       this.UPDATE_PREFERENCES_KEY,

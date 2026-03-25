@@ -39,9 +39,6 @@ suite('UpdateManager', () => {
     });
 
     test('should handle pre-release versions', () => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-      const _versions = ['1.0.0-alpha', '1.0.0-beta', '1.0.0'];
-
       // alpha < beta < release
       assert.ok('1.0.0-alpha' < '1.0.0-beta');
       // String comparison doesn't work for semver - this test needs a semver library
@@ -109,13 +106,6 @@ suite('UpdateManager', () => {
 
   suite('Update Installation', () => {
     test('should download update before installing', () => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-      const _update = {
-        id: 'bundle-1',
-        version: '1.1.0',
-        downloadUrl: 'https://example.com/bundle-1-v1.1.0.zip'
-      };
-
       const downloaded = true;
       assert.strictEqual(downloaded, true);
     });
@@ -216,9 +206,6 @@ suite('UpdateManager', () => {
         notifyOnMinor: true,
         notifyOnMajor: true
       };
-
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-      const _update = { severity: 'patch' };
 
       const shouldNotify = preferences.notifyOnPatch;
 
@@ -356,8 +343,6 @@ suite('UpdateManager', () => {
 
   suite('Update Channels', () => {
     test('should support stable channel', () => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-      const _channel = 'stable';
       const versions = ['1.0.0', '1.1.0', '2.0.0'];
 
       const stableVersions = versions.filter((v) => !v.includes('-'));
@@ -366,8 +351,6 @@ suite('UpdateManager', () => {
     });
 
     test('should support beta channel', () => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-      const _channel = 'beta';
       const versions = ['1.0.0-beta.1', '1.0.0-beta.2', '1.0.0'];
 
       const betaVersions = versions.filter((v) => v.includes('-beta'));
@@ -384,8 +367,6 @@ suite('UpdateManager', () => {
         '2.0.0'
       ];
 
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-      const _channel = 'stable';
       const filtered = allVersions.filter((v) => !v.includes('-'));
 
       assert.strictEqual(filtered.length, 3);

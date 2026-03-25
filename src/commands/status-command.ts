@@ -283,7 +283,6 @@ export class StatusCommand {
   /**
    * Show help documentation
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   public async showHelp(): Promise<void> {
     const helpContent = `
 # Prompt Registry VSCode Extension Help

@@ -204,7 +204,6 @@ export class GitHubService {
    * Get direct download URL for a GitHub release asset (for private repos)
    * @param assetId
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   private async getAssetDirectDownloadUrl(assetId: number): Promise<string> {
     return `${this.baseUrl}/repos/${this.owner}/${this.repo}/releases/assets/${assetId}`;
   }

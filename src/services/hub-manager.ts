@@ -194,7 +194,6 @@ export class HubManager {
    * @param reference Hub reference to validate
    * @returns Validation result
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   private async validateReference(reference: HubReference): Promise<ValidationResult> {
     const errors: string[] = [];
 
@@ -267,7 +266,6 @@ export class HubManager {
    * @param filePath Local file path
    * @returns Hub configuration
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   private async fetchFromLocal(filePath: string): Promise<HubConfig> {
     if (!fs.existsSync(filePath)) {
       throw new Error(`File not found: ${filePath}`);

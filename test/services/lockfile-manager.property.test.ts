@@ -104,7 +104,7 @@ suite('LockfileManager Property Tests', () => {
             assert.ok(lockfile.generatedBy, 'Missing generatedBy field');
             assert.ok(lockfile.bundles !== undefined, 'Missing bundles field');
             assert.ok(lockfile.sources !== undefined, 'Missing sources field');
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -125,7 +125,7 @@ suite('LockfileManager Property Tests', () => {
               semverPattern.test(lockfile.version),
               `Version "${lockfile.version}" is not semver-compatible`
             );
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -146,7 +146,7 @@ suite('LockfileManager Property Tests', () => {
               !Number.isNaN(date.getTime()),
               `generatedAt "${lockfile.generatedAt}" is not a valid ISO timestamp`
             );
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -170,7 +170,7 @@ suite('LockfileManager Property Tests', () => {
               assert.ok(entry.commitMode, `Bundle ${bundleId} missing commitMode`);
               assert.ok(Array.isArray(entry.files), `Bundle ${bundleId} files should be array`);
             }
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -195,7 +195,7 @@ suite('LockfileManager Property Tests', () => {
                 );
               }
             }
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -239,7 +239,7 @@ suite('LockfileManager Property Tests', () => {
               normalized,
               'Round-trip should preserve lockfile structure'
             );
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -274,7 +274,7 @@ suite('LockfileManager Property Tests', () => {
 
             // Cleanup
             fs.unlinkSync(lockfilePath);
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -303,7 +303,7 @@ suite('LockfileManager Property Tests', () => {
                 'Should have 2-space indented lines'
               );
             }
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -365,7 +365,7 @@ suite('LockfileManager Property Tests', () => {
 
             // Cleanup
             fs.unlinkSync(lockfilePath);
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -396,7 +396,7 @@ suite('LockfileManager Property Tests', () => {
 
             // Cleanup
             fs.unlinkSync(lockfilePath);
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -430,7 +430,7 @@ suite('LockfileManager Property Tests', () => {
               checksum2,
               'Identical content should produce identical checksums'
             );
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -458,7 +458,7 @@ suite('LockfileManager Property Tests', () => {
               checksum2,
               'Different content should produce different checksums'
             );
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -501,7 +501,7 @@ suite('LockfileManager Property Tests', () => {
 
             // Cleanup
             fs.unlinkSync(filePath);
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -520,10 +520,6 @@ suite('LockfileManager Property Tests', () => {
 
             // Write file and get checksum
             fs.writeFileSync(filePath, content);
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-            const _originalChecksum = crypto.createHash('sha256')
-              .update(fs.readFileSync(filePath))
-              .digest('hex');
 
             // Delete file
             fs.unlinkSync(filePath);
@@ -536,7 +532,7 @@ suite('LockfileManager Property Tests', () => {
               'Missing file should be detectable'
             );
 
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -568,7 +564,7 @@ suite('LockfileManager Property Tests', () => {
                 `Bundle ${bundleId} references non-existent source ${entry.sourceId}`
               );
             }
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -594,7 +590,7 @@ suite('LockfileManager Property Tests', () => {
                 `Source ${sourceId} missing url field`
               );
             }
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -622,7 +618,7 @@ suite('LockfileManager Property Tests', () => {
                 );
               }
             }
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -650,7 +646,7 @@ suite('LockfileManager Property Tests', () => {
                 );
               }
             }
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -678,7 +674,7 @@ suite('LockfileManager Property Tests', () => {
                 `Source ${sourceId} has invalid type: ${source.type}`
               );
             }
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -732,7 +728,7 @@ suite('LockfileManager Property Tests', () => {
             // Cleanup
             LockfileManager.resetInstance(tempDir);
             fs.unlinkSync(lockfilePath);
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -770,7 +766,7 @@ suite('LockfileManager Property Tests', () => {
             // Cleanup
             LockfileManager.resetInstance(tempDir);
             fs.unlinkSync(lockfilePath);
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -809,7 +805,7 @@ suite('LockfileManager Property Tests', () => {
             // Cleanup
             LockfileManager.resetInstance(tempDir);
             fs.unlinkSync(lockfilePath);
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -867,7 +863,7 @@ suite('LockfileManager Property Tests', () => {
             // Cleanup
             LockfileManager.resetInstance(tempDir);
             fs.unlinkSync(lockfilePath);
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -902,7 +898,7 @@ suite('LockfileManager Property Tests', () => {
             // Cleanup
             LockfileManager.resetInstance(uniqueDir);
             fs.rmSync(uniqueDir, { recursive: true, force: true });
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -951,20 +947,6 @@ suite('Lockfile Separation Properties', () => {
     const gitInfoDir = path.join(repoPath, '.git', 'info');
     fs.mkdirSync(gitInfoDir, { recursive: true });
     fs.writeFileSync(path.join(gitInfoDir, 'exclude'), '# Git exclude file\n');
-  };
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
-  const _readGitExclude = (repoPath: string): string => {
-    const excludePath = path.join(repoPath, '.git', 'info', 'exclude');
-    if (fs.existsSync(excludePath)) {
-      return fs.readFileSync(excludePath, 'utf8');
-    }
-    return '';
-  };
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
-  const _lockfileExists = (repoPath: string, lockfileName: string): boolean => {
-    return fs.existsSync(path.join(repoPath, lockfileName));
   };
 
   setup(() => {

@@ -9,10 +9,6 @@ import * as assert from 'node:assert';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import {
-  InstallationScope,
-  RepositoryCommitMode,
-} from '../../src/types/registry';
-import {
   createScopeQuickPickItems,
   hasOpenWorkspace,
   ScopeQuickPickItem,
@@ -44,39 +40,6 @@ suite('ScopeSelectionUI', () => {
 
   // ===== Test Utilities =====
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-  const _createQuickPickItem = (
-    scope: InstallationScope,
-    commitMode?: RepositoryCommitMode,
-    disabled = false
-  ): ScopeQuickPickItem => {
-    const labels: Record<string, string> = {
-      'repository-commit': '$(repo) Repository - Commit to Git (Recommended)',
-      'repository-local-only': '$(eye-closed) Repository - Local Only',
-      user: '$(account) User Profile'
-    };
-
-    const descriptions: Record<string, string> = {
-      'repository-commit': 'Install in .github/, tracked in version control',
-      'repository-local-only': 'Install in .github/, excluded via .git/info/exclude',
-      user: 'Install in user config, available everywhere'
-    };
-
-    const key = scope === 'repository' ? `repository-${commitMode}` : scope;
-    const detail = disabled ? '(Requires an open workspace)' : undefined;
-
-    return {
-      label: labels[key],
-      description: descriptions[key],
-      detail,
-      picked: scope === 'repository' && commitMode === 'commit' && !disabled,
-      _scope: scope,
-      _commitMode: commitMode,
-      _disabled: disabled,
-      _originalDetail: detail
-    };
-  };
-
   const setWorkspaceOpen = (isOpen: boolean): void => {
     if (isOpen) {
       (vscode.workspace as any).workspaceFolders = [
@@ -85,17 +48,6 @@ suite('ScopeSelectionUI', () => {
     } else {
       (vscode.workspace as any).workspaceFolders = undefined;
     }
-  };
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
-  const _resetAllMocks = (): void => {
-    mockCreateQuickPick.reset();
-    mockQuickPick.show.reset();
-    mockQuickPick.hide.reset();
-    mockQuickPick.dispose.reset();
-    selectionChangeHandler = null;
-    acceptHandler = null;
-    hideHandler = null;
   };
 
   const createMockQuickPick = () => {

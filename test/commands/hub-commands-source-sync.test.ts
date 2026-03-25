@@ -86,8 +86,6 @@ suite('HubCommands Source Sync', () => {
   let showOpenDialogStub: sinon.SinonStub;
   let showInputBoxStub: sinon.SinonStub;
   let withProgressStub: sinon.SinonStub;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-  let _showErrorMessageStub: sinon.SinonStub;
 
   setup(() => {
     // Stub vscode.window methods
@@ -95,7 +93,6 @@ suite('HubCommands Source Sync', () => {
     showOpenDialogStub = sinon.stub(vscode.window, 'showOpenDialog');
     showInputBoxStub = sinon.stub(vscode.window, 'showInputBox');
     withProgressStub = sinon.stub(vscode.window, 'withProgress');
-    showErrorMessageStub = sinon.stub(vscode.window, 'showErrorMessage');
     // We don't use showInformationMessage in this test suite directly but good to stub
     sinon.stub(vscode.window, 'showInformationMessage');
 

@@ -54,7 +54,6 @@ export class SchemaValidator {
    * @param schemaPath Path to the JSON schema file
    * @returns Compiled validation function
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   private async loadSchema(schemaPath: string): Promise<Ajv.ValidateFunction> {
     // Check cache first
     if (this.schemaCache.has(schemaPath)) {

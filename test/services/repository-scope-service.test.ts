@@ -62,13 +62,6 @@ suite('RepositoryScopeService', () => {
       type: f.type || 'prompt'
     }));
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-    const _manifest = {
-      id: bundleId,
-      version: '1.0.0',
-      prompts
-    };
-
     fs.writeFileSync(
       path.join(bundlePath, 'deployment-manifest.yml'),
       `id: ${bundleId}\nversion: "1.0.0"\nprompts:\n${prompts.map((p) => `  - id: ${p.id}\n    name: ${p.name}\n    file: ${p.file}\n    type: ${p.type}`).join('\n')}`
@@ -544,10 +537,6 @@ suite('RepositoryScopeService', () => {
       const checksum = calculateChecksumSync(promptFile);
 
       const bundleId = 'test-bundle';
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-      const _bundlePath = createMockBundle(bundleId, [
-        { name: 'test.prompt.md', content: '# Test', type: 'prompt' }
-      ]);
 
       // Create lockfile with file entries including checksums
       createLockfile(bundleId, 'commit', [
@@ -568,8 +557,7 @@ suite('RepositoryScopeService', () => {
 
       const bundleId = 'test-bundle';
       // Create the bundle directory with manifest so unsyncBundle can read it
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-      const _bundlePath = createMockBundle(bundleId, [
+      createMockBundle(bundleId, [
         { name: 'test.prompt.md', content: '# Test', type: 'prompt' }
       ]);
 

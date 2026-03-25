@@ -1315,7 +1315,6 @@ export class OlafAdapter extends RepositoryAdapter {
    * @param sourceName
    * @param competencyIndex
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   private async registerSkillEntryPoints(skill: SkillInfo, sourceName: string, competencyIndex: any[]): Promise<void> {
     try {
       // Extract entry points from skill manifest
@@ -1492,8 +1491,6 @@ export class OlafAdapter extends RepositoryAdapter {
    */
   private async makeGitHubRequest(url: string): Promise<any> {
     const https = await import('node:https');
-    // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-    const vscode = await import('vscode');
     const { exec } = await import('node:child_process');
     const { promisify } = await import('node:util');
     const execAsync = promisify(exec);

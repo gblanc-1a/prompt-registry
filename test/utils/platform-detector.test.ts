@@ -30,8 +30,6 @@ suite('Platform Detector', () => {
 
   suite('Copilot Path Detection', () => {
     test('should construct correct path for macOS', () => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-      const _platform = 'darwin';
       const homeDir = '/Users/testuser';
 
       const copilotPath = path.join(
@@ -49,8 +47,6 @@ suite('Platform Detector', () => {
     });
 
     test('should construct correct path for Windows', () => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-      const _platform = 'win32';
       const homeDir = 'C:\\Users\\testuser';
 
       const copilotPath = path.join(
@@ -68,8 +64,6 @@ suite('Platform Detector', () => {
     });
 
     test('should construct correct path for Linux', () => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-      const _platform = 'linux';
       const homeDir = '/home/testuser';
 
       const copilotPath = path.join(
@@ -166,9 +160,6 @@ suite('Platform Detector', () => {
 
   suite('Environment Variables', () => {
     test('should read HOME environment variable', () => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-      const _home = process.env.HOME || process.env.USERPROFILE;
-
       if (process.platform === 'win32') {
         assert.ok(process.env.USERPROFILE || os.homedir());
       } else {

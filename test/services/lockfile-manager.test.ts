@@ -1295,8 +1295,7 @@ suite('LockfileManager', () => {
   suite('getLockfilePath()', () => {
     test('should return correct lockfile path', () => {
       const manager = LockfileManager.getInstance(tempDir);
-      // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-      const lockfilePath = manager.getLockfilePath();
+      lockfilePath = manager.getLockfilePath();
       assert.ok(lockfilePath.endsWith('prompt-registry.lock.json'));
     });
   });

@@ -23,7 +23,7 @@ import {
 // Mock SchemaValidator
 class MockSchemaValidator {
   public validate(): Promise<any> {
-    return { valid: true, errors: [], warnings: [] };
+    return Promise.resolve({ valid: true, errors: [], warnings: [] });
   }
 }
 

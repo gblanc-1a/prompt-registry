@@ -24,9 +24,7 @@ function simulateDebouncedRefresh(
     refreshCallback: () => void
 ): void {
   let timer: NodeJS.Timeout | undefined;
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-  for (const _event of events) {
+  events.forEach(() => {
     if (timer) {
       clearTimeout(timer);
     }
@@ -34,7 +32,7 @@ function simulateDebouncedRefresh(
     timer = setTimeout(() => {
       refreshCallback();
     }, debounceMs);
-  }
+  });
 }
 
 suite('UI Source Sync Refresh', () => {

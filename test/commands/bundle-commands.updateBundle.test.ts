@@ -81,8 +81,6 @@ suite('BundleCommands - updateBundle() Integration', () => {
     test('should update bundle when installed with versioned ID but consolidated list only has identity', async () => {
       // SETUP: Simulate the real scenario
       const installedBundleId = 'amadeus-airlines-solutions-workflow-instructions-1.0.18';
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-      const _bundleIdentity = 'amadeus-airlines-solutions-workflow-instructions';
 
       // Stub getBundleDetails to fail with versioned ID (simulating consolidation)
       const getBundleDetailsStub = sandbox.stub(registryManager, 'getBundleDetails');

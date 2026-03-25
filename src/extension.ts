@@ -467,7 +467,6 @@ export class PromptRegistryExtension {
   /**
    * Register TreeView for Registry Explorer
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   private async registerTreeView(): Promise<void> {
     this.logger.info('Registering Registry Explorer TreeView...');
 
@@ -510,7 +509,6 @@ export class PromptRegistryExtension {
   /**
    * Register Marketplace View for browsing and installing bundles
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   private async registerMarketplaceView(): Promise<void> {
     this.logger.info('Registering Marketplace View...');
 
@@ -1164,7 +1162,6 @@ export class PromptRegistryExtension {
   /**
    * Check for automatic updates on extension activation
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   private async checkForAutomaticUpdates(): Promise<void> {
     try {
       const config = vscode.workspace.getConfiguration('promptregistry');
@@ -1600,10 +1597,9 @@ export class PromptRegistryExtension {
 
     if (hubs.length === 1) {
       // Auto-activate the only hub
-      // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-      const hubId = hubs[0].id;
-      this.logger.info(`Auto-activating single hub: ${hubId}`);
-      await hubManager.setActiveHub(hubId);
+      const id = hubs[0].id;
+      this.logger.info(`Auto-activating single hub: ${id}`);
+      await hubManager.setActiveHub(id);
       await vscode.commands.executeCommand('promptRegistry.refresh');
       return;
     }

@@ -324,15 +324,17 @@ suite('Repository Fixture Helpers', () => {
         registryManager: {
           addSource: (source) => {
             addedSource = source;
+            return Promise.resolve();
           },
           syncSource: (sourceId) => {
             syncedSourceId = sourceId;
+            return Promise.resolve();
           }
         },
         storage: {
-          getCachedSourceBundles: (_sourceId) => [
+          getCachedSourceBundles: (_sourceId) => Promise.resolve([
             { id: expectedBundleId, name: 'Test Bundle' }
-          ]
+          ])
         }
       };
 
@@ -366,9 +368,9 @@ suite('Repository Fixture Helpers', () => {
           syncSource: async () => {}
         },
         storage: {
-          getCachedSourceBundles: () => [
+          getCachedSourceBundles: () => Promise.resolve([
             { id: 'other-bundle-1.0.0', name: 'Other Bundle' }
-          ]
+          ])
         }
       };
 
@@ -389,7 +391,7 @@ suite('Repository Fixture Helpers', () => {
           syncSource: async () => {}
         },
         storage: {
-          getCachedSourceBundles: () => [{ id: expectedBundleId }]
+          getCachedSourceBundles: () => Promise.resolve([{ id: expectedBundleId }])
         }
       };
 

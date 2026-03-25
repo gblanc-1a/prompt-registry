@@ -72,7 +72,7 @@ export async function createE2ETestContext(): Promise<E2ETestContext> {
       get: <T>(key: string, defaultValue?: T): T | undefined => {
         return globalStateData.has(key) ? globalStateData.get(key) : defaultValue;
       },
-      update: (key: string, value: any): Promise<void> => {
+      update: async (key: string, value: any): Promise<void> => {
         globalStateData.set(key, value);
       },
       keys: () => Array.from(globalStateData.keys()),
@@ -82,7 +82,7 @@ export async function createE2ETestContext(): Promise<E2ETestContext> {
       get: <T>(key: string, defaultValue?: T): T | undefined => {
         return workspaceStateData.has(key) ? workspaceStateData.get(key) : defaultValue;
       },
-      update: (key: string, value: any): Promise<void> => {
+      update: async (key: string, value: any): Promise<void> => {
         workspaceStateData.set(key, value);
       },
       keys: () => Array.from(workspaceStateData.keys()),
@@ -134,7 +134,7 @@ export async function createE2ETestContext(): Promise<E2ETestContext> {
   (registryManager as any).installer = new BundleInstaller(mockContext);
 
   // Create cleanup function
-  const cleanup = (): Promise<void> => {
+  const cleanup = async (): Promise<void> => {
     try {
       // Remove temporary directory and all contents
       if (fs.existsSync(tempStoragePath)) {
@@ -269,9 +269,6 @@ export async function setupSourceAndGetBundleGeneric(
   const source = createMockSource(sourceId);
   setupReleaseMocks([{ tag: 'v1.0.0', version: '1.0.0', content }]);
 
-  // Import vscode dynamically to avoid issues in non-VS Code environments
-  // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-  const vscode = require('vscode');
   sandbox.stub(vscode.workspace, 'workspaceFolders').value([
     { uri: vscode.Uri.file(workspaceRoot), name: 'test-workspace', index: 0 }
   ]);

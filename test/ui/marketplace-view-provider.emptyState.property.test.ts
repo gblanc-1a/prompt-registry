@@ -269,7 +269,7 @@ suite('MarketplaceViewProvider Empty State - Property Tests', () => {
             assert.ok(js.includes('Syncing sources...'), 'JS should include syncing message');
           }
 
-          return true;
+          return Promise.resolve(true);
         }
       ),
       { ...PropertyTestConfig.FAST_CHECK_OPTIONS, numRuns: 10 } // Fewer runs since content is static

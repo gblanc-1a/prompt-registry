@@ -34,12 +34,6 @@ suite('McpConfigService - Duplicate Detection', () => {
     await fs.writeFile(mockTrackingPath, JSON.stringify(tracking, null, 2));
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- callback signature requires this parameter
-  const _readTestConfig = async (): Promise<McpConfiguration> => {
-    const content = await fs.readFile(mockConfigPath, 'utf8');
-    return JSON.parse(content.toString());
-  };
-
   setup(() => {
     sandbox = sinon.createSandbox();
     configService = new McpConfigService();

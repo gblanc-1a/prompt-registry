@@ -203,8 +203,6 @@ suite('GitHub Scaffold Property-Based Tests', () => {
 
     // Valid item kinds per design document
     const validItemKinds = ['prompt', 'instruction', 'agent', 'skill'];
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-    const _deprecatedKind = 'chatmode';
 
     // Files to check for item kind references
     const filesToCheck = [

@@ -97,7 +97,6 @@ export class MigrationRegistry {
   /**
    * Get the full migration state
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   public async getMigrationState(): Promise<Record<string, MigrationRecord>> {
     return this.context.globalState.get<Record<string, MigrationRecord>>(this.STATE_KEY, {});
   }

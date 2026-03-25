@@ -276,8 +276,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         ? await autoUpdateService.getAllAutoUpdatePreferences()
         : {};
 
-      // eslint-disable-next-line @typescript-eslint/await-thenable -- await used for consistency with async test pattern
-      const enhancedBundles = await Promise.all(bundles.map((bundle) => {
+      const enhancedBundles = bundles.map((bundle) => {
         // Find matching installed bundle using identity matching
         const source = sources.find((s) => s.id === bundle.sourceId);
         const installed = installedBundles.find((ib) =>
@@ -318,7 +317,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
           availableVersions,
           autoUpdateEnabled
         };
-      }));
+      });
 
       // Extract dynamic filter options
       const availableTags = extractAllTags(bundles);

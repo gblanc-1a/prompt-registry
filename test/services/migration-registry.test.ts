@@ -122,6 +122,7 @@ suite('MigrationRegistry', () => {
 
       await registry.runMigration('test-migration', () => {
         executed = true;
+        return Promise.resolve();
       });
 
       assert.strictEqual(executed, true);
@@ -136,6 +137,7 @@ suite('MigrationRegistry', () => {
       let executed = false;
       await registry.runMigration('test-migration', () => {
         executed = true;
+        return Promise.resolve();
       });
 
       assert.strictEqual(executed, false);
@@ -149,6 +151,7 @@ suite('MigrationRegistry', () => {
       let executed = false;
       await registry.runMigration('test-migration', () => {
         executed = true;
+        return Promise.resolve();
       });
 
       assert.strictEqual(executed, false);

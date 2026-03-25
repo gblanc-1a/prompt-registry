@@ -127,9 +127,6 @@ suite('RepositoryAdapterFactory', () => {
 
   suite('Adapter Interface Compliance', () => {
     test('should verify all adapters implement required methods', () => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-      const _requiredMethods = ['fetchBundles', 'getDownloadUrl', 'validate'];
-
       const adapters = [
         GitHubAdapter,
         GitLabAdapter,

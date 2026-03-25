@@ -8,19 +8,9 @@ import * as vscode from 'vscode';
 
 suite('Source Management Commands', () => {
   let sandbox: sinon.SinonSandbox;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-  let _mockContext: vscode.ExtensionContext;
 
   setup(() => {
     sandbox = sinon.createSandbox();
-    mockContext = {
-      globalState: {
-        get: sandbox.stub().returns(undefined),
-        update: sandbox.stub().resolves(),
-        keys: sandbox.stub().returns([])
-      },
-      globalStorageUri: { fsPath: '/mock/storage' } as vscode.Uri
-    } as any;
   });
 
   teardown(() => {
@@ -45,9 +35,6 @@ suite('Source Management Commands', () => {
       const showInputBoxStub = sandbox.stub(vscode.window, 'showInputBox');
       showInputBoxStub.onFirstCall().resolves('Test Source');
       showInputBoxStub.onSecondCall().resolves('invalid-url');
-
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by method signature
-      const _showErrorMessageStub = sandbox.stub(vscode.window, 'showErrorMessage');
 
       // Validation would typically happen in the command
       const url = 'invalid-url';
@@ -343,8 +330,7 @@ suite('Source Management Commands', () => {
       assert.ok(enabledSources.every((s) => s.enabled));
     });
 
-    // eslint-disable-next-line @typescript-eslint/require-await -- async required by caller contract
-    test('should skip disabled sources', async () => {
+    test('should skip disabled sources', () => {
       const sources = [
         { id: 'source-1', name: 'Source 1', type: 'github', url: 'url1', enabled: false, priority: 1 },
         { id: 'source-2', name: 'Source 2', type: 'github', url: 'url2', enabled: false, priority: 2 }
@@ -363,12 +349,14 @@ suite('Source Management Commands', () => {
       ];
 
       const results = await Promise.allSettled(
-        // eslint-disable-next-line @typescript-eslint/await-thenable -- await used for consistency with async test pattern
         sources.map((source) => {
-          if (source.id === 'source-2') {
-            throw new Error('Sync failed');
-          }
-          return source;
+          return new Promise((resolve, reject) => {
+            if (source.id === 'source-2') {
+              reject(new Error('Sync failed'));
+            } else {
+              resolve(source);
+            }
+          });
         })
       );
 

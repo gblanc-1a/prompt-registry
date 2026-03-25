@@ -29,8 +29,6 @@ suite('OlafAdapter Integration Tests', () => {
   };
 
   let runtimeManagerStub: sinon.SinonStubbedInstance<OlafRuntimeManager>;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-  let _workspaceStub: sinon.SinonStub;
 
   /**
    * Helper to set up mock GitHub API responses for bundle structure
@@ -104,7 +102,7 @@ suite('OlafAdapter Integration Tests', () => {
     sinon.stub(OlafRuntimeManager, 'getInstance').returns(runtimeManagerStub as any);
 
     // Mock VSCode workspace
-    workspaceStub = sinon.stub(vscode.workspace, 'workspaceFolders').value([
+    sinon.stub(vscode.workspace, 'workspaceFolders').value([
       { uri: { fsPath: '/test/workspace' } }
     ]);
   });
@@ -422,8 +420,6 @@ suite('OlafAdapter Integration Tests', () => {
       const workspacePath = '/test/workspace';
       // Install path is now: .olaf/external-skills/<source-name>/ (without bundle/skill name)
       const installPath = path.join(workspacePath, '.olaf', 'external-skills', 'test-source');
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by method signature
-      const _competencyIndexPath = path.join(workspacePath, '.olaf', 'olaf-core', 'reference', 'competency-index.json');
 
       // Mock bundle definition with skill entry points
       const bundleDefinition = {
@@ -482,8 +478,6 @@ suite('OlafAdapter Integration Tests', () => {
       // Mock file system operations
       const existsSyncStub = sinon.stub(fs, 'existsSync');
       const mkdirSyncStub = sinon.stub(fs, 'mkdirSync');
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by method signature
-      const _readFileSyncStub = sinon.stub(fs, 'readFileSync');
       const writeFileSyncStub = sinon.stub(fs, 'writeFileSync');
 
       // Setup: competency index doesn't exist yet
@@ -579,8 +573,6 @@ suite('OlafAdapter Integration Tests', () => {
         .reply(200, JSON.stringify(skillManifest));
 
       const existsSyncStub = sinon.stub(fs, 'existsSync');
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- required by method signature
-      const _mkdirSyncStub = sinon.stub(fs, 'mkdirSync');
       const readFileSyncStub = sinon.stub(fs, 'readFileSync');
       const writeFileSyncStub = sinon.stub(fs, 'writeFileSync');
 

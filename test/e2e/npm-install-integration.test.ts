@@ -129,18 +129,17 @@ suite('E2E: Npm Install Integration Tests', () => {
 
       // Mock VS Code withProgress
       sandbox.stub(vscode.window, 'withProgress')
-        .callsFake(async (_options: any, task: (progress: any, token: any) => Thenable<unknown>) => {
+        .callsFake((_options: any, task: (progress: any, token: any) => Thenable<unknown>) => {
           const progress = { report: sandbox.stub() };
           const token = {
             isCancellationRequested: false,
             onCancellationRequested: sandbox.stub()
           };
-          return await task(progress, token);
+          return task(progress, token);
         });
 
       const npmWrapper = NpmCliWrapper.getInstance();
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-      const _result = await npmWrapper.installWithProgress(testDir);
+      await npmWrapper.installWithProgress(testDir);
 
       assert.ok(spawnStub.called, 'Should attempt to spawn npm process');
     });

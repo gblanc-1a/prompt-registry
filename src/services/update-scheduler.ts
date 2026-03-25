@@ -268,7 +268,6 @@ export class UpdateScheduler {
   /**
    * Initialize scheduler and perform startup check
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   public async initialize(): Promise<void> {
     if (this.isInitialized) {
       this.logger.debug('UpdateScheduler already initialized');

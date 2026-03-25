@@ -347,10 +347,10 @@ export class GitHubAdapter extends RepositoryAdapter {
             this.logger.error(`[GitHubAdapter] Response: ${data.substring(0, 500)}`);
 
             // Validate response format before processing error
-            // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-            const validation = this.validateResponse(res, data);
-            if (!validation.isValid) {
-              this.logger.error(`[GitHubAdapter] ${validation.error}`);
+
+            const { isValid, error } = this.validateResponse(res, data);
+            if (!isValid) {
+              this.logger.error(`[GitHubAdapter] ${error}`);
             }
 
             // Check if this is an authentication error that should trigger retry
@@ -378,8 +378,8 @@ export class GitHubAdapter extends RepositoryAdapter {
             let errorMsg = `GitHub API error: ${res.statusCode} ${res.statusMessage}`;
 
             // Include HTML error information if present
-            if (!validation.isValid && validation.error) {
-              errorMsg = validation.error;
+            if (!isValid && error) {
+              errorMsg = error;
             } else {
               switch (res.statusCode) {
                 case 404: {

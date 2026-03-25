@@ -179,7 +179,6 @@ export class AddResourceCommand {
     });
   }
 
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   private async getGitUserName(): Promise<string> {
     try {
       return execSync('git config user.name', { encoding: 'utf8' }).trim();

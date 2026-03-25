@@ -959,7 +959,6 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
    * Get bundles by category
    * @param _category
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   private async getCategoryBundles(_category: string): Promise<RegistryTreeItem[]> {
     // TODO: Implement category filtering
     // For now, return empty

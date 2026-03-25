@@ -263,16 +263,15 @@ export class VersionConsolidator {
     const consolidated: ConsolidatedBundle[] = [];
 
     for (const [identity, items] of grouped.entries()) {
-      // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-      const bundles = items.map((item) => item.bundle);
+      const itemBundles = items.map((item) => item.bundle);
 
-      if (bundles.length === 1) {
+      if (itemBundles.length === 1) {
         // Single version - no consolidation needed, but still cache for consistency
-        const version = this.toBundleVersion(bundles[0]);
+        const version = this.toBundleVersion(itemBundles[0]);
         this.addToCache(identity, [version]);
 
         consolidated.push({
-          ...bundles[0],
+          ...itemBundles[0],
           availableVersions: [version],
           isConsolidated: false
         });
@@ -280,14 +279,14 @@ export class VersionConsolidator {
       }
 
       // Multiple versions - find latest using version comparison
-      const sortedVersions = this.sortBundlesByVersion(bundles);
+      const sortedVersions = this.sortBundlesByVersion(itemBundles);
       const latest = sortedVersions[0];
       const allVersions = sortedVersions.map((b) => this.toBundleVersion(b));
 
       // Cache versions for this identity (with size management)
       this.addToCache(identity, allVersions);
 
-      this.logger.debug(`Consolidated ${bundles.length} versions for "${identity}", latest: ${latest.version}`);
+      this.logger.debug(`Consolidated ${itemBundles.length} versions for "${identity}", latest: ${latest.version}`);
 
       consolidated.push({
         ...latest,

@@ -650,8 +650,7 @@ export class BundleInstaller {
           return;
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-        const result = await this.mcpManager.installServersToWorkspace(
+        const workspaceInstallationResult = await this.mcpManager.installServersToWorkspace(
           bundleId,
           bundleVersion,
           workspaceRoot,
@@ -664,14 +663,14 @@ export class BundleInstaller {
           }
         );
 
-        if (result.success) {
-          this.logger.info(`Successfully installed ${result.serversInstalled} MCP servers to workspace`);
+        if (workspaceInstallationResult.success) {
+          this.logger.info(`Successfully installed ${workspaceInstallationResult.serversInstalled} MCP servers to workspace`);
         } else {
-          this.logger.warn(`MCP server installation had issues: ${result.errors?.join(', ')}`);
+          this.logger.warn(`MCP server installation had issues: ${workspaceInstallationResult.errors?.join(', ')}`);
         }
 
-        if (result.warnings && result.warnings.length > 0) {
-          this.logger.warn(`MCP installation warnings: ${result.warnings.join(', ')}`);
+        if (workspaceInstallationResult.warnings && workspaceInstallationResult.warnings.length > 0) {
+          this.logger.warn(`MCP installation warnings: ${workspaceInstallationResult.warnings.join(', ')}`);
         }
         return;
       }
@@ -722,13 +721,12 @@ export class BundleInstaller {
           return;
         }
 
-        // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-        const result = await this.mcpManager.uninstallServersFromWorkspace(bundleId, workspaceRoot);
+        const workspaceUninstallationResult = await this.mcpManager.uninstallServersFromWorkspace(bundleId, workspaceRoot);
 
-        if (!result.success) {
-          this.logger.warn(`MCP server uninstallation had issues: ${result.errors?.join(', ')}`);
-        } else if (result.serversRemoved > 0) {
-          this.logger.info(`Successfully uninstalled ${result.serversRemoved} MCP servers from workspace`);
+        if (!workspaceUninstallationResult.success) {
+          this.logger.warn(`MCP server uninstallation had issues: ${workspaceUninstallationResult.errors?.join(', ')}`);
+        } else if (workspaceUninstallationResult.serversRemoved > 0) {
+          this.logger.info(`Successfully uninstalled ${workspaceUninstallationResult.serversRemoved} MCP servers from workspace`);
         } else {
           this.logger.debug(`No MCP servers found for bundle ${bundleId} in workspace`);
         }

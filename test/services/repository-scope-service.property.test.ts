@@ -299,7 +299,7 @@ suite('RepositoryScopeService Property Tests', () => {
             );
           }
 
-          return true;
+          return Promise.resolve(true);
         }),
         {
           ...PropertyTestConfig.FAST_CHECK_OPTIONS,
@@ -332,7 +332,7 @@ suite('RepositoryScopeService Property Tests', () => {
             );
           }
 
-          return true;
+          return Promise.resolve(true);
         }),
         {
           ...PropertyTestConfig.FAST_CHECK_OPTIONS,
@@ -369,7 +369,7 @@ suite('RepositoryScopeService Property Tests', () => {
             `Path should start with .github/: ${relativePath}`
           );
 
-          return true;
+          return Promise.resolve(true);
         }),
         {
           ...PropertyTestConfig.FAST_CHECK_OPTIONS,
@@ -416,7 +416,7 @@ suite('RepositoryScopeService Property Tests', () => {
               );
             }
 
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {

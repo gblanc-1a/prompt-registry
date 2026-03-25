@@ -512,16 +512,15 @@ export class ProfileCommands {
 
       // If no profileId, let user select
       if (!targetProfileId) {
-        // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-        const profiles = await this.registryManager.listProfiles();
+        const loadedProfiles = await this.registryManager.listProfiles();
 
-        if (profiles.length === 0) {
+        if (loadedProfiles.length === 0) {
           vscode.window.showInformationMessage('No profiles found. Create one first.');
           return;
         }
 
         const selected = await vscode.window.showQuickPick(
-          profiles.map((p) => ({
+          loadedProfiles.map((p) => ({
             label: `${p.icon} ${p.name}`,
             description: p.description,
             detail: `${p.bundles.length} bundles${p.active ? ' (Active)' : ''}`,
@@ -730,16 +729,15 @@ export class ProfileCommands {
 
       // If no profileId, let user select
       if (!targetProfileId) {
-        // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-        const profiles = await this.registryManager.listProfiles();
+        const loadedProfiles = await this.registryManager.listProfiles();
 
-        if (profiles.length === 0) {
+        if (loadedProfiles.length === 0) {
           vscode.window.showInformationMessage('No profiles found.');
           return;
         }
 
         const selected = await vscode.window.showQuickPick(
-          profiles.map((p) => ({
+          loadedProfiles.map((p) => ({
             label: `${p.icon} ${p.name}`,
             description: p.description,
             detail: `${p.bundles.length} bundles${p.active ? ' (Active)' : ''}`,

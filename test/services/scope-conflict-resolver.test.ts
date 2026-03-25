@@ -28,8 +28,6 @@ import {
 suite('ScopeConflictResolver', () => {
   let sandbox: sinon.SinonSandbox;
   let mockStorage: sinon.SinonStubbedInstance<RegistryStorage>;
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-  let _mockContext: vscode.ExtensionContext;
   let resolver: ScopeConflictResolver;
 
   // ===== Test Utilities =====
@@ -74,7 +72,7 @@ suite('ScopeConflictResolver', () => {
 
   setup(() => {
     sandbox = sinon.createSandbox();
-    mockContext = createMockContext();
+    createMockContext();
     mockStorage = sandbox.createStubInstance(RegistryStorage);
     resolver = new ScopeConflictResolver(mockStorage);
   });

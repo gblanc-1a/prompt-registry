@@ -60,7 +60,6 @@ export class HubSyncHistory {
    * @param status
    * @param error
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- async required by caller contract
   public async recordSync(
     hubId: string,
     profileId: string,
@@ -92,7 +91,6 @@ export class HubSyncHistory {
    * @param profileId
    * @param limit Maximum number of entries to return (default: all)
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   public async getHistory(hubId: string, profileId: string, limit?: number): Promise<SyncHistoryEntry[]> {
     const key = this.getHistoryKey(hubId, profileId);
     const history = this.historyMap.get(key) || [];
@@ -296,7 +294,6 @@ export class HubSyncHistory {
    * @param hubId
    * @param profileId
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   public async clearHistory(hubId: string, profileId: string): Promise<void> {
     const key = this.getHistoryKey(hubId, profileId);
     this.historyMap.delete(key);
@@ -305,7 +302,6 @@ export class HubSyncHistory {
   /**
    * Clear all history for all profiles
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   public async clearAllHistory(): Promise<void> {
     this.historyMap.clear();
   }

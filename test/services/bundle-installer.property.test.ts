@@ -209,11 +209,13 @@ suite('BundleInstaller Property Tests', () => {
           bundleId: bundle.bundleId,
           scope: bundle.scope
         });
+        return Promise.resolve();
       });
 
       // Track removeInstallation calls
       mockStorage.removeInstallation.callsFake((bundleId: string, scope: InstallationScope) => {
         removeInstallationCalls.push({ bundleId, scope });
+        return Promise.resolve();
       });
 
       // Inject mock storage
@@ -596,19 +598,10 @@ suite('BundleInstaller Property Tests', () => {
         fc.asyncProperty(
           fc.constantFrom('user', 'workspace') as fc.Arbitrary<InstallationScope>,
           bundleDataGenerator(),
-          (scope, { bundleId, version }) => {
+          (scope, _) => {
             // Reset tracking
             lockfileCreateOrUpdateCalls = [];
             lockfileRemoveCalls = [];
-
-            // Create a mock installed bundle at user/workspace scope
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-            const _installed = createMockInstalledBundle(bundleId, version, {
-              scope,
-              installPath: path.join(tempDir, 'bundles', bundleId),
-              sourceId: 'test-source',
-              sourceType: 'github'
-            });
 
             // Simulate install/uninstall operations
             // For user/workspace scope, lockfile should NOT be touched
@@ -627,7 +620,7 @@ suite('BundleInstaller Property Tests', () => {
               `LockfileManager.remove should NOT be called for ${scope} scope`
             );
 
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -745,7 +738,7 @@ suite('BundleInstaller Property Tests', () => {
             //     `Lockfile should be updated for repository scope bundle ${bundleId}`
             // );
 
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -794,7 +787,7 @@ suite('BundleInstaller Property Tests', () => {
               `Lockfile should NOT be modified for user scope bundle ${bundleId}`
             );
 
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -837,7 +830,7 @@ suite('BundleInstaller Property Tests', () => {
               `Lockfile should NOT be updated for workspace scope bundle ${bundleId}`
             );
 
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -870,10 +863,6 @@ suite('BundleInstaller Property Tests', () => {
               installPath: path.join(tempDir, 'bundles', bundleId)
             });
 
-            // Property: Scope should determine lockfile interaction
-            // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-            const _shouldModifyLockfile = scope === 'repository';
-
             // Verify scope is correctly set
             assert.strictEqual(
               installed.scope,
@@ -895,7 +884,7 @@ suite('BundleInstaller Property Tests', () => {
             //     );
             // }
 
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -931,7 +920,7 @@ suite('BundleInstaller Property Tests', () => {
             assert.strictEqual(bundleEntry.sourceId, sourceId, 'Source ID should match');
             assert.strictEqual(bundleEntry.commitMode, commitMode, 'Commit mode should match');
 
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -975,7 +964,7 @@ suite('BundleInstaller Property Tests', () => {
               `Scope should be ${scope} for update indication`
             );
 
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {

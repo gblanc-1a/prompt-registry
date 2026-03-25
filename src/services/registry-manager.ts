@@ -727,8 +727,7 @@ export class RegistryManager {
         const skillSourcePath = localSkillsAdapter.getSkillSourcePath(bundle);
         const skillName = localSkillsAdapter.getSkillName(bundle);
 
-        // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-        const installation = await this.installer.installLocalSkillAsSymlink(
+        const localSkillSymlink = await this.installer.installLocalSkillAsSymlink(
           bundle,
           skillName,
           skillSourcePath,
@@ -736,14 +735,14 @@ export class RegistryManager {
         );
 
         // Ensure sourceId and sourceType are set
-        installation.sourceId = bundle.sourceId;
-        installation.sourceType = source.type;
+        localSkillSymlink.sourceId = bundle.sourceId;
+        localSkillSymlink.sourceType = source.type;
 
         if (options.profileId) {
-          installation.profileId = options.profileId;
+          localSkillSymlink.profileId = options.profileId;
         }
 
-        return installation;
+        return localSkillSymlink;
       }
       // Fall through to standard installation if methods not available
       this.logger.warn(`LocalSkillsAdapter missing symlink methods, falling back to standard installation`);
@@ -2106,15 +2105,14 @@ export class RegistryManager {
 
       // Deactivate all active local profiles (and uninstall their bundles)
       const profiles = await this.storage.getProfiles();
-      // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-      for (const profile of profiles) {
-        if (profile.active && profile.id !== validatedProfileId) {
-          this.logger.info(`Deactivating local profile: ${profile.id}`);
+      for (const localProfile of profiles) {
+        if (localProfile.active && localProfile.id !== validatedProfileId) {
+          this.logger.info(`Deactivating local profile: ${localProfile.id}`);
           try {
             // Call deactivateProfile() to properly uninstall bundles, not just update flags
-            await this.deactivateProfile(profile.id);
+            await this.deactivateProfile(localProfile.id);
           } catch (error) {
-            this.logger.error(`Failed to deactivate local profile ${profile.id}`, error as Error);
+            this.logger.error(`Failed to deactivate local profile ${localProfile.id}`, error as Error);
           }
         }
       }
@@ -2178,14 +2176,11 @@ export class RegistryManager {
 
           // Uninstall only the bundles that were installed BY THIS PROFILE
           // (not bundles installed manually or by other profiles)
-          // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-          const installedBundles = await this.storage.getInstalledBundles();
-          // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-          const profileBundles = installedBundles.filter((b) => b.profileId === profileId);
+          const bundles = (await this.storage.getInstalledBundles()).filter((b) => b.profileId === profileId);
 
-          if (profileBundles.length > 0) {
-            this.logger.info(`Uninstalling ${profileBundles.length} bundles from hub profile '${profileId}'`);
-            await this.uninstallBundles(profileBundles.map((b) => b.bundleId));
+          if (bundles.length > 0) {
+            this.logger.info(`Uninstalling ${bundles.length} bundles from hub profile '${profileId}'`);
+            await this.uninstallBundles(bundles.map((b) => b.bundleId));
           }
 
           // Fire event to update tree view
@@ -2396,9 +2391,8 @@ export class RegistryManager {
       if (installed?.manifest?.metadata?.description) {
         // Try to extract a clean name from the description or use bundleId
         // For now, we'll try to get it from bundle details
-        // eslint-disable-next-line @typescript-eslint/no-shadow -- intentional shadowing in nested scope
-        const bundle = await this.getBundleDetails(bundleId);
-        return bundle?.name || bundleId;
+        const { name } = await this.getBundleDetails(bundleId) || {};
+        return name || bundleId;
       }
 
       // Try to get from bundle details

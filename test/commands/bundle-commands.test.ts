@@ -164,23 +164,11 @@ suite('Bundle Management Commands', () => {
     });
 
     test('should remove bundle files', () => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-      const _bundle = {
-        id: 'test-bundle',
-        installPath: '/path/to/bundle'
-      };
-
       const filesShouldBeRemoved = true;
       assert.strictEqual(filesShouldBeRemoved, true);
     });
 
     test('should clean up dependencies', () => {
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- kept for clarity
-      const _bundle = {
-        id: 'test-bundle',
-        dependencies: ['dep-1', 'dep-2']
-      };
-
       // Check if dependencies are used by other bundles
       const shouldCleanDeps = true;
       assert.ok(shouldCleanDeps);

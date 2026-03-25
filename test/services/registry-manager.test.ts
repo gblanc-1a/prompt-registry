@@ -509,6 +509,7 @@ suite('RegistryManager - Event Emission Behavior', () => {
     const updatedInstallations: InstalledBundle[] = [];
     mockStorage.recordInstallation.callsFake((installation: InstalledBundle) => {
       updatedInstallations.push(installation);
+      return Promise.resolve();
     });
 
     let updatedEventPayload: InstalledBundle | undefined;

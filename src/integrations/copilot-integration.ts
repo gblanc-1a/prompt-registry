@@ -205,7 +205,6 @@ export class CopilotIntegration implements vscode.Disposable {
   /**
    * Activate Copilot integration
    */
-  // eslint-disable-next-line @typescript-eslint/require-await -- method signature requires Promise return type
   public async activate(): Promise<void> {
     try {
       // Register chat participant

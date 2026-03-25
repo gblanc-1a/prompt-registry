@@ -19,7 +19,7 @@ import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import {
   NpmCliWrapper,
-} from '../../src/utils/NpmCliWrapper';
+} from '../../src/utils/npm-cli-wrapper';
 
 suite('E2E: Npm Install Integration Tests', () => {
   let testDir: string;

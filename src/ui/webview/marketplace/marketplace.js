@@ -364,26 +364,20 @@
         // No bundles at all - check if setup is incomplete or in progress
         var isSetupIncomplete = setupState === 'incomplete' || setupState === 'not_started' || setupState === 'in_progress';
 
-        if (isSetupIncomplete) {
-          // Show setup prompt instead of syncing message
-          marketplace.innerHTML =
-            '<div class="empty-state">'
-            + '<div class="empty-state-icon">⚙️</div>'
-            + '<div class="empty-state-title">Setup Not Complete</div>'
-            + '<p>No hub is configured. Complete setup to browse bundles.</p>'
-            + '<button class="primary-button" data-action="completeSetup">'
-            + 'Complete Setup'
-            + '</button>'
-            + '</div>';
-        } else {
-          // Normal syncing state
-          marketplace.innerHTML =
-            '<div class="empty-state">'
+        marketplace.innerHTML = isSetupIncomplete
+          ? '<div class="empty-state">'
+          + '<div class="empty-state-icon">⚙️</div>'
+          + '<div class="empty-state-title">Setup Not Complete</div>'
+          + '<p>No hub is configured. Complete setup to browse bundles.</p>'
+          + '<button class="primary-button" data-action="completeSetup">'
+          + 'Complete Setup'
+          + '</button>'
+          + '</div>'
+          : '<div class="empty-state">'
             + '<div class="spinner"></div>'
             + '<div class="empty-state-title">Syncing sources...</div>'
             + '<p>Bundles will appear as sources are synced</p>'
             + '</div>';
-        }
       } else if (hasFiltersApplied) {
         // Has bundles but filters hide them all
         marketplace.innerHTML =
@@ -541,7 +535,7 @@
   }
 
   function toggleVersionDropdown(dropdownId) {
-    var dropdown = document.getElementById('version-dropdown-' + dropdownId);
+    var dropdown = document.querySelector('#' + CSS.escape('version-dropdown-' + dropdownId));
     if (!dropdown) {
       return;
     }

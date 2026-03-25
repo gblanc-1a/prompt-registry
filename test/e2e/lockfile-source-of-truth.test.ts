@@ -21,22 +21,22 @@ import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import {
   BundleCommands,
-} from '../../src/commands/BundleCommands';
+} from '../../src/commands/bundle-commands';
 import {
   LockfileManager,
-} from '../../src/services/LockfileManager';
+} from '../../src/services/lockfile-manager';
 import {
   RepositoryCommitMode,
 } from '../../src/types/registry';
 import {
   generateHubSourceId,
   isLegacyHubSourceId,
-} from '../../src/utils/sourceIdUtils';
+} from '../../src/utils/source-id-utils';
 import {
   createE2ETestContext,
   E2ETestContext,
   generateTestId,
-} from '../helpers/e2eTestHelpers';
+} from '../helpers/e2e-test-helpers';
 import {
   cleanupReleaseMocks,
   computeBundleId,
@@ -46,7 +46,7 @@ import {
   RepositoryTestConfig,
   setupReleaseMocks,
   setupSourceWithCustomConfig,
-} from '../helpers/repositoryFixtureHelpers';
+} from '../helpers/repository-fixture-helpers';
 
 suite('E2E: Lockfile as Single Source of Truth Tests', () => {
   let testContext: E2ETestContext;

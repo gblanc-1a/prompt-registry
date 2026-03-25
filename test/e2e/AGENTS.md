@@ -114,13 +114,13 @@ test/e2e/
 Use the `E2ETestContext` helper for isolated test environments:
 
 ```typescript
-import { createE2ETestContext, E2ETestContext, generateTestId } from '../helpers/e2eTestHelpers';
+import { createE2ETestContext, E2ETestContext, generateTestId } from '../helpers/e2e-test-helpers';
 import {
     setupReleaseMocks,
     createMockGitHubSource,
     cleanupReleaseMocks,
     RepositoryTestConfig
-} from '../helpers/repositoryFixtureHelpers';
+} from '../helpers/repository-fixture-helpers';
 
 suite('E2E: My Feature Tests', () => {
     let testContext: E2ETestContext;
@@ -153,7 +153,7 @@ import {
     cleanupReleaseMocks,
     RepositoryTestConfig,
     ReleaseConfig
-} from '../helpers/repositoryFixtureHelpers';
+} from '../helpers/repository-fixture-helpers';
 
 // Configure test repository
 const config: RepositoryTestConfig = {

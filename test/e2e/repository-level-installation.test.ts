@@ -27,16 +27,16 @@ import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import {
   BundleScopeCommands,
-} from '../../src/commands/BundleScopeCommands';
+} from '../../src/commands/bundle-scope-commands';
 import {
   LockfileManager,
-} from '../../src/services/LockfileManager';
+} from '../../src/services/lockfile-manager';
 import {
   RepositoryActivationService,
-} from '../../src/services/RepositoryActivationService';
+} from '../../src/services/repository-activation-service';
 import {
   ScopeConflictResolver,
-} from '../../src/services/ScopeConflictResolver';
+} from '../../src/services/scope-conflict-resolver';
 import {
   RepositoryCommitMode,
 } from '../../src/types/registry';
@@ -44,7 +44,7 @@ import {
   createE2ETestContext,
   E2ETestContext,
   generateTestId,
-} from '../helpers/e2eTestHelpers';
+} from '../helpers/e2e-test-helpers';
 import {
   cleanupReleaseMocks,
   computeBundleId,
@@ -52,7 +52,7 @@ import {
   ReleaseConfig,
   RepositoryTestConfig,
   setupReleaseMocks,
-} from '../helpers/repositoryFixtureHelpers';
+} from '../helpers/repository-fixture-helpers';
 
 suite('E2E: Repository-Level Installation Tests', () => {
   let testContext: E2ETestContext;

@@ -1,149 +1,149 @@
 import * as vscode from 'vscode';
 import {
   AddResourceCommand,
-} from './commands/AddResourceCommand';
+} from './commands/add-resource-command';
 import {
   BundleCommands,
-} from './commands/BundleCommands';
+} from './commands/bundle-commands';
 import {
   BundleScopeCommands,
-} from './commands/BundleScopeCommands';
+} from './commands/bundle-scope-commands';
 import {
   CreateCollectionCommand,
-} from './commands/CreateCollectionCommand';
+} from './commands/create-collection-command';
 import {
   GitHubAuthCommand,
-} from './commands/GitHubAuthCommand';
+} from './commands/github-auth-command';
 import {
   HubCommands,
-} from './commands/HubCommands';
+} from './commands/hub-commands';
 import {
   HubIntegrationCommands,
-} from './commands/HubIntegrationCommands';
+} from './commands/hub-integration-commands';
 import {
   HubProfileCommands,
-} from './commands/HubProfileCommands';
+} from './commands/hub-profile-commands';
 import {
   ProfileCommands,
-} from './commands/ProfileCommands';
+} from './commands/profile-commands';
 import {
   ScaffoldCommand,
-} from './commands/ScaffoldCommand';
+} from './commands/scaffold-command';
 
 // Legacy imports (to be migrated)
 import {
   selectVersionCommand,
-} from './commands/selectVersionCommand';
+} from './commands/select-version-command';
 import {
   SettingsCommands,
-} from './commands/SettingsCommands';
+} from './commands/settings-commands';
 import {
   SourceCommands,
-} from './commands/SourceCommands';
+} from './commands/source-commands';
 import {
   StatusCommand,
-} from './commands/statusCommand';
+} from './commands/status-command';
 import {
   UpdateCommand,
-} from './commands/updateCommand';
+} from './commands/update-command';
 import {
   ValidateAccessCommand,
-} from './commands/validateAccessCommand';
+} from './commands/validate-access-command';
 import {
   ValidateApmCommand,
-} from './commands/ValidateApmCommand';
+} from './commands/validate-apm-command';
 import {
   ValidateCollectionsCommand,
-} from './commands/ValidateCollectionsCommand';
+} from './commands/validate-collections-command';
 import {
   getEnabledDefaultHubs,
-} from './config/defaultHubs';
+} from './config/default-hubs';
 import {
   CopilotIntegration,
-} from './integrations/CopilotIntegration';
+} from './integrations/copilot-integration';
 import {
   runSourceIdNormalizationMigration,
-} from './migrations/sourceIdNormalizationMigration';
+} from './migrations/source-id-normalization-migration';
 import {
   BundleUpdateNotifications,
-} from './notifications/BundleUpdateNotifications';
+} from './notifications/bundle-update-notifications';
 import {
   ExtensionNotifications,
-} from './notifications/ExtensionNotifications';
+} from './notifications/extension-notifications';
 import {
   ApmRuntimeManager,
-} from './services/ApmRuntimeManager';
+} from './services/apm-runtime-manager';
 import {
   AutoUpdateService,
-} from './services/AutoUpdateService';
+} from './services/auto-update-service';
 import {
   HubManager,
-} from './services/HubManager';
+} from './services/hub-manager';
 import {
   InstallationManager,
-} from './services/installationManager';
+} from './services/installation-manager';
 import {
   LockfileManager,
-} from './services/LockfileManager';
+} from './services/lockfile-manager';
 import {
   MigrationRegistry,
-} from './services/MigrationRegistry';
+} from './services/migration-registry';
 import {
   NotificationManager,
-} from './services/NotificationManager';
+} from './services/notification-manager';
 import {
   OlafRuntimeManager,
-} from './services/OlafRuntimeManager';
+} from './services/olaf-runtime-manager';
 import {
   RegistryManager,
-} from './services/RegistryManager';
+} from './services/registry-manager';
 import {
   RepositoryActivationService,
-} from './services/RepositoryActivationService';
+} from './services/repository-activation-service';
 import {
   SchemaValidator,
-} from './services/SchemaValidator';
+} from './services/schema-validator';
 import {
   ScopeConflictResolver,
-} from './services/ScopeConflictResolver';
+} from './services/scope-conflict-resolver';
 import {
   SetupState,
   SetupStateManager,
-} from './services/SetupStateManager';
+} from './services/setup-state-manager';
 import {
   TelemetryService,
-} from './services/TelemetryService';
+} from './services/telemetry-service';
 import {
   UpdateChecker,
-} from './services/UpdateChecker';
+} from './services/update-checker';
 import {
   UpdateScheduler,
-} from './services/UpdateScheduler';
+} from './services/update-scheduler';
 import {
   HubStorage,
-} from './storage/HubStorage';
+} from './storage/hub-storage';
 import {
   RegistrySource,
 } from './types/registry';
 import {
   MarketplaceViewProvider,
-} from './ui/MarketplaceViewProvider';
+} from './ui/marketplace-view-provider';
 import {
   RegistryTreeProvider,
-} from './ui/RegistryTreeProvider';
+} from './ui/registry-tree-provider';
 import {
   StatusBar,
-} from './ui/statusBar';
+} from './ui/status-bar';
 import {
   getValidNotificationPreference,
   getValidUpdateCheckFrequency,
-} from './utils/configTypeGuards';
+} from './utils/config-type-guards';
 import {
   Logger,
 } from './utils/logger';
 import {
   McpConfigLocator,
-} from './utils/mcpConfigLocator';
+} from './utils/mcp-config-locator';
 
 // Module-level variable to store the extension instance for deactivation
 let extensionInstance: PromptRegistryExtension | undefined;
@@ -440,13 +440,10 @@ export class PromptRegistryExtension {
       vscode.commands.registerCommand('promptRegistry.viewBundle', async (arg?) => {
         const bundleId = this.extractBundleId(arg);
 
-        if (bundleId && this.marketplaceProvider) {
-          // Open in webview details panel (same as marketplace)
-          await this.marketplaceProvider.openBundleDetails(bundleId);
-        } else {
-          // Fallback to QuickPick view
-          await this.bundleCommands!.viewBundle(bundleId);
-        }
+        // Open in webview details panel (same as marketplace), or fallback to QuickPick view
+        await (bundleId && this.marketplaceProvider
+          ? this.marketplaceProvider.openBundleDetails(bundleId)
+          : this.bundleCommands!.viewBundle(bundleId));
       }),
       vscode.commands.registerCommand('promptRegistry.browseByCategory', () => this.bundleCommands!.browseByCategory()),
       vscode.commands.registerCommand('promptRegistry.showPopular', () => this.bundleCommands!.showPopular()),

@@ -18,23 +18,23 @@ import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import {
   HubManager,
-} from '../../src/services/HubManager';
+} from '../../src/services/hub-manager';
 import {
   LockfileManager,
-} from '../../src/services/LockfileManager';
+} from '../../src/services/lockfile-manager';
 import {
   RepositoryActivationService,
-} from '../../src/services/RepositoryActivationService';
+} from '../../src/services/repository-activation-service';
 import {
   SetupState,
   SetupStateManager,
-} from '../../src/services/SetupStateManager';
+} from '../../src/services/setup-state-manager';
 import {
   RegistryStorage,
-} from '../../src/storage/RegistryStorage';
+} from '../../src/storage/registry-storage';
 import {
   createMockHubData,
-} from '../helpers/setupStateTestHelpers';
+} from '../helpers/setup-state-test-helpers';
 
 suite('E2E: Setup State Flows', () => {
   let sandbox: sinon.SinonSandbox;

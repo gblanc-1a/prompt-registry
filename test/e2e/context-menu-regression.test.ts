@@ -22,10 +22,10 @@ import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import {
   HubManager,
-} from '../../src/services/HubManager';
+} from '../../src/services/hub-manager';
 import {
   RegistryManager,
-} from '../../src/services/RegistryManager';
+} from '../../src/services/registry-manager';
 import {
   InstalledBundle,
 } from '../../src/types/registry';
@@ -33,16 +33,16 @@ import {
   RegistryTreeItem,
   RegistryTreeProvider,
   TreeItemType,
-} from '../../src/ui/RegistryTreeProvider';
+} from '../../src/ui/registry-tree-provider';
 import {
   createMockBundleDetails,
-} from '../helpers/bundleTestHelpers';
+} from '../helpers/bundle-test-helpers';
 import {
   isValidContextValue,
   setupTreeProviderMocks,
   VALID_CONTEXT_PATTERNS_FOR_MENUS,
   validateContextPatterns,
-} from '../helpers/uiTestHelpers';
+} from '../helpers/ui-test-helpers';
 
 /**
  * All base context values that should be recognized by package.json.
@@ -388,7 +388,7 @@ suite('E2E: Context Menu Regression Prevention', () => {
           messages.push(
             `Patterns in package.json but missing from VALID_CONTEXT_PATTERNS_FOR_MENUS:\n`
             + result.missingInHelper.map((p) => `  - /${p}/`).join('\n')
-            + `\n\nAdd these patterns to VALID_CONTEXT_PATTERNS_FOR_MENUS in test/helpers/uiTestHelpers.ts`
+            + `\n\nAdd these patterns to VALID_CONTEXT_PATTERNS_FOR_MENUS in test/helpers/ui-test-helpers.ts`
           );
         }
 

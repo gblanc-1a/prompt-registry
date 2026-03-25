@@ -98,8 +98,8 @@ grep "passing\|failing" test-output.log
 ls test/services/   # or adapters/, commands/, ui/
 
 # Check helpers
-cat test/helpers/bundleTestHelpers.ts
-cat test/helpers/propertyTestHelpers.ts
+cat test/helpers/bundle-test-helpers.ts
+cat test/helpers/property-test-helpers.ts
 ```
 
 If utilities exist, **USE THEM**. Don't recreate.
@@ -216,7 +216,7 @@ Before creating a new test file, verify:
 ```typescript
 import * as assert from 'assert';
 import * as sinon from 'sinon';
-import { BundleBuilder, createMockInstalledBundle } from '../helpers/bundleTestHelpers';
+import { BundleBuilder, createMockInstalledBundle } from '../helpers/bundle-test-helpers';
 
 suite('ComponentName', () => {
     let sandbox: sinon.SinonSandbox;
@@ -247,7 +247,7 @@ import {
     createMockUpdateCheckResult,  // Factory for UpdateCheckResult
     setupUpdateAvailable,         // Mock setup for updates
     resetBundleCommandsMocks      // Reset all mocks
-} from '../helpers/bundleTestHelpers';
+} from '../helpers/bundle-test-helpers';
 
 const bundle = BundleBuilder.github('owner', 'repo').withVersion('1.0.0').build();
 const installed = createMockInstalledBundle('bundle-id', '1.0.0');
@@ -259,7 +259,7 @@ import {
     LockfileBuilder,              // Fluent builder for Lockfile
     createMockLockfile,           // Factory for quick mock generation
     LockfileGenerators            // fast-check generators for property tests
-} from '../helpers/lockfileTestHelpers';
+} from '../helpers/lockfile-test-helpers';
 
 const lockfile = new LockfileBuilder()
     .withBundle('bundle-id', { version: '1.0.0', sourceId: 'source-1' })
@@ -275,7 +275,7 @@ import {
     createDeploymentManifest,     // Generate deployment manifest
     createMockGitHubSource,       // Create mock GitHub source
     cleanupReleaseMocks           // Clear nock mocks
-} from '../helpers/repositoryFixtureHelpers';
+} from '../helpers/repository-fixture-helpers';
 
 // Set up GitHub release mocks for E2E tests
 setupReleaseMocks(
@@ -290,7 +290,7 @@ import {
     BundleGenerators,     // version(), bundleId()
     PropertyTestConfig,   // RUNS.QUICK, FAST_CHECK_OPTIONS
     ErrorCheckers         // indicatesAuthIssue(), indicatesNetworkIssue()
-} from '../helpers/propertyTestHelpers';
+} from '../helpers/property-test-helpers';
 
 await fc.assert(
     fc.asyncProperty(BundleGenerators.bundleId(), async (id) => { return true; }),

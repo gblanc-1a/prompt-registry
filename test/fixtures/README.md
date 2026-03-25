@@ -136,7 +136,7 @@ import {
     setupReleaseMocks,
     createMockGitHubSource,
     cleanupReleaseMocks
-} from '../helpers/repositoryFixtureHelpers';
+} from '../helpers/repository-fixture-helpers';
 
 // Set up complete GitHub release mocks
 setupReleaseMocks(

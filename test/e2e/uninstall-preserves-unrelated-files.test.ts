@@ -20,15 +20,15 @@ import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import {
   LockfileManager,
-} from '../../src/services/LockfileManager';
+} from '../../src/services/lockfile-manager';
 import {
   RepositoryActivationService,
-} from '../../src/services/RepositoryActivationService';
+} from '../../src/services/repository-activation-service';
 import {
   createE2ETestContext,
   E2ETestContext,
   generateTestId,
-} from '../helpers/e2eTestHelpers';
+} from '../helpers/e2e-test-helpers';
 import {
   cleanupReleaseMocks,
   computeBundleId,
@@ -36,7 +36,7 @@ import {
   ReleaseConfig,
   RepositoryTestConfig,
   setupReleaseMocks,
-} from '../helpers/repositoryFixtureHelpers';
+} from '../helpers/repository-fixture-helpers';
 
 suite('E2E: Uninstall Preserves Unrelated .github Files', () => {
   let testContext: E2ETestContext;

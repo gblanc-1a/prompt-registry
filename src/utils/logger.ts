@@ -35,18 +35,14 @@ export class Logger {
       this.logLevel = this.isTestEnvironment ? LogLevel.ERROR : LogLevel.DEBUG;
     }
 
-    if (this.isTestEnvironment) {
-      // Use console logging in test environment to avoid channel disposal errors
-      this.outputChannel = {
+    this.outputChannel = this.isTestEnvironment
+      ? {
         appendLine: (message: string) => console.log(`[Prompt Registry] ${message}`),
         show: () => {},
         hide: () => {},
         dispose: () => {}
-      };
-    } else {
-      // Use VS Code output channel in normal environment
-      this.outputChannel = vscode.window.createOutputChannel('Prompt Registry');
-    }
+      }
+      : vscode.window.createOutputChannel('Prompt Registry');
   }
 
   public static getInstance(): Logger {

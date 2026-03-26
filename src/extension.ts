@@ -1732,7 +1732,7 @@ export class PromptRegistryExtension {
 
 // Extension activation function called by VS Code
 /**
- *
+ * Activate the Prompt Registry extension.
  * @param context
  */
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -1742,7 +1742,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
 // Extension deactivation function called by VS Code
 /**
- *
+ * Deactivate the Prompt Registry extension.
  */
 export function deactivate(): void {
   if (extensionInstance) {

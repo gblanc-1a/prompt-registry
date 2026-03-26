@@ -84,7 +84,7 @@ export class RepositoryActivationService {
    * @param bundleInstaller - Optional IBundleInstaller instance for bundle installation
    * @param setupStateManager - Optional SetupStateManager instance for checking setup completion
    * @returns RepositoryActivationService instance for the workspace
-   * @throws Error if workspaceRoot is not provided on first call
+   * @throws {Error} if workspaceRoot is not provided on first call
    */
   public static getInstance(
     workspaceRoot?: string,

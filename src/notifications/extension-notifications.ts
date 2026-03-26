@@ -228,7 +228,7 @@ export class ExtensionNotifications {
    * Provided for backward compatibility with existing extension code
    * New code should use NotificationManager directly for better separation of concerns
    * @param message
-   * @param {...any} actions
+   * @param {...string} actions
    */
   public async showInfo(message: string, ...actions: string[]): Promise<string | undefined> {
     return await this.notificationManager.showInfo(message, ...actions);
@@ -239,7 +239,7 @@ export class ExtensionNotifications {
    * Provided for backward compatibility with existing extension code
    * New code should use NotificationManager directly for better separation of concerns
    * @param message
-   * @param {...any} actions
+   * @param {...string} actions
    */
   public async showWarning(message: string, ...actions: string[]): Promise<string | undefined> {
     return await this.notificationManager.showWarning(message, ...actions);
@@ -250,7 +250,7 @@ export class ExtensionNotifications {
    * Provided for backward compatibility with existing extension code
    * New code should use NotificationManager directly for better separation of concerns
    * @param message
-   * @param {...any} actions
+   * @param {...string} actions
    */
   public async showError(message: string, ...actions: string[]): Promise<string | undefined> {
     return await this.notificationManager.showError(message, ...actions);

@@ -52,9 +52,8 @@ export function normalizeUrl(url: string): string {
 }
 
 /**
- * @migration-cleanup(sourceId-normalization-v2): Remove once all lockfiles are migrated
- *
  * Legacy URL normalization (pre-v2): lowercase host only, preserve path case.
+ * `@migration-cleanup(sourceId-normalization-v2)`: Remove once all lockfiles are migrated
  * Used for computing old-format source IDs to support migration and dual-read.
  * @param url - URL to normalize
  * @returns Normalized URL string with lowercase host, original-case path, no protocol or trailing slashes
@@ -187,9 +186,8 @@ export function generateHubKey(url: string, branch?: string): string {
 }
 
 /**
- * @migration-cleanup(sourceId-normalization-v2): Remove once all lockfiles are migrated
- *
  * Generate a legacy sourceId using pre-v2 normalization (host-only lowercase).
+ * `@migration-cleanup(sourceId-normalization-v2)`: Remove once all lockfiles are migrated
  * Returns undefined if the legacy ID is identical to the current ID (no migration needed).
  * @param sourceType - The type of source (e.g., 'github', 'gitlab')
  * @param url - The source URL
@@ -221,9 +219,8 @@ export function generateLegacyHubSourceId(
 }
 
 /**
- * @migration-cleanup(sourceId-normalization-v2): Remove once all lockfiles are migrated
- *
  * Generate a legacy hub key using pre-v2 normalization (host-only lowercase).
+ * `@migration-cleanup(sourceId-normalization-v2)`: Remove once all lockfiles are migrated
  * Returns undefined if the legacy key is identical to the current key.
  * @param url - The hub URL
  * @param branch - Optional branch name

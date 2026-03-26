@@ -40,7 +40,7 @@ export const ScopeServiceFactory = {
    * @param workspaceRoot - The workspace root path (required for repository scope)
    * @param storage - Registry storage instance (required for repository scope)
    * @returns An IScopeService implementation appropriate for the scope
-   * @throws Error if scope is unknown or required parameters are missing
+   * @throws {Error} if scope is unknown or required parameters are missing
    */
   create(
     scope: InstallationScope,

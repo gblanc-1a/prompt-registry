@@ -182,7 +182,7 @@ suite('E2E: Repository-Level Installation Tests', () => {
    * Helper to get a bundle from a synced source.
    * @param sourceId - Source identifier to get bundles from
    * @returns The found bundle
-   * @throws Error if bundle is not found
+   * @throws {Error} if bundle is not found
    */
   async function getBundleFromSource(sourceId: string): Promise<any> {
     const rawBundles = await testContext.storage.getCachedSourceBundles(sourceId);

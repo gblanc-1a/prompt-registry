@@ -1453,7 +1453,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
   /**
    * Fetch repository metadata from local OLAF filesystem
    * @returns Promise resolving to SourceMetadata with directory info
-   * @throws Error if directory doesn't exist or is not accessible
+   * @throws {Error} if directory doesn't exist or is not accessible
    */
   public async fetchMetadata(): Promise<SourceMetadata> {
     try {
@@ -1538,7 +1538,7 @@ export class LocalOlafAdapter extends RepositoryAdapter {
    * Continues processing valid bundles when some are invalid
    * Respects source enable/disable state
    * @returns Promise resolving to array of Bundle objects found in local directory
-   * @throws Error only if directory is not accessible or no valid bundles found
+   * @throws {Error} only if directory is not accessible or no valid bundles found
    */
   public async fetchBundles(): Promise<Bundle[]> {
     // Check if source is enabled

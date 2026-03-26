@@ -88,7 +88,7 @@ export const AutoUpdateTestHelpers = {
    * Follows the same pattern as resetBundleCommandsMocks for consistency
    * @param mockStorage
    * @param loggerStub
-   * @param {...any} otherMocks
+   * @param {...sinon.SinonStubbedInstance} otherMocks
    */
   resetAutoUpdateMocks(
     mockStorage: sinon.SinonStubbedInstance<RegistryStorage>,

@@ -169,7 +169,7 @@ export interface ValidationResult {
 /**
  * Validate a hub reference
  * @param ref Hub reference to validate
- * @throws Error if validation fails
+ * @throws {Error} if validation fails
  */
 export function validateHubReference(ref: HubReference): void {
   // Check location exists
@@ -327,7 +327,7 @@ export function validateHubConfig(config: any): ValidationResult {
 /**
  * Sanitize and validate a hub ID
  * @param hubId Hub ID to validate
- * @throws Error if ID is invalid
+ * @throws {Error} if ID is invalid
  */
 export function sanitizeHubId(hubId: string): void {
   // Check not empty

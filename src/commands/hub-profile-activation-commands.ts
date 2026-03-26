@@ -115,7 +115,7 @@ export async function activateHubProfile(hubManager: HubManager, item?: any): Pr
 }
 
 /**
- *
+ * Deactivate the currently active hub profile.
  * @param hubManager
  * @param _item
  */
@@ -197,7 +197,7 @@ export async function deactivateHubProfile(hubManager: HubManager, _item?: any):
 }
 
 /**
- *
+ * Show the currently active hub profiles.
  * @param hubManager
  */
 export async function showActiveProfiles(hubManager: HubManager): Promise<void> {

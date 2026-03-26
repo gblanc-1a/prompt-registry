@@ -233,7 +233,7 @@ export interface BundleSetupOptions {
  * local wrapper function that captures the test-specific dependencies.
  * @param options - Setup options including test context and mock functions
  * @returns Object containing sourceId and the found bundle
- * @throws Error if bundle is not found
+ * @throws {Error} if bundle is not found
  * @example
  * // In your test file, create a local wrapper:
  * async function setupSourceAndGetBundle(suffix: string, content: string) {

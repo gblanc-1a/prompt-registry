@@ -155,7 +155,7 @@ export function validateItemKind(kind: string): ValidationResult {
  * and should work consistently across platforms.
  * @param p - Path to normalize
  * @returns Normalized repo-relative path
- * @throws Error if path is empty, traverses outside repo, or is absolute
+ * @throws {Error} if path is empty, traverses outside repo, or is absolute
  */
 export function normalizeRepoRelativePath(p: string): string {
   if (!p || typeof p !== 'string') {

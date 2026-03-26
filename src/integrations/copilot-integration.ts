@@ -27,7 +27,7 @@ export class CopilotIntegration implements vscode.Disposable {
   }
 
   /**
-   * Handle chat requests from @prompts participant
+   * Handle chat requests from `@prompts` participant
    * @param request
    * @param context
    * @param stream

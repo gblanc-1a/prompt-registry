@@ -36,7 +36,7 @@ export class SetupStateManager {
    * @param context - VS Code extension context (required on first call)
    * @param hubManager - HubManager instance (required on first call)
    * @returns SetupStateManager singleton instance
-   * @throws Error if context or hubManager is missing on first call
+   * @throws {Error} if context or hubManager is missing on first call
    */
   public static getInstance(
     context?: vscode.ExtensionContext,

@@ -666,7 +666,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
    * Scans the collections directory for .collection.yml files and creates Bundle objects.
    * Results are cached for 5 minutes to reduce API calls.
    * @returns Promise resolving to array of Bundle objects from collection files
-   * @throws Error if GitHub API fails or collection parsing fails
+   * @throws {Error} if GitHub API fails or collection parsing fails
    */
   public async fetchBundles(): Promise<Bundle[]> {
     this.logger.debug('Listing bundles from awesome-copilot repository');
@@ -724,7 +724,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
    * The archive includes prompts, instructions, and a deployment manifest.
    * @param bundle - Bundle object containing collection metadata
    * @returns Promise resolving to Buffer containing the ZIP archive
-   * @throws Error if collection fetch fails or archive creation fails
+   * @throws {Error} if collection fetch fails or archive creation fails
    */
   public async downloadBundle(bundle: Bundle): Promise<Buffer> {
     this.logger.debug(`Downloading bundle: ${bundle.id}`);
@@ -755,7 +755,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
    * Fetch repository metadata
    * Retrieves information about the awesome-copilot repository including collection count.
    * @returns Promise resolving to SourceMetadata with repository info
-   * @throws Error if repository access fails or collection listing fails
+   * @throws {Error} if repository access fails or collection listing fails
    */
   public async fetchMetadata(): Promise<SourceMetadata> {
     try {

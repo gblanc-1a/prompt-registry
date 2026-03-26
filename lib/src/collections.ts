@@ -30,7 +30,7 @@ export function listCollectionFiles(repoRoot: string): string[] {
  * @param repoRoot - Repository root path
  * @param collectionFile - Collection file path (absolute or repo-relative)
  * @returns Parsed collection object
- * @throws Error if file is invalid YAML or not an object
+ * @throws {Error} if file is invalid YAML or not an object
  */
 export function readCollection(repoRoot: string, collectionFile: string): Collection {
   const abs = path.isAbsolute(collectionFile)

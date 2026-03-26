@@ -394,7 +394,7 @@ export interface SourceSetupDependencies {
  * @param config - Repository test configuration
  * @param content - Content identifier for test differentiation
  * @returns Object containing sourceId and the found bundle
- * @throws Error if bundle matching config.manifestId is not found
+ * @throws {Error} if bundle matching config.manifestId is not found
  * @example
  * const { sourceId, bundle } = await setupSourceWithCustomConfig(
  *     { registryManager: testContext.registryManager, storage: testContext.storage },

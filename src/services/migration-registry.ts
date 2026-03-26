@@ -36,7 +36,7 @@ export class MigrationRegistry {
    * Get singleton instance.
    * @param context - VS Code extension context (required on first call)
    */
-  static getInstance(context?: vscode.ExtensionContext): MigrationRegistry {
+  public static getInstance(context?: vscode.ExtensionContext): MigrationRegistry {
     if (!MigrationRegistry.instance) {
       if (!context) {
         throw new Error('MigrationRegistry requires context on first call');
@@ -49,7 +49,7 @@ export class MigrationRegistry {
   /**
    * Reset singleton instance (for testing)
    */
-  static resetInstance(): void {
+  public static resetInstance(): void {
     MigrationRegistry.instance = undefined;
   }
 
@@ -57,7 +57,7 @@ export class MigrationRegistry {
    * Check if a migration has completed
    * @param name
    */
-  async isMigrationComplete(name: string): Promise<boolean> {
+  public async isMigrationComplete(name: string): Promise<boolean> {
     const state = await this.getMigrationState();
     return state[name]?.status === 'completed';
   }
@@ -67,7 +67,7 @@ export class MigrationRegistry {
    * @param name
    * @param details
    */
-  async markMigrationComplete(name: string, details?: string): Promise<void> {
+  public async markMigrationComplete(name: string, details?: string): Promise<void> {
     const state = await this.getMigrationState();
     state[name] = {
       status: 'completed',
@@ -83,7 +83,7 @@ export class MigrationRegistry {
    * @param name
    * @param reason
    */
-  async markMigrationSkipped(name: string, reason?: string): Promise<void> {
+  public async markMigrationSkipped(name: string, reason?: string): Promise<void> {
     const state = await this.getMigrationState();
     state[name] = {
       status: 'skipped',
@@ -97,7 +97,7 @@ export class MigrationRegistry {
   /**
    * Get the full migration state
    */
-  async getMigrationState(): Promise<Record<string, MigrationRecord>> {
+  public async getMigrationState(): Promise<Record<string, MigrationRecord>> {
     return this.context.globalState.get<Record<string, MigrationRecord>>(this.STATE_KEY, {});
   }
 
@@ -106,7 +106,7 @@ export class MigrationRegistry {
    * @param name
    * @param fn
    */
-  async runMigration(name: string, fn: () => Promise<void>): Promise<void> {
+  public async runMigration(name: string, fn: () => Promise<void>): Promise<void> {
     const state = await this.getMigrationState();
     const record = state[name];
 

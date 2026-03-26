@@ -46,7 +46,6 @@ suite('BundleScopeCommands', () => {
   let mockScopeConflictResolver: sinon.SinonStubbedInstance<ScopeConflictResolver>;
   let mockRepositoryScopeService: sinon.SinonStubbedInstance<RepositoryScopeService>;
   let mockLockfileManager: sinon.SinonStubbedInstance<LockfileManager>;
-  let mockShowQuickPick: sinon.SinonStub;
   let mockShowInformationMessage: sinon.SinonStub;
   let mockShowWarningMessage: sinon.SinonStub;
   let mockShowErrorMessage: sinon.SinonStub;
@@ -69,31 +68,6 @@ suite('BundleScopeCommands', () => {
     });
   };
 
-  // Helper to reset all mocks
-  const resetAllMocks = (): void => {
-    mockRegistryManager.getStorage.reset();
-    mockRegistryManager.getBundleName.reset();
-    mockRegistryManager.installBundle.reset();
-    mockRegistryManager.uninstallBundle.reset();
-    mockStorage.getInstalledBundle.reset();
-    mockStorage.getInstalledBundles.reset();
-    mockStorage.recordInstallation.reset();
-    mockScopeConflictResolver.checkConflict.reset();
-    mockScopeConflictResolver.migrateBundle.reset();
-    mockShowQuickPick.reset();
-    mockShowInformationMessage.reset();
-    mockShowWarningMessage.reset();
-    mockShowErrorMessage.reset();
-    mockWithProgress.reset();
-
-    // Re-setup default behaviors
-    mockRegistryManager.getStorage.returns(mockStorage as any);
-    mockRegistryManager.getBundleName.resolves(testBundleName);
-    mockWithProgress.callsFake(async (_options: any, callback: any) => {
-      return await callback({ report: sandbox.stub() });
-    });
-  };
-
   setup(() => {
     sandbox = sinon.createSandbox();
 
@@ -105,7 +79,6 @@ suite('BundleScopeCommands', () => {
     mockLockfileManager = sandbox.createStubInstance(LockfileManager);
 
     // Setup VS Code mocks
-    mockShowQuickPick = sandbox.stub(vscode.window, 'showQuickPick');
     mockShowInformationMessage = sandbox.stub(vscode.window, 'showInformationMessage');
     mockShowWarningMessage = sandbox.stub(vscode.window, 'showWarningMessage');
     mockShowErrorMessage = sandbox.stub(vscode.window, 'showErrorMessage');

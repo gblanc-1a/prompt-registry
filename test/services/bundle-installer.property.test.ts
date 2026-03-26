@@ -98,13 +98,13 @@ suite('BundleInstaller Property Tests', () => {
 
     // Create mock LockfileManager that tracks calls
     mockLockfileManager = {
-      createOrUpdate: sandbox.stub().callsFake(async (options: any) => {
+      createOrUpdate: sandbox.stub().callsFake((options: any) => {
         lockfileCreateOrUpdateCalls.push({
           scope: 'repository', // LockfileManager is only used for repository scope
           bundleId: options.bundleId
         });
       }),
-      remove: sandbox.stub().callsFake(async (bundleId: string) => {
+      remove: sandbox.stub().callsFake((bundleId: string) => {
         lockfileRemoveCalls.push({
           scope: 'repository',
           bundleId
@@ -204,16 +204,18 @@ suite('BundleInstaller Property Tests', () => {
       mockStorage.getInstalledBundle.resolves(undefined);
 
       // Track recordInstallation calls
-      mockStorage.recordInstallation.callsFake(async (bundle: InstalledBundle) => {
+      mockStorage.recordInstallation.callsFake((bundle: InstalledBundle) => {
         recordInstallationCalls.push({
           bundleId: bundle.bundleId,
           scope: bundle.scope
         });
+        return Promise.resolve();
       });
 
       // Track removeInstallation calls
-      mockStorage.removeInstallation.callsFake(async (bundleId: string, scope: InstallationScope) => {
+      mockStorage.removeInstallation.callsFake((bundleId: string, scope: InstallationScope) => {
         removeInstallationCalls.push({ bundleId, scope });
+        return Promise.resolve();
       });
 
       // Inject mock storage
@@ -596,18 +598,10 @@ suite('BundleInstaller Property Tests', () => {
         fc.asyncProperty(
           fc.constantFrom('user', 'workspace') as fc.Arbitrary<InstallationScope>,
           bundleDataGenerator(),
-          async (scope, { bundleId, version }) => {
+          (scope, _) => {
             // Reset tracking
             lockfileCreateOrUpdateCalls = [];
             lockfileRemoveCalls = [];
-
-            // Create a mock installed bundle at user/workspace scope
-            const installed = createMockInstalledBundle(bundleId, version, {
-              scope,
-              installPath: path.join(tempDir, 'bundles', bundleId),
-              sourceId: 'test-source',
-              sourceType: 'github'
-            });
 
             // Simulate install/uninstall operations
             // For user/workspace scope, lockfile should NOT be touched
@@ -626,7 +620,7 @@ suite('BundleInstaller Property Tests', () => {
               `LockfileManager.remove should NOT be called for ${scope} scope`
             );
 
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -716,7 +710,7 @@ suite('BundleInstaller Property Tests', () => {
       await fc.assert(
         fc.asyncProperty(
           bundleDataGenerator(),
-          async ({ bundleId, version }) => {
+          ({ bundleId, version }) => {
             // Reset tracking
             lockfileCreateOrUpdateCalls = [];
 
@@ -744,7 +738,7 @@ suite('BundleInstaller Property Tests', () => {
             //     `Lockfile should be updated for repository scope bundle ${bundleId}`
             // );
 
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -762,7 +756,7 @@ suite('BundleInstaller Property Tests', () => {
       await fc.assert(
         fc.asyncProperty(
           bundleDataGenerator(),
-          async ({ bundleId, version }) => {
+          ({ bundleId, version }) => {
             // Reset tracking
             lockfileCreateOrUpdateCalls = [];
             lockfileRemoveCalls = [];
@@ -793,7 +787,7 @@ suite('BundleInstaller Property Tests', () => {
               `Lockfile should NOT be modified for user scope bundle ${bundleId}`
             );
 
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -811,7 +805,7 @@ suite('BundleInstaller Property Tests', () => {
       await fc.assert(
         fc.asyncProperty(
           bundleDataGenerator(),
-          async ({ bundleId, version }) => {
+          ({ bundleId, version }) => {
             // Reset tracking
             lockfileCreateOrUpdateCalls = [];
             lockfileRemoveCalls = [];
@@ -836,7 +830,7 @@ suite('BundleInstaller Property Tests', () => {
               `Lockfile should NOT be updated for workspace scope bundle ${bundleId}`
             );
 
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -857,7 +851,7 @@ suite('BundleInstaller Property Tests', () => {
         fc.asyncProperty(
           scopeGenerator(),
           bundleDataGenerator(),
-          async (scope, { bundleId, version }) => {
+          (scope, { bundleId, version }) => {
             // Reset tracking
             lockfileCreateOrUpdateCalls = [];
             lockfileRemoveCalls = [];
@@ -868,9 +862,6 @@ suite('BundleInstaller Property Tests', () => {
               commitMode: scope === 'repository' ? 'commit' : undefined,
               installPath: path.join(tempDir, 'bundles', bundleId)
             });
-
-            // Property: Scope should determine lockfile interaction
-            const shouldModifyLockfile = scope === 'repository';
 
             // Verify scope is correctly set
             assert.strictEqual(
@@ -893,7 +884,7 @@ suite('BundleInstaller Property Tests', () => {
             //     );
             // }
 
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -913,7 +904,7 @@ suite('BundleInstaller Property Tests', () => {
           bundleDataGenerator(),
           LockfileGenerators.sourceId(),
           LockfileGenerators.commitMode(),
-          async ({ bundleId, version }, sourceId, commitMode) => {
+          ({ bundleId, version }, sourceId, commitMode) => {
             // This property verifies that when lockfile IS updated,
             // it contains the correct metadata
 
@@ -929,7 +920,7 @@ suite('BundleInstaller Property Tests', () => {
             assert.strictEqual(bundleEntry.sourceId, sourceId, 'Source ID should match');
             assert.strictEqual(bundleEntry.commitMode, commitMode, 'Commit mode should match');
 
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {
@@ -949,7 +940,7 @@ suite('BundleInstaller Property Tests', () => {
           scopeGenerator(),
           bundleDataGenerator(),
           BundleGenerators.version(),
-          async (scope, { bundleId, version: currentVersion }, latestVersion) => {
+          (scope, { bundleId, version: currentVersion }, latestVersion) => {
             // Ensure latest version is different (simulating an update)
             fc.pre(currentVersion !== latestVersion);
 
@@ -973,7 +964,7 @@ suite('BundleInstaller Property Tests', () => {
               `Scope should be ${scope} for update indication`
             );
 
-            return true;
+            return Promise.resolve(true);
           }
         ),
         {

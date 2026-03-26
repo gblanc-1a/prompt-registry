@@ -44,13 +44,6 @@ export interface InstallationResult {
  */
 export class InstallationManager {
   private static instance: InstallationManager;
-  private readonly logger: Logger;
-  private readonly platformDetector: PlatformDetector;
-
-  private constructor() {
-    this.logger = Logger.getInstance();
-    this.platformDetector = PlatformDetector.getInstance();
-  }
 
   public static getInstance(): InstallationManager {
     if (!InstallationManager.instance) {
@@ -59,171 +52,12 @@ export class InstallationManager {
     return InstallationManager.instance;
   }
 
-  /**
-   * Install Prompt Registry components from a bundle
-   * @param bundleBuffer
-   * @param bundleInfo
-   * @param scope
-   * @param onProgress
-   */
-  public async installBundle(
-    bundleBuffer: Buffer,
-    bundleInfo: BundleInfo,
-    scope: InstallationScope,
-    onProgress?: (progress: number, message: string) => void
-  ): Promise<InstallationResult> {
-    try {
-      this.logger.info(`Starting installation of ${bundleInfo.filename} with scope: ${scope}`);
+  private readonly logger: Logger;
+  private readonly platformDetector: PlatformDetector;
 
-      const platform = await this.platformDetector.detectPlatform();
-      const metadataPath = this.platformDetector.getInstallationPath(platform.platform, scope);
-
-      // For project scope, extract files to project root; for others use the standard path
-      const extractionPath = scope === InstallationScope.PROJECT
-        ? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || ''
-        : metadataPath;
-
-      // Update progress
-      onProgress?.(10, 'Preparing installation directory...');
-
-      // Ensure metadata directory exists
-      await this.ensureDirectoryExists(metadataPath);
-
-      // Ensure extraction directory exists (if different from metadata)
-      if (extractionPath !== metadataPath) {
-        await this.ensureDirectoryExists(extractionPath);
-      }
-
-      // Update progress
-      onProgress?.(20, 'Extracting bundle...');
-
-      // Extract bundle to the appropriate location
-      const extractedFiles = await this.extractBundle(bundleBuffer, extractionPath, onProgress);
-
-      // Update progress
-      onProgress?.(80, 'Finalizing installation...');
-
-      // Create installation metadata (always in metadata path)
-      await this.createInstallationMetadata(metadataPath, bundleInfo, scope, platform.platform, extractedFiles, extractionPath);
-
-      // Update progress
-      onProgress?.(90, 'Updating configuration...');
-
-      // Update platform-specific configuration if needed
-      await this.updatePlatformConfiguration(platform.platform, scope, extractionPath);
-
-      // Update progress
-      onProgress?.(100, 'Installation completed successfully!');
-
-      const result: InstallationResult = {
-        success: true,
-        installedPath: extractionPath,
-        installedFiles: extractedFiles,
-        version: bundleInfo.version,
-        scope,
-        platform: platform.platform
-      };
-
-      this.logger.info(`Installation completed successfully at: ${extractionPath}`);
-      return result;
-    } catch (error) {
-      this.logger.error('Installation failed', error as Error);
-
-      return {
-        success: false,
-        installedPath: '',
-        installedFiles: [],
-        version: bundleInfo.version,
-        scope,
-        platform: Platform.UNKNOWN,
-        error: (error as Error).message
-      };
-    }
-  }
-
-  /**
-   * Prune empty directories from the extraction path as well as the metadata folder
-   * This method recursively removes empty directories after file removal to ensure
-   * no installation remnants are left behind.
-   * @param scope
-   */
-  public async pruneEmptyDirs(scope: InstallationScope): Promise<void> {
-    this.logger.info(`Starting to prune empty directories for scope: ${scope}`);
-
-    const platform = await this.platformDetector.detectPlatform();
-    const installationPath = this.platformDetector.getInstallationPath(platform.platform, scope);
-
-    // Check if installation exists
-    try {
-      await access(installationPath);
-    } catch {
-      this.logger.warn(`No installation found at: ${installationPath}`);
-      return; // Nothing to prune
-    }
-
-    let extractionPath = installationPath;
-    let installedFiles: string[] = [];
-
-    // Read installation metadata to get extraction path and installed files
-    try {
-      const metadata = await this.readInstallationMetadata(installationPath);
-      extractionPath = metadata.extractionPath ?? extractionPath;
-      installedFiles = metadata.installedFiles || [];
-      this.logger.info(`Extraction path: ${extractionPath}`);
-      this.logger.info(`Files that were installed: ${installedFiles.length} files`);
-    } catch {
-      this.logger.warn('Could not read installation metadata for pruning');
-    }
-
-    // Collect all directories that contained files
-    const directoriesToCheck = new Set<string>();
-
-    // Add directories from installed files
-    for (const file of installedFiles) {
-      const filePath = path.join(extractionPath, file);
-      let dir = path.dirname(filePath);
-
-      // Add all parent directories up to the extraction path
-      while (dir !== extractionPath && dir !== path.dirname(dir)) {
-        directoriesToCheck.add(dir);
-        dir = path.dirname(dir);
-      }
-    }
-
-    // Also add the extraction path itself if it's different from installation path
-    if (extractionPath !== installationPath) {
-      directoriesToCheck.add(extractionPath);
-    }
-
-    // Convert to array and sort by depth (deepest first) for proper removal order
-    const sortedDirectories = Array.from(directoriesToCheck).toSorted((a, b) => {
-      const depthA = a.split(path.sep).length;
-      const depthB = b.split(path.sep).length;
-      return depthB - depthA; // Sort by depth, deepest first
-    });
-
-    this.logger.debug(`Checking ${sortedDirectories.length} directories for emptiness`);
-
-    // Remove empty directories, starting from the deepest
-    for (const dir of sortedDirectories) {
-      await this.removeIfEmpty(dir);
-    }
-
-    // Finally, remove the installation/metadata directory if it's different from extraction path
-    if (installationPath !== extractionPath) {
-      // Remove metadata file first if it exists
-      try {
-        const metadataPath = path.join(installationPath, '.olaf-metadata.json');
-        await fs.promises.unlink(metadataPath);
-        this.logger.info(`Removed metadata file: ${metadataPath}`);
-      } catch {
-        // Metadata file might not exist or already removed, which is fine
-        this.logger.debug(`Metadata file not found or already removed: ${installationPath}`);
-      }
-      await this.removeIfEmpty(installationPath);
-    }
-
-    this.logger.info(`Completed pruning empty directories for scope: ${scope}`);
+  private constructor() {
+    this.logger = Logger.getInstance();
+    this.platformDetector = PlatformDetector.getInstance();
   }
 
   /**
@@ -282,118 +116,6 @@ export class InstallationManager {
       // Directory doesn't exist or can't be read/removed - stop recursion
       this.logger.debug(`Stopped recursive removal at: ${dirPath}`, error as Error);
     }
-  }
-
-  /**
-   * Uninstall Prompt Registry components
-   * @param scope
-   */
-  public async uninstall(scope: InstallationScope): Promise<boolean> {
-    try {
-      this.logger.info(`Starting uninstallation with scope: ${scope}`);
-
-      const platform = await this.platformDetector.detectPlatform();
-      const installationPath = this.platformDetector.getInstallationPath(platform.platform, scope);
-
-      // Check if installation exists
-      try {
-        await access(installationPath);
-      } catch {
-        this.logger.warn(`No installation found at: ${installationPath}`);
-        return true; // Nothing to uninstall
-      }
-
-      // Read installation metadata to get list of installed files
-      const metadataPath = path.join(installationPath, '.olaf-metadata.json');
-      let installedFiles: string[] = [];
-      let extractionPath = installationPath;
-
-      try {
-        const metadata = await this.readInstallationMetadata(installationPath);
-        installedFiles = metadata.installedFiles || [];
-        this.logger.info(`Files to be removed: ${installedFiles.join(', ')}`);
-        this.logger.info(`Extraction path from metadata: ${metadata.extractionPath}`);
-        extractionPath = metadata.extractionPath ?? extractionPath;
-      } catch {
-        this.logger.warn('Could not read installation metadata, removing entire directory');
-      }
-
-      // Remove installed files
-      if (installedFiles.length > 0) {
-        for (const file of installedFiles) {
-          try {
-            await unlink(path.join(extractionPath, file));
-          } catch (error) {
-            this.logger.warn(`Failed to remove file: ${file}`, error as Error);
-          }
-        }
-      }
-
-      // Remove empty directories using the comprehensive pruning method
-      await this.pruneEmptyDirs(scope);
-
-      // Remove the installation path with metadata
-      try {
-        await access(installationPath);
-        await fs.promises.rm(installationPath, { recursive: true });
-      } catch (error) {
-        this.logger.error(`It was not possible to remove the installation path: ${installationPath}`, error as Error);
-      }
-
-      this.logger.info(`Uninstallation completed successfully from: ${installationPath}`);
-      return true;
-    } catch (error) {
-      this.logger.error('Uninstallation failed', error as Error);
-      return false;
-    }
-  }
-
-  /**
-   * Get current installation information
-   * @param scope
-   */
-  public async getInstallationInfo(scope: InstallationScope): Promise<any | null> {
-    try {
-      const platform = await this.platformDetector.detectPlatform();
-      const installationPath = this.platformDetector.getInstallationPath(platform.platform, scope);
-
-      return await this.readInstallationMetadata(installationPath);
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * Check if Prompt Registry is installed in a specific scope
-   * @param scope
-   */
-  public async isInstalled(scope: InstallationScope): Promise<boolean> {
-    try {
-      const platform = await this.platformDetector.detectPlatform();
-      const installationPath = this.platformDetector.getInstallationPath(platform.platform, scope);
-      const metadataPath = path.join(installationPath, '.olaf-metadata.json');
-
-      await access(metadataPath);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Get all installation scopes where Prompt Registry is installed
-   */
-  public async getInstalledScopes(): Promise<InstallationScope[]> {
-    const scopes = [InstallationScope.USER, InstallationScope.WORKSPACE, InstallationScope.PROJECT];
-    const installedScopes: InstallationScope[] = [];
-
-    for (const scope of scopes) {
-      if (await this.isInstalled(scope)) {
-        installedScopes.push(scope);
-      }
-    }
-
-    return installedScopes;
   }
 
   private async ensureDirectoryExists(dirPath: string): Promise<void> {
@@ -586,23 +308,302 @@ export class InstallationManager {
     }
   }
 
-  private async updateVSCodeConfiguration(scope: InstallationScope, installationPath: string): Promise<void> {
+  private async updateVSCodeConfiguration(scope: InstallationScope, _installationPath: string): Promise<void> {
     // Add VSCode-specific configuration updates here
     this.logger.debug(`Updating VSCode configuration for scope: ${scope}`);
   }
 
-  private async updateWindsurfConfiguration(scope: InstallationScope, installationPath: string): Promise<void> {
+  private async updateWindsurfConfiguration(scope: InstallationScope, _installationPath: string): Promise<void> {
     // Add Windsurf-specific configuration updates here
     this.logger.debug(`Updating Windsurf configuration for scope: ${scope}`);
   }
 
-  private async updateKiroConfiguration(scope: InstallationScope, installationPath: string): Promise<void> {
+  private async updateKiroConfiguration(scope: InstallationScope, _installationPath: string): Promise<void> {
     // Add Kiro-specific configuration updates here
     this.logger.debug(`Updating Kiro configuration for scope: ${scope}`);
   }
 
-  private async updateCursorConfiguration(scope: InstallationScope, installationPath: string): Promise<void> {
+  private async updateCursorConfiguration(scope: InstallationScope, _installationPath: string): Promise<void> {
     // Add Cursor-specific configuration updates here
     this.logger.debug(`Updating Cursor configuration for scope: ${scope}`);
+  }
+
+  /**
+   * Install Prompt Registry components from a bundle
+   * @param bundleBuffer
+   * @param bundleInfo
+   * @param scope
+   * @param onProgress
+   */
+  public async installBundle(
+    bundleBuffer: Buffer,
+    bundleInfo: BundleInfo,
+    scope: InstallationScope,
+    onProgress?: (progress: number, message: string) => void
+  ): Promise<InstallationResult> {
+    try {
+      this.logger.info(`Starting installation of ${bundleInfo.filename} with scope: ${scope}`);
+
+      const platform = await this.platformDetector.detectPlatform();
+      const metadataPath = this.platformDetector.getInstallationPath(platform.platform, scope);
+
+      // For project scope, extract files to project root; for others use the standard path
+      const extractionPath = scope === InstallationScope.PROJECT
+        ? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || ''
+        : metadataPath;
+
+      // Update progress
+      onProgress?.(10, 'Preparing installation directory...');
+
+      // Ensure metadata directory exists
+      await this.ensureDirectoryExists(metadataPath);
+
+      // Ensure extraction directory exists (if different from metadata)
+      if (extractionPath !== metadataPath) {
+        await this.ensureDirectoryExists(extractionPath);
+      }
+
+      // Update progress
+      onProgress?.(20, 'Extracting bundle...');
+
+      // Extract bundle to the appropriate location
+      const extractedFiles = await this.extractBundle(bundleBuffer, extractionPath, onProgress);
+
+      // Update progress
+      onProgress?.(80, 'Finalizing installation...');
+
+      // Create installation metadata (always in metadata path)
+      await this.createInstallationMetadata(metadataPath, bundleInfo, scope, platform.platform, extractedFiles, extractionPath);
+
+      // Update progress
+      onProgress?.(90, 'Updating configuration...');
+
+      // Update platform-specific configuration if needed
+      await this.updatePlatformConfiguration(platform.platform, scope, extractionPath);
+
+      // Update progress
+      onProgress?.(100, 'Installation completed successfully!');
+
+      const result: InstallationResult = {
+        success: true,
+        installedPath: extractionPath,
+        installedFiles: extractedFiles,
+        version: bundleInfo.version,
+        scope,
+        platform: platform.platform
+      };
+
+      this.logger.info(`Installation completed successfully at: ${extractionPath}`);
+      return result;
+    } catch (error) {
+      this.logger.error('Installation failed', error as Error);
+
+      return {
+        success: false,
+        installedPath: '',
+        installedFiles: [],
+        version: bundleInfo.version,
+        scope,
+        platform: Platform.UNKNOWN,
+        error: (error as Error).message
+      };
+    }
+  }
+
+  /**
+   * Prune empty directories from the extraction path as well as the metadata folder
+   * This method recursively removes empty directories after file removal to ensure
+   * no installation remnants are left behind.
+   * @param scope
+   */
+  public async pruneEmptyDirs(scope: InstallationScope): Promise<void> {
+    this.logger.info(`Starting to prune empty directories for scope: ${scope}`);
+
+    const platform = await this.platformDetector.detectPlatform();
+    const installationPath = this.platformDetector.getInstallationPath(platform.platform, scope);
+
+    // Check if installation exists
+    try {
+      await access(installationPath);
+    } catch {
+      this.logger.warn(`No installation found at: ${installationPath}`);
+      return; // Nothing to prune
+    }
+
+    let extractionPath = installationPath;
+    let installedFiles: string[] = [];
+
+    // Read installation metadata to get extraction path and installed files
+    try {
+      const metadata = await this.readInstallationMetadata(installationPath);
+      extractionPath = metadata.extractionPath ?? extractionPath;
+      installedFiles = metadata.installedFiles || [];
+      this.logger.info(`Extraction path: ${extractionPath}`);
+      this.logger.info(`Files that were installed: ${installedFiles.length} files`);
+    } catch {
+      this.logger.warn('Could not read installation metadata for pruning');
+    }
+
+    // Collect all directories that contained files
+    const directoriesToCheck = new Set<string>();
+
+    // Add directories from installed files
+    for (const file of installedFiles) {
+      const filePath = path.join(extractionPath, file);
+      let dir = path.dirname(filePath);
+
+      // Add all parent directories up to the extraction path
+      while (dir !== extractionPath && dir !== path.dirname(dir)) {
+        directoriesToCheck.add(dir);
+        dir = path.dirname(dir);
+      }
+    }
+
+    // Also add the extraction path itself if it's different from installation path
+    if (extractionPath !== installationPath) {
+      directoriesToCheck.add(extractionPath);
+    }
+
+    // Convert to array and sort by depth (deepest first) for proper removal order
+    const sortedDirectories = Array.from(directoriesToCheck).toSorted((a, b) => {
+      const depthA = a.split(path.sep).length;
+      const depthB = b.split(path.sep).length;
+      return depthB - depthA; // Sort by depth, deepest first
+    });
+
+    this.logger.debug(`Checking ${sortedDirectories.length} directories for emptiness`);
+
+    // Remove empty directories, starting from the deepest
+    for (const dir of sortedDirectories) {
+      await this.removeIfEmpty(dir);
+    }
+
+    // Finally, remove the installation/metadata directory if it's different from extraction path
+    if (installationPath !== extractionPath) {
+      // Remove metadata file first if it exists
+      try {
+        const metadataPath = path.join(installationPath, '.olaf-metadata.json');
+        await fs.promises.unlink(metadataPath);
+        this.logger.info(`Removed metadata file: ${metadataPath}`);
+      } catch {
+        // Metadata file might not exist or already removed, which is fine
+        this.logger.debug(`Metadata file not found or already removed: ${installationPath}`);
+      }
+      await this.removeIfEmpty(installationPath);
+    }
+
+    this.logger.info(`Completed pruning empty directories for scope: ${scope}`);
+  }
+
+  /**
+   * Uninstall Prompt Registry components
+   * @param scope
+   */
+  public async uninstall(scope: InstallationScope): Promise<boolean> {
+    try {
+      this.logger.info(`Starting uninstallation with scope: ${scope}`);
+
+      const platform = await this.platformDetector.detectPlatform();
+      const installationPath = this.platformDetector.getInstallationPath(platform.platform, scope);
+
+      // Check if installation exists
+      try {
+        await access(installationPath);
+      } catch {
+        this.logger.warn(`No installation found at: ${installationPath}`);
+        return true; // Nothing to uninstall
+      }
+
+      // Read installation metadata to get list of installed files
+      let installedFiles: string[] = [];
+      let extractionPath = installationPath;
+
+      try {
+        const metadata = await this.readInstallationMetadata(installationPath);
+        installedFiles = metadata.installedFiles || [];
+        this.logger.info(`Files to be removed: ${installedFiles.join(', ')}`);
+        this.logger.info(`Extraction path from metadata: ${metadata.extractionPath}`);
+        extractionPath = metadata.extractionPath ?? extractionPath;
+      } catch {
+        this.logger.warn('Could not read installation metadata, removing entire directory');
+      }
+
+      // Remove installed files
+      if (installedFiles.length > 0) {
+        for (const file of installedFiles) {
+          try {
+            await unlink(path.join(extractionPath, file));
+          } catch (error) {
+            this.logger.warn(`Failed to remove file: ${file}`, error as Error);
+          }
+        }
+      }
+
+      // Remove empty directories using the comprehensive pruning method
+      await this.pruneEmptyDirs(scope);
+
+      // Remove the installation path with metadata
+      try {
+        await access(installationPath);
+        await fs.promises.rm(installationPath, { recursive: true });
+      } catch (error) {
+        this.logger.error(`It was not possible to remove the installation path: ${installationPath}`, error as Error);
+      }
+
+      this.logger.info(`Uninstallation completed successfully from: ${installationPath}`);
+      return true;
+    } catch (error) {
+      this.logger.error('Uninstallation failed', error as Error);
+      return false;
+    }
+  }
+
+  /**
+   * Get current installation information
+   * @param scope
+   */
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- union type kept for documentation clarity
+  public async getInstallationInfo(scope: InstallationScope): Promise<any | null> {
+    try {
+      const platform = await this.platformDetector.detectPlatform();
+      const installationPath = this.platformDetector.getInstallationPath(platform.platform, scope);
+
+      return await this.readInstallationMetadata(installationPath);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Check if Prompt Registry is installed in a specific scope
+   * @param scope
+   */
+  public async isInstalled(scope: InstallationScope): Promise<boolean> {
+    try {
+      const platform = await this.platformDetector.detectPlatform();
+      const installationPath = this.platformDetector.getInstallationPath(platform.platform, scope);
+      const metadataPath = path.join(installationPath, '.olaf-metadata.json');
+
+      await access(metadataPath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Get all installation scopes where Prompt Registry is installed
+   */
+  public async getInstalledScopes(): Promise<InstallationScope[]> {
+    const scopes = [InstallationScope.USER, InstallationScope.WORKSPACE, InstallationScope.PROJECT];
+    const installedScopes: InstallationScope[] = [];
+
+    for (const scope of scopes) {
+      if (await this.isInstalled(scope)) {
+        installedScopes.push(scope);
+      }
+    }
+
+    return installedScopes;
   }
 }

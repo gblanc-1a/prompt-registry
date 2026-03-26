@@ -45,237 +45,6 @@ export class BundleUpdateCommands {
     this.bundleNotifications = bundleNotifications ?? null;
   }
 
-  /**
-   * Check for updates on a single bundle and show update dialog
-   * @param bundleId
-   */
-  async checkSingleBundleUpdate(bundleId: string): Promise<void> {
-    await this.withErrorHandling(async () => {
-      await vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: 'Checking for updates...',
-          cancellable: false
-        },
-        async () => {
-          // Check for updates for all bundles, then filter for the specific one
-          const allUpdates = await this.registryManager.checkUpdates();
-          const bundleUpdate = allUpdates.find((u) => u.bundleId === bundleId);
-
-          const bundleName = await this.getBundleDisplayName(bundleId);
-
-          if (!bundleUpdate) {
-            vscode.window.showInformationMessage(`${bundleName} is up to date!`);
-            return;
-          }
-
-          // Show update dialog with options
-          const action = await vscode.window.showInformationMessage(
-            `Update available for ${bundleName}`,
-            {
-              detail: `Current: ${bundleUpdate.currentVersion}\nLatest: ${bundleUpdate.latestVersion}`,
-              modal: true
-            },
-            'Update Now',
-            'View Details'
-          );
-
-          if (action === 'Update Now') {
-            await this.updateBundle(bundleId);
-          } else if (action === 'View Details') {
-            await vscode.commands.executeCommand('promptRegistry.viewBundle', bundleId);
-          }
-          // If Cancel or no selection, do nothing
-        }
-      );
-    }, 'check bundle update');
-  }
-
-  /**
-   * Check for updates on all installed bundles
-   */
-  async checkAllUpdates(): Promise<void> {
-    await this.withErrorHandling(async () => {
-      await vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: 'Checking for updates...',
-          cancellable: false
-        },
-        async () => {
-          const updates = await this.registryManager.checkUpdates();
-
-          if (updates.length === 0) {
-            vscode.window.showInformationMessage('All bundles are up to date!');
-            return;
-          }
-
-          // Show available updates with bundle names
-          const updateItems = await Promise.all(updates.map(async (u) => {
-            const name = await this.getBundleDisplayName(u.bundleId);
-            return {
-              label: name,
-              description: `${u.currentVersion} → ${u.latestVersion}`,
-              detail: 'Update available',
-              update: u,
-              name
-            };
-          }));
-
-          const selected = await vscode.window.showQuickPick(
-            updateItems,
-            {
-              placeHolder: `${updates.length} update(s) available`,
-              title: 'Bundle Updates',
-              canPickMany: true,
-              ignoreFocusOut: true
-            }
-          );
-
-          if (!selected || selected.length === 0) {
-            return;
-          }
-
-          // Update selected bundles
-          for (const item of selected) {
-            try {
-              await this.updateBundle(item.update.bundleId);
-            } catch (error) {
-              const errorObj = toError(error);
-              this.logger.warn(`Failed to update ${item.name}`, errorObj);
-            }
-          }
-
-          vscode.window.showInformationMessage(
-            `✓ Updated ${selected.length} bundle(s)`
-          );
-        }
-      );
-    }, 'check updates');
-  }
-
-  /**
-   * Update a specific bundle
-   * @param bundleId
-   */
-  async updateBundle(bundleId: string): Promise<void> {
-    await this.withErrorHandling(async () => {
-      // Get bundle name for display (try to get details, but don't fail if not found)
-      let bundleName = bundleId;
-      try {
-        const bundle = await this.registryManager.getBundleDetails(bundleId);
-        bundleName = bundle.name;
-      } catch {
-        this.logger.debug(`Could not get bundle details for '${bundleId}', using ID as name`);
-      }
-
-      // Update with progress
-      await vscode.window.withProgress(
-        {
-          location: vscode.ProgressLocation.Notification,
-          title: `Updating ${bundleName}...`,
-          cancellable: false
-        },
-        async (progress) => {
-          progress.report({ message: 'Downloading...' });
-          await this.registryManager.updateBundle(bundleId);
-          progress.report({ message: 'Complete', increment: 100 });
-        }
-      );
-
-      vscode.window.showInformationMessage(
-        `✓ ${bundleName} updated successfully!`
-      );
-    }, 'update bundle');
-  }
-
-  /**
-   * Update all bundles with available updates
-   */
-  async updateAllBundles(): Promise<void> {
-    await this.withErrorHandling(async () => {
-      this.logger.info('Starting batch update for all bundles');
-
-      // Check for updates
-      const updates = await this.checkForAvailableUpdates();
-      if (updates.length === 0) {
-        vscode.window.showInformationMessage('All bundles are up to date!');
-        return;
-      }
-
-      // Confirm batch update
-      if (!await this.confirmBatchUpdate(updates.length)) {
-        return;
-      }
-
-      // Perform batch update with progress reporting
-      const { successful, failed } = await this.performBatchUpdate(updates);
-
-      // Display summary notification
-      await this.showBatchUpdateSummary(successful, failed);
-
-      this.logger.info(
-        `Batch update completed: ${successful.length} successful, ${failed.length} failed`
-      );
-    }, 'batch update');
-  }
-
-  /**
-   * Enable auto-update for a bundle
-   * @param bundleId
-   */
-  async enableAutoUpdate(bundleId?: string): Promise<void> {
-    await this.withErrorHandling(async () => {
-      if (!bundleId) {
-        vscode.window.showErrorMessage('No bundle selected');
-        return;
-      }
-
-      this.logger.info(`Enabling auto-update for bundle '${bundleId}'`);
-
-      // Check current status
-      const currentStatus = await this.registryManager.isAutoUpdateEnabled(bundleId);
-
-      if (currentStatus) {
-        vscode.window.showInformationMessage(`Auto-update is already enabled for ${bundleId}`);
-        return;
-      }
-
-      // Enable auto-update using facade method
-      await this.registryManager.enableAutoUpdate(bundleId);
-
-      vscode.window.showInformationMessage(`✅ Auto-update enabled for ${bundleId}`);
-    }, 'enable auto-update');
-  }
-
-  /**
-   * Disable auto-update for a bundle
-   * @param bundleId
-   */
-  async disableAutoUpdate(bundleId?: string): Promise<void> {
-    await this.withErrorHandling(async () => {
-      if (!bundleId) {
-        vscode.window.showErrorMessage('No bundle selected');
-        return;
-      }
-
-      this.logger.info(`Disabling auto-update for bundle '${bundleId}'`);
-
-      // Check current status
-      const currentStatus = await this.registryManager.isAutoUpdateEnabled(bundleId);
-
-      if (!currentStatus) {
-        vscode.window.showInformationMessage(`Auto-update is already disabled for ${bundleId}`);
-        return;
-      }
-
-      // Disable auto-update using facade method
-      await this.registryManager.disableAutoUpdate(bundleId);
-
-      vscode.window.showInformationMessage(`✅ Auto-update disabled for ${bundleId}`);
-    }, 'disable auto-update');
-  }
-
   // ===== Private Helper Methods =====
 
   /**
@@ -495,5 +264,236 @@ export class BundleUpdateCommands {
       const message = `Batch update complete: ${parts.join(', ')}`;
       await vscode.window.showInformationMessage(message);
     }
+  }
+
+  /**
+   * Check for updates on a single bundle and show update dialog
+   * @param bundleId
+   */
+  public async checkSingleBundleUpdate(bundleId: string): Promise<void> {
+    await this.withErrorHandling(async () => {
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: 'Checking for updates...',
+          cancellable: false
+        },
+        async () => {
+          // Check for updates for all bundles, then filter for the specific one
+          const allUpdates = await this.registryManager.checkUpdates();
+          const bundleUpdate = allUpdates.find((u) => u.bundleId === bundleId);
+
+          const bundleName = await this.getBundleDisplayName(bundleId);
+
+          if (!bundleUpdate) {
+            vscode.window.showInformationMessage(`${bundleName} is up to date!`);
+            return;
+          }
+
+          // Show update dialog with options
+          const action = await vscode.window.showInformationMessage(
+            `Update available for ${bundleName}`,
+            {
+              detail: `Current: ${bundleUpdate.currentVersion}\nLatest: ${bundleUpdate.latestVersion}`,
+              modal: true
+            },
+            'Update Now',
+            'View Details'
+          );
+
+          if (action === 'Update Now') {
+            await this.updateBundle(bundleId);
+          } else if (action === 'View Details') {
+            await vscode.commands.executeCommand('promptRegistry.viewBundle', bundleId);
+          }
+          // If Cancel or no selection, do nothing
+        }
+      );
+    }, 'check bundle update');
+  }
+
+  /**
+   * Check for updates on all installed bundles
+   */
+  public async checkAllUpdates(): Promise<void> {
+    await this.withErrorHandling(async () => {
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: 'Checking for updates...',
+          cancellable: false
+        },
+        async () => {
+          const updates = await this.registryManager.checkUpdates();
+
+          if (updates.length === 0) {
+            vscode.window.showInformationMessage('All bundles are up to date!');
+            return;
+          }
+
+          // Show available updates with bundle names
+          const updateItems = await Promise.all(updates.map(async (u) => {
+            const name = await this.getBundleDisplayName(u.bundleId);
+            return {
+              label: name,
+              description: `${u.currentVersion} → ${u.latestVersion}`,
+              detail: 'Update available',
+              update: u,
+              name
+            };
+          }));
+
+          const selected = await vscode.window.showQuickPick(
+            updateItems,
+            {
+              placeHolder: `${updates.length} update(s) available`,
+              title: 'Bundle Updates',
+              canPickMany: true,
+              ignoreFocusOut: true
+            }
+          );
+
+          if (!selected || selected.length === 0) {
+            return;
+          }
+
+          // Update selected bundles
+          for (const item of selected) {
+            try {
+              await this.updateBundle(item.update.bundleId);
+            } catch (error) {
+              const errorObj = toError(error);
+              this.logger.warn(`Failed to update ${item.name}`, errorObj);
+            }
+          }
+
+          vscode.window.showInformationMessage(
+            `✓ Updated ${selected.length} bundle(s)`
+          );
+        }
+      );
+    }, 'check updates');
+  }
+
+  /**
+   * Update a specific bundle
+   * @param bundleId
+   */
+  public async updateBundle(bundleId: string): Promise<void> {
+    await this.withErrorHandling(async () => {
+      // Get bundle name for display (try to get details, but don't fail if not found)
+      let bundleName = bundleId;
+      try {
+        const bundle = await this.registryManager.getBundleDetails(bundleId);
+        bundleName = bundle.name;
+      } catch {
+        this.logger.debug(`Could not get bundle details for '${bundleId}', using ID as name`);
+      }
+
+      // Update with progress
+      await vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: `Updating ${bundleName}...`,
+          cancellable: false
+        },
+        async (progress) => {
+          progress.report({ message: 'Downloading...' });
+          await this.registryManager.updateBundle(bundleId);
+          progress.report({ message: 'Complete', increment: 100 });
+        }
+      );
+
+      vscode.window.showInformationMessage(
+        `✓ ${bundleName} updated successfully!`
+      );
+    }, 'update bundle');
+  }
+
+  /**
+   * Update all bundles with available updates
+   */
+  public async updateAllBundles(): Promise<void> {
+    await this.withErrorHandling(async () => {
+      this.logger.info('Starting batch update for all bundles');
+
+      // Check for updates
+      const updates = await this.checkForAvailableUpdates();
+      if (updates.length === 0) {
+        vscode.window.showInformationMessage('All bundles are up to date!');
+        return;
+      }
+
+      // Confirm batch update
+      if (!await this.confirmBatchUpdate(updates.length)) {
+        return;
+      }
+
+      // Perform batch update with progress reporting
+      const { successful, failed } = await this.performBatchUpdate(updates);
+
+      // Display summary notification
+      await this.showBatchUpdateSummary(successful, failed);
+
+      this.logger.info(
+        `Batch update completed: ${successful.length} successful, ${failed.length} failed`
+      );
+    }, 'batch update');
+  }
+
+  /**
+   * Enable auto-update for a bundle
+   * @param bundleId
+   */
+  public async enableAutoUpdate(bundleId?: string): Promise<void> {
+    await this.withErrorHandling(async () => {
+      if (!bundleId) {
+        vscode.window.showErrorMessage('No bundle selected');
+        return;
+      }
+
+      this.logger.info(`Enabling auto-update for bundle '${bundleId}'`);
+
+      // Check current status
+      const currentStatus = await this.registryManager.isAutoUpdateEnabled(bundleId);
+
+      if (currentStatus) {
+        vscode.window.showInformationMessage(`Auto-update is already enabled for ${bundleId}`);
+        return;
+      }
+
+      // Enable auto-update using facade method
+      await this.registryManager.enableAutoUpdate(bundleId);
+
+      vscode.window.showInformationMessage(`✅ Auto-update enabled for ${bundleId}`);
+    }, 'enable auto-update');
+  }
+
+  /**
+   * Disable auto-update for a bundle
+   * @param bundleId
+   */
+  public async disableAutoUpdate(bundleId?: string): Promise<void> {
+    await this.withErrorHandling(async () => {
+      if (!bundleId) {
+        vscode.window.showErrorMessage('No bundle selected');
+        return;
+      }
+
+      this.logger.info(`Disabling auto-update for bundle '${bundleId}'`);
+
+      // Check current status
+      const currentStatus = await this.registryManager.isAutoUpdateEnabled(bundleId);
+
+      if (!currentStatus) {
+        vscode.window.showInformationMessage(`Auto-update is already disabled for ${bundleId}`);
+        return;
+      }
+
+      // Disable auto-update using facade method
+      await this.registryManager.disableAutoUpdate(bundleId);
+
+      vscode.window.showInformationMessage(`✅ Auto-update disabled for ${bundleId}`);
+    }, 'disable auto-update');
   }
 }

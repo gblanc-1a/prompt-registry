@@ -55,18 +55,12 @@ suite('RepositoryScopeService', () => {
 
     // Create deployment manifest
     // Extract id by removing the full type extension (e.g., .prompt.md, .agent.md)
-    const prompts = files.map((f, i) => ({
+    const prompts = files.map((f, _i) => ({
       id: f.name.replace(/\.(prompt|instructions|agent|chatmode|skill)\.md$/, '').replace(/\.md$/, ''),
       name: f.name,
       file: f.name,
       type: f.type || 'prompt'
     }));
-
-    const manifest = {
-      id: bundleId,
-      version: '1.0.0',
-      prompts
-    };
 
     fs.writeFileSync(
       path.join(bundlePath, 'deployment-manifest.yml'),
@@ -543,9 +537,6 @@ suite('RepositoryScopeService', () => {
       const checksum = calculateChecksumSync(promptFile);
 
       const bundleId = 'test-bundle';
-      const bundlePath = createMockBundle(bundleId, [
-        { name: 'test.prompt.md', content: '# Test', type: 'prompt' }
-      ]);
 
       // Create lockfile with file entries including checksums
       createLockfile(bundleId, 'commit', [
@@ -566,7 +557,7 @@ suite('RepositoryScopeService', () => {
 
       const bundleId = 'test-bundle';
       // Create the bundle directory with manifest so unsyncBundle can read it
-      const bundlePath = createMockBundle(bundleId, [
+      createMockBundle(bundleId, [
         { name: 'test.prompt.md', content: '# Test', type: 'prompt' }
       ]);
 
@@ -762,7 +753,7 @@ suite('RepositoryScopeService', () => {
       );
     });
 
-    test('should keep section header when entries remain', async () => {
+    test('should keep section header when entries remain', () => {
       createGitDirectory();
       const excludePath = path.join(workspaceRoot, '.git', 'info', 'exclude');
       fs.writeFileSync(excludePath, '# Prompt Registry (local)\n.github/prompts/test1.prompt.md\n.github/prompts/test2.prompt.md\n');

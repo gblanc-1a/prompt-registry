@@ -23,7 +23,7 @@ export class NpmCliWrapper extends CliWrapper {
     super();
   }
 
-  static getInstance(): NpmCliWrapper {
+  public static getInstance(): NpmCliWrapper {
     if (!NpmCliWrapper.instance) {
       NpmCliWrapper.instance = new NpmCliWrapper();
     }

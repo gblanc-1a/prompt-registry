@@ -17,12 +17,6 @@ import {
  */
 export class PlatformDetector {
   private static instance: PlatformDetector;
-  private readonly logger: Logger;
-  private detectionResult: PlatformDetectionResult | null = null;
-
-  private constructor() {
-    this.logger = Logger.getInstance();
-  }
 
   public static getInstance(): PlatformDetector {
     if (!PlatformDetector.instance) {
@@ -31,120 +25,11 @@ export class PlatformDetector {
     return PlatformDetector.instance;
   }
 
-  /**
-   * Detect the current platform with multiple detection methods
-   */
-  public async detectPlatform(): Promise<PlatformDetectionResult> {
-    if (this.detectionResult) {
-      return this.detectionResult;
-    }
+  private readonly logger: Logger;
+  private detectionResult: PlatformDetectionResult | null = null;
 
-    this.logger.info('Starting platform detection...');
-
-    const detectionMethods = [
-      this.detectByExecutablePath.bind(this),
-      this.detectByEnvironmentVariables.bind(this),
-      this.detectByProcessInfo.bind(this),
-      this.detectByConfigFiles.bind(this),
-      this.detectByVSCodeAPI.bind(this)
-    ];
-
-    const results: PlatformDetectionResult[] = [];
-
-    for (const method of detectionMethods) {
-      try {
-        const result = await method();
-        if (result.platform !== Platform.UNKNOWN) {
-          results.push(result);
-          this.logger.debug(`Detection method found: ${result.platform} (confidence: ${result.confidence})`);
-        }
-      } catch (error) {
-        this.logger.warn(`Platform detection method failed: ${error}`);
-      }
-    }
-
-    // Aggregate results and pick the most confident one
-    this.detectionResult = this.aggregateResults(results);
-
-    this.logger.info(`Platform detected: ${this.detectionResult.platform} (confidence: ${this.detectionResult.confidence})`);
-    return this.detectionResult;
-  }
-
-  /**
-   * Get platform-specific configuration
-   * @param platform
-   */
-  public getPlatformConfig(platform: Platform): PlatformConfig {
-    const configs: Record<Platform, PlatformConfig> = {
-      [Platform.VSCODE]: {
-        platform: Platform.VSCODE,
-        bundlePrefix: 'vscode',
-        installationPaths: {
-          user: this.getUserDataPath('Code'),
-          workspace: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.vscode'),
-          project: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.olaf')
-        },
-        configFiles: ['settings.json', 'keybindings.json'],
-        environmentVariables: ['VSCODE_PID', 'VSCODE_IPC_HOOK']
-      },
-      [Platform.WINDSURF]: {
-        platform: Platform.WINDSURF,
-        bundlePrefix: 'windsurf',
-        installationPaths: {
-          user: this.getUserDataPath('Windsurf'),
-          workspace: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.windsurf'),
-          project: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.olaf')
-        },
-        configFiles: ['settings.json', 'keybindings.json'],
-        environmentVariables: ['WINDSURF_PID', 'WINDSURF_IPC_HOOK']
-      },
-      [Platform.KIRO]: {
-        platform: Platform.KIRO,
-        bundlePrefix: 'kiro',
-        installationPaths: {
-          user: this.getUserDataPath('Kiro'),
-          workspace: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.kiro'),
-          project: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.olaf')
-        },
-        configFiles: ['settings.json', 'keybindings.json'],
-        environmentVariables: ['KIRO_PID', 'KIRO_IPC_HOOK']
-      },
-      [Platform.CURSOR]: {
-        platform: Platform.CURSOR,
-        bundlePrefix: 'cursor',
-        installationPaths: {
-          user: this.getUserDataPath('Cursor'),
-          workspace: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.cursor'),
-          project: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.olaf')
-        },
-        configFiles: ['settings.json', 'keybindings.json'],
-        environmentVariables: ['CURSOR_PID', 'CURSOR_IPC_HOOK']
-      },
-      [Platform.UNKNOWN]: {
-        platform: Platform.UNKNOWN,
-        bundlePrefix: 'vscode', // fallback to vscode
-        installationPaths: {
-          user: this.getUserDataPath('Code'),
-          workspace: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.vscode'),
-          project: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.olaf')
-        },
-        configFiles: ['settings.json'],
-        environmentVariables: []
-      }
-    };
-
-    return configs[platform];
-  }
-
-  /**
-   * Get installation path for specific scope
-   * @param platform
-   * @param scope
-   */
-  public getInstallationPath(platform: Platform, scope: InstallationScope): string {
-    const config = this.getPlatformConfig(platform);
-    const basePath = config.installationPaths[scope];
-    return path.join(basePath, 'olaf');
+  private constructor() {
+    this.logger = Logger.getInstance();
   }
 
   private async detectByExecutablePath(): Promise<PlatformDetectionResult> {
@@ -366,5 +251,121 @@ export class PlatformDetector {
         return path.join(homeDir, '.config', appName);
       }
     }
+  }
+
+  /**
+   * Detect the current platform with multiple detection methods
+   */
+  public async detectPlatform(): Promise<PlatformDetectionResult> {
+    if (this.detectionResult) {
+      return this.detectionResult;
+    }
+
+    this.logger.info('Starting platform detection...');
+
+    const detectionMethods = [
+      this.detectByExecutablePath.bind(this),
+      this.detectByEnvironmentVariables.bind(this),
+      this.detectByProcessInfo.bind(this),
+      this.detectByConfigFiles.bind(this),
+      this.detectByVSCodeAPI.bind(this)
+    ];
+
+    const results: PlatformDetectionResult[] = [];
+
+    for (const method of detectionMethods) {
+      try {
+        const result = await method();
+        if (result.platform !== Platform.UNKNOWN) {
+          results.push(result);
+          this.logger.debug(`Detection method found: ${result.platform} (confidence: ${result.confidence})`);
+        }
+      } catch (error) {
+        this.logger.warn(`Platform detection method failed: ${error}`);
+      }
+    }
+
+    // Aggregate results and pick the most confident one
+    this.detectionResult = this.aggregateResults(results);
+
+    this.logger.info(`Platform detected: ${this.detectionResult.platform} (confidence: ${this.detectionResult.confidence})`);
+    return this.detectionResult;
+  }
+
+  /**
+   * Get platform-specific configuration
+   * @param platform
+   */
+  public getPlatformConfig(platform: Platform): PlatformConfig {
+    const configs: Record<Platform, PlatformConfig> = {
+      [Platform.VSCODE]: {
+        platform: Platform.VSCODE,
+        bundlePrefix: 'vscode',
+        installationPaths: {
+          user: this.getUserDataPath('Code'),
+          workspace: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.vscode'),
+          project: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.olaf')
+        },
+        configFiles: ['settings.json', 'keybindings.json'],
+        environmentVariables: ['VSCODE_PID', 'VSCODE_IPC_HOOK']
+      },
+      [Platform.WINDSURF]: {
+        platform: Platform.WINDSURF,
+        bundlePrefix: 'windsurf',
+        installationPaths: {
+          user: this.getUserDataPath('Windsurf'),
+          workspace: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.windsurf'),
+          project: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.olaf')
+        },
+        configFiles: ['settings.json', 'keybindings.json'],
+        environmentVariables: ['WINDSURF_PID', 'WINDSURF_IPC_HOOK']
+      },
+      [Platform.KIRO]: {
+        platform: Platform.KIRO,
+        bundlePrefix: 'kiro',
+        installationPaths: {
+          user: this.getUserDataPath('Kiro'),
+          workspace: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.kiro'),
+          project: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.olaf')
+        },
+        configFiles: ['settings.json', 'keybindings.json'],
+        environmentVariables: ['KIRO_PID', 'KIRO_IPC_HOOK']
+      },
+      [Platform.CURSOR]: {
+        platform: Platform.CURSOR,
+        bundlePrefix: 'cursor',
+        installationPaths: {
+          user: this.getUserDataPath('Cursor'),
+          workspace: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.cursor'),
+          project: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.olaf')
+        },
+        configFiles: ['settings.json', 'keybindings.json'],
+        environmentVariables: ['CURSOR_PID', 'CURSOR_IPC_HOOK']
+      },
+      [Platform.UNKNOWN]: {
+        platform: Platform.UNKNOWN,
+        bundlePrefix: 'vscode', // fallback to vscode
+        installationPaths: {
+          user: this.getUserDataPath('Code'),
+          workspace: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.vscode'),
+          project: path.join(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '', '.olaf')
+        },
+        configFiles: ['settings.json'],
+        environmentVariables: []
+      }
+    };
+
+    return configs[platform];
+  }
+
+  /**
+   * Get installation path for specific scope
+   * @param platform
+   * @param scope
+   */
+  public getInstallationPath(platform: Platform, scope: InstallationScope): string {
+    const config = this.getPlatformConfig(platform);
+    const basePath = config.installationPaths[scope];
+    return path.join(basePath, 'olaf');
   }
 }

@@ -74,6 +74,7 @@ interface CollectionManifest {
   items: CollectionItem[];
   display?: {
     ordering?: string;
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API response shape
     show_badge?: boolean;
   };
   mcp?: {
@@ -121,7 +122,7 @@ export interface LocalAwesomeCopilotConfig {
  * ```
  */
 export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
-  readonly type = 'local-awesome-copilot';
+  public readonly type = 'local-awesome-copilot';
   private readonly config: Required<LocalAwesomeCopilotConfig>;
   private readonly collectionsCache: Map<string, { bundles: Bundle[]; timestamp: number }> = new Map();
   private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -168,18 +169,6 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
   }
 
   /**
-   * Check if path is valid local filesystem path
-   * @param url
-   */
-  isValidUrl(url: string): boolean {
-    // Accept file:// URLs or absolute paths
-    return url.startsWith('file://')
-      || path.isAbsolute(url)
-      || url.startsWith('~/')
-      || url.startsWith('./');
-  }
-
-  /**
    * Check if directory exists and is accessible
    * @param dirPath
    */
@@ -190,183 +179,6 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
       return stats.isDirectory();
     } catch {
       return false;
-    }
-  }
-
-  /**
-   * Fetch list of available bundles from the local filesystem
-   * Scans the collections directory for .collection.yml files and creates Bundle objects.
-   * Results are cached for 5 minutes to reduce filesystem operations.
-   * @returns Promise resolving to array of Bundle objects from collection files
-   * @throws Error if directory access fails or collection parsing fails
-   */
-  async fetchBundles(): Promise<Bundle[]> {
-    this.logger.debug('Listing bundles from local awesome-copilot repository');
-
-    // Check cache
-    const cacheKey = `${this.source.url}-${this.config.collectionsPath}`;
-    const cached = this.collectionsCache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
-      this.logger.debug('Using cached collections');
-      return cached.bundles;
-    }
-
-    try {
-      // Step 1: List .collection.yml files
-      const collectionFiles = await this.listCollectionFiles();
-      this.logger.debug(`Found ${collectionFiles.length} collection files`);
-
-      // Step 2: Parse each collection
-      const bundles: Bundle[] = [];
-      for (const file of collectionFiles) {
-        try {
-          const bundle = await this.parseCollection(file);
-          if (bundle) {
-            bundles.push(bundle);
-          }
-        } catch (error) {
-          this.logger.warn(`Failed to parse collection ${file}:`, error as Error);
-        }
-      }
-
-      // Cache results
-      this.collectionsCache.set(cacheKey, { bundles, timestamp: Date.now() });
-
-      return bundles;
-    } catch (error) {
-      this.logger.error('Failed to list bundles', error as Error);
-      throw new Error(`Failed to list local awesome-copilot collections: ${(error as Error).message}`);
-    }
-  }
-
-  /**
-   * Download a bundle as a dynamically-created zip archive
-   * Fetches all items referenced in the collection from local filesystem and creates a ZIP file.
-   * The archive includes prompts, instructions, and a deployment manifest.
-   * @param bundle - Bundle object containing collection metadata
-   * @returns Promise resolving to Buffer containing the ZIP archive
-   * @throws Error if collection fetch fails or archive creation fails
-   */
-  async downloadBundle(bundle: Bundle): Promise<Buffer> {
-    this.logger.debug(`Downloading bundle: ${bundle.id}`);
-
-    try {
-      // Find collection file from bundle metadata
-      const collectionFile = (bundle as any).collectionFile || `${bundle.id}.collection.yml`;
-      this.logger.debug(`Collection file: ${collectionFile}`);
-
-      // Parse collection
-      const collectionsPath = this.getCollectionsPath();
-      const collectionFilePath = path.join(collectionsPath, collectionFile);
-      this.logger.debug(`Reading collection from: ${collectionFilePath}`);
-
-      const yamlContent = await readFile(collectionFilePath, 'utf8');
-      const collection = yaml.load(yamlContent) as CollectionManifest;
-      this.logger.debug(`Collection loaded: ${collection.name}, items: ${collection.items.length}`);
-
-      // Create zip archive
-      const buffer = await this.createBundleArchive(collection, collectionFile);
-      this.logger.debug(`Archive created: ${buffer.length} bytes`);
-      return buffer;
-    } catch (error) {
-      this.logger.error('Failed to download bundle', error as Error);
-      throw new Error(`Failed to download bundle: ${(error as Error).message}`);
-    }
-  }
-
-  /**
-   * Fetch repository metadata
-   * Retrieves information about the local collection directory including collection count.
-   * @returns Promise resolving to SourceMetadata with directory info
-   * @throws Error if directory access fails or collection listing fails
-   */
-  async fetchMetadata(): Promise<SourceMetadata> {
-    try {
-      const localPath = this.getLocalPath();
-      const collectionFiles = await this.listCollectionFiles();
-      const stats = await stat(localPath);
-
-      return {
-        name: path.basename(localPath),
-        description: `Local Awesome Copilot collections from ${localPath}`,
-        bundleCount: collectionFiles.length,
-        lastUpdated: stats.mtime.toISOString(),
-        version: '1.0.0'
-      };
-    } catch (error) {
-      throw new Error(`Failed to fetch metadata: ${(error as Error).message}`);
-    }
-  }
-
-  /**
-   * Get manifest URL for a bundle
-   * Returns the file:// URL to the collection YAML file.
-   * @param bundleId - Bundle identifier matching the collection filename
-   * @param version - Optional version (not used for local collections)
-   * @returns file:// URL string pointing to collection .yml file
-   */
-  getManifestUrl(bundleId: string, version?: string): string {
-    const collectionsPath = this.getCollectionsPath();
-    const collectionFile = `${bundleId}.collection.yml`;
-    return `file://${path.join(collectionsPath, collectionFile)}`;
-  }
-
-  /**
-   * Get download URL for a bundle
-   * Returns the collection YAML file:// URL (bundles are created dynamically, not pre-packaged).
-   * @param bundleId - Bundle identifier matching the collection filename
-   * @param version - Optional version (not used for local collections)
-   * @returns file:// URL string pointing to collection .yml file
-   */
-  getDownloadUrl(bundleId: string, version?: string): string {
-    // For local awesome-copilot, download URL is same as manifest URL
-    // (we download and package on the fly)
-    return this.getManifestUrl(bundleId, version);
-  }
-
-  /**
-   * Validate directory structure
-   * Checks if the collections directory exists and contains at least one collection file.
-   * @returns Promise resolving to ValidationResult with status and any errors/warnings
-   */
-  async validate(): Promise<ValidationResult> {
-    try {
-      const collectionsPath = this.getCollectionsPath();
-      const exists = await this.directoryExists(collectionsPath);
-
-      if (!exists) {
-        return {
-          valid: false,
-          errors: [`Collections directory does not exist: ${collectionsPath}`],
-          warnings: [],
-          bundlesFound: 0
-        };
-      }
-
-      const collectionFiles = await this.listCollectionFiles();
-
-      if (collectionFiles.length === 0) {
-        return {
-          valid: false,
-          errors: ['No .collection.yml files found in collections directory'],
-          warnings: [],
-          bundlesFound: 0
-        };
-      }
-
-      return {
-        valid: true,
-        errors: [],
-        warnings: [],
-        bundlesFound: collectionFiles.length
-      };
-    } catch (error) {
-      return {
-        valid: false,
-        errors: [`Failed to validate directory: ${(error as Error).message}`],
-        warnings: [],
-        bundlesFound: 0
-      };
     }
   }
 
@@ -445,23 +257,21 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
   /**
    * Create a zip archive containing collection files
    * @param collection
-   * @param collectionFile
+   * @param _collectionFile
    */
-  private async createBundleArchive(collection: CollectionManifest, collectionFile: string): Promise<Buffer> {
+  private async createBundleArchive(collection: CollectionManifest, _collectionFile: string): Promise<Buffer> {
     this.logger.debug(`Creating archive for collection: ${collection.name}`);
 
     return new Promise<Buffer>((resolve, reject) => {
       // Use IIFE to handle async operations within Promise executor
-      (async () => {
+      void (async () => {
         try {
           const archive = archiver('zip', { zlib: { level: 9 } });
           const chunks: Buffer[] = [];
-          let totalSize = 0;
 
           // Collect data chunks
           archive.on('data', (chunk: Buffer) => {
             chunks.push(chunk);
-            totalSize += chunk.length;
           });
 
           // Resolve when archive is finalized
@@ -511,9 +321,10 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
 
           // Finalize the archive (this triggers 'finish' event when complete)
           this.logger.debug('Finalizing archive...');
-          archive.finalize();
+          void archive.finalize();
         } catch (error) {
           this.logger.error('Failed to create archive', error as Error);
+          // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- rejection value is handled by caller
           reject(error);
         }
       })();
@@ -669,5 +480,194 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
       .split(' ')
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(' ');
+  }
+
+  /**
+   * Check if path is valid local filesystem path
+   * @param url
+   */
+  public isValidUrl(url: string): boolean {
+    // Accept file:// URLs or absolute paths
+    return url.startsWith('file://')
+      || path.isAbsolute(url)
+      || url.startsWith('~/')
+      || url.startsWith('./');
+  }
+
+  /**
+   * Fetch list of available bundles from the local filesystem
+   * Scans the collections directory for .collection.yml files and creates Bundle objects.
+   * Results are cached for 5 minutes to reduce filesystem operations.
+   * @returns Promise resolving to array of Bundle objects from collection files
+   * @throws Error if directory access fails or collection parsing fails
+   */
+  public async fetchBundles(): Promise<Bundle[]> {
+    this.logger.debug('Listing bundles from local awesome-copilot repository');
+
+    // Check cache
+    const cacheKey = `${this.source.url}-${this.config.collectionsPath}`;
+    const cached = this.collectionsCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+      this.logger.debug('Using cached collections');
+      return cached.bundles;
+    }
+
+    try {
+      // Step 1: List .collection.yml files
+      const collectionFiles = await this.listCollectionFiles();
+      this.logger.debug(`Found ${collectionFiles.length} collection files`);
+
+      // Step 2: Parse each collection
+      const bundles: Bundle[] = [];
+      for (const file of collectionFiles) {
+        try {
+          const bundle = await this.parseCollection(file);
+          if (bundle) {
+            bundles.push(bundle);
+          }
+        } catch (error) {
+          this.logger.warn(`Failed to parse collection ${file}:`, error as Error);
+        }
+      }
+
+      // Cache results
+      this.collectionsCache.set(cacheKey, { bundles, timestamp: Date.now() });
+
+      return bundles;
+    } catch (error) {
+      this.logger.error('Failed to list bundles', error as Error);
+      throw new Error(`Failed to list local awesome-copilot collections: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Download a bundle as a dynamically-created zip archive
+   * Fetches all items referenced in the collection from local filesystem and creates a ZIP file.
+   * The archive includes prompts, instructions, and a deployment manifest.
+   * @param bundle - Bundle object containing collection metadata
+   * @returns Promise resolving to Buffer containing the ZIP archive
+   * @throws Error if collection fetch fails or archive creation fails
+   */
+  public async downloadBundle(bundle: Bundle): Promise<Buffer> {
+    this.logger.debug(`Downloading bundle: ${bundle.id}`);
+
+    try {
+      // Find collection file from bundle metadata
+      const collectionFile = (bundle as any).collectionFile || `${bundle.id}.collection.yml`;
+      this.logger.debug(`Collection file: ${collectionFile}`);
+
+      // Parse collection
+      const collectionsPath = this.getCollectionsPath();
+      const collectionFilePath = path.join(collectionsPath, collectionFile);
+      this.logger.debug(`Reading collection from: ${collectionFilePath}`);
+
+      const yamlContent = await readFile(collectionFilePath, 'utf8');
+      const collection = yaml.load(yamlContent) as CollectionManifest;
+      this.logger.debug(`Collection loaded: ${collection.name}, items: ${collection.items.length}`);
+
+      // Create zip archive
+      const buffer = await this.createBundleArchive(collection, collectionFile);
+      this.logger.debug(`Archive created: ${buffer.length} bytes`);
+      return buffer;
+    } catch (error) {
+      this.logger.error('Failed to download bundle', error as Error);
+      throw new Error(`Failed to download bundle: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Fetch repository metadata
+   * Retrieves information about the local collection directory including collection count.
+   * @returns Promise resolving to SourceMetadata with directory info
+   * @throws Error if directory access fails or collection listing fails
+   */
+  public async fetchMetadata(): Promise<SourceMetadata> {
+    try {
+      const localPath = this.getLocalPath();
+      const collectionFiles = await this.listCollectionFiles();
+      const stats = await stat(localPath);
+
+      return {
+        name: path.basename(localPath),
+        description: `Local Awesome Copilot collections from ${localPath}`,
+        bundleCount: collectionFiles.length,
+        lastUpdated: stats.mtime.toISOString(),
+        version: '1.0.0'
+      };
+    } catch (error) {
+      throw new Error(`Failed to fetch metadata: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Get manifest URL for a bundle
+   * Returns the file:// URL to the collection YAML file.
+   * @param bundleId - Bundle identifier matching the collection filename
+   * @param _version - Optional version (not used for local collections)
+   * @returns file:// URL string pointing to collection .yml file
+   */
+  public getManifestUrl(bundleId: string, _version?: string): string {
+    const collectionsPath = this.getCollectionsPath();
+    const collectionFile = `${bundleId}.collection.yml`;
+    return `file://${path.join(collectionsPath, collectionFile)}`;
+  }
+
+  /**
+   * Get download URL for a bundle
+   * Returns the collection YAML file:// URL (bundles are created dynamically, not pre-packaged).
+   * @param bundleId - Bundle identifier matching the collection filename
+   * @param version - Optional version (not used for local collections)
+   * @returns file:// URL string pointing to collection .yml file
+   */
+  public getDownloadUrl(bundleId: string, version?: string): string {
+    // For local awesome-copilot, download URL is same as manifest URL
+    // (we download and package on the fly)
+    return this.getManifestUrl(bundleId, version);
+  }
+
+  /**
+   * Validate directory structure
+   * Checks if the collections directory exists and contains at least one collection file.
+   * @returns Promise resolving to ValidationResult with status and any errors/warnings
+   */
+  public async validate(): Promise<ValidationResult> {
+    try {
+      const collectionsPath = this.getCollectionsPath();
+      const exists = await this.directoryExists(collectionsPath);
+
+      if (!exists) {
+        return {
+          valid: false,
+          errors: [`Collections directory does not exist: ${collectionsPath}`],
+          warnings: [],
+          bundlesFound: 0
+        };
+      }
+
+      const collectionFiles = await this.listCollectionFiles();
+
+      if (collectionFiles.length === 0) {
+        return {
+          valid: false,
+          errors: ['No .collection.yml files found in collections directory'],
+          warnings: [],
+          bundlesFound: 0
+        };
+      }
+
+      return {
+        valid: true,
+        errors: [],
+        warnings: [],
+        bundlesFound: collectionFiles.length
+      };
+    } catch (error) {
+      return {
+        valid: false,
+        errors: [`Failed to validate directory: ${(error as Error).message}`],
+        warnings: [],
+        bundlesFound: 0
+      };
+    }
   }
 }

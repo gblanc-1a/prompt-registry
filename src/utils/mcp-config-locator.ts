@@ -8,7 +8,7 @@ export class McpConfigLocator {
   private static readonly TRACKING_FILENAME = 'prompt-registry-mcp-tracking.json';
   private static context: vscode.ExtensionContext | undefined;
 
-  static initialize(context: vscode.ExtensionContext) {
+  public static initialize(context: vscode.ExtensionContext) {
     this.context = context;
   }
 
@@ -58,12 +58,12 @@ export class McpConfigLocator {
     return path.join(workspaceFolders[0].uri.fsPath, '.vscode');
   }
 
-  static getUserMcpConfigPath(): string {
+  public static getUserMcpConfigPath(): string {
     const userDir = this.getUserConfigDirectory();
     return path.join(userDir, this.MCP_FILENAME);
   }
 
-  static getWorkspaceMcpConfigPath(): string | undefined {
+  public static getWorkspaceMcpConfigPath(): string | undefined {
     const workspaceDir = this.getWorkspaceConfigDirectory();
     if (!workspaceDir) {
       return undefined;
@@ -71,12 +71,12 @@ export class McpConfigLocator {
     return path.join(workspaceDir, this.MCP_FILENAME);
   }
 
-  static getUserTrackingPath(): string {
+  public static getUserTrackingPath(): string {
     const userDir = this.getUserConfigDirectory();
     return path.join(userDir, this.TRACKING_FILENAME);
   }
 
-  static getWorkspaceTrackingPath(): string | undefined {
+  public static getWorkspaceTrackingPath(): string | undefined {
     const workspaceDir = this.getWorkspaceConfigDirectory();
     if (!workspaceDir) {
       return undefined;
@@ -84,7 +84,7 @@ export class McpConfigLocator {
     return path.join(workspaceDir, this.TRACKING_FILENAME);
   }
 
-  static getMcpConfigLocation(scope: 'user' | 'workspace'): { configPath: string; trackingPath: string; exists: boolean } | undefined {
+  public static getMcpConfigLocation(scope: 'user' | 'workspace'): { configPath: string; trackingPath: string; exists: boolean } | undefined {
     if (scope === 'user') {
       const configPath = this.getUserMcpConfigPath();
       const trackingPath = this.getUserTrackingPath();
@@ -109,7 +109,7 @@ export class McpConfigLocator {
     }
   }
 
-  static async ensureConfigDirectory(scope: 'user' | 'workspace'): Promise<void> {
+  public static async ensureConfigDirectory(scope: 'user' | 'workspace'): Promise<void> {
     const location = this.getMcpConfigLocation(scope);
     if (!location) {
       throw new Error(`Cannot determine ${scope}-level configuration directory. No workspace open?`);
@@ -121,7 +121,7 @@ export class McpConfigLocator {
     }
   }
 
-  static mcpConfigExists(scope: 'user' | 'workspace'): boolean {
+  public static mcpConfigExists(scope: 'user' | 'workspace'): boolean {
     const location = this.getMcpConfigLocation(scope);
     return location ? location.exists : false;
   }

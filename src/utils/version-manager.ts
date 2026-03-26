@@ -45,7 +45,7 @@ export class VersionManager {
    * @returns -1 if v1 < v2, 0 if equal, 1 if v1 > v2
    * @throws Error if either version is empty or exceeds maximum length
    */
-  static compareVersions(v1: string, v2: string): number {
+  public static compareVersions(v1: string, v2: string): number {
     // Input validation
     if (!v1 || !v2) {
       throw new Error('Version strings cannot be empty or null');
@@ -85,7 +85,7 @@ export class VersionManager {
    * @returns True if update available (latest > installed)
    * @throws Error if either version is empty or invalid
    */
-  static isUpdateAvailable(installedVersion: string, latestVersion: string): boolean {
+  public static isUpdateAvailable(installedVersion: string, latestVersion: string): boolean {
     if (!installedVersion || !latestVersion) {
       throw new Error('Version strings cannot be empty or null');
     }
@@ -116,7 +116,7 @@ export class VersionManager {
    * @param version - Version string to validate
    * @returns True if valid semver
    */
-  static isValidSemver(version: string): boolean {
+  public static isValidSemver(version: string): boolean {
     return semver.valid(version) !== null || semver.coerce(version) !== null;
   }
 
@@ -128,7 +128,7 @@ export class VersionManager {
    * @param versions - Array of version strings
    * @returns Sorted array with latest version first (invalid versions excluded)
    */
-  static sortVersionsDescending(versions: string[]): string[] {
+  public static sortVersionsDescending(versions: string[]): string[] {
     // Pre-filter and map in single pass for better performance
     const validVersions: { original: string; clean: string }[] = [];
 
@@ -157,7 +157,7 @@ export class VersionManager {
    * @param type2 - Source type of second bundle
    * @returns True if they represent the same bundle identity
    */
-  static isSameBundleIdentity(id1: string, type1: SourceType, id2: string, type2: SourceType): boolean {
+  public static isSameBundleIdentity(id1: string, type1: SourceType, id2: string, type2: SourceType): boolean {
     const identity1 = this.extractBundleIdentity(id1, type1);
     const identity2 = this.extractBundleIdentity(id2, type2);
     return identity1 === identity2;
@@ -180,7 +180,7 @@ export class VersionManager {
    * @returns Bundle identity without version suffix (GitHub only)
    * @throws Error if bundleId exceeds maximum length
    */
-  static extractBundleIdentity(bundleId: string, sourceType: SourceType): string {
+  public static extractBundleIdentity(bundleId: string, sourceType: SourceType): string {
     // Security: Prevent ReDoS attacks with length validation
     if (bundleId.length > this.MAX_BUNDLE_ID_LENGTH) {
       throw new Error(`Bundle ID exceeds maximum length of ${this.MAX_BUNDLE_ID_LENGTH}`);
@@ -220,7 +220,7 @@ export class VersionManager {
    * @param version - Version string to parse
    * @returns Cleaned version string, or null if invalid
    */
-  static parseVersion(version: string): string | null {
+  public static parseVersion(version: string): string | null {
     if (!version) {
       return null;
     }

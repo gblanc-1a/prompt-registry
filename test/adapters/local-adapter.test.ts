@@ -314,6 +314,7 @@ suite('LocalAdapter', () => {
       assert.strictEqual(buffer[1], 0x4B, 'Should start with ZIP magic number (K)');
 
       // Verify we can extract it using adm-zip
+      // eslint-disable-next-line @typescript-eslint/naming-convention -- matches library export name
       const AdmZip = require('adm-zip');
       const zip = new AdmZip(buffer);
       const entries = zip.getEntries();

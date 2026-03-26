@@ -24,8 +24,7 @@ function simulateDebouncedRefresh(
     refreshCallback: () => void
 ): void {
   let timer: NodeJS.Timeout | undefined;
-
-  for (const event of events) {
+  events.forEach(() => {
     if (timer) {
       clearTimeout(timer);
     }
@@ -33,7 +32,7 @@ function simulateDebouncedRefresh(
     timer = setTimeout(() => {
       refreshCallback();
     }, debounceMs);
-  }
+  });
 }
 
 suite('UI Source Sync Refresh', () => {

@@ -72,19 +72,6 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
   private isLoadingBundles = false;
   private disposables: vscode.Disposable[] = [];
 
-  /**
-   * Escape HTML special characters to prevent XSS
-   * @param text
-   */
-  private escapeHtml(text: string): string {
-    return text
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#039;');
-  }
-
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly registryManager: RegistryManager,
@@ -118,30 +105,17 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     );
   }
 
-  public resolveWebviewView(
-    webviewView: vscode.WebviewView,
-    context: vscode.WebviewViewResolveContext,
-    _token: vscode.CancellationToken
-  ) {
-    this._view = webviewView;
-
-    webviewView.webview.options = {
-      enableScripts: true,
-      localResourceRoots: [this.context.extensionUri]
-    };
-
-    webviewView.webview.html = this.getHtmlContent(webviewView.webview);
-
-    // Handle messages from webview
-    webviewView.webview.onDidReceiveMessage(async (message) => {
-      await this.handleMessage(message);
-    });
-
-    // Load bundles with a small delay to ensure webview JavaScript is ready
-    // The webview also sends a refresh request when ready as a backup
-    setTimeout(() => {
-      this.loadBundles();
-    }, UI_CONSTANTS.WEBVIEW_READY_DELAY_MS);
+  /**
+   * Escape HTML special characters to prevent XSS
+   * @param text
+   */
+  private escapeHtml(text: string): string {
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#039;');
   }
 
   /**
@@ -157,7 +131,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
   ): void {
     try {
       this.logger.debug(`Bundle ${eventType} event received: ${bundleId}, refreshing marketplace`);
-      action();
+      void action();
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       this.logger.error(`Error handling bundle ${eventType} event`, error as Error);
@@ -189,28 +163,14 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
 
     // Fire immediately on first event (leading edge)
     if (isFirstEvent) {
-      this.loadBundles();
+      void this.loadBundles();
     }
 
     // Set trailing edge timer
     this.sourceSyncDebounceTimer = setTimeout(() => {
       this.sourceSyncDebounceTimer = undefined;
-      this.loadBundles();
+      void this.loadBundles();
     }, UI_CONSTANTS.SOURCE_SYNC_DEBOUNCE_MS);
-  }
-
-  /**
-   * Dispose of resources
-   */
-  dispose(): void {
-    // Clear debounce timer
-    if (this.sourceSyncDebounceTimer) {
-      clearTimeout(this.sourceSyncDebounceTimer);
-    }
-
-    // Dispose all event listeners
-    this.disposables.forEach((d) => d.dispose());
-    this.disposables = [];
   }
 
   /**
@@ -316,7 +276,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         ? await autoUpdateService.getAllAutoUpdatePreferences()
         : {};
 
-      const enhancedBundles = await Promise.all(bundles.map(async (bundle) => {
+      const enhancedBundles = bundles.map((bundle) => {
         // Find matching installed bundle using identity matching
         const source = sources.find((s) => s.id === bundle.sourceId);
         const installed = installedBundles.find((ib) =>
@@ -357,7 +317,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
           availableVersions,
           autoUpdateEnabled
         };
-      }));
+      });
 
       // Extract dynamic filter options
       const availableTags = extractAllTags(bundles);
@@ -572,6 +532,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         break;
       }
       default: {
+        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- value is safely stringifiable at runtime
         this.logger.warn(`Unknown message type: ${message.type}`);
       }
     }
@@ -583,7 +544,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    */
   private async handleOpenSourceRepository(bundleId: string): Promise<void> {
     try {
-      const { bundle, source } = await this.findInstalledBundleByMarketplaceId(bundleId);
+      const { bundle } = await this.findInstalledBundleByMarketplaceId(bundleId);
 
       // Create a fake tree item to pass to the command
       const item = {
@@ -643,7 +604,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    */
   private async openPromptFileInEditor(installPath: string, filePath: string): Promise<void> {
     try {
-      const path = require('node:path');
+      const path = await import('node:path');
       const fullPath = path.join(installPath, filePath);
 
       this.logger.debug(`Opening prompt file: ${fullPath}`);
@@ -886,90 +847,6 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     } catch (error) {
       this.logger.error('Failed to toggle auto-update', error as Error);
       vscode.window.showErrorMessage(`Failed to toggle auto-update: ${(error as Error).message}`);
-    }
-  }
-
-  /**
-   * Open bundle details in a new webview panel
-   * @param bundleId
-   */
-  async openBundleDetails(bundleId: string): Promise<void> {
-    try {
-      this.logger.debug(`Opening details for bundle: ${bundleId}`);
-
-      // Use getBundleDetails which handles identity matching for versioned IDs
-      // (e.g., "bundle-name-1.0.17" gets matched to consolidated "bundle-name")
-      let bundle: Bundle;
-      try {
-        bundle = await this.registryManager.getBundleDetails(bundleId);
-      } catch (error) {
-        this.logger.error(`Failed to get bundle details for ${bundleId}`, error as Error);
-        vscode.window.showErrorMessage('Bundle not found');
-        return;
-      }
-
-      // Check if installed to get manifest - use identity matching for GitHub bundles
-      const installedBundles = await this.registryManager.listInstalledBundles();
-      const sources = await this.registryManager.listSources();
-      const source = sources.find((s) => s.id === bundle.sourceId);
-      const installed = installedBundles.find((ib) =>
-        this.matchesBundleIdentity(ib.bundleId, bundle.id, source?.type || 'local')
-      );
-      const breakdown = this.getContentBreakdown(bundle, installed?.manifest);
-
-      // Get auto-update status if bundle is installed (using preloaded preferences API)
-      let autoUpdateEnabled = false;
-      if (installed) {
-        const autoUpdateService = this.registryManager.autoUpdateService;
-        if (autoUpdateService) {
-          const autoUpdatePreferences = await autoUpdateService.getAllAutoUpdatePreferences();
-          autoUpdateEnabled = autoUpdatePreferences[installed.bundleId] ?? false;
-        }
-      }
-
-      // Create webview panel
-      const panel = vscode.window.createWebviewPanel(
-        'bundleDetails',
-        `📦 ${bundle.name}`,
-        vscode.ViewColumn.One,
-        {
-          enableScripts: true
-        }
-      );
-
-      // Set HTML content
-      panel.webview.html = this.getBundleDetailsHtml(panel.webview, bundle, installed, breakdown, autoUpdateEnabled);
-
-      // Handle messages from the details panel
-      panel.webview.onDidReceiveMessage(
-        async (message) => {
-          if (message.type === 'openPromptFile') {
-            await this.openPromptFileInEditor(message.installPath, message.filePath);
-          } else if (message.type === 'toggleAutoUpdate') {
-            await this.handleToggleAutoUpdate(message.bundleId, message.enabled);
-            // Update the panel with new status
-            if (installed) {
-              const newStatus = await this.registryManager.autoUpdateService?.isAutoUpdateEnabled(installed.bundleId) || false;
-              panel.webview.postMessage({ type: 'autoUpdateStatusChanged', enabled: newStatus });
-            }
-          }
-        },
-        undefined,
-        this.context.subscriptions
-      );
-
-      // Listen to auto-update preference changes from other UI components (e.g., tree view context menu)
-      this.disposables.push(
-        this.registryManager.onAutoUpdatePreferenceChanged((event) => {
-          // Update the webview if this event is for the bundle being displayed
-          if (event.bundleId === bundleId || (installed && event.bundleId === installed.bundleId)) {
-            panel.webview.postMessage({ type: 'autoUpdateStatusChanged', enabled: event.enabled });
-          }
-        })
-      );
-    } catch (error) {
-      this.logger.error('Failed to open bundle details', error as Error);
-      vscode.window.showErrorMessage('Failed to open bundle details');
     }
   }
 
@@ -1272,5 +1149,129 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
       .replace('{{scriptUri}}', scriptUri.toString());
 
     return htmlTemplate;
+  }
+
+  public resolveWebviewView(
+    webviewView: vscode.WebviewView,
+    _context: vscode.WebviewViewResolveContext,
+    _token: vscode.CancellationToken
+  ) {
+    this._view = webviewView;
+
+    webviewView.webview.options = {
+      enableScripts: true,
+      localResourceRoots: [this.context.extensionUri]
+    };
+
+    webviewView.webview.html = this.getHtmlContent(webviewView.webview);
+
+    // Handle messages from webview
+    webviewView.webview.onDidReceiveMessage(async (message) => {
+      await this.handleMessage(message);
+    });
+
+    // Load bundles with a small delay to ensure webview JavaScript is ready
+    // The webview also sends a refresh request when ready as a backup
+    setTimeout(() => {
+      void this.loadBundles();
+    }, UI_CONSTANTS.WEBVIEW_READY_DELAY_MS);
+  }
+
+  /**
+   * Dispose of resources
+   */
+  public dispose(): void {
+    // Clear debounce timer
+    if (this.sourceSyncDebounceTimer) {
+      clearTimeout(this.sourceSyncDebounceTimer);
+    }
+
+    // Dispose all event listeners
+    this.disposables.forEach((d) => d.dispose());
+    this.disposables = [];
+  }
+
+  /**
+   * Open bundle details in a new webview panel
+   * @param bundleId
+   */
+  public async openBundleDetails(bundleId: string): Promise<void> {
+    try {
+      this.logger.debug(`Opening details for bundle: ${bundleId}`);
+
+      // Use getBundleDetails which handles identity matching for versioned IDs
+      // (e.g., "bundle-name-1.0.17" gets matched to consolidated "bundle-name")
+      let bundle: Bundle;
+      try {
+        bundle = await this.registryManager.getBundleDetails(bundleId);
+      } catch (error) {
+        this.logger.error(`Failed to get bundle details for ${bundleId}`, error as Error);
+        vscode.window.showErrorMessage('Bundle not found');
+        return;
+      }
+
+      // Check if installed to get manifest - use identity matching for GitHub bundles
+      const installedBundles = await this.registryManager.listInstalledBundles();
+      const sources = await this.registryManager.listSources();
+      const source = sources.find((s) => s.id === bundle.sourceId);
+      const installed = installedBundles.find((ib) =>
+        this.matchesBundleIdentity(ib.bundleId, bundle.id, source?.type || 'local')
+      );
+      const breakdown = this.getContentBreakdown(bundle, installed?.manifest);
+
+      // Get auto-update status if bundle is installed (using preloaded preferences API)
+      let autoUpdateEnabled = false;
+      if (installed) {
+        const autoUpdateService = this.registryManager.autoUpdateService;
+        if (autoUpdateService) {
+          const autoUpdatePreferences = await autoUpdateService.getAllAutoUpdatePreferences();
+          autoUpdateEnabled = autoUpdatePreferences[installed.bundleId] ?? false;
+        }
+      }
+
+      // Create webview panel
+      const panel = vscode.window.createWebviewPanel(
+        'bundleDetails',
+        `📦 ${bundle.name}`,
+        vscode.ViewColumn.One,
+        {
+          enableScripts: true
+        }
+      );
+
+      // Set HTML content
+      panel.webview.html = this.getBundleDetailsHtml(panel.webview, bundle, installed, breakdown, autoUpdateEnabled);
+
+      // Handle messages from the details panel
+      panel.webview.onDidReceiveMessage(
+        async (message) => {
+          if (message.type === 'openPromptFile') {
+            await this.openPromptFileInEditor(message.installPath, message.filePath);
+          } else if (message.type === 'toggleAutoUpdate') {
+            await this.handleToggleAutoUpdate(message.bundleId, message.enabled);
+            // Update the panel with new status
+            if (installed) {
+              const newStatus = await this.registryManager.autoUpdateService?.isAutoUpdateEnabled(installed.bundleId) || false;
+              panel.webview.postMessage({ type: 'autoUpdateStatusChanged', enabled: newStatus });
+            }
+          }
+        },
+        undefined,
+        this.context.subscriptions
+      );
+
+      // Listen to auto-update preference changes from other UI components (e.g., tree view context menu)
+      this.disposables.push(
+        this.registryManager.onAutoUpdatePreferenceChanged((event) => {
+          // Update the webview if this event is for the bundle being displayed
+          if (event.bundleId === bundleId || (installed && event.bundleId === installed.bundleId)) {
+            panel.webview.postMessage({ type: 'autoUpdateStatusChanged', enabled: event.enabled });
+          }
+        })
+      );
+    } catch (error) {
+      this.logger.error('Failed to open bundle details', error as Error);
+      vscode.window.showErrorMessage('Failed to open bundle details');
+    }
   }
 }

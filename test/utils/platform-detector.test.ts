@@ -30,7 +30,6 @@ suite('Platform Detector', () => {
 
   suite('Copilot Path Detection', () => {
     test('should construct correct path for macOS', () => {
-      const platform = 'darwin';
       const homeDir = '/Users/testuser';
 
       const copilotPath = path.join(
@@ -48,7 +47,6 @@ suite('Platform Detector', () => {
     });
 
     test('should construct correct path for Windows', () => {
-      const platform = 'win32';
       const homeDir = 'C:\\Users\\testuser';
 
       const copilotPath = path.join(
@@ -66,7 +64,6 @@ suite('Platform Detector', () => {
     });
 
     test('should construct correct path for Linux', () => {
-      const platform = 'linux';
       const homeDir = '/home/testuser';
 
       const copilotPath = path.join(
@@ -163,8 +160,6 @@ suite('Platform Detector', () => {
 
   suite('Environment Variables', () => {
     test('should read HOME environment variable', () => {
-      const home = process.env.HOME || process.env.USERPROFILE;
-
       if (process.platform === 'win32') {
         assert.ok(process.env.USERPROFILE || os.homedir());
       } else {

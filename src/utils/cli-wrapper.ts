@@ -62,45 +62,6 @@ export abstract class CliWrapper {
   protected abstract getDisplayName(): string;
 
   /**
-   * Check if the CLI tool is available in the system
-   */
-  async isAvailable(): Promise<boolean> {
-    return new Promise((resolve) => {
-      const proc = spawn(this.getCommandName(), ['--version'], { shell: USE_SHELL });
-
-      proc.on('close', (code) => {
-        resolve(code === 0);
-      });
-
-      proc.on('error', () => {
-        resolve(false);
-      });
-    });
-  }
-
-  /**
-   * Get the CLI tool version
-   */
-  async getVersion(): Promise<string | undefined> {
-    return new Promise((resolve) => {
-      const proc = spawn(this.getCommandName(), ['--version'], { shell: USE_SHELL });
-      let output = '';
-
-      proc.stdout.on('data', (data) => {
-        output += data.toString();
-      });
-
-      proc.on('close', (code) => {
-        resolve(code === 0 ? output.trim() : undefined);
-      });
-
-      proc.on('error', () => {
-        resolve(undefined);
-      });
-    });
-  }
-
-  /**
    * Validate working directory exists and is a directory
    * @param cwd
    */
@@ -120,10 +81,65 @@ export abstract class CliWrapper {
   }
 
   /**
+   * Format process error into user-friendly message
+   * @param err
+   * @param cmdName
+   */
+  protected formatProcessError(err: Error, cmdName: string): string {
+    if (err.message.includes('ENOENT')) {
+      return `${cmdName} not found. Please install it first.`;
+    } else if (err.message.includes('EACCES') || err.message.includes('permission')) {
+      return 'Permission denied. Please check directory permissions.';
+    } else if (err.message.includes('network') || err.message.includes('ENOTFOUND')) {
+      return 'Network error. Please check your internet connection.';
+    }
+    return `Failed to run ${cmdName} install: ${err.message}`;
+  }
+
+  /**
+   * Check if the CLI tool is available in the system
+   */
+  public async isAvailable(): Promise<boolean> {
+    return new Promise((resolve) => {
+      const proc = spawn(this.getCommandName(), ['--version'], { shell: USE_SHELL });
+
+      proc.on('close', (code) => {
+        resolve(code === 0);
+      });
+
+      proc.on('error', () => {
+        resolve(false);
+      });
+    });
+  }
+
+  /**
+   * Get the CLI tool version
+   */
+  public async getVersion(): Promise<string | undefined> {
+    return new Promise((resolve) => {
+      const proc = spawn(this.getCommandName(), ['--version'], { shell: USE_SHELL });
+      let output = '';
+
+      proc.stdout.on('data', (data) => {
+        output += data.toString();
+      });
+
+      proc.on('close', (code) => {
+        resolve(code === 0 ? output.trim() : undefined);
+      });
+
+      proc.on('error', () => {
+        resolve(undefined);
+      });
+    });
+  }
+
+  /**
    * Install dependencies with progress notification
    * @param cwd
    */
-  async installWithProgress(cwd: string): Promise<CliInstallResult> {
+  public async installWithProgress(cwd: string): Promise<CliInstallResult> {
     const cmdName = this.getCommandName();
     const displayName = this.getDisplayName();
 
@@ -151,6 +167,7 @@ export abstract class CliWrapper {
           title: 'Installing dependencies...',
           cancellable: true
         },
+        // eslint-disable-next-line @typescript-eslint/require-await -- async required by caller contract
         async (_progress, token) => {
           const proc = spawn(cmdName, ['install'], {
             cwd,
@@ -203,7 +220,7 @@ export abstract class CliWrapper {
    * Install dependencies in terminal (visible to user)
    * @param cwd
    */
-  async installInTerminal(cwd: string): Promise<CliInstallResult> {
+  public async installInTerminal(cwd: string): Promise<CliInstallResult> {
     const cmdName = this.getCommandName();
     const displayName = this.getDisplayName();
 
@@ -254,7 +271,7 @@ export abstract class CliWrapper {
    * @param cwd
    * @param useProgress
    */
-  async promptAndInstall(cwd: string, useProgress = true): Promise<CliInstallResult> {
+  public async promptAndInstall(cwd: string, useProgress = true): Promise<CliInstallResult> {
     const cmdName = this.getCommandName();
 
     const choice = await vscode.window.showInformationMessage(
@@ -274,21 +291,5 @@ export abstract class CliWrapper {
     return useProgress
       ? await this.installWithProgress(cwd)
       : await this.installInTerminal(cwd);
-  }
-
-  /**
-   * Format process error into user-friendly message
-   * @param err
-   * @param cmdName
-   */
-  protected formatProcessError(err: Error, cmdName: string): string {
-    if (err.message.includes('ENOENT')) {
-      return `${cmdName} not found. Please install it first.`;
-    } else if (err.message.includes('EACCES') || err.message.includes('permission')) {
-      return 'Permission denied. Please check directory permissions.';
-    } else if (err.message.includes('network') || err.message.includes('ENOTFOUND')) {
-      return 'Network error. Please check your internet connection.';
-    }
-    return `Failed to run ${cmdName} install: ${err.message}`;
   }
 }

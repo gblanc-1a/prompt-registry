@@ -51,7 +51,7 @@ interface LocalManifest {
  * Expects a directory structure with bundles in subdirectories
  */
 export class LocalAdapter extends RepositoryAdapter {
-  readonly type = 'local';
+  public readonly type = 'local';
 
   constructor(source: RegistrySource) {
     super(source);
@@ -74,18 +74,6 @@ export class LocalAdapter extends RepositoryAdapter {
 
     // Normalize path
     return path.normalize(localPath);
-  }
-
-  /**
-   * Check if path is valid local filesystem path
-   * @param url
-   */
-  isValidUrl(url: string): boolean {
-    // Accept file:// URLs or absolute paths
-    return url.startsWith('file://')
-      || path.isAbsolute(url)
-      || url.startsWith('~/')
-      || url.startsWith('./');
   }
 
   /**
@@ -229,12 +217,24 @@ export class LocalAdapter extends RepositoryAdapter {
   }
 
   /**
+   * Check if path is valid local filesystem path
+   * @param url
+   */
+  public isValidUrl(url: string): boolean {
+    // Accept file:// URLs or absolute paths
+    return url.startsWith('file://')
+      || path.isAbsolute(url)
+      || url.startsWith('~/')
+      || url.startsWith('./');
+  }
+
+  /**
    * Fetch repository metadata from local filesystem
    * Scans the local directory and reads registry.json if available.
    * @returns Promise resolving to SourceMetadata with directory info
    * @throws Error if directory doesn't exist or is not accessible
    */
-  async fetchMetadata(): Promise<SourceMetadata> {
+  public async fetchMetadata(): Promise<SourceMetadata> {
     try {
       const localPath = this.getLocalPath();
       const exists = await this.directoryExists(localPath);
@@ -285,7 +285,7 @@ export class LocalAdapter extends RepositoryAdapter {
    * @returns Promise resolving to array of Bundle objects found in local directory
    * @throws Error if directory is not accessible or manifest parsing fails
    */
-  async fetchBundles(): Promise<Bundle[]> {
+  public async fetchBundles(): Promise<Bundle[]> {
     try {
       const bundleDirs = await this.getBundleDirectories();
       const bundles: Bundle[] = [];
@@ -336,7 +336,7 @@ export class LocalAdapter extends RepositoryAdapter {
    * Checks if the directory exists and contains at least one valid bundle.
    * @returns Promise resolving to ValidationResult with status and any warnings
    */
-  async validate(): Promise<ValidationResult> {
+  public async validate(): Promise<ValidationResult> {
     try {
       const localPath = this.getLocalPath();
       const exists = await this.directoryExists(localPath);
@@ -378,10 +378,10 @@ export class LocalAdapter extends RepositoryAdapter {
    * Get manifest URL for a bundle
    * Returns a file:// URL pointing to the local deployment manifest.
    * @param bundleId - Bundle directory name
-   * @param version - Optional version (not used for local bundles)
+   * @param _version - Optional version (not used for local bundles)
    * @returns file:// URL string pointing to deployment-manifest.yml
    */
-  getManifestUrl(bundleId: string, version?: string): string {
+  public getManifestUrl(bundleId: string, _version?: string): string {
     const localPath = this.getLocalPath();
     return `file://${path.join(localPath, bundleId, 'deployment-manifest.yml')}`;
   }
@@ -390,10 +390,10 @@ export class LocalAdapter extends RepositoryAdapter {
    * Get download URL for a bundle
    * Returns a file:// URL pointing to the local bundle directory.
    * @param bundleId - Bundle directory name
-   * @param version - Optional version (not used for local bundles)
+   * @param _version - Optional version (not used for local bundles)
    * @returns file:// URL string pointing to bundle directory
    */
-  getDownloadUrl(bundleId: string, version?: string): string {
+  public getDownloadUrl(bundleId: string, _version?: string): string {
     const localPath = this.getLocalPath();
     return `file://${path.join(localPath, bundleId)}`;
   }
@@ -405,7 +405,7 @@ export class LocalAdapter extends RepositoryAdapter {
    * @returns Promise resolving to Buffer containing ZIP archive
    * @throws Error if directory doesn't exist, is not accessible, or ZIP creation fails
    */
-  async downloadBundle(bundle: Bundle): Promise<Buffer> {
+  public async downloadBundle(bundle: Bundle): Promise<Buffer> {
     console.log(`[LocalAdapter] Creating ZIP archive for bundle: ${bundle.id}`);
 
     // Extract local path from file:// URL
@@ -436,16 +436,14 @@ export class LocalAdapter extends RepositoryAdapter {
 
     // Create ZIP archive from directory
     return new Promise<Buffer>((resolve, reject) => {
-      (async () => {
+      void (async () => {
         try {
           const archive = archiver('zip', { zlib: { level: 9 } });
           const chunks: Buffer[] = [];
-          let totalSize = 0;
 
           // Collect data chunks
           archive.on('data', (chunk: Buffer) => {
             chunks.push(chunk);
-            totalSize += chunk.length;
           });
 
           // Resolve when archive is finalized
@@ -475,6 +473,7 @@ export class LocalAdapter extends RepositoryAdapter {
           await archive.finalize();
         } catch (error) {
           console.error(`[LocalAdapter] ✗ Failed to create bundle archive: ${error}`);
+          // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- rejection value is handled by caller
           reject(error);
         }
       })();

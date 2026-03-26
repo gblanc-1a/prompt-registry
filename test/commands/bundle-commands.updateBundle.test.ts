@@ -33,7 +33,7 @@ suite('BundleCommands - updateBundle() Integration', () => {
           const value = globalStateData.get(key);
           return value === undefined ? defaultValue : value;
         },
-        update: async (key: string, value: any) => {
+        update: (key: string, value: any) => {
           globalStateData.set(key, value);
         },
         keys: () => Array.from(globalStateData.keys()),
@@ -81,7 +81,6 @@ suite('BundleCommands - updateBundle() Integration', () => {
     test('should update bundle when installed with versioned ID but consolidated list only has identity', async () => {
       // SETUP: Simulate the real scenario
       const installedBundleId = 'amadeus-airlines-solutions-workflow-instructions-1.0.18';
-      const bundleIdentity = 'amadeus-airlines-solutions-workflow-instructions';
 
       // Stub getBundleDetails to fail with versioned ID (simulating consolidation)
       const getBundleDetailsStub = sandbox.stub(registryManager, 'getBundleDetails');

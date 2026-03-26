@@ -26,11 +26,34 @@ export class BundleBrowsingCommands {
     // Logger removed as it was unused - ErrorHandler provides logging
   }
 
+  // ===== Private Helper Methods =====
+
+  /**
+   * Format bundle info for display
+   * @param bundle
+   * @param isInstalled
+   */
+  private formatBundleInfo(bundle: Bundle, isInstalled: boolean): string {
+    const parts: string[] = [`Name: ${bundle.name}`, `Version: ${bundle.version}`, `Author: ${bundle.author}`, `Description: ${bundle.description}`];
+
+    if (bundle.tags && bundle.tags.length > 0) {
+      parts.push(`Tags: ${bundle.tags.join(', ')}`);
+    }
+
+    if (isInstalled) {
+      parts.push(`Status: ✓ Installed`);
+    } else {
+      parts.push(`Status: Not installed`);
+    }
+
+    return parts.join('\n');
+  }
+
   /**
    * View bundle details
    * @param bundleId
    */
-  async viewBundle(bundleId?: string): Promise<void> {
+  public async viewBundle(bundleId?: string): Promise<void> {
     try {
       // If no bundleId, let user search
       if (!bundleId) {
@@ -161,7 +184,7 @@ export class BundleBrowsingCommands {
   /**
    * Browse bundles by category
    */
-  async browseByCategory(): Promise<void> {
+  public async browseByCategory(): Promise<void> {
     try {
       const category = await vscode.window.showQuickPick(
         [
@@ -234,7 +257,7 @@ export class BundleBrowsingCommands {
   /**
    * Show popular bundles
    */
-  async showPopular(): Promise<void> {
+  public async showPopular(): Promise<void> {
     try {
       await vscode.window.withProgress(
         {
@@ -283,7 +306,7 @@ export class BundleBrowsingCommands {
   /**
    * List installed bundles
    */
-  async listInstalled(): Promise<void> {
+  public async listInstalled(): Promise<void> {
     try {
       const installed = await this.registryManager.listInstalledBundles();
 
@@ -335,28 +358,5 @@ export class BundleBrowsingCommands {
         userMessagePrefix: 'Failed to load bundles'
       });
     }
-  }
-
-  // ===== Private Helper Methods =====
-
-  /**
-   * Format bundle info for display
-   * @param bundle
-   * @param isInstalled
-   */
-  private formatBundleInfo(bundle: Bundle, isInstalled: boolean): string {
-    const parts: string[] = [`Name: ${bundle.name}`, `Version: ${bundle.version}`, `Author: ${bundle.author}`, `Description: ${bundle.description}`];
-
-    if (bundle.tags && bundle.tags.length > 0) {
-      parts.push(`Tags: ${bundle.tags.join(', ')}`);
-    }
-
-    if (isInstalled) {
-      parts.push(`Status: ✓ Installed`);
-    } else {
-      parts.push(`Status: Not installed`);
-    }
-
-    return parts.join('\n');
   }
 }

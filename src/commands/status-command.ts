@@ -23,6 +23,60 @@ export class StatusCommand {
     this.installationManager = InstallationManager.getInstance();
   }
 
+  private async showUpdateDetails(updateChecks: any[]): Promise<void> {
+    const details = updateChecks.map((check) => {
+      return check.hasUpdate ? `${check.scope}: ${check.currentVersion} → ${check.latestVersion}` : `${check.scope}: ${check.currentVersion} (up to date)`;
+    }).join('\n');
+
+    await vscode.window.showInformationMessage(
+      `Prompt Registry Update Details:\n\n${details}`,
+      'Update Now'
+    ).then((action) => {
+      if (action === 'Update Now') {
+        vscode.commands.executeCommand('promptregistry.update');
+      }
+    });
+  }
+
+  private async showInstallationFolder(scope: any): Promise<void> {
+    try {
+      const installationInfo = await this.installationManager.getInstallationInfo(scope);
+      if (installationInfo) {
+        // Implementation would show the installation folder
+        vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(installationInfo.installedPath || ''));
+      }
+    } catch (error) {
+      this.logger.error('Failed to show installation folder', error as Error);
+    }
+  }
+
+  private async selectUninstallScope(installedScopes: any[]): Promise<string | undefined> {
+    if (installedScopes.length === 1) {
+      return installedScopes[0];
+    }
+
+    const quickPickItems: vscode.QuickPickItem[] = [
+      {
+        label: '🗑️ Uninstall All',
+        description: `Remove Prompt Registry from all ${installedScopes.length} scopes`,
+        detail: 'all'
+      },
+      ...installedScopes.map((scope) => ({
+        label: `📁 Uninstall from ${scope}`,
+        description: `Remove Prompt Registry from ${scope} scope only`,
+        detail: scope
+      }))
+    ];
+
+    const selectedItem = await vscode.window.showQuickPick(quickPickItems, {
+      title: 'Select Uninstall Scope',
+      placeHolder: 'Choose which installation to remove',
+      ignoreFocusOut: true
+    });
+
+    return selectedItem?.detail;
+  }
+
   /**
    * Execute the check updates command
    */
@@ -66,7 +120,7 @@ export class StatusCommand {
           if (action === 'Update Now') {
             vscode.commands.executeCommand('promptregistry.update');
           } else if (action === 'Show Details') {
-            this.showUpdateDetails(updateChecks);
+            void this.showUpdateDetails(updateChecks);
           }
         })
         : vscode.window.showInformationMessage(message));
@@ -124,7 +178,7 @@ export class StatusCommand {
         if (action === 'Check for Updates') {
           vscode.commands.executeCommand('promptregistry.checkUpdates');
         } else if (action === 'Show Installation Folder') {
-          this.showInstallationFolder(installedScopes[0]);
+          void this.showInstallationFolder(installedScopes[0]);
         }
       });
     } catch (error) {
@@ -293,59 +347,5 @@ Configure Prompt Registry behavior in VS Code settings under "Prompt Registry" s
             </body>
             </html>
         `;
-  }
-
-  private async showUpdateDetails(updateChecks: any[]): Promise<void> {
-    const details = updateChecks.map((check) => {
-      return check.hasUpdate ? `${check.scope}: ${check.currentVersion} → ${check.latestVersion}` : `${check.scope}: ${check.currentVersion} (up to date)`;
-    }).join('\n');
-
-    await vscode.window.showInformationMessage(
-      `Prompt Registry Update Details:\n\n${details}`,
-      'Update Now'
-    ).then((action) => {
-      if (action === 'Update Now') {
-        vscode.commands.executeCommand('promptregistry.update');
-      }
-    });
-  }
-
-  private async showInstallationFolder(scope: any): Promise<void> {
-    try {
-      const installationInfo = await this.installationManager.getInstallationInfo(scope);
-      if (installationInfo) {
-        // Implementation would show the installation folder
-        vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(installationInfo.installedPath || ''));
-      }
-    } catch (error) {
-      this.logger.error('Failed to show installation folder', error as Error);
-    }
-  }
-
-  private async selectUninstallScope(installedScopes: any[]): Promise<string | undefined> {
-    if (installedScopes.length === 1) {
-      return installedScopes[0];
-    }
-
-    const quickPickItems: vscode.QuickPickItem[] = [
-      {
-        label: '🗑️ Uninstall All',
-        description: `Remove Prompt Registry from all ${installedScopes.length} scopes`,
-        detail: 'all'
-      },
-      ...installedScopes.map((scope) => ({
-        label: `📁 Uninstall from ${scope}`,
-        description: `Remove Prompt Registry from ${scope} scope only`,
-        detail: scope
-      }))
-    ];
-
-    const selectedItem = await vscode.window.showQuickPick(quickPickItems, {
-      title: 'Select Uninstall Scope',
-      placeHolder: 'Choose which installation to remove',
-      ignoreFocusOut: true
-    });
-
-    return selectedItem?.detail;
   }
 }

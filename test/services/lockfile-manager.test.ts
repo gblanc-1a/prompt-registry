@@ -1295,7 +1295,7 @@ suite('LockfileManager', () => {
   suite('getLockfilePath()', () => {
     test('should return correct lockfile path', () => {
       const manager = LockfileManager.getInstance(tempDir);
-      const lockfilePath = manager.getLockfilePath();
+      lockfilePath = manager.getLockfilePath();
       assert.ok(lockfilePath.endsWith('prompt-registry.lock.json'));
     });
   });

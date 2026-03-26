@@ -68,17 +68,7 @@ export const temporaryWarnRulesTs = {
   '@typescript-eslint/no-unsafe-call': 'warn',
   '@typescript-eslint/no-unsafe-return': 'warn',
   '@typescript-eslint/no-unsafe-assignment': 'warn',
-  '@typescript-eslint/no-require-imports': 'warn',
-  '@typescript-eslint/no-unused-vars': 'warn',
-  '@typescript-eslint/restrict-template-expressions': 'warn',
-  '@typescript-eslint/explicit-member-accessibility': 'warn',
-  '@typescript-eslint/member-ordering': 'warn',
-  '@typescript-eslint/naming-convention': 'warn',
-  '@typescript-eslint/require-await': 'warn',
-  '@typescript-eslint/no-floating-promises': 'warn',
-  '@typescript-eslint/no-redundant-type-constituents': 'warn',
-  '@typescript-eslint/no-shadow': 'warn',
-  '@typescript-eslint/prefer-promise-reject-errors': 'warn'
+  '@typescript-eslint/require-await': 'warn'
 };
 
 // TODO to be discussed and fixed in future PRs

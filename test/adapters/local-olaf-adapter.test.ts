@@ -18,7 +18,7 @@ suite('LocalOlafAdapter', () => {
   let adapter: LocalOlafAdapter;
   let source: RegistrySource;
 
-  setup(async () => {
+  setup(() => {
     // Create temporary directory for testing
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'local-olaf-test-'));
 

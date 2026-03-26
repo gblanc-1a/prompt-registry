@@ -27,37 +27,6 @@ export class CopilotIntegration implements vscode.Disposable {
   }
 
   /**
-   * Activate Copilot integration
-   */
-  async activate(): Promise<void> {
-    try {
-      // Register chat participant
-      this.participant = vscode.chat.createChatParticipant(
-        'prompts',
-        this.handleRequest.bind(this)
-      );
-
-      // Set participant icon
-      this.participant.iconPath = new vscode.ThemeIcon('book');
-
-      // Register as disposable
-      this.context.subscriptions.push(this.participant);
-
-      this.logger.info('Copilot integration activated: @prompts participant registered');
-    } catch (error) {
-      this.logger.error('Failed to activate Copilot integration', error as Error);
-
-      // Check if Chat API is available
-      if (!vscode.chat) {
-        this.logger.warn('Chat API not available - GitHub Copilot may not be installed or enabled');
-        vscode.window.showWarningMessage(
-          'GitHub Copilot Chat is required to use prompt commands. Please install GitHub Copilot extension.'
-        );
-      }
-    }
-  }
-
-  /**
    * Handle chat requests from @prompts participant
    * @param request
    * @param context
@@ -234,9 +203,40 @@ export class CopilotIntegration implements vscode.Disposable {
   }
 
   /**
+   * Activate Copilot integration
+   */
+  public async activate(): Promise<void> {
+    try {
+      // Register chat participant
+      this.participant = vscode.chat.createChatParticipant(
+        'prompts',
+        this.handleRequest.bind(this)
+      );
+
+      // Set participant icon
+      this.participant.iconPath = new vscode.ThemeIcon('book');
+
+      // Register as disposable
+      this.context.subscriptions.push(this.participant);
+
+      this.logger.info('Copilot integration activated: @prompts participant registered');
+    } catch (error) {
+      this.logger.error('Failed to activate Copilot integration', error as Error);
+
+      // Check if Chat API is available
+      if (!vscode.chat) {
+        this.logger.warn('Chat API not available - GitHub Copilot may not be installed or enabled');
+        vscode.window.showWarningMessage(
+          'GitHub Copilot Chat is required to use prompt commands. Please install GitHub Copilot extension.'
+        );
+      }
+    }
+  }
+
+  /**
    * Dispose resources
    */
-  dispose(): void {
+  public dispose(): void {
     this.participant?.dispose();
     this.logger.debug('Copilot integration disposed');
   }

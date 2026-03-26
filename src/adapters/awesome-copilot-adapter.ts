@@ -58,6 +58,7 @@ interface CollectionManifest {
   items: CollectionItem[];
   display?: {
     ordering?: string;
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API response shape
     show_badge?: boolean;
   };
   mcp?: {
@@ -78,6 +79,7 @@ interface GitHubContent {
   name: string;
   path: string;
   type: 'file' | 'dir';
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API response shape
   download_url: string;
 }
 
@@ -117,7 +119,7 @@ export interface AwesomeCopilotConfig {
  * ```
  */
 export class AwesomeCopilotAdapter extends RepositoryAdapter {
-  readonly type = 'awesome-copilot';
+  public readonly type = 'awesome-copilot';
   private readonly config: Required<AwesomeCopilotConfig>;
   private readonly collectionsCache: Map<string, { bundles: Bundle[]; timestamp: number }> = new Map();
   private readonly CACHE_TTL = 5 * 60 * 1000; // 5 minutes
@@ -137,183 +139,6 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
     };
 
     this.logger.info(`AwesomeCopilotAdapter initialized for: ${source.url}`);
-  }
-
-  /**
-   * Fetch list of available bundles from the source
-   * Scans the collections directory for .collection.yml files and creates Bundle objects.
-   * Results are cached for 5 minutes to reduce API calls.
-   * @returns Promise resolving to array of Bundle objects from collection files
-   * @throws Error if GitHub API fails or collection parsing fails
-   */
-  async fetchBundles(): Promise<Bundle[]> {
-    this.logger.debug('Listing bundles from awesome-copilot repository');
-
-    // Check cache
-    const cacheKey = `${this.source.url}-${this.config.branch}`;
-    const cached = this.collectionsCache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
-      this.logger.debug('Using cached collections');
-      return cached.bundles;
-    }
-
-    try {
-      // Step 1: List .collection.yml files
-      const collectionFiles = await this.listCollectionFiles();
-      this.logger.debug(`Found ${collectionFiles.length} collection files`);
-
-      // Step 2: Parse each collection (with concurrency limit)
-      const bundles: Bundle[] = [];
-      const CONCURRENCY_LIMIT = 5;
-
-      for (let i = 0; i < collectionFiles.length; i += CONCURRENCY_LIMIT) {
-        const chunk = collectionFiles.slice(i, i + CONCURRENCY_LIMIT);
-        this.logger.debug(`Processing chunk ${i / CONCURRENCY_LIMIT + 1}/${Math.ceil(collectionFiles.length / CONCURRENCY_LIMIT)}`);
-
-        const chunkResults = await Promise.all(chunk.map(async (file) => {
-          try {
-            return await this.parseCollection(file);
-          } catch (error) {
-            this.logger.warn(`Failed to parse collection ${file}:`, error as Error);
-            return null;
-          }
-        }));
-
-        for (const bundle of chunkResults) {
-          if (bundle) {
-            bundles.push(bundle);
-          }
-        }
-      }
-
-      // Cache results
-      this.collectionsCache.set(cacheKey, { bundles, timestamp: Date.now() });
-
-      return bundles;
-    } catch (error) {
-      this.logger.error('Failed to list bundles', error as Error);
-      throw new Error(`Failed to list awesome-copilot collections: ${(error as Error).message}`);
-    }
-  }
-
-  /**
-   * Download a bundle as a dynamically-created zip archive
-   * Fetches all items referenced in the collection and creates a ZIP file on the fly.
-   * The archive includes prompts, instructions, and a deployment manifest.
-   * @param bundle - Bundle object containing collection metadata
-   * @returns Promise resolving to Buffer containing the ZIP archive
-   * @throws Error if collection fetch fails or archive creation fails
-   */
-  async downloadBundle(bundle: Bundle): Promise<Buffer> {
-    this.logger.debug(`Downloading bundle: ${bundle.id}`);
-
-    try {
-      // Find collection file from bundle metadata
-      const collectionFile = (bundle as any).collectionFile || `${bundle.id}.collection.yml`;
-      this.logger.debug(`Collection file: ${collectionFile}`);
-
-      // Parse collection
-      const collectionUrl = this.buildRawUrl(`${this.config.collectionsPath}/${collectionFile}`);
-      this.logger.debug(`Fetching collection from: ${collectionUrl}`);
-      const yamlContent = await this.fetchUrl(collectionUrl);
-      const collection = yaml.load(yamlContent) as CollectionManifest;
-      this.logger.debug(`Collection loaded: ${collection.name}, items: ${collection.items.length}`);
-
-      // Create zip archive
-      const buffer = await this.createBundleArchive(collection, collectionFile);
-      this.logger.debug(`Archive created: ${buffer.length} bytes`);
-      return buffer;
-    } catch (error) {
-      this.logger.error('Failed to download bundle', error as Error);
-      throw new Error(`Failed to download bundle: ${(error as Error).message}`);
-    }
-  }
-
-  /**
-   * Fetch repository metadata
-   * Retrieves information about the awesome-copilot repository including collection count.
-   * @returns Promise resolving to SourceMetadata with repository info
-   * @throws Error if repository access fails or collection listing fails
-   */
-  async fetchMetadata(): Promise<SourceMetadata> {
-    try {
-      const { owner, repo } = this.parseGitHubUrl();
-      const collectionFiles = await this.listCollectionFiles();
-
-      return {
-        name: `${owner}/${repo}`,
-        description: `Awesome Copilot collections from ${this.source.url}`,
-        bundleCount: collectionFiles.length,
-        lastUpdated: new Date().toISOString(),
-        version: '1.0.0'
-      };
-    } catch (error) {
-      throw new Error(`Failed to fetch metadata: ${(error as Error).message}`);
-    }
-  }
-
-  /**
-   * Get manifest URL for a bundle
-   * Returns the raw GitHub URL to the collection YAML file.
-   * @param bundleId - Bundle identifier matching the collection filename
-   * @param version - Optional version (not used, always uses configured branch)
-   * @returns URL string pointing to collection .yml file on GitHub raw content
-   */
-  getManifestUrl(bundleId: string, version?: string): string {
-    const collectionFile = `${bundleId}.collection.yml`;
-    return this.buildRawUrl(`${this.config.collectionsPath}/${collectionFile}`);
-  }
-
-  /**
-   * Get download URL for a bundle
-   * Returns the collection YAML URL (bundles are created dynamically, not pre-packaged).
-   * @param bundleId - Bundle identifier matching the collection filename
-   * @param version - Optional version (not used, always uses configured branch)
-   * @returns URL string pointing to collection .yml file on GitHub raw content
-   */
-  getDownloadUrl(bundleId: string, version?: string): string {
-    // For awesome-copilot, download URL is same as manifest URL
-    // (we download and package on the fly)
-    return this.getManifestUrl(bundleId, version);
-  }
-
-  /**
-   * Validate repository structure
-   * Checks if the collections directory exists and contains at least one collection file.
-   * @returns Promise resolving to ValidationResult with status and any errors/warnings
-   */
-  async validate(): Promise<ValidationResult> {
-    try {
-      // Check if collections directory exists
-      const apiUrl = this.buildApiUrl(`${this.config.collectionsPath}`);
-      const content = await this.fetchUrl(apiUrl);
-
-      const files = JSON.parse(content) as GitHubContent[];
-      const collectionFiles = files.filter((f) => f.type === 'file' && f.name.endsWith('.collection.yml'));
-
-      if (collectionFiles.length === 0) {
-        return {
-          valid: false,
-          errors: ['No .collection.yml files found in collections directory'],
-          warnings: [],
-          bundlesFound: 0
-        };
-      }
-
-      return {
-        valid: true,
-        errors: [],
-        warnings: [],
-        bundlesFound: collectionFiles.length
-      };
-    } catch (error) {
-      return {
-        valid: false,
-        errors: [`Failed to validate repository: ${(error as Error).message}`],
-        warnings: [],
-        bundlesFound: 0
-      };
-    }
   }
 
   /**
@@ -382,23 +207,21 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
   /**
    * Create a zip archive containing collection files
    * @param collection
-   * @param collectionFile
+   * @param _collectionFile
    */
-  private async createBundleArchive(collection: CollectionManifest, collectionFile: string): Promise<Buffer> {
+  private async createBundleArchive(collection: CollectionManifest, _collectionFile: string): Promise<Buffer> {
     this.logger.debug(`Creating archive for collection: ${collection.name}`);
 
     return new Promise<Buffer>((resolve, reject) => {
       // Use IIFE to handle async operations within Promise executor
-      (async () => {
+      void (async () => {
         try {
           const archive = archiver('zip', { zlib: { level: 9 } });
           const chunks: Buffer[] = [];
-          let totalSize = 0;
 
           // Collect data chunks
           archive.on('data', (chunk: Buffer) => {
             chunks.push(chunk);
-            totalSize += chunk.length;
           });
 
           // Resolve when archive is finalized
@@ -455,9 +278,10 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
 
           // Finalize the archive (this triggers 'finish' event when complete)
           this.logger.debug('Finalizing archive...');
-          archive.finalize();
+          void archive.finalize();
         } catch (error) {
           this.logger.error('Failed to create archive', error as Error);
+          // eslint-disable-next-line @typescript-eslint/prefer-promise-reject-errors -- rejection value is handled by caller
           reject(error);
         }
       })();
@@ -674,34 +498,6 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
   }
 
   /**
-   * Force re-authentication
-   * Clears cached token and forces new VS Code session
-   */
-  async forceAuthentication(): Promise<void> {
-    this.logger.info('[AwesomeCopilotAdapter] Forcing re-authentication...');
-
-    // Clear current state
-    this.authToken = undefined;
-    this.authMethod = 'none';
-
-    // Force new session with VS Code
-    try {
-      const session = await vscode.authentication.getSession('github', ['repo'], {
-        forceNewSession: true
-      });
-
-      if (session) {
-        this.authToken = session.accessToken;
-        this.authMethod = 'vscode';
-        this.logger.info('[AwesomeCopilotAdapter] ✓ Re-authentication successful');
-      }
-    } catch (error) {
-      this.logger.error(`[AwesomeCopilotAdapter] Re-authentication failed: ${error}`);
-      throw error;
-    }
-  }
-
-  /**
    * Get authentication token using fallback chain:
    * 1. VSCode GitHub API (if user is logged in)
    * 2. gh CLI (if installed and authenticated)
@@ -863,5 +659,210 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
       .split(' ')
       .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(' ');
+  }
+
+  /**
+   * Fetch list of available bundles from the source
+   * Scans the collections directory for .collection.yml files and creates Bundle objects.
+   * Results are cached for 5 minutes to reduce API calls.
+   * @returns Promise resolving to array of Bundle objects from collection files
+   * @throws Error if GitHub API fails or collection parsing fails
+   */
+  public async fetchBundles(): Promise<Bundle[]> {
+    this.logger.debug('Listing bundles from awesome-copilot repository');
+
+    // Check cache
+    const cacheKey = `${this.source.url}-${this.config.branch}`;
+    const cached = this.collectionsCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < this.CACHE_TTL) {
+      this.logger.debug('Using cached collections');
+      return cached.bundles;
+    }
+
+    try {
+      // Step 1: List .collection.yml files
+      const collectionFiles = await this.listCollectionFiles();
+      this.logger.debug(`Found ${collectionFiles.length} collection files`);
+
+      // Step 2: Parse each collection (with concurrency limit)
+      const bundles: Bundle[] = [];
+      const CONCURRENCY_LIMIT = 5;
+
+      for (let i = 0; i < collectionFiles.length; i += CONCURRENCY_LIMIT) {
+        const chunk = collectionFiles.slice(i, i + CONCURRENCY_LIMIT);
+        this.logger.debug(`Processing chunk ${i / CONCURRENCY_LIMIT + 1}/${Math.ceil(collectionFiles.length / CONCURRENCY_LIMIT)}`);
+
+        const chunkResults = await Promise.all(chunk.map(async (file) => {
+          try {
+            return await this.parseCollection(file);
+          } catch (error) {
+            this.logger.warn(`Failed to parse collection ${file}:`, error as Error);
+            return null;
+          }
+        }));
+
+        for (const bundle of chunkResults) {
+          if (bundle) {
+            bundles.push(bundle);
+          }
+        }
+      }
+
+      // Cache results
+      this.collectionsCache.set(cacheKey, { bundles, timestamp: Date.now() });
+
+      return bundles;
+    } catch (error) {
+      this.logger.error('Failed to list bundles', error as Error);
+      throw new Error(`Failed to list awesome-copilot collections: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Download a bundle as a dynamically-created zip archive
+   * Fetches all items referenced in the collection and creates a ZIP file on the fly.
+   * The archive includes prompts, instructions, and a deployment manifest.
+   * @param bundle - Bundle object containing collection metadata
+   * @returns Promise resolving to Buffer containing the ZIP archive
+   * @throws Error if collection fetch fails or archive creation fails
+   */
+  public async downloadBundle(bundle: Bundle): Promise<Buffer> {
+    this.logger.debug(`Downloading bundle: ${bundle.id}`);
+
+    try {
+      // Find collection file from bundle metadata
+      const collectionFile = (bundle as any).collectionFile || `${bundle.id}.collection.yml`;
+      this.logger.debug(`Collection file: ${collectionFile}`);
+
+      // Parse collection
+      const collectionUrl = this.buildRawUrl(`${this.config.collectionsPath}/${collectionFile}`);
+      this.logger.debug(`Fetching collection from: ${collectionUrl}`);
+      const yamlContent = await this.fetchUrl(collectionUrl);
+      const collection = yaml.load(yamlContent) as CollectionManifest;
+      this.logger.debug(`Collection loaded: ${collection.name}, items: ${collection.items.length}`);
+
+      // Create zip archive
+      const buffer = await this.createBundleArchive(collection, collectionFile);
+      this.logger.debug(`Archive created: ${buffer.length} bytes`);
+      return buffer;
+    } catch (error) {
+      this.logger.error('Failed to download bundle', error as Error);
+      throw new Error(`Failed to download bundle: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Fetch repository metadata
+   * Retrieves information about the awesome-copilot repository including collection count.
+   * @returns Promise resolving to SourceMetadata with repository info
+   * @throws Error if repository access fails or collection listing fails
+   */
+  public async fetchMetadata(): Promise<SourceMetadata> {
+    try {
+      const { owner, repo } = this.parseGitHubUrl();
+      const collectionFiles = await this.listCollectionFiles();
+
+      return {
+        name: `${owner}/${repo}`,
+        description: `Awesome Copilot collections from ${this.source.url}`,
+        bundleCount: collectionFiles.length,
+        lastUpdated: new Date().toISOString(),
+        version: '1.0.0'
+      };
+    } catch (error) {
+      throw new Error(`Failed to fetch metadata: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Get manifest URL for a bundle
+   * Returns the raw GitHub URL to the collection YAML file.
+   * @param bundleId - Bundle identifier matching the collection filename
+   * @param _version - Optional version (not used, always uses configured branch)
+   * @returns URL string pointing to collection .yml file on GitHub raw content
+   */
+  public getManifestUrl(bundleId: string, _version?: string): string {
+    const collectionFile = `${bundleId}.collection.yml`;
+    return this.buildRawUrl(`${this.config.collectionsPath}/${collectionFile}`);
+  }
+
+  /**
+   * Get download URL for a bundle
+   * Returns the collection YAML URL (bundles are created dynamically, not pre-packaged).
+   * @param bundleId - Bundle identifier matching the collection filename
+   * @param version - Optional version (not used, always uses configured branch)
+   * @returns URL string pointing to collection .yml file on GitHub raw content
+   */
+  public getDownloadUrl(bundleId: string, version?: string): string {
+    // For awesome-copilot, download URL is same as manifest URL
+    // (we download and package on the fly)
+    return this.getManifestUrl(bundleId, version);
+  }
+
+  /**
+   * Validate repository structure
+   * Checks if the collections directory exists and contains at least one collection file.
+   * @returns Promise resolving to ValidationResult with status and any errors/warnings
+   */
+  public async validate(): Promise<ValidationResult> {
+    try {
+      // Check if collections directory exists
+      const apiUrl = this.buildApiUrl(`${this.config.collectionsPath}`);
+      const content = await this.fetchUrl(apiUrl);
+
+      const files = JSON.parse(content) as GitHubContent[];
+      const collectionFiles = files.filter((f) => f.type === 'file' && f.name.endsWith('.collection.yml'));
+
+      if (collectionFiles.length === 0) {
+        return {
+          valid: false,
+          errors: ['No .collection.yml files found in collections directory'],
+          warnings: [],
+          bundlesFound: 0
+        };
+      }
+
+      return {
+        valid: true,
+        errors: [],
+        warnings: [],
+        bundlesFound: collectionFiles.length
+      };
+    } catch (error) {
+      return {
+        valid: false,
+        errors: [`Failed to validate repository: ${(error as Error).message}`],
+        warnings: [],
+        bundlesFound: 0
+      };
+    }
+  }
+
+  /**
+   * Force re-authentication
+   * Clears cached token and forces new VS Code session
+   */
+  public async forceAuthentication(): Promise<void> {
+    this.logger.info('[AwesomeCopilotAdapter] Forcing re-authentication...');
+
+    // Clear current state
+    this.authToken = undefined;
+    this.authMethod = 'none';
+
+    // Force new session with VS Code
+    try {
+      const session = await vscode.authentication.getSession('github', ['repo'], {
+        forceNewSession: true
+      });
+
+      if (session) {
+        this.authToken = session.accessToken;
+        this.authMethod = 'vscode';
+        this.logger.info('[AwesomeCopilotAdapter] ✓ Re-authentication successful');
+      }
+    } catch (error) {
+      this.logger.error(`[AwesomeCopilotAdapter] Re-authentication failed: ${error}`);
+      throw error;
+    }
   }
 }

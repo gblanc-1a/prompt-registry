@@ -203,7 +203,6 @@ suite('GitHub Scaffold Property-Based Tests', () => {
 
     // Valid item kinds per design document
     const validItemKinds = ['prompt', 'instruction', 'agent', 'skill'];
-    const deprecatedKind = 'chatmode';
 
     // Files to check for item kind references
     const filesToCheck = [

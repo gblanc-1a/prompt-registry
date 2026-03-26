@@ -271,7 +271,6 @@ suite('BundleCommands - Check Bundle Updates Fix', () => {
 
       // Mock VS Code command execution and error message
       const executeCommandSpy = sandbox.stub(vscode.commands, 'executeCommand').resolves();
-      const showErrorMessageSpy = sandbox.stub(vscode.window, 'showErrorMessage').resolves();
 
       // Act
       await bundleCommands.checkSingleBundleUpdate(bundleId);

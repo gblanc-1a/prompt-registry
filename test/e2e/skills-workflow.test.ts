@@ -335,7 +335,7 @@ This is an example prompt for testing.
       assert.ok(installed.length > 0, 'Should have installed bundles');
     });
 
-    test('Collection validator accepts skill kind', async function () {
+    test('Collection validator accepts skill kind', function () {
       this.timeout(30_000);
 
       // Create a temp collection file with skill item
@@ -364,7 +364,7 @@ items:
   });
 
   suite('UserScopeService with Skills', () => {
-    test('Sync recognizes skill files by pattern', async function () {
+    test('Sync recognizes skill files by pattern', function () {
       this.timeout(30_000);
 
       // Create a mock bundle structure with skills
@@ -398,7 +398,7 @@ items:
   });
 
   suite('Skill Content Validation', () => {
-    test('SKILL.md requires name field in frontmatter', async function () {
+    test('SKILL.md requires name field in frontmatter', function () {
       this.timeout(10_000);
 
       const validSkill = createSkillMd('Valid Skill', 'A valid skill');
@@ -414,7 +414,7 @@ items:
       assert.strictEqual(frontmatter.name, 'Valid Skill', 'Name should match');
     });
 
-    test('SKILL.md requires description field in frontmatter', async function () {
+    test('SKILL.md requires description field in frontmatter', function () {
       this.timeout(10_000);
 
       const validSkill = createSkillMd('Test Skill', 'Test description');
@@ -427,7 +427,7 @@ items:
       assert.strictEqual(frontmatter.description, 'Test description', 'Description should match');
     });
 
-    test('SKILL.md can include allowed-tools field', async function () {
+    test('SKILL.md can include allowed-tools field', function () {
       this.timeout(10_000);
 
       const skillWithTools = createSkillMd('Tool Skill', 'Skill with tools');

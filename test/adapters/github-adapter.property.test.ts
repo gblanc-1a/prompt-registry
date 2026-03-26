@@ -241,7 +241,7 @@ suite('GitHubAdapter Property-Based Tests', () => {
   /**
    * Test that whitespace-only tokens are treated as no token
    */
-  test('Whitespace-only explicit token is ignored', async () => {
+  test('Whitespace-only explicit token is ignored', () => {
     const source: RegistrySource = {
       id: 'test-source',
       name: 'Test Source',
@@ -253,7 +253,6 @@ suite('GitHubAdapter Property-Based Tests', () => {
     };
 
     const adapter = new GitHubAdapter(source);
-    const token = await (adapter as any).getAuthenticationToken();
     const method = adapter.getAuthenticationMethod();
 
     // Should not use the whitespace token

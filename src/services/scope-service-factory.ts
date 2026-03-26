@@ -31,6 +31,7 @@ import {
  * codebase to work with the IScopeService interface without knowing the concrete
  * implementation details.
  */
+// eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API property name
 export const ScopeServiceFactory = {
   /**
    * Create a scope service for the given installation scope.
@@ -67,6 +68,7 @@ export const ScopeServiceFactory = {
       }
 
       default: {
+        // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- value is safely stringifiable at runtime
         throw new Error(`Unknown installation scope: ${scope}`);
       }
     }

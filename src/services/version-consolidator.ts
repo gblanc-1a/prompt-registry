@@ -71,131 +71,6 @@ export class VersionConsolidator {
   }
 
   /**
-   * Set a custom source type resolver function
-   *
-   * This allows the consolidator to accurately determine source types
-   * instead of relying on heuristics.
-   * @param resolver - Function that maps sourceId to SourceType
-   */
-  setSourceTypeResolver(resolver: (sourceId: string) => SourceType): void {
-    this.sourceTypeResolver = resolver;
-  }
-
-  /**
-   * Consolidate bundles by grouping versions of the same bundle
-   *
-   * For GitHub sources, bundles with the same owner/repo are grouped together
-   * and only the latest version is returned. For non-GitHub sources, bundles
-   * are returned unchanged.
-   * @param bundles - Array of bundles from various sources
-   * @returns Consolidated bundles with latest version metadata
-   */
-  consolidateBundles(bundles: Bundle[]): ConsolidatedBundle[] {
-    this.logger.debug(`Consolidating ${bundles.length} bundles`);
-
-    // Pre-calculate identities to avoid redundant computation
-    const bundlesWithIdentity = bundles.map((bundle) => ({
-      bundle,
-      identity: this.getBundleIdentity(bundle)
-    }));
-
-    // Group bundles by identity (owner/repo for GitHub)
-    const grouped = new Map<string, typeof bundlesWithIdentity>();
-
-    for (const item of bundlesWithIdentity) {
-      if (!grouped.has(item.identity)) {
-        grouped.set(item.identity, []);
-      }
-      grouped.get(item.identity)!.push(item);
-    }
-
-    this.logger.debug(`Grouped into ${grouped.size} unique identities`);
-
-    // For each group, select latest version
-    const consolidated: ConsolidatedBundle[] = [];
-
-    for (const [identity, items] of grouped.entries()) {
-      const bundles = items.map((item) => item.bundle);
-
-      if (bundles.length === 1) {
-        // Single version - no consolidation needed, but still cache for consistency
-        const version = this.toBundleVersion(bundles[0]);
-        this.addToCache(identity, [version]);
-
-        consolidated.push({
-          ...bundles[0],
-          availableVersions: [version],
-          isConsolidated: false
-        });
-        continue;
-      }
-
-      // Multiple versions - find latest using version comparison
-      const sortedVersions = this.sortBundlesByVersion(bundles);
-      const latest = sortedVersions[0];
-      const allVersions = sortedVersions.map((b) => this.toBundleVersion(b));
-
-      // Cache versions for this identity (with size management)
-      this.addToCache(identity, allVersions);
-
-      this.logger.debug(`Consolidated ${bundles.length} versions for "${identity}", latest: ${latest.version}`);
-
-      consolidated.push({
-        ...latest,
-        availableVersions: allVersions,
-        isConsolidated: true
-      });
-    }
-
-    return consolidated;
-  }
-
-  /**
-   * Get all versions for a bundle identity
-   *
-   * Returns all versions sorted in descending semantic version order.
-   * @param identity - Unique identifier for the bundle
-   * @returns Array of version metadata sorted by version descending
-   */
-  getAllVersions(identity: string): BundleVersion[] {
-    const entry = this.versionCache.get(identity);
-    if (entry) {
-      // Update access order for LRU tracking
-      this.updateAccessOrder(identity);
-      return entry.versions;
-    }
-    return [];
-  }
-
-  /**
-   * Get a specific version of a bundle
-   *
-   * This is useful when a user wants to install a specific version
-   * instead of the latest version. Updates the access order for LRU tracking.
-   * @param bundleIdentity - Unique identifier for the bundle
-   * @param version - Specific version to retrieve
-   * @returns Bundle version metadata, or undefined if not found
-   */
-  getBundleVersion(bundleIdentity: string, version: string): BundleVersion | undefined {
-    const entry = this.versionCache.get(bundleIdentity);
-    if (entry) {
-      // Update access order for LRU tracking
-      this.updateAccessOrder(bundleIdentity);
-      return entry.versions.find((v) => v.version === version);
-    }
-    return undefined;
-  }
-
-  /**
-   * Clear version cache
-   */
-  clearCache(): void {
-    this.versionCache.clear();
-    this.accessOrder = [];
-    this.logger.debug('Version cache cleared');
-  }
-
-  /**
    * Add entry to cache with LRU eviction strategy
    *
    * If cache exceeds maxCacheSize, removes the least recently used entry.
@@ -341,5 +216,130 @@ export class VersionConsolidator {
       manifestUrl: bundle.manifestUrl,
       releaseNotes: undefined // Could be extracted from bundle metadata
     };
+  }
+
+  /**
+   * Set a custom source type resolver function
+   *
+   * This allows the consolidator to accurately determine source types
+   * instead of relying on heuristics.
+   * @param resolver - Function that maps sourceId to SourceType
+   */
+  public setSourceTypeResolver(resolver: (sourceId: string) => SourceType): void {
+    this.sourceTypeResolver = resolver;
+  }
+
+  /**
+   * Consolidate bundles by grouping versions of the same bundle
+   *
+   * For GitHub sources, bundles with the same owner/repo are grouped together
+   * and only the latest version is returned. For non-GitHub sources, bundles
+   * are returned unchanged.
+   * @param bundles - Array of bundles from various sources
+   * @returns Consolidated bundles with latest version metadata
+   */
+  public consolidateBundles(bundles: Bundle[]): ConsolidatedBundle[] {
+    this.logger.debug(`Consolidating ${bundles.length} bundles`);
+
+    // Pre-calculate identities to avoid redundant computation
+    const bundlesWithIdentity = bundles.map((bundle) => ({
+      bundle,
+      identity: this.getBundleIdentity(bundle)
+    }));
+
+    // Group bundles by identity (owner/repo for GitHub)
+    const grouped = new Map<string, typeof bundlesWithIdentity>();
+
+    for (const item of bundlesWithIdentity) {
+      if (!grouped.has(item.identity)) {
+        grouped.set(item.identity, []);
+      }
+      grouped.get(item.identity)!.push(item);
+    }
+
+    this.logger.debug(`Grouped into ${grouped.size} unique identities`);
+
+    // For each group, select latest version
+    const consolidated: ConsolidatedBundle[] = [];
+
+    for (const [identity, items] of grouped.entries()) {
+      const itemBundles = items.map((item) => item.bundle);
+
+      if (itemBundles.length === 1) {
+        // Single version - no consolidation needed, but still cache for consistency
+        const version = this.toBundleVersion(itemBundles[0]);
+        this.addToCache(identity, [version]);
+
+        consolidated.push({
+          ...itemBundles[0],
+          availableVersions: [version],
+          isConsolidated: false
+        });
+        continue;
+      }
+
+      // Multiple versions - find latest using version comparison
+      const sortedVersions = this.sortBundlesByVersion(itemBundles);
+      const latest = sortedVersions[0];
+      const allVersions = sortedVersions.map((b) => this.toBundleVersion(b));
+
+      // Cache versions for this identity (with size management)
+      this.addToCache(identity, allVersions);
+
+      this.logger.debug(`Consolidated ${itemBundles.length} versions for "${identity}", latest: ${latest.version}`);
+
+      consolidated.push({
+        ...latest,
+        availableVersions: allVersions,
+        isConsolidated: true
+      });
+    }
+
+    return consolidated;
+  }
+
+  /**
+   * Get all versions for a bundle identity
+   *
+   * Returns all versions sorted in descending semantic version order.
+   * @param identity - Unique identifier for the bundle
+   * @returns Array of version metadata sorted by version descending
+   */
+  public getAllVersions(identity: string): BundleVersion[] {
+    const entry = this.versionCache.get(identity);
+    if (entry) {
+      // Update access order for LRU tracking
+      this.updateAccessOrder(identity);
+      return entry.versions;
+    }
+    return [];
+  }
+
+  /**
+   * Get a specific version of a bundle
+   *
+   * This is useful when a user wants to install a specific version
+   * instead of the latest version. Updates the access order for LRU tracking.
+   * @param bundleIdentity - Unique identifier for the bundle
+   * @param version - Specific version to retrieve
+   * @returns Bundle version metadata, or undefined if not found
+   */
+  public getBundleVersion(bundleIdentity: string, version: string): BundleVersion | undefined {
+    const entry = this.versionCache.get(bundleIdentity);
+    if (entry) {
+      // Update access order for LRU tracking
+      this.updateAccessOrder(bundleIdentity);
+      return entry.versions.find((v) => v.version === version);
+    }
+    return undefined;
+  }
+
+  /**
+   * Clear version cache
+   */
+  public clearCache(): void {
+    this.versionCache.clear();
+    this.accessOrder = [];
+    this.logger.debug('Version cache cleared');
   }
 }

@@ -37,7 +37,7 @@ import {
  * Discovers skills from skills/ directory with SKILL.md files
  */
 export class SkillsAdapter extends RepositoryAdapter {
-  readonly type = 'skills';
+  public readonly type = 'skills';
   private readonly logger: Logger;
   private readonly githubAdapter: GitHubAdapter;
 
@@ -81,36 +81,6 @@ export class SkillsAdapter extends RepositoryAdapter {
       owner: match[1],
       repo: match[2]
     };
-  }
-
-  /**
-   * Fetch all skills from the repository as bundles
-   * Each skill becomes a separate bundle
-   */
-  async fetchBundles(): Promise<Bundle[]> {
-    this.logger.info(`[SkillsAdapter] Fetching skills from repository: ${this.source.url}`);
-
-    try {
-      const skills = await this.scanSkillsDirectory();
-      this.logger.info(`[SkillsAdapter] Found ${skills.length} skills in repository`);
-
-      const bundles: Bundle[] = [];
-      for (const skill of skills) {
-        try {
-          const bundle = this.createBundleFromSkill(skill);
-          bundles.push(bundle);
-          this.logger.debug(`[SkillsAdapter] Created bundle: ${bundle.id}`);
-        } catch (error) {
-          this.logger.warn(`[SkillsAdapter] Failed to create bundle from skill ${skill.id}: ${error}`);
-        }
-      }
-
-      this.logger.info(`[SkillsAdapter] Successfully created ${bundles.length} bundles`);
-      return bundles;
-    } catch (error) {
-      this.logger.error(`[SkillsAdapter] Failed to fetch skills: ${error}`);
-      throw new Error(`Failed to fetch skills: ${error}`);
-    }
   }
 
   /**
@@ -378,148 +348,6 @@ export class SkillsAdapter extends RepositoryAdapter {
   }
 
   /**
-   * Validate skills repository structure
-   */
-  async validate(): Promise<ValidationResult> {
-    this.logger.info(`[SkillsAdapter] Validating skills repository: ${this.source.url}`);
-
-    const errors: string[] = [];
-    const warnings: string[] = [];
-
-    try {
-      const { owner, repo } = this.parseGitHubUrl();
-
-      const baseValidation = await this.githubAdapter.validate();
-      if (!baseValidation.valid) {
-        return baseValidation;
-      }
-
-      const apiBase = 'https://api.github.com';
-
-      let hasSkillsDir = false;
-      try {
-        const skillsUrl = `${apiBase}/repos/${owner}/${repo}/contents/skills`;
-        await this.makeGitHubRequest(skillsUrl);
-        hasSkillsDir = true;
-        this.logger.debug(`[SkillsAdapter] Found skills/ directory`);
-      } catch (error) {
-        if (error instanceof Error && error.message.includes('404')) {
-          errors.push(`Missing required 'skills' directory at repository root`);
-        } else {
-          errors.push(`Failed to access skills directory: ${error}`);
-        }
-      }
-
-      if (!hasSkillsDir) {
-        return {
-          valid: false,
-          errors,
-          warnings,
-          bundlesFound: 0
-        };
-      }
-
-      let skillCount = 0;
-      try {
-        const skills = await this.scanSkillsDirectory();
-        skillCount = skills.length;
-
-        if (skillCount === 0) {
-          warnings.push('No valid skills found in skills/ directory (skills must have SKILL.md file)');
-        } else {
-          this.logger.info(`[SkillsAdapter] Found ${skillCount} valid skill(s)`);
-        }
-      } catch (scanError) {
-        warnings.push(`Failed to scan skills: ${scanError}`);
-      }
-
-      return {
-        valid: true,
-        errors: [],
-        warnings,
-        bundlesFound: skillCount
-      };
-    } catch (error) {
-      return {
-        valid: false,
-        errors: [`Skills repository validation failed: ${error}`],
-        warnings: [],
-        bundlesFound: 0
-      };
-    }
-  }
-
-  /**
-   * Fetch repository metadata
-   */
-  async fetchMetadata(): Promise<SourceMetadata> {
-    try {
-      const skills = await this.scanSkillsDirectory();
-      const { owner, repo } = this.parseGitHubUrl();
-
-      return {
-        name: `${owner}/${repo}`,
-        description: 'Skills Repository',
-        bundleCount: skills.length,
-        lastUpdated: new Date().toISOString(),
-        version: '1.0.0'
-      };
-    } catch (error) {
-      throw new Error(`Failed to fetch skills repository metadata: ${error}`);
-    }
-  }
-
-  /**
-   * Get manifest URL for a skill
-   * @param bundleId
-   * @param version
-   */
-  getManifestUrl(bundleId: string, version?: string): string {
-    const { owner, repo } = this.parseGitHubUrl();
-    const skillId = bundleId.replace(`skills-${owner}-${repo}-`, '');
-    return `https://raw.githubusercontent.com/${owner}/${repo}/main/skills/${skillId}/SKILL.md`;
-  }
-
-  /**
-   * Get download URL for a skill
-   * @param bundleId
-   * @param version
-   */
-  getDownloadUrl(bundleId: string, version?: string): string {
-    const { owner, repo } = this.parseGitHubUrl();
-    return `https://github.com/${owner}/${repo}/archive/refs/heads/main.zip`;
-  }
-
-  /**
-   * Download a skill bundle
-   * Creates a ZIP with the skill folder and deployment manifest
-   * @param bundle
-   */
-  async downloadBundle(bundle: Bundle): Promise<Buffer> {
-    const { owner, repo } = this.parseGitHubUrl();
-    const skillId = bundle.id.replace(`skills-${owner}-${repo}-`, '');
-
-    this.logger.info(`[SkillsAdapter] Downloading skill: ${skillId}`);
-
-    try {
-      // Fetch only the specific skill instead of scanning all skills
-      const skill = await this.fetchSingleSkill(skillId);
-
-      if (!skill) {
-        throw new Error(`Skill not found: ${skillId}`);
-      }
-
-      const zipBuffer = await this.packageSkillAsZip(skill);
-
-      this.logger.info(`[SkillsAdapter] Successfully packaged skill ${skillId} (${zipBuffer.length} bytes)`);
-      return zipBuffer;
-    } catch (error) {
-      this.logger.error(`[SkillsAdapter] Failed to download skill ${skillId}: ${error}`);
-      throw new Error(`Failed to download skill ${skillId}: ${error}`);
-    }
-  }
-
-  /**
    * Fetch a single skill by ID (optimized - doesn't scan all skills)
    * @param skillId
    */
@@ -581,8 +409,9 @@ export class SkillsAdapter extends RepositoryAdapter {
    */
   private async packageSkillAsZip(skill: SkillItem): Promise<Buffer> {
     const { owner, repo } = this.parseGitHubUrl();
-    const AdmZip = require('adm-zip');
-    const yamlLib = require('js-yaml');
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- matches library export name
+    const { default: AdmZip } = await import('adm-zip');
+    const { default: yamlLib } = await import('js-yaml');
 
     this.logger.debug(`[SkillsAdapter] Packaging skill as ZIP: ${skill.id}`);
 
@@ -716,7 +545,7 @@ export class SkillsAdapter extends RepositoryAdapter {
    * @param url
    */
   private async downloadFileContent(url: string): Promise<Buffer> {
-    const https = require('node:https');
+    const https = await import('node:https');
 
     return new Promise((resolve, reject) => {
       const headers: Record<string, string> = {
@@ -753,10 +582,10 @@ export class SkillsAdapter extends RepositoryAdapter {
    * @param url
    */
   private async makeGitHubRequest(url: string): Promise<any> {
-    const https = require('node:https');
-    const vscode = require('vscode');
-    const { exec } = require('node:child_process');
-    const { promisify } = require('node:util');
+    const https = await import('node:https');
+    const vscode = await import('vscode');
+    const { exec } = await import('node:child_process');
+    const { promisify } = await import('node:util');
     const execAsync = promisify(exec);
 
     let authToken: string | undefined;
@@ -827,5 +656,177 @@ export class SkillsAdapter extends RepositoryAdapter {
         reject(new Error(`Request failed: ${error.message}`));
       });
     });
+  }
+
+  /**
+   * Fetch all skills from the repository as bundles
+   * Each skill becomes a separate bundle
+   */
+  public async fetchBundles(): Promise<Bundle[]> {
+    this.logger.info(`[SkillsAdapter] Fetching skills from repository: ${this.source.url}`);
+
+    try {
+      const skills = await this.scanSkillsDirectory();
+      this.logger.info(`[SkillsAdapter] Found ${skills.length} skills in repository`);
+
+      const bundles: Bundle[] = [];
+      for (const skill of skills) {
+        try {
+          const bundle = this.createBundleFromSkill(skill);
+          bundles.push(bundle);
+          this.logger.debug(`[SkillsAdapter] Created bundle: ${bundle.id}`);
+        } catch (error) {
+          this.logger.warn(`[SkillsAdapter] Failed to create bundle from skill ${skill.id}: ${error}`);
+        }
+      }
+
+      this.logger.info(`[SkillsAdapter] Successfully created ${bundles.length} bundles`);
+      return bundles;
+    } catch (error) {
+      this.logger.error(`[SkillsAdapter] Failed to fetch skills: ${error}`);
+      throw new Error(`Failed to fetch skills: ${error}`);
+    }
+  }
+
+  /**
+   * Validate skills repository structure
+   */
+  public async validate(): Promise<ValidationResult> {
+    this.logger.info(`[SkillsAdapter] Validating skills repository: ${this.source.url}`);
+
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    try {
+      const { owner, repo } = this.parseGitHubUrl();
+
+      const baseValidation = await this.githubAdapter.validate();
+      if (!baseValidation.valid) {
+        return baseValidation;
+      }
+
+      const apiBase = 'https://api.github.com';
+
+      let hasSkillsDir = false;
+      try {
+        const skillsUrl = `${apiBase}/repos/${owner}/${repo}/contents/skills`;
+        await this.makeGitHubRequest(skillsUrl);
+        hasSkillsDir = true;
+        this.logger.debug(`[SkillsAdapter] Found skills/ directory`);
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('404')) {
+          errors.push(`Missing required 'skills' directory at repository root`);
+        } else {
+          errors.push(`Failed to access skills directory: ${error}`);
+        }
+      }
+
+      if (!hasSkillsDir) {
+        return {
+          valid: false,
+          errors,
+          warnings,
+          bundlesFound: 0
+        };
+      }
+
+      let skillCount = 0;
+      try {
+        const skills = await this.scanSkillsDirectory();
+        skillCount = skills.length;
+
+        if (skillCount === 0) {
+          warnings.push('No valid skills found in skills/ directory (skills must have SKILL.md file)');
+        } else {
+          this.logger.info(`[SkillsAdapter] Found ${skillCount} valid skill(s)`);
+        }
+      } catch (scanError) {
+        warnings.push(`Failed to scan skills: ${scanError}`);
+      }
+
+      return {
+        valid: true,
+        errors: [],
+        warnings,
+        bundlesFound: skillCount
+      };
+    } catch (error) {
+      return {
+        valid: false,
+        errors: [`Skills repository validation failed: ${error}`],
+        warnings: [],
+        bundlesFound: 0
+      };
+    }
+  }
+
+  /**
+   * Fetch repository metadata
+   */
+  public async fetchMetadata(): Promise<SourceMetadata> {
+    try {
+      const skills = await this.scanSkillsDirectory();
+      const { owner, repo } = this.parseGitHubUrl();
+
+      return {
+        name: `${owner}/${repo}`,
+        description: 'Skills Repository',
+        bundleCount: skills.length,
+        lastUpdated: new Date().toISOString(),
+        version: '1.0.0'
+      };
+    } catch (error) {
+      throw new Error(`Failed to fetch skills repository metadata: ${error}`);
+    }
+  }
+
+  /**
+   * Get manifest URL for a skill
+   * @param bundleId
+   * @param _version
+   */
+  public getManifestUrl(bundleId: string, _version?: string): string {
+    const { owner, repo } = this.parseGitHubUrl();
+    const skillId = bundleId.replace(`skills-${owner}-${repo}-`, '');
+    return `https://raw.githubusercontent.com/${owner}/${repo}/main/skills/${skillId}/SKILL.md`;
+  }
+
+  /**
+   * Get download URL for a skill
+   * @param _bundleId
+   * @param _version
+   */
+  public getDownloadUrl(_bundleId: string, _version?: string): string {
+    const { owner, repo } = this.parseGitHubUrl();
+    return `https://github.com/${owner}/${repo}/archive/refs/heads/main.zip`;
+  }
+
+  /**
+   * Download a skill bundle
+   * Creates a ZIP with the skill folder and deployment manifest
+   * @param bundle
+   */
+  public async downloadBundle(bundle: Bundle): Promise<Buffer> {
+    const { owner, repo } = this.parseGitHubUrl();
+    const skillId = bundle.id.replace(`skills-${owner}-${repo}-`, '');
+
+    this.logger.info(`[SkillsAdapter] Downloading skill: ${skillId}`);
+
+    try {
+      // Fetch only the specific skill instead of scanning all skills
+      const skill = await this.fetchSingleSkill(skillId);
+
+      if (!skill) {
+        throw new Error(`Skill not found: ${skillId}`);
+      }
+
+      const zipBuffer = await this.packageSkillAsZip(skill);
+
+      this.logger.info(`[SkillsAdapter] Successfully packaged skill ${skillId} (${zipBuffer.length} bytes)`);
+      return zipBuffer;
+    } catch (error) {
+      this.logger.error(`[SkillsAdapter] Failed to download skill ${skillId}: ${error}`);
+      throw new Error(`Failed to download skill ${skillId}: ${error}`);
+    }
   }
 }

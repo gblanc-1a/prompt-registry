@@ -169,562 +169,6 @@ export class ProfileCommands {
     this.logger = Logger.getInstance();
   }
 
-  /**
-   * Create a new profile
-   */
-  async createProfile(): Promise<void> {
-    try {
-      // Step 1: Get profile name
-      const name = await vscode.window.showInputBox({
-        prompt: 'Enter profile name',
-        placeHolder: 'e.g., Full-Stack Developer',
-        validateInput: (value) => {
-          if (!value || value.trim().length === 0) {
-            return 'Profile name is required';
-          }
-          if (value.length > 50) {
-            return 'Profile name must be less than 50 characters';
-          }
-          return undefined;
-        },
-        ignoreFocusOut: true
-      });
-
-      if (!name) {
-        return; // User cancelled
-      }
-
-      // Step 2: Get profile description
-      const description = await vscode.window.showInputBox({
-        prompt: 'Enter profile description (optional)',
-        placeHolder: 'e.g., Prompts for full-stack web development',
-        ignoreFocusOut: true
-      }) || '';
-
-      // Step 3: Select icon
-      const icon = await this.selectIcon('Profile Icon') || '📦';
-
-      // Step 4: Select bundles
-      const bundles = await this.selectBundles();
-
-      if (!bundles || bundles.length === 0) {
-        const proceed = await vscode.window.showWarningMessage(
-          'No bundles selected. Create empty profile?',
-          'Yes', 'No'
-        );
-
-        if (proceed !== 'Yes') {
-          return;
-        }
-      }
-
-      // Create profile with unique ID
-      let profileId = this.generateProfileId(name);
-
-      // Check if ID conflicts with existing profiles (hub or local)
-      const existingProfiles = await this.registryManager.listProfiles();
-      let counter = 1;
-      const originalId = profileId;
-      while (existingProfiles.some((p) => p.id === profileId)) {
-        profileId = `${originalId}-${counter}`;
-        counter++;
-      }
-
-      if (profileId !== originalId) {
-        this.logger.info(`Profile ID '${originalId}' already exists, using '${profileId}' instead`);
-      }
-
-      // Create profile
-      const profile: Omit<Profile, 'createdAt' | 'updatedAt'> = {
-        id: profileId,
-        name: name.trim(),
-        description: description.trim(),
-        icon,
-        bundles: bundles || [],
-        active: false
-      };
-
-      await this.registryManager.createProfile(profile);
-
-      vscode.window.showInformationMessage(
-        `Profile "${name}" created successfully!`,
-        'Activate Now', 'View Profiles'
-      ).then((action) => {
-        if (action === 'Activate Now') {
-          this.activateProfile(profile.id);
-        }
-      });
-    } catch (error) {
-      this.logger.error('Failed to create profile', error as Error);
-      vscode.window.showErrorMessage(`Failed to create profile: ${(error as Error).message}`);
-    }
-  }
-
-  /**
-   * Edit an existing profile
-   * @param profileId
-   */
-  async editProfile(profileId?: string | any): Promise<void> {
-    try {
-      // Extract profile ID from tree item if object is passed
-      let targetProfileId: string | undefined;
-      if (typeof profileId === 'string') {
-        targetProfileId = profileId;
-      } else if (profileId && typeof profileId === 'object' && profileId.data && profileId.data.id) {
-        targetProfileId = profileId.data.id;
-      }
-
-      // If no profileId, let user select
-      if (!targetProfileId) {
-        const profiles = await this.registryManager.listProfiles();
-
-        if (profiles.length === 0) {
-          vscode.window.showInformationMessage('No profiles found. Create one first.');
-          return;
-        }
-
-        const selected = await vscode.window.showQuickPick(
-          profiles.map((p) => ({
-            label: `${p.icon} ${p.name}`,
-            description: p.description,
-            detail: `${p.bundles.length} bundles${p.active ? ' (Active)' : ''}`,
-            profile: p
-          })),
-          {
-            placeHolder: 'Select profile to edit',
-            title: 'Edit Profile',
-            ignoreFocusOut: true
-          }
-        );
-
-        if (!selected) {
-          return;
-        }
-
-        targetProfileId = selected.profile.id;
-      }
-
-      const profiles = await this.registryManager.listProfiles();
-      const profile = profiles.find((p) => p.id === targetProfileId);
-
-      if (!profile) {
-        vscode.window.showErrorMessage('Profile not found');
-        return;
-      }
-
-      // Show edit options
-      const action = await vscode.window.showQuickPick(
-        [
-          { label: '$(edit) Rename', value: 'rename' },
-          { label: '$(note) Edit Description', value: 'description' },
-          { label: '$(symbol-color) Change Icon', value: 'icon' },
-          { label: '$(package) Manage Bundles', value: 'bundles' }
-        ],
-        {
-          placeHolder: `Edit "${profile.name}"`,
-          title: 'Profile Edit Options',
-          ignoreFocusOut: true
-        }
-      );
-
-      if (!action) {
-        return;
-      }
-
-      switch (action.value) {
-        case 'rename': {
-          await this.renameProfile(targetProfileId);
-          break;
-        }
-        case 'description': {
-          await this.updateDescription(targetProfileId);
-          break;
-        }
-        case 'icon': {
-          await this.changeIcon(targetProfileId);
-          break;
-        }
-        case 'bundles': {
-          await this.manageBundles(targetProfileId);
-          break;
-        }
-      }
-    } catch (error) {
-      this.logger.error('Failed to edit profile', error as Error);
-      vscode.window.showErrorMessage(`Failed to edit profile: ${(error as Error).message}`);
-    }
-  }
-
-  /**
-   * Activate a profile
-   */
-
-  async activateProfile(profileId?: string | any): Promise<void> {
-    try {
-      let targetProfileId: string;
-
-      // Handle tree item click (object with data property)
-      if (profileId && typeof profileId === 'object' && 'data' in profileId) {
-        targetProfileId = profileId.data.id;
-        this.logger.info(`Activating profile from tree item: ${targetProfileId}`);
-      } else if (typeof profileId === 'string') {
-        // Handle direct profile ID
-        targetProfileId = profileId;
-        this.logger.info(`Activating profile by ID: ${targetProfileId}`);
-      } else {
-        // No profile specified - show picker
-        const profiles = await this.registryManager.listProfiles();
-
-        if (profiles.length === 0) {
-          vscode.window.showInformationMessage('No profiles available. Create one first.');
-          return;
-        }
-
-        const items = profiles.map((profile) => ({
-          label: profile.name,
-          description: profile.description,
-          profile
-        }));
-
-        const selected = await vscode.window.showQuickPick(items, {
-          placeHolder: 'Select a profile to activate',
-          title: 'Activate Profile',
-          ignoreFocusOut: true
-        });
-
-        if (!selected) {
-          return;
-        }
-
-        targetProfileId = selected.profile.id;
-      }
-
-      // Activate the profile
-      await this.registryManager.activateProfile(targetProfileId);
-
-      vscode.window.showInformationMessage(`Profile activated successfully`);
-      this.logger.info(`Profile activated: ${targetProfileId}`);
-    } catch (error) {
-      this.logger.error('Failed to activate profile', error as Error);
-      vscode.window.showErrorMessage(`Failed to activate profile: ${(error as Error).message}`);
-    }
-  }
-
-  /**
-   * Deactivate a profile
-   * @param profileIdOrItem
-   */
-  async deactivateProfile(profileIdOrItem?: string | any): Promise<void> {
-    try {
-      let targetProfileId: string;
-
-      // Handle tree item click (object with data property)
-      if (profileIdOrItem && typeof profileIdOrItem === 'object' && 'data' in profileIdOrItem) {
-        targetProfileId = profileIdOrItem.data.id;
-        this.logger.info(`Deactivating profile from tree item: ${targetProfileId}`);
-      } else if (typeof profileIdOrItem === 'string') {
-        // Handle direct profile ID
-        targetProfileId = profileIdOrItem;
-        this.logger.info(`Deactivating profile by ID: ${targetProfileId}`);
-      } else {
-        // No profile specified - show picker
-        const profiles = await this.registryManager.listProfiles();
-        const activeProfiles = profiles.filter((p) => p.active);
-
-        if (activeProfiles.length === 0) {
-          vscode.window.showInformationMessage('No active profiles to deactivate');
-          return;
-        }
-
-        const items = activeProfiles.map((profile) => ({
-          label: profile.name,
-          description: profile.description,
-          profile
-        }));
-
-        const selected = await vscode.window.showQuickPick(items, {
-          placeHolder: 'Select a profile to deactivate',
-          title: 'Deactivate Profile',
-          ignoreFocusOut: true
-        });
-
-        if (!selected) {
-          return;
-        }
-
-        targetProfileId = selected.profile.id;
-      }
-
-      // Deactivate the profile
-      await this.registryManager.deactivateProfile(targetProfileId);
-
-      vscode.window.showInformationMessage(`Profile deactivated successfully`);
-      this.logger.info(`Profile deactivated: ${targetProfileId}`);
-    } catch (error) {
-      this.logger.error('Failed to deactivate profile', error as Error);
-      vscode.window.showErrorMessage(`Failed to deactivate profile: ${(error as Error).message}`);
-    }
-  }
-
-  /**
-   * Delete a profile
-   * For local profiles: deletes the profile
-   * For hub profiles (in favorites view): deactivates and removes from favorites
-   * @param profileId
-   */
-  async deleteProfile(profileId?: string | any): Promise<void> {
-    try {
-      let targetProfileId: string | undefined;
-      let hubId: string | undefined;
-      let profileData: any;
-
-      // Extract profile ID and hubId from tree item if object is passed
-      if (profileId && typeof profileId === 'object' && 'data' in profileId && profileId.data) {
-        profileData = profileId.data;
-        targetProfileId = profileData.id;
-        hubId = profileData.hubId;
-        this.logger.info(`Deleting profile from tree item: ${targetProfileId}, hubId: ${hubId}`);
-      } else if (typeof profileId === 'string') {
-        targetProfileId = profileId;
-      }
-
-      // If no profileId, let user select
-      if (!targetProfileId) {
-        const profiles = await this.registryManager.listProfiles();
-
-        if (profiles.length === 0) {
-          vscode.window.showInformationMessage('No profiles found.');
-          return;
-        }
-
-        const selected = await vscode.window.showQuickPick(
-          profiles.map((p) => ({
-            label: `${p.icon} ${p.name}`,
-            description: p.description,
-            detail: `${p.bundles.length} bundles${p.active ? ' (Active)' : ''}`,
-            profile: p
-          })),
-          {
-            placeHolder: 'Select profile to delete',
-            title: 'Delete Profile',
-            ignoreFocusOut: true
-          }
-        );
-
-        if (!selected) {
-          return;
-        }
-
-        targetProfileId = selected.profile.id;
-      }
-
-      const profiles = await this.registryManager.listProfiles();
-      const profile = profiles.find((p) => p.id === targetProfileId);
-
-      if (!profile) {
-        vscode.window.showErrorMessage('Profile not found');
-        return;
-      }
-
-      // Confirm deletion for local profiles
-      // Note: If profile exists in registryManager.listProfiles(), it's a local profile and can be deleted.
-      // The isHubProfile check was removed because local copies of hub profiles should be deletable.
-      const confirmation = await vscode.window.showWarningMessage(
-        `Are you sure you want to delete profile "${profile.name}"?`,
-        { modal: true },
-        'Delete', 'Cancel'
-      );
-
-      if (confirmation !== 'Delete') {
-        return;
-      }
-
-      await this.registryManager.deleteProfile(targetProfileId);
-
-      vscode.window.showInformationMessage(
-        `Profile "${profile.name}" deleted successfully`
-      );
-    } catch (error) {
-      this.logger.error('Failed to delete profile', error as Error);
-      vscode.window.showErrorMessage(`Failed to delete profile: ${(error as Error).message}`);
-    }
-  }
-
-  /**
-   * Export a profile
-   * @param profileId
-   */
-  async exportProfile(profileId?: string): Promise<void> {
-    try {
-      // If no profileId, let user select
-      if (!profileId) {
-        const profiles = await this.registryManager.listProfiles();
-
-        if (profiles.length === 0) {
-          vscode.window.showInformationMessage('No profiles found.');
-          return;
-        }
-
-        const selected = await vscode.window.showQuickPick(
-          profiles.map((p) => ({
-            label: `${p.icon} ${p.name}`,
-            description: p.description,
-            profile: p
-          })),
-          {
-            placeHolder: 'Select profile to export',
-            title: 'Export Profile',
-            ignoreFocusOut: true
-          }
-        );
-
-        if (!selected) {
-          return;
-        }
-
-        profileId = selected.profile.id;
-      }
-
-      const profileJson = await this.registryManager.exportProfile(profileId);
-      const profile = JSON.parse(profileJson) as Profile;
-
-      // Ask where to save
-      const uri = await vscode.window.showSaveDialog({
-        defaultUri: vscode.Uri.file(`${generateSanitizedId(profile.name)}.json`),
-        filters: {
-          'JSON Files': ['json'],
-          'All Files': ['*']
-        },
-        title: `Export Profile: ${profile.name}`
-      });
-
-      if (!uri) {
-        return;
-      }
-
-      await writeFile(uri.fsPath, profileJson, 'utf8');
-
-      vscode.window.showInformationMessage(
-        `Profile "${profile.name}" exported successfully!`,
-        'Open File'
-      ).then((action) => {
-        if (action === 'Open File') {
-          vscode.commands.executeCommand('vscode.open', uri);
-        }
-      });
-    } catch (error) {
-      this.logger.error('Failed to export profile', error as Error);
-      vscode.window.showErrorMessage(`Failed to export profile: ${(error as Error).message}`);
-    }
-  }
-
-  /**
-   * Import a profile
-   */
-  async importProfile(): Promise<void> {
-    try {
-      // Ask for file
-      const uris = await vscode.window.showOpenDialog({
-        canSelectMany: false,
-        filters: {
-          'JSON Files': ['json'],
-          'All Files': ['*']
-        },
-        title: 'Import Profile'
-      });
-
-      if (!uris || uris.length === 0) {
-        return;
-      }
-
-      const content = await readFile(uris[0].fsPath, 'utf8');
-      const profile = await this.registryManager.importProfile(content);
-
-      vscode.window.showInformationMessage(
-        `Profile "${profile.name}" imported successfully!`,
-        'Activate Now', 'View Profiles'
-      ).then((action) => {
-        if (action === 'Activate Now') {
-          this.activateProfile(profile.id);
-        }
-      });
-    } catch (error) {
-      this.logger.error('Failed to import profile', error as Error);
-      vscode.window.showErrorMessage(`Failed to import profile: ${(error as Error).message}`);
-    }
-  }
-
-  /**
-   * List all profiles
-   */
-  async listProfiles(): Promise<void> {
-    try {
-      const profiles = await this.registryManager.listProfiles();
-
-      if (profiles.length === 0) {
-        vscode.window.showInformationMessage(
-          'No profiles found. Create one to get started!',
-          'Create Profile'
-        ).then((action) => {
-          if (action === 'Create Profile') {
-            this.createProfile();
-          }
-        });
-        return;
-      }
-
-      const selected = await vscode.window.showQuickPick(
-        profiles.map((p) => ({
-          label: `${p.icon} ${p.name}${p.active ? ' ⭐' : ''}`,
-          description: p.description,
-          detail: `${p.bundles.length} bundles • ${p.active ? 'Active' : 'Inactive'}`,
-          profile: p
-        })),
-        {
-          placeHolder: 'Select a profile to view details',
-          title: 'My Profiles'
-        }
-      );
-
-      if (selected) {
-        // Show profile actions
-        const action = await vscode.window.showQuickPick([
-          { label: '$(check) Activate', value: 'activate', enabled: !selected.profile.active },
-          { label: '$(edit) Edit', value: 'edit', enabled: true },
-          { label: '$(export) Export', value: 'export', enabled: true },
-          { label: '$(trash) Delete', value: 'delete', enabled: true }
-        ].filter((a) => a.enabled), {
-          placeHolder: `Actions for "${selected.profile.name}"`,
-          title: 'Profile Actions'
-        });
-
-        if (action) {
-          switch (action.value) {
-            case 'activate': {
-              await this.activateProfile(selected.profile.id);
-              break;
-            }
-            case 'edit': {
-              await this.editProfile(selected.profile.id);
-              break;
-            }
-            case 'export': {
-              await this.exportProfile(selected.profile.id);
-              break;
-            }
-            case 'delete': {
-              await this.deleteProfile(selected.profile.id);
-              break;
-            }
-          }
-        }
-      }
-    } catch (error) {
-      this.logger.error('Failed to list profiles', error as Error);
-      vscode.window.showErrorMessage(`Failed to list profiles: ${(error as Error).message}`);
-    }
-  }
-
   // ===== Helper Methods =====
 
   /**
@@ -957,6 +401,566 @@ export class ProfileCommands {
           vscode.window.showInformationMessage(`Removed ${toRemove.length} bundle(s)`);
         }
       }
+    }
+  }
+
+  /**
+   * Create a new profile
+   */
+  public async createProfile(): Promise<void> {
+    try {
+      // Step 1: Get profile name
+      const name = await vscode.window.showInputBox({
+        prompt: 'Enter profile name',
+        placeHolder: 'e.g., Full-Stack Developer',
+        validateInput: (value) => {
+          if (!value || value.trim().length === 0) {
+            return 'Profile name is required';
+          }
+          if (value.length > 50) {
+            return 'Profile name must be less than 50 characters';
+          }
+          return undefined;
+        },
+        ignoreFocusOut: true
+      });
+
+      if (!name) {
+        return; // User cancelled
+      }
+
+      // Step 2: Get profile description
+      const description = await vscode.window.showInputBox({
+        prompt: 'Enter profile description (optional)',
+        placeHolder: 'e.g., Prompts for full-stack web development',
+        ignoreFocusOut: true
+      }) || '';
+
+      // Step 3: Select icon
+      const icon = await this.selectIcon('Profile Icon') || '📦';
+
+      // Step 4: Select bundles
+      const bundles = await this.selectBundles();
+
+      if (!bundles || bundles.length === 0) {
+        const proceed = await vscode.window.showWarningMessage(
+          'No bundles selected. Create empty profile?',
+          'Yes', 'No'
+        );
+
+        if (proceed !== 'Yes') {
+          return;
+        }
+      }
+
+      // Create profile with unique ID
+      let profileId = this.generateProfileId(name);
+
+      // Check if ID conflicts with existing profiles (hub or local)
+      const existingProfiles = await this.registryManager.listProfiles();
+      let counter = 1;
+      const originalId = profileId;
+      while (existingProfiles.some((p) => p.id === profileId)) {
+        profileId = `${originalId}-${counter}`;
+        counter++;
+      }
+
+      if (profileId !== originalId) {
+        this.logger.info(`Profile ID '${originalId}' already exists, using '${profileId}' instead`);
+      }
+
+      // Create profile
+      const profile: Omit<Profile, 'createdAt' | 'updatedAt'> = {
+        id: profileId,
+        name: name.trim(),
+        description: description.trim(),
+        icon,
+        bundles: bundles || [],
+        active: false
+      };
+
+      await this.registryManager.createProfile(profile);
+
+      vscode.window.showInformationMessage(
+        `Profile "${name}" created successfully!`,
+        'Activate Now', 'View Profiles'
+      ).then((action) => {
+        if (action === 'Activate Now') {
+          void this.activateProfile(profile.id);
+        }
+      });
+    } catch (error) {
+      this.logger.error('Failed to create profile', error as Error);
+      vscode.window.showErrorMessage(`Failed to create profile: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Edit an existing profile
+   * @param profileId
+   */
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- union type kept for documentation clarity
+  public async editProfile(profileId?: string | any): Promise<void> {
+    try {
+      // Extract profile ID from tree item if object is passed
+      let targetProfileId: string | undefined;
+      if (typeof profileId === 'string') {
+        targetProfileId = profileId;
+      } else if (profileId && typeof profileId === 'object' && profileId.data && profileId.data.id) {
+        targetProfileId = profileId.data.id;
+      }
+
+      // If no profileId, let user select
+      if (!targetProfileId) {
+        const loadedProfiles = await this.registryManager.listProfiles();
+
+        if (loadedProfiles.length === 0) {
+          vscode.window.showInformationMessage('No profiles found. Create one first.');
+          return;
+        }
+
+        const selected = await vscode.window.showQuickPick(
+          loadedProfiles.map((p) => ({
+            label: `${p.icon} ${p.name}`,
+            description: p.description,
+            detail: `${p.bundles.length} bundles${p.active ? ' (Active)' : ''}`,
+            profile: p
+          })),
+          {
+            placeHolder: 'Select profile to edit',
+            title: 'Edit Profile',
+            ignoreFocusOut: true
+          }
+        );
+
+        if (!selected) {
+          return;
+        }
+
+        targetProfileId = selected.profile.id;
+      }
+
+      const profiles = await this.registryManager.listProfiles();
+      const profile = profiles.find((p) => p.id === targetProfileId);
+
+      if (!profile) {
+        vscode.window.showErrorMessage('Profile not found');
+        return;
+      }
+
+      // Show edit options
+      const action = await vscode.window.showQuickPick(
+        [
+          { label: '$(edit) Rename', value: 'rename' },
+          { label: '$(note) Edit Description', value: 'description' },
+          { label: '$(symbol-color) Change Icon', value: 'icon' },
+          { label: '$(package) Manage Bundles', value: 'bundles' }
+        ],
+        {
+          placeHolder: `Edit "${profile.name}"`,
+          title: 'Profile Edit Options',
+          ignoreFocusOut: true
+        }
+      );
+
+      if (!action) {
+        return;
+      }
+
+      switch (action.value) {
+        case 'rename': {
+          await this.renameProfile(targetProfileId);
+          break;
+        }
+        case 'description': {
+          await this.updateDescription(targetProfileId);
+          break;
+        }
+        case 'icon': {
+          await this.changeIcon(targetProfileId);
+          break;
+        }
+        case 'bundles': {
+          await this.manageBundles(targetProfileId);
+          break;
+        }
+      }
+    } catch (error) {
+      this.logger.error('Failed to edit profile', error as Error);
+      vscode.window.showErrorMessage(`Failed to edit profile: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Activate a profile
+   */
+
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- union type kept for documentation clarity
+  public async activateProfile(profileId?: string | any): Promise<void> {
+    try {
+      let targetProfileId: string;
+
+      // Handle tree item click (object with data property)
+      if (profileId && typeof profileId === 'object' && 'data' in profileId) {
+        targetProfileId = profileId.data.id;
+        this.logger.info(`Activating profile from tree item: ${targetProfileId}`);
+      } else if (typeof profileId === 'string') {
+        // Handle direct profile ID
+        targetProfileId = profileId;
+        this.logger.info(`Activating profile by ID: ${targetProfileId}`);
+      } else {
+        // No profile specified - show picker
+        const profiles = await this.registryManager.listProfiles();
+
+        if (profiles.length === 0) {
+          vscode.window.showInformationMessage('No profiles available. Create one first.');
+          return;
+        }
+
+        const items = profiles.map((profile) => ({
+          label: profile.name,
+          description: profile.description,
+          profile
+        }));
+
+        const selected = await vscode.window.showQuickPick(items, {
+          placeHolder: 'Select a profile to activate',
+          title: 'Activate Profile',
+          ignoreFocusOut: true
+        });
+
+        if (!selected) {
+          return;
+        }
+
+        targetProfileId = selected.profile.id;
+      }
+
+      // Activate the profile
+      await this.registryManager.activateProfile(targetProfileId);
+
+      vscode.window.showInformationMessage(`Profile activated successfully`);
+      this.logger.info(`Profile activated: ${targetProfileId}`);
+    } catch (error) {
+      this.logger.error('Failed to activate profile', error as Error);
+      vscode.window.showErrorMessage(`Failed to activate profile: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Deactivate a profile
+   * @param profileIdOrItem
+   */
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- union type kept for documentation clarity
+  public async deactivateProfile(profileIdOrItem?: string | any): Promise<void> {
+    try {
+      let targetProfileId: string;
+
+      // Handle tree item click (object with data property)
+      if (profileIdOrItem && typeof profileIdOrItem === 'object' && 'data' in profileIdOrItem) {
+        targetProfileId = profileIdOrItem.data.id;
+        this.logger.info(`Deactivating profile from tree item: ${targetProfileId}`);
+      } else if (typeof profileIdOrItem === 'string') {
+        // Handle direct profile ID
+        targetProfileId = profileIdOrItem;
+        this.logger.info(`Deactivating profile by ID: ${targetProfileId}`);
+      } else {
+        // No profile specified - show picker
+        const profiles = await this.registryManager.listProfiles();
+        const activeProfiles = profiles.filter((p) => p.active);
+
+        if (activeProfiles.length === 0) {
+          vscode.window.showInformationMessage('No active profiles to deactivate');
+          return;
+        }
+
+        const items = activeProfiles.map((profile) => ({
+          label: profile.name,
+          description: profile.description,
+          profile
+        }));
+
+        const selected = await vscode.window.showQuickPick(items, {
+          placeHolder: 'Select a profile to deactivate',
+          title: 'Deactivate Profile',
+          ignoreFocusOut: true
+        });
+
+        if (!selected) {
+          return;
+        }
+
+        targetProfileId = selected.profile.id;
+      }
+
+      // Deactivate the profile
+      await this.registryManager.deactivateProfile(targetProfileId);
+
+      vscode.window.showInformationMessage(`Profile deactivated successfully`);
+      this.logger.info(`Profile deactivated: ${targetProfileId}`);
+    } catch (error) {
+      this.logger.error('Failed to deactivate profile', error as Error);
+      vscode.window.showErrorMessage(`Failed to deactivate profile: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Delete a profile
+   * For local profiles: deletes the profile
+   * For hub profiles (in favorites view): deactivates and removes from favorites
+   * @param profileId
+   */
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- union type kept for documentation clarity
+  public async deleteProfile(profileId?: string | any): Promise<void> {
+    try {
+      let targetProfileId: string | undefined;
+      let hubId: string | undefined;
+      let profileData: any;
+
+      // Extract profile ID and hubId from tree item if object is passed
+      if (profileId && typeof profileId === 'object' && 'data' in profileId && profileId.data) {
+        profileData = profileId.data;
+        targetProfileId = profileData.id;
+        hubId = profileData.hubId;
+        this.logger.info(`Deleting profile from tree item: ${targetProfileId}, hubId: ${hubId}`);
+      } else if (typeof profileId === 'string') {
+        targetProfileId = profileId;
+      }
+
+      // If no profileId, let user select
+      if (!targetProfileId) {
+        const loadedProfiles = await this.registryManager.listProfiles();
+
+        if (loadedProfiles.length === 0) {
+          vscode.window.showInformationMessage('No profiles found.');
+          return;
+        }
+
+        const selected = await vscode.window.showQuickPick(
+          loadedProfiles.map((p) => ({
+            label: `${p.icon} ${p.name}`,
+            description: p.description,
+            detail: `${p.bundles.length} bundles${p.active ? ' (Active)' : ''}`,
+            profile: p
+          })),
+          {
+            placeHolder: 'Select profile to delete',
+            title: 'Delete Profile',
+            ignoreFocusOut: true
+          }
+        );
+
+        if (!selected) {
+          return;
+        }
+
+        targetProfileId = selected.profile.id;
+      }
+
+      const profiles = await this.registryManager.listProfiles();
+      const profile = profiles.find((p) => p.id === targetProfileId);
+
+      if (!profile) {
+        vscode.window.showErrorMessage('Profile not found');
+        return;
+      }
+
+      // Confirm deletion for local profiles
+      // Note: If profile exists in registryManager.listProfiles(), it's a local profile and can be deleted.
+      // The isHubProfile check was removed because local copies of hub profiles should be deletable.
+      const confirmation = await vscode.window.showWarningMessage(
+        `Are you sure you want to delete profile "${profile.name}"?`,
+        { modal: true },
+        'Delete', 'Cancel'
+      );
+
+      if (confirmation !== 'Delete') {
+        return;
+      }
+
+      await this.registryManager.deleteProfile(targetProfileId);
+
+      vscode.window.showInformationMessage(
+        `Profile "${profile.name}" deleted successfully`
+      );
+    } catch (error) {
+      this.logger.error('Failed to delete profile', error as Error);
+      vscode.window.showErrorMessage(`Failed to delete profile: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Export a profile
+   * @param profileId
+   */
+  public async exportProfile(profileId?: string): Promise<void> {
+    try {
+      // If no profileId, let user select
+      if (!profileId) {
+        const profiles = await this.registryManager.listProfiles();
+
+        if (profiles.length === 0) {
+          vscode.window.showInformationMessage('No profiles found.');
+          return;
+        }
+
+        const selected = await vscode.window.showQuickPick(
+          profiles.map((p) => ({
+            label: `${p.icon} ${p.name}`,
+            description: p.description,
+            profile: p
+          })),
+          {
+            placeHolder: 'Select profile to export',
+            title: 'Export Profile',
+            ignoreFocusOut: true
+          }
+        );
+
+        if (!selected) {
+          return;
+        }
+
+        profileId = selected.profile.id;
+      }
+
+      const profileJson = await this.registryManager.exportProfile(profileId);
+      const profile = JSON.parse(profileJson) as Profile;
+
+      // Ask where to save
+      const uri = await vscode.window.showSaveDialog({
+        defaultUri: vscode.Uri.file(`${generateSanitizedId(profile.name)}.json`),
+        filters: {
+          'JSON Files': ['json'],
+          'All Files': ['*']
+        },
+        title: `Export Profile: ${profile.name}`
+      });
+
+      if (!uri) {
+        return;
+      }
+
+      await writeFile(uri.fsPath, profileJson, 'utf8');
+
+      vscode.window.showInformationMessage(
+        `Profile "${profile.name}" exported successfully!`,
+        'Open File'
+      ).then((action) => {
+        if (action === 'Open File') {
+          vscode.commands.executeCommand('vscode.open', uri);
+        }
+      });
+    } catch (error) {
+      this.logger.error('Failed to export profile', error as Error);
+      vscode.window.showErrorMessage(`Failed to export profile: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Import a profile
+   */
+  public async importProfile(): Promise<void> {
+    try {
+      // Ask for file
+      const uris = await vscode.window.showOpenDialog({
+        canSelectMany: false,
+        filters: {
+          'JSON Files': ['json'],
+          'All Files': ['*']
+        },
+        title: 'Import Profile'
+      });
+
+      if (!uris || uris.length === 0) {
+        return;
+      }
+
+      const content = await readFile(uris[0].fsPath, 'utf8');
+      const profile = await this.registryManager.importProfile(content);
+
+      vscode.window.showInformationMessage(
+        `Profile "${profile.name}" imported successfully!`,
+        'Activate Now', 'View Profiles'
+      ).then((action) => {
+        if (action === 'Activate Now') {
+          void this.activateProfile(profile.id);
+        }
+      });
+    } catch (error) {
+      this.logger.error('Failed to import profile', error as Error);
+      vscode.window.showErrorMessage(`Failed to import profile: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * List all profiles
+   */
+  public async listProfiles(): Promise<void> {
+    try {
+      const profiles = await this.registryManager.listProfiles();
+
+      if (profiles.length === 0) {
+        vscode.window.showInformationMessage(
+          'No profiles found. Create one to get started!',
+          'Create Profile'
+        ).then((action) => {
+          if (action === 'Create Profile') {
+            void this.createProfile();
+          }
+        });
+        return;
+      }
+
+      const selected = await vscode.window.showQuickPick(
+        profiles.map((p) => ({
+          label: `${p.icon} ${p.name}${p.active ? ' ⭐' : ''}`,
+          description: p.description,
+          detail: `${p.bundles.length} bundles • ${p.active ? 'Active' : 'Inactive'}`,
+          profile: p
+        })),
+        {
+          placeHolder: 'Select a profile to view details',
+          title: 'My Profiles'
+        }
+      );
+
+      if (selected) {
+        // Show profile actions
+        const action = await vscode.window.showQuickPick([
+          { label: '$(check) Activate', value: 'activate', enabled: !selected.profile.active },
+          { label: '$(edit) Edit', value: 'edit', enabled: true },
+          { label: '$(export) Export', value: 'export', enabled: true },
+          { label: '$(trash) Delete', value: 'delete', enabled: true }
+        ].filter((a) => a.enabled), {
+          placeHolder: `Actions for "${selected.profile.name}"`,
+          title: 'Profile Actions'
+        });
+
+        if (action) {
+          switch (action.value) {
+            case 'activate': {
+              await this.activateProfile(selected.profile.id);
+              break;
+            }
+            case 'edit': {
+              await this.editProfile(selected.profile.id);
+              break;
+            }
+            case 'export': {
+              await this.exportProfile(selected.profile.id);
+              break;
+            }
+            case 'delete': {
+              await this.deleteProfile(selected.profile.id);
+              break;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      this.logger.error('Failed to list profiles', error as Error);
+      vscode.window.showErrorMessage(`Failed to list profiles: ${(error as Error).message}`);
     }
   }
 }

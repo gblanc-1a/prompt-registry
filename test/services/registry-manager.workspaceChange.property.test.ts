@@ -30,21 +30,21 @@ suite('RegistryManager Workspace Change Property Tests', () => {
   /**
    * Create a mock VS Code ExtensionContext for testing.
    * Uses sinon sandbox for proper cleanup.
-   * @param sandbox
+   * @param mockSandbox
    */
-  const createMockContext = (sandbox: sinon.SinonSandbox): vscode.ExtensionContext => {
+  const createMockContext = (mockSandbox: sinon.SinonSandbox): vscode.ExtensionContext => {
     return {
       globalState: {
-        get: sandbox.stub(),
-        update: sandbox.stub().resolves(),
-        keys: sandbox.stub().returns([]),
-        setKeysForSync: sandbox.stub()
+        get: mockSandbox.stub(),
+        update: mockSandbox.stub().resolves(),
+        keys: mockSandbox.stub().returns([]),
+        setKeysForSync: mockSandbox.stub()
       } as any,
       workspaceState: {
-        get: sandbox.stub(),
-        update: sandbox.stub().resolves(),
-        keys: sandbox.stub().returns([]),
-        setKeysForSync: sandbox.stub()
+        get: mockSandbox.stub(),
+        update: mockSandbox.stub().resolves(),
+        keys: mockSandbox.stub().returns([]),
+        setKeysForSync: mockSandbox.stub()
       } as any,
       subscriptions: [],
       extensionPath: '/mock/path',
@@ -100,7 +100,7 @@ suite('RegistryManager Workspace Change Property Tests', () => {
       await fc.assert(
         fc.asyncProperty(
           fc.integer({ min: 1, max: 10 }),
-          async (callCount: number) => {
+          (callCount: number) => {
             // Create fresh manager for each iteration
             const manager = createFreshManager();
 
@@ -123,7 +123,7 @@ suite('RegistryManager Workspace Change Property Tests', () => {
                 `Event should be fired ${callCount} times, but was fired ${eventFiredCount} times`
               );
 
-              return true;
+              return Promise.resolve(true);
             } finally {
               // Cleanup
               disposable.dispose();
@@ -142,7 +142,7 @@ suite('RegistryManager Workspace Change Property Tests', () => {
       await fc.assert(
         fc.asyncProperty(
           fc.integer({ min: 1, max: 5 }),
-          async (listenerCount: number) => {
+          (listenerCount: number) => {
             // Create fresh manager for each iteration
             const manager = createFreshManager();
 
@@ -171,7 +171,7 @@ suite('RegistryManager Workspace Change Property Tests', () => {
                 );
               }
 
-              return true;
+              return Promise.resolve(true);
             } finally {
               // Cleanup
               disposables.forEach((d) => d.dispose());
@@ -186,7 +186,7 @@ suite('RegistryManager Workspace Change Property Tests', () => {
       );
     });
 
-    test('disposed listener should not receive events', async () => {
+    test('disposed listener should not receive events', () => {
       // Create fresh manager for this test
       const manager = createFreshManager();
 
@@ -226,7 +226,7 @@ suite('RegistryManager Workspace Change Property Tests', () => {
       }
     });
 
-    test('event should fire synchronously when handleWorkspaceFoldersChanged is called', async () => {
+    test('event should fire synchronously when handleWorkspaceFoldersChanged is called', () => {
       // Create fresh manager for this test
       const manager = createFreshManager();
 

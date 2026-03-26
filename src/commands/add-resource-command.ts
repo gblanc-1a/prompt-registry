@@ -12,9 +12,13 @@ import {
 } from '../utils/bundle-name-utils';
 
 export enum ResourceType {
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
   Prompt = 'prompt',
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
   Instruction = 'instruction',
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
   Agent = 'agent',
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
   Skill = 'skill'
 }
 
@@ -80,106 +84,6 @@ export class AddResourceCommand {
         template: 'skill.template.md'
       }]
     ]);
-  }
-
-  async execute(): Promise<void> {
-    try {
-      // Get workspace folder
-      const workspaceFolder = await this.getWorkspaceFolder();
-      if (!workspaceFolder) {
-        return;
-      }
-
-      // Select resource type
-      const resourceType = await this.selectResourceType();
-      if (!resourceType) {
-        return;
-      }
-
-      // Get resource details
-      const resourceName = await this.promptForResourceName();
-      if (!resourceName) {
-        return;
-      }
-
-      const resourceDescription = await this.promptForDescription();
-      if (!resourceDescription) {
-        return;
-      }
-
-      const author = await this.promptForAuthor();
-      if (!author) {
-        return;
-      }
-
-      // Create resource file
-      const resourceInfo = this.resourceTypes.get(resourceType)!;
-      const fileName = generateSanitizedId(resourceName) + resourceInfo.extension;
-      const dirPath = path.join(workspaceFolder, resourceInfo.folder);
-      const resourcePath = path.join(dirPath, fileName);
-
-      // Check if file already exists
-      const resourceUri = vscode.Uri.file(resourcePath);
-      let fileExists = false;
-      try {
-        await vscode.workspace.fs.stat(resourceUri);
-        fileExists = true;
-      } catch {
-        fileExists = false;
-      }
-
-      if (fileExists) {
-        const overwrite = await vscode.window.showWarningMessage(
-          `File ${fileName} already exists. Overwrite?`,
-          'Yes', 'No'
-        );
-        if (overwrite !== 'Yes') {
-          return;
-        }
-      }
-
-      // Ensure directory exists
-      const dirUri = vscode.Uri.file(dirPath);
-      try {
-        await vscode.workspace.fs.createDirectory(dirUri);
-      } catch {
-        // Directory may already exist, ignore error
-      }
-
-      // Prepare template context
-      const context: any = {
-        projectName: resourceName,
-        collectionId: generateSanitizedId(resourceName),
-        RESOURCE_NAME: resourceName,
-        RESOURCE_DESCRIPTION: resourceDescription,
-        AUTHOR: author,
-        DATE: new Date().toISOString().split('T')[0],
-        VERSION: '1.0.0'
-      };
-
-      // Render template using TemplateEngine
-      const content = await this.templateEngine.renderTemplate(resourceInfo.template, context);
-
-      // Write file
-      await vscode.workspace.fs.writeFile(resourceUri, Buffer.from(content, 'utf8'));
-
-      // Show success message
-      const openFile = await vscode.window.showInformationMessage(
-        `✓ Created ${resourceInfo.label.replace(/\$\([^)]+\)\s*/, '')} at ${path.relative(workspaceFolder, resourcePath)}`,
-        'Open File', 'Add to Collection'
-      );
-
-      if (openFile === 'Open File') {
-        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(resourcePath));
-        await vscode.window.showTextDocument(doc);
-      } else if (openFile === 'Add to Collection') {
-        await this.addToCollection(workspaceFolder, resourcePath, resourceType);
-      }
-    } catch (error) {
-      vscode.window.showErrorMessage(
-        `Failed to add resource: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
   }
 
   private async getWorkspaceFolder(): Promise<string | undefined> {
@@ -353,6 +257,106 @@ export class AddResourceCommand {
     } catch (error) {
       vscode.window.showErrorMessage(
         `Failed to add to collection: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+  }
+
+  public async execute(): Promise<void> {
+    try {
+      // Get workspace folder
+      const workspaceFolder = await this.getWorkspaceFolder();
+      if (!workspaceFolder) {
+        return;
+      }
+
+      // Select resource type
+      const resourceType = await this.selectResourceType();
+      if (!resourceType) {
+        return;
+      }
+
+      // Get resource details
+      const resourceName = await this.promptForResourceName();
+      if (!resourceName) {
+        return;
+      }
+
+      const resourceDescription = await this.promptForDescription();
+      if (!resourceDescription) {
+        return;
+      }
+
+      const author = await this.promptForAuthor();
+      if (!author) {
+        return;
+      }
+
+      // Create resource file
+      const resourceInfo = this.resourceTypes.get(resourceType)!;
+      const fileName = generateSanitizedId(resourceName) + resourceInfo.extension;
+      const dirPath = path.join(workspaceFolder, resourceInfo.folder);
+      const resourcePath = path.join(dirPath, fileName);
+
+      // Check if file already exists
+      const resourceUri = vscode.Uri.file(resourcePath);
+      let fileExists = false;
+      try {
+        await vscode.workspace.fs.stat(resourceUri);
+        fileExists = true;
+      } catch {
+        fileExists = false;
+      }
+
+      if (fileExists) {
+        const overwrite = await vscode.window.showWarningMessage(
+          `File ${fileName} already exists. Overwrite?`,
+          'Yes', 'No'
+        );
+        if (overwrite !== 'Yes') {
+          return;
+        }
+      }
+
+      // Ensure directory exists
+      const dirUri = vscode.Uri.file(dirPath);
+      try {
+        await vscode.workspace.fs.createDirectory(dirUri);
+      } catch {
+        // Directory may already exist, ignore error
+      }
+
+      // Prepare template context
+      const context: any = {
+        projectName: resourceName,
+        collectionId: generateSanitizedId(resourceName),
+        RESOURCE_NAME: resourceName,
+        RESOURCE_DESCRIPTION: resourceDescription,
+        AUTHOR: author,
+        DATE: new Date().toISOString().split('T')[0],
+        VERSION: '1.0.0'
+      };
+
+      // Render template using TemplateEngine
+      const content = await this.templateEngine.renderTemplate(resourceInfo.template, context);
+
+      // Write file
+      await vscode.workspace.fs.writeFile(resourceUri, Buffer.from(content, 'utf8'));
+
+      // Show success message
+      const openFile = await vscode.window.showInformationMessage(
+        `✓ Created ${resourceInfo.label.replace(/\$\([^)]+\)\s*/, '')} at ${path.relative(workspaceFolder, resourcePath)}`,
+        'Open File', 'Add to Collection'
+      );
+
+      if (openFile === 'Open File') {
+        const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(resourcePath));
+        await vscode.window.showTextDocument(doc);
+      } else if (openFile === 'Add to Collection') {
+        await this.addToCollection(workspaceFolder, resourcePath, resourceType);
+      }
+    } catch (error) {
+      vscode.window.showErrorMessage(
+        `Failed to add resource: ${error instanceof Error ? error.message : String(error)}`
       );
     }
   }

@@ -28,7 +28,7 @@ export class SkillWizard {
    * Check if the current workspace is an awesome-copilot project
    * @param workspaceRoot
    */
-  isAwesomeCopilotProject(workspaceRoot: string): boolean {
+  public isAwesomeCopilotProject(workspaceRoot: string): boolean {
     const collectionsDir = path.join(workspaceRoot, 'collections');
     const skillsDir = path.join(workspaceRoot, 'skills');
     const hasCollections = fs.existsSync(collectionsDir);
@@ -51,7 +51,7 @@ export class SkillWizard {
    * Get list of collection files in the workspace
    * @param workspaceRoot
    */
-  getCollectionFiles(workspaceRoot: string): string[] {
+  public getCollectionFiles(workspaceRoot: string): string[] {
     const collectionsDir = path.join(workspaceRoot, 'collections');
     if (!fs.existsSync(collectionsDir)) {
       return [];
@@ -66,7 +66,7 @@ export class SkillWizard {
    * Validate skill name format
    * @param name
    */
-  validateSkillName(name: string): string | undefined {
+  public validateSkillName(name: string): string | undefined {
     if (!name || name.trim().length === 0) {
       return 'Skill name is required';
     }
@@ -83,7 +83,7 @@ export class SkillWizard {
    * Validate skill description
    * @param description
    */
-  validateDescription(description: string): string | undefined {
+  public validateDescription(description: string): string | undefined {
     if (!description || description.trim().length === 0) {
       return 'Description is required';
     }
@@ -101,7 +101,7 @@ export class SkillWizard {
    * @param name
    * @param description
    */
-  generateSkillContent(name: string, description: string): string {
+  public generateSkillContent(name: string, description: string): string {
     return `---
 name: ${name}
 description: "${description}"
@@ -130,7 +130,7 @@ Provide example interactions or use cases.
    * @param collectionPath
    * @param skillName
    */
-  async addSkillToCollection(collectionPath: string, skillName: string): Promise<void> {
+  public async addSkillToCollection(collectionPath: string, skillName: string): Promise<void> {
     const content = fs.readFileSync(collectionPath, 'utf8');
     const collection = yaml.load(content) as { items?: { path: string; kind: string }[] };
 
@@ -168,7 +168,7 @@ Provide example interactions or use cases.
    * Run skill validation
    * @param workspaceRoot
    */
-  async runValidation(workspaceRoot: string): Promise<boolean> {
+  public async runValidation(workspaceRoot: string): Promise<boolean> {
     const validateScript = path.join(workspaceRoot, 'scripts', 'validate-skills.js');
     const nodeModulesPath = path.join(workspaceRoot, 'node_modules');
 
@@ -186,8 +186,8 @@ Provide example interactions or use cases.
       return true; // Skip validation, dependencies not installed yet
     }
 
+    const { exec } = await import('node:child_process');
     return new Promise((resolve) => {
-      const { exec } = require('node:child_process');
       exec(`node "${validateScript}"`, { cwd: workspaceRoot }, (error: Error | null, stdout: string, stderr: string) => {
         if (error) {
           this.logger.error('Skill validation failed', error);
@@ -205,7 +205,7 @@ Provide example interactions or use cases.
    * Execute the skill creation wizard within an existing awesome-copilot project
    * @param workspaceRoot
    */
-  async execute(workspaceRoot: string): Promise<SkillWizardResult | undefined> {
+  public async execute(workspaceRoot: string): Promise<SkillWizardResult | undefined> {
     // Step 1: Ask for skill name
     const skillName = await vscode.window.showInputBox({
       prompt: 'Enter skill name (lowercase letters, numbers, hyphens)',

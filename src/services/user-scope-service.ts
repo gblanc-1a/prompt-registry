@@ -91,6 +91,7 @@ export class UserScopeService implements IScopeService {
 
     // Find the User directory by looking for '/User/' or '\User\' in the path
     const userIndex = globalStoragePath.lastIndexOf(path.sep + 'User' + path.sep);
+    const escapedSep = escapeRegex(path.sep);
 
     if (userIndex === -1) {
       // Fallback: Custom user-data-dir without 'User' directory
@@ -98,10 +99,8 @@ export class UserScopeService implements IScopeService {
       const baseDir = path.dirname(path.dirname(globalStoragePath));
 
       // Check if we're in a profiles structure
-      const escapedSep = escapeRegex(path.sep);
-      const profilesMatch = baseDir.match(new RegExp(`profiles${escapedSep}([^${escapedSep}]+)`));
-      if (profilesMatch) {
-        const profileId = profilesMatch[1];
+      const [, profileId] = baseDir.match(new RegExp(`profiles${escapedSep}([^${escapedSep}]+)`)) || [];
+      if (profileId) {
         const profileName = this.getActiveProfileName(baseDir) || profileId;
         this.logger.info(`[UserScopeService] Using profile: ${profileName}`);
         return path.join(baseDir, 'prompts');
@@ -116,7 +115,6 @@ export class UserScopeService implements IScopeService {
     // Check if this is a profile-based path by looking for '/profiles/' after User
     // Path structure: .../User/profiles/<profile-id>/globalStorage/...
     const remainingPath = globalStoragePath.substring(userDir.length);
-    const escapedSep = escapeRegex(path.sep);
     const profilesMatch = remainingPath.match(new RegExp(`^${escapedSep}profiles${escapedSep}([^${escapedSep}]+)`));
 
     if (profilesMatch) {
@@ -271,101 +269,6 @@ export class UserScopeService implements IScopeService {
   }
 
   /**
-   * Sync all prompts from installed bundles to Copilot directory
-   */
-  async syncAllBundles(): Promise<void> {
-    try {
-      this.logger.info('Syncing bundles to GitHub Copilot...');
-
-      // Ensure Copilot prompts directory exists
-      const promptsDir = this.getCopilotPromptsDirectory();
-      await this.ensureDirectory(promptsDir);
-
-      // Get all installed bundles
-      const bundlesDir = path.join(this.context.globalStorageUri.fsPath, 'bundles');
-
-      if (!fs.existsSync(bundlesDir)) {
-        this.logger.debug('No bundles directory found');
-        return;
-      }
-
-      const bundleDirs = await readdir(bundlesDir);
-
-      for (const bundleId of bundleDirs) {
-        const bundlePath = path.join(bundlesDir, bundleId);
-        const stat = fs.statSync(bundlePath);
-
-        if (stat.isDirectory()) {
-          await this.syncBundle(bundleId, bundlePath);
-        }
-      }
-
-      this.logger.info(`Synced ${bundleDirs.length} bundles to Copilot`);
-    } catch (error) {
-      this.logger.error('Failed to sync bundles to Copilot', error as Error);
-    }
-  }
-
-  /**
-   * Sync a single bundle to Copilot directory
-   * Implements IScopeService.syncBundle
-   * @param bundleId - The unique identifier of the bundle
-   * @param bundlePath - The path to the installed bundle directory
-   * @param _options - Ignored for user scope (commitMode only applies to repository scope)
-   */
-  async syncBundle(bundleId: string, bundlePath: string, _options?: SyncBundleOptions): Promise<void> {
-    try {
-      this.logger.debug(`Syncing bundle: ${bundleId}`);
-
-      // Get prompts directory
-      const promptsDir = this.getCopilotPromptsDirectory();
-
-      // Ensure base Copilot prompts directory exists
-      await this.ensureDirectory(promptsDir);
-
-      // Read deployment manifest
-      const manifestPath = path.join(bundlePath, 'deployment-manifest.yml');
-
-      if (!fs.existsSync(manifestPath)) {
-        this.logger.warn(`No manifest found for bundle: ${bundleId}`);
-        return;
-      }
-
-      const manifestContent = await readFile(manifestPath, 'utf8');
-      const manifest = yaml.load(manifestContent) as DeploymentManifest;
-
-      if (!manifest.prompts || manifest.prompts.length === 0) {
-        this.logger.debug(`Bundle ${bundleId} has no prompts to sync`);
-        return;
-      }
-
-      // Sync each prompt/skill
-      for (const promptDef of manifest.prompts) {
-        // Handle skills differently - they are directories
-        if (promptDef.type === 'skill') {
-          await this.syncSkillFromBundle(bundleId, bundlePath, promptDef);
-          continue;
-        }
-
-        const sourcePath = path.join(bundlePath, promptDef.file);
-
-        if (!fs.existsSync(sourcePath)) {
-          this.logger.warn(`Prompt file not found: ${sourcePath}`);
-          continue;
-        }
-
-        // Detect file type and create appropriate filename
-        const copilotFile = this.determineCopilotFileType(promptDef, sourcePath, bundleId);
-
-        // Create symlink or copy
-        await this.createCopilotFile(copilotFile);
-      }
-    } catch (error) {
-      this.logger.error(`Failed to sync bundle ${bundleId}`, error as Error);
-    }
-  }
-
-  /**
    * Sync a skill from a bundle
    * Skills are directories containing SKILL.md and optional subdirectories
    * @param bundleId
@@ -489,12 +392,170 @@ export class UserScopeService implements IScopeService {
   }
 
   /**
+   * Ensure directory exists
+   * @param dir
+   */
+  private async ensureDirectory(dir: string): Promise<void> {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+      this.logger.debug(`Created directory: ${dir}`);
+    }
+  }
+
+  /**
+   * Copy skill directory recursively
+   * @param sourceDir
+   * @param targetDir
+   */
+  private async copySkillDirectory(sourceDir: string, targetDir: string): Promise<void> {
+    await this.ensureDirectory(targetDir);
+
+    const entries = await readdir(sourceDir);
+
+    for (const entry of entries) {
+      const sourcePath = path.join(sourceDir, entry);
+      const targetPath = path.join(targetDir, entry);
+
+      const stats = fs.statSync(sourcePath);
+
+      if (stats.isDirectory()) {
+        await this.copySkillDirectory(sourcePath, targetPath);
+      } else {
+        const fileContent = await readFile(sourcePath);
+        await writeFile(targetPath, fileContent);
+      }
+    }
+  }
+
+  /**
+   * Remove skill directory recursively
+   * @param dir
+   */
+  private async removeSkillDirectory(dir: string): Promise<void> {
+    if (!fs.existsSync(dir)) {
+      return;
+    }
+
+    const entries = await readdir(dir);
+
+    for (const entry of entries) {
+      const entryPath = path.join(dir, entry);
+      const stats = await lstat(entryPath);
+
+      if (stats.isSymbolicLink()) {
+        await unlink(entryPath);
+      } else if (stats.isDirectory()) {
+        await this.removeSkillDirectory(entryPath);
+      } else {
+        await unlink(entryPath);
+      }
+    }
+
+    fs.rmdirSync(dir);
+  }
+
+  /**
+   * Sync all prompts from installed bundles to Copilot directory
+   */
+  public async syncAllBundles(): Promise<void> {
+    try {
+      this.logger.info('Syncing bundles to GitHub Copilot...');
+
+      // Ensure Copilot prompts directory exists
+      const promptsDir = this.getCopilotPromptsDirectory();
+      await this.ensureDirectory(promptsDir);
+
+      // Get all installed bundles
+      const bundlesDir = path.join(this.context.globalStorageUri.fsPath, 'bundles');
+
+      if (!fs.existsSync(bundlesDir)) {
+        this.logger.debug('No bundles directory found');
+        return;
+      }
+
+      const bundleDirs = await readdir(bundlesDir);
+
+      for (const bundleId of bundleDirs) {
+        const bundlePath = path.join(bundlesDir, bundleId);
+        const stat = fs.statSync(bundlePath);
+
+        if (stat.isDirectory()) {
+          await this.syncBundle(bundleId, bundlePath);
+        }
+      }
+
+      this.logger.info(`Synced ${bundleDirs.length} bundles to Copilot`);
+    } catch (error) {
+      this.logger.error('Failed to sync bundles to Copilot', error as Error);
+    }
+  }
+
+  /**
+   * Sync a single bundle to Copilot directory
+   * Implements IScopeService.syncBundle
+   * @param bundleId - The unique identifier of the bundle
+   * @param bundlePath - The path to the installed bundle directory
+   * @param _options - Ignored for user scope (commitMode only applies to repository scope)
+   */
+  public async syncBundle(bundleId: string, bundlePath: string, _options?: SyncBundleOptions): Promise<void> {
+    try {
+      this.logger.debug(`Syncing bundle: ${bundleId}`);
+
+      // Get prompts directory
+      const promptsDir = this.getCopilotPromptsDirectory();
+
+      // Ensure base Copilot prompts directory exists
+      await this.ensureDirectory(promptsDir);
+
+      // Read deployment manifest
+      const manifestPath = path.join(bundlePath, 'deployment-manifest.yml');
+
+      if (!fs.existsSync(manifestPath)) {
+        this.logger.warn(`No manifest found for bundle: ${bundleId}`);
+        return;
+      }
+
+      const manifestContent = await readFile(manifestPath, 'utf8');
+      const manifest = yaml.load(manifestContent) as DeploymentManifest;
+
+      if (!manifest.prompts || manifest.prompts.length === 0) {
+        this.logger.debug(`Bundle ${bundleId} has no prompts to sync`);
+        return;
+      }
+
+      // Sync each prompt/skill
+      for (const promptDef of manifest.prompts) {
+        // Handle skills differently - they are directories
+        if (promptDef.type === 'skill') {
+          await this.syncSkillFromBundle(bundleId, bundlePath, promptDef);
+          continue;
+        }
+
+        const sourcePath = path.join(bundlePath, promptDef.file);
+
+        if (!fs.existsSync(sourcePath)) {
+          this.logger.warn(`Prompt file not found: ${sourcePath}`);
+          continue;
+        }
+
+        // Detect file type and create appropriate filename
+        const copilotFile = this.determineCopilotFileType(promptDef, sourcePath, bundleId);
+
+        // Create symlink or copy
+        await this.createCopilotFile(copilotFile);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to sync bundle ${bundleId}`, error as Error);
+    }
+  }
+
+  /**
    * Remove synced files for a bundle
    * Implements IScopeService.unsyncBundle
    * Since we use a flat structure, we need to read the bundle's manifest to know which files to remove
    * @param bundleId
    */
-  async unsyncBundle(bundleId: string): Promise<void> {
+  public async unsyncBundle(bundleId: string): Promise<void> {
     try {
       this.logger.debug(`Removing Copilot files for bundle: ${bundleId}`);
 
@@ -588,7 +649,7 @@ export class UserScopeService implements IScopeService {
   /**
    * Clean all synced files (for extension uninstall)
    */
-  async cleanAll(): Promise<void> {
+  public async cleanAll(): Promise<void> {
     try {
       this.logger.info('Cleaning all Copilot synced files...');
 
@@ -624,7 +685,7 @@ export class UserScopeService implements IScopeService {
    * @param fileName - The name of the file (without extension)
    * @returns The full target path where the file should be placed
    */
-  getTargetPath(fileType: CopilotFileType, fileName: string): string {
+  public getTargetPath(fileType: CopilotFileType, fileName: string): string {
     const promptsDir = this.getCopilotPromptsDirectory();
     const targetFileName = getTargetFileName(fileName, fileType);
     return path.join(promptsDir, targetFileName);
@@ -636,7 +697,7 @@ export class UserScopeService implements IScopeService {
    *
    * Note: Returns both `baseDirectory` (IScopeService) and `copilotDir` (backward compatibility)
    */
-  async getStatus(): Promise<ScopeStatus & { copilotDir: string }> {
+  public async getStatus(): Promise<ScopeStatus & { copilotDir: string }> {
     const promptsDir = this.getCopilotPromptsDirectory();
     const status = {
       baseDirectory: promptsDir,
@@ -672,24 +733,13 @@ export class UserScopeService implements IScopeService {
   }
 
   /**
-   * Ensure directory exists
-   * @param dir
-   */
-  private async ensureDirectory(dir: string): Promise<void> {
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-      this.logger.debug(`Created directory: ${dir}`);
-    }
-  }
-
-  /**
    * Get the Copilot skills directory
    * Skills are stored in ~/.copilot/skills (user-level) following the Agent Skills specification
    * https://code.visualstudio.com/docs/copilot/customization/agent-skills
    * @param scope - Installation scope ('user' or 'workspace')
    * @returns Path to the skills directory
    */
-  getCopilotSkillsDirectory(scope: 'user' | 'workspace' = 'user'): string {
+  public getCopilotSkillsDirectory(scope: 'user' | 'workspace' = 'user'): string {
     if (scope === 'workspace') {
       const workspaceFolders = vscode.workspace.workspaceFolders;
       if (!workspaceFolders || workspaceFolders.length === 0) {
@@ -708,7 +758,7 @@ export class UserScopeService implements IScopeService {
    * @param scope - Installation scope ('user' or 'workspace')
    * @returns Path to the Claude skills directory
    */
-  getClaudeSkillsDirectory(scope: 'user' | 'workspace' = 'user'): string {
+  public getClaudeSkillsDirectory(scope: 'user' | 'workspace' = 'user'): string {
     if (scope === 'workspace') {
       const workspaceFolders = vscode.workspace.workspaceFolders;
       if (!workspaceFolders || workspaceFolders.length === 0) {
@@ -729,7 +779,7 @@ export class UserScopeService implements IScopeService {
    * @param scope - Installation scope ('user' or 'workspace')
    * @param syncToClaude - Also sync to ~/.claude/skills
    */
-  async syncSkill(skillName: string, sourceDir: string, scope: 'user' | 'workspace' = 'user', syncToClaude = false): Promise<void> {
+  public async syncSkill(skillName: string, sourceDir: string, scope: 'user' | 'workspace' = 'user', syncToClaude = false): Promise<void> {
     try {
       this.logger.info(`Syncing skill: ${skillName} (scope: ${scope})`);
 
@@ -774,7 +824,7 @@ export class UserScopeService implements IScopeService {
    * @param scope - Installation scope
    * @param removeFromClaude - Also remove from ~/.claude/skills
    */
-  async unsyncSkill(skillName: string, scope: 'user' | 'workspace' = 'user', removeFromClaude = false): Promise<void> {
+  public async unsyncSkill(skillName: string, scope: 'user' | 'workspace' = 'user', removeFromClaude = false): Promise<void> {
     try {
       this.logger.info(`Removing skill: ${skillName}`);
 
@@ -801,62 +851,10 @@ export class UserScopeService implements IScopeService {
   }
 
   /**
-   * Copy skill directory recursively
-   * @param sourceDir
-   * @param targetDir
-   */
-  private async copySkillDirectory(sourceDir: string, targetDir: string): Promise<void> {
-    await this.ensureDirectory(targetDir);
-
-    const entries = await readdir(sourceDir);
-
-    for (const entry of entries) {
-      const sourcePath = path.join(sourceDir, entry);
-      const targetPath = path.join(targetDir, entry);
-
-      const stats = fs.statSync(sourcePath);
-
-      if (stats.isDirectory()) {
-        await this.copySkillDirectory(sourcePath, targetPath);
-      } else {
-        const fileContent = await readFile(sourcePath);
-        await writeFile(targetPath, fileContent);
-      }
-    }
-  }
-
-  /**
-   * Remove skill directory recursively
-   * @param dir
-   */
-  private async removeSkillDirectory(dir: string): Promise<void> {
-    if (!fs.existsSync(dir)) {
-      return;
-    }
-
-    const entries = await readdir(dir);
-
-    for (const entry of entries) {
-      const entryPath = path.join(dir, entry);
-      const stats = await lstat(entryPath);
-
-      if (stats.isSymbolicLink()) {
-        await unlink(entryPath);
-      } else if (stats.isDirectory()) {
-        await this.removeSkillDirectory(entryPath);
-      } else {
-        await unlink(entryPath);
-      }
-    }
-
-    fs.rmdirSync(dir);
-  }
-
-  /**
    * Get skills status
    * @param scope
    */
-  async getSkillsStatus(scope: 'user' | 'workspace' = 'user'): Promise<{
+  public async getSkillsStatus(scope: 'user' | 'workspace' = 'user'): Promise<{
     skillsDir: string;
     dirExists: boolean;
     skills: string[];

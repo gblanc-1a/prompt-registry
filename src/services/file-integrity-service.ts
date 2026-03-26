@@ -12,13 +12,56 @@ import {
  */
 export class FileIntegrityService {
   private static readonly CHUNK_SIZE = 64 * 1024; // 64KB chunks for large files
-  private static readonly CURRENT_VERSION = '1.1.0'; // Updated version for crypto change
+  private static readonly CURRENT_VERSION = '1.1.0';
+
+  /**
+   * Calculate both SHA256 and BLAKE2b hashes in a single file pass for efficiency
+   * Replaces xxhash with BLAKE2b for better portability while maintaining performance
+   */
+  /**
+   * Calculate both SHA256 and secondary hash in a single file pass for efficiency
+   * Uses SHA-512 as fallback if BLAKE2b is not available in the extension environment
+   * @param filePath
+   */
+  private async calculateFileHashes(filePath: string): Promise<{ sha256: string; blake2b256: string }> {
+    return new Promise((resolve, reject) => {
+      const sha256Hash = crypto.createHash('sha256');
+
+      // Try BLAKE2b first, fallback to SHA-512 if not supported
+      let secondaryHash: crypto.Hash;
+
+      try {
+        secondaryHash = crypto.createHash('blake2b512');
+      } catch {
+        // Fallback to SHA-512 if BLAKE2b is not supported in this environment
+        secondaryHash = crypto.createHash('sha512');
+        console.log('Prompt Registry: BLAKE2b not available, using SHA-512 fallback');
+      }
+
+      const stream = fs.createReadStream(filePath, { highWaterMark: FileIntegrityService.CHUNK_SIZE });
+
+      stream.on('data', (chunk: string | Buffer) => {
+        sha256Hash.update(chunk);
+        secondaryHash.update(chunk);
+      });
+
+      stream.on('end', () => {
+        const sha256 = sha256Hash.digest('hex');
+        const secondaryDigest = secondaryHash.digest('hex');
+        // For SHA-512, truncate to 64 chars (256-bit equivalent); for BLAKE2b512, truncate to 64 chars
+        const blake2b256 = secondaryDigest.substring(0, 64);
+        resolve({ sha256, blake2b256 });
+      });
+
+      stream.on('error', reject);
+    });
+  } // Updated version for crypto change
 
   /**
    * Calculate comprehensive integrity information for a single file
    * @param filePath
    */
-  async calculateFileIntegrity(filePath: string): Promise<FileIntegrityInfo> {
+  public async calculateFileIntegrity(filePath: string): Promise<FileIntegrityInfo> {
     const stats = await fs.promises.stat(filePath);
 
     // Calculate both hash algorithms efficiently in a single pass
@@ -42,7 +85,7 @@ export class FileIntegrityService {
    * @param filePaths
    * @param concurrency
    */
-  async calculateFilesIntegrity(filePaths: string[], concurrency = 5): Promise<FileIntegrityInfo[]> {
+  public async calculateFilesIntegrity(filePaths: string[], concurrency = 5): Promise<FileIntegrityInfo[]> {
     const results: FileIntegrityInfo[] = [];
     const semaphore = new Semaphore(concurrency);
 
@@ -61,56 +104,11 @@ export class FileIntegrityService {
   }
 
   /**
-   * Calculate both SHA256 and BLAKE2b hashes in a single file pass for efficiency
-   * Replaces xxhash with BLAKE2b for better portability while maintaining performance
-   */
-  /**
-   * Calculate both SHA256 and secondary hash in a single file pass for efficiency
-   * Uses SHA-512 as fallback if BLAKE2b is not available in the extension environment
-   * @param filePath
-   */
-  private async calculateFileHashes(filePath: string): Promise<{ sha256: string; blake2b256: string }> {
-    return new Promise((resolve, reject) => {
-      const sha256Hash = crypto.createHash('sha256');
-
-      // Try BLAKE2b first, fallback to SHA-512 if not supported
-      let secondaryHash: crypto.Hash;
-      let useBlake2b = true;
-
-      try {
-        secondaryHash = crypto.createHash('blake2b512');
-      } catch {
-        // Fallback to SHA-512 if BLAKE2b is not supported in this environment
-        secondaryHash = crypto.createHash('sha512');
-        useBlake2b = false;
-        console.log('Prompt Registry: BLAKE2b not available, using SHA-512 fallback');
-      }
-
-      const stream = fs.createReadStream(filePath, { highWaterMark: FileIntegrityService.CHUNK_SIZE });
-
-      stream.on('data', (chunk: string | Buffer) => {
-        sha256Hash.update(chunk);
-        secondaryHash.update(chunk);
-      });
-
-      stream.on('end', () => {
-        const sha256 = sha256Hash.digest('hex');
-        const secondaryDigest = secondaryHash.digest('hex');
-        // For SHA-512, truncate to 64 chars (256-bit equivalent); for BLAKE2b512, truncate to 64 chars
-        const blake2b256 = secondaryDigest.substring(0, 64);
-        resolve({ sha256, blake2b256 });
-      });
-
-      stream.on('error', reject);
-    });
-  }
-
-  /**
    * Verify file integrity against expected values
    * @param filePath
    * @param expectedIntegrity
    */
-  async verifyFileIntegrity(filePath: string, expectedIntegrity: FileIntegrityInfo): Promise<ModificationInfo> {
+  public async verifyFileIntegrity(filePath: string, expectedIntegrity: FileIntegrityInfo): Promise<ModificationInfo> {
     try {
       const currentIntegrity = await this.calculateFileIntegrity(filePath);
 
@@ -143,7 +141,7 @@ export class FileIntegrityService {
    * @param files
    * @param existingFiles
    */
-  async generateIntegrityReport(files: FileIntegrityInfo[], existingFiles: FileIntegrityInfo[]): Promise<IntegrityReport> {
+  public async generateIntegrityReport(files: FileIntegrityInfo[], existingFiles: FileIntegrityInfo[]): Promise<IntegrityReport> {
     const modifications: {
       file: string;
       type: 'modified' | 'deleted' | 'corrupted' | 'intact';
@@ -238,7 +236,7 @@ export class FileIntegrityService {
    * @param expectedSha256
    * @param expectedBlake2b
    */
-  async quickVerifyFile(filePath: string, expectedSha256: string, expectedBlake2b?: string): Promise<boolean> {
+  public async quickVerifyFile(filePath: string, expectedSha256: string, expectedBlake2b?: string): Promise<boolean> {
     try {
       const buffer = await fs.promises.readFile(filePath);
 
@@ -267,8 +265,8 @@ export class FileIntegrityService {
    * @param directoryPath
    * @param patterns
    */
-  async findFiles(directoryPath: string, patterns?: string[]): Promise<string[]> {
-    const glob = require('glob');
+  public async findFiles(directoryPath: string, patterns?: string[]): Promise<string[]> {
+    const glob = await import('glob');
     const files: string[] = [];
 
     if (patterns && patterns.length > 0) {
@@ -292,7 +290,7 @@ export class FileIntegrityService {
    * Calculate directory summary statistics
    * @param directoryPath
    */
-  async calculateDirectoryStats(directoryPath: string): Promise<{
+  public async calculateDirectoryStats(directoryPath: string): Promise<{
     totalFiles: number;
     totalSize: number;
     largestFile: string;
@@ -340,7 +338,7 @@ class Semaphore {
     this.permits = permits;
   }
 
-  async acquire(): Promise<void> {
+  public async acquire(): Promise<void> {
     return new Promise<void>((resolve) => {
       if (this.permits > 0) {
         this.permits--;
@@ -351,7 +349,7 @@ class Semaphore {
     });
   }
 
-  release(): void {
+  public release(): void {
     if (this.waiting.length > 0) {
       const resolve = this.waiting.shift()!;
       resolve();

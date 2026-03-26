@@ -135,81 +135,11 @@ export class RepositoryScopeService implements IScopeService {
   }
 
   /**
-   * Get the target path for a file of a given type.
-   * Implements IScopeService.getTargetPath
-   * @param fileType - The Copilot file type
-   * @param fileName - The name of the file (without extension)
-   * @returns The full target path where the file should be placed
-   */
-  getTargetPath(fileType: CopilotFileType, fileName: string): string {
-    const relativeDir = getRepositoryTargetDirectory(fileType);
-    const targetFileName = getTargetFileName(fileName, fileType);
-    return path.join(this.workspaceRoot, relativeDir, targetFileName);
-  }
-
-  /**
    * Get the relative path from workspace root for git exclude
    * @param absolutePath
    */
   private getRelativePath(absolutePath: string): string {
     return path.relative(this.workspaceRoot, absolutePath);
-  }
-
-  /**
-   * Sync a bundle's files to the appropriate .github/ directories.
-   * Implements IScopeService.syncBundle
-   * @param bundleId - The unique identifier of the bundle
-   * @param bundlePath - The path to the installed bundle directory
-   * @param options - Optional sync options including commitMode
-   */
-  async syncBundle(bundleId: string, bundlePath: string, options?: SyncBundleOptions): Promise<void> {
-    try {
-      this.logger.debug(`[RepositoryScopeService] Syncing bundle: ${bundleId}`);
-      this.logger.debug(`[RepositoryScopeService] Bundle path: ${bundlePath}`);
-      this.logger.debug(`[RepositoryScopeService] Workspace root: ${this.workspaceRoot}`);
-
-      // Get commit mode from options first, then fall back to storage lookup
-      let commitMode: RepositoryCommitMode;
-      if (options?.commitMode) {
-        commitMode = options.commitMode;
-        this.logger.debug(`[RepositoryScopeService] Using commitMode from options: ${commitMode}`);
-      } else {
-        const installedBundle = await this.storage.getInstalledBundle(bundleId, 'repository');
-        commitMode = installedBundle?.commitMode ?? 'commit';
-        this.logger.debug(`[RepositoryScopeService] Using commitMode from storage: ${commitMode}`);
-      }
-
-      // Read deployment manifest
-      const manifestPath = path.join(bundlePath, 'deployment-manifest.yml');
-      this.logger.debug(`[RepositoryScopeService] Looking for manifest at: ${manifestPath}`);
-      if (!fs.existsSync(manifestPath)) {
-        this.logger.warn(`[RepositoryScopeService] No manifest found for bundle: ${bundleId}`);
-        return;
-      }
-      this.logger.debug(`[RepositoryScopeService] Manifest found, reading content...`);
-
-      const manifestContent = await readFile(manifestPath, 'utf8');
-      const manifest = yaml.load(manifestContent) as DeploymentManifest;
-      this.logger.debug(`[RepositoryScopeService] Manifest parsed. Keys: ${Object.keys(manifest).join(', ')}`);
-      this.logger.debug(`[RepositoryScopeService] manifest.prompts exists: ${!!manifest.prompts}, length: ${manifest.prompts?.length ?? 'N/A'}`);
-
-      if (!manifest.prompts || manifest.prompts.length === 0) {
-        this.logger.info(`[RepositoryScopeService] Bundle ${bundleId} has no prompts to sync`);
-      } else {
-        this.logger.info(`[RepositoryScopeService] Found ${manifest.prompts.length} prompts to sync`);
-        for (const p of manifest.prompts) {
-          this.logger.info(`[RepositoryScopeService]   - Prompt: id=${p.id}, file=${p.file}, type=${p.type}`);
-        }
-      }
-
-      // Install files (handles empty prompts array gracefully)
-      const installedPaths = await this.installFiles(bundlePath, manifest, commitMode);
-
-      this.logger.info(`[RepositoryScopeService] ✅ Synced ${installedPaths.length} files for bundle: ${bundleId}`);
-    } catch (error) {
-      this.logger.error(`[RepositoryScopeService] Failed to sync bundle ${bundleId}`, error as Error);
-      throw error;
-    }
   }
 
   /**
@@ -458,125 +388,6 @@ export class RepositoryScopeService implements IScopeService {
   }
 
   /**
-   * Remove synced files for a bundle.
-   * Implements IScopeService.unsyncBundle
-   *
-   * Only removes files that:
-   * 1. Are tracked in the lockfile for this bundle
-   * 2. Have matching checksums (not modified by user)
-   * 3. Are not used by other bundles in the lockfile
-   *
-   * User-created files and modified files are preserved.
-   * @param bundleId - The unique identifier of the bundle to unsync
-   */
-  async unsyncBundle(bundleId: string): Promise<void> {
-    try {
-      this.logger.debug(`[RepositoryScopeService] Removing files for bundle: ${bundleId}`);
-
-      const lockfileManager = LockfileManager.getInstance(this.workspaceRoot);
-
-      // Read both lockfiles to get complete picture
-      const mainLockfile = await lockfileManager.read();
-      const localLockfilePath = lockfileManager.getLocalLockfilePath();
-      let localLockfile = null;
-      if (fs.existsSync(localLockfilePath)) {
-        try {
-          const content = await readFile(localLockfilePath, 'utf8');
-          localLockfile = JSON.parse(content);
-        } catch {
-          // Ignore parse errors
-        }
-      }
-
-      // Find the bundle entry in either lockfile
-      const bundleEntry = mainLockfile?.bundles[bundleId] || localLockfile?.bundles[bundleId];
-
-      if (!bundleEntry) {
-        this.logger.debug(`[RepositoryScopeService] Bundle ${bundleId} not found in any lockfile`);
-        return;
-      }
-
-      // Get files tracked by this bundle
-      const bundleFiles = bundleEntry.files || [];
-
-      if (bundleFiles.length === 0) {
-        this.logger.debug(`[RepositoryScopeService] Bundle ${bundleId} has no tracked files in lockfile`);
-        return;
-      }
-
-      // Collect files used by OTHER bundles (to avoid removing shared files)
-      const filesUsedByOtherBundles = this.collectFilesUsedByOtherBundles(
-        bundleId,
-        mainLockfile,
-        localLockfile
-      );
-
-      const removedPaths: string[] = [];
-      const skippedPaths: { path: string; reason: string }[] = [];
-
-      // Remove each file tracked in the lockfile
-      for (const fileEntry of bundleFiles) {
-        const targetPath = path.join(this.workspaceRoot, fileEntry.path);
-
-        // Skip if file doesn't exist
-        if (!fs.existsSync(targetPath)) {
-          this.logger.debug(`[RepositoryScopeService] File already removed: ${fileEntry.path}`);
-          continue;
-        }
-
-        // Skip if file is used by another bundle
-        if (filesUsedByOtherBundles.has(fileEntry.path)) {
-          skippedPaths.push({ path: fileEntry.path, reason: 'used by another bundle' });
-          this.logger.debug(`[RepositoryScopeService] Skipping file used by another bundle: ${fileEntry.path}`);
-          continue;
-        }
-
-        // Check if file has been modified by user (checksum mismatch)
-        try {
-          const currentChecksum = await calculateFileChecksum(targetPath);
-          if (currentChecksum !== fileEntry.checksum) {
-            skippedPaths.push({ path: fileEntry.path, reason: 'modified by user' });
-            this.logger.info(`[RepositoryScopeService] Preserving user-modified file: ${fileEntry.path}`);
-            continue;
-          }
-        } catch {
-          this.logger.warn(`[RepositoryScopeService] Failed to calculate checksum for: ${fileEntry.path}`);
-          continue;
-        }
-
-        // Safe to remove - file is tracked, unmodified, and not shared
-        try {
-          await unlink(targetPath);
-          removedPaths.push(fileEntry.path);
-          this.logger.debug(`[RepositoryScopeService] Removed: ${fileEntry.path}`);
-        } catch {
-          this.logger.warn(`[RepositoryScopeService] Failed to remove file: ${fileEntry.path}`);
-        }
-      }
-
-      // Remove from git exclude if needed
-      if (removedPaths.length > 0) {
-        // Consolidate skill file paths to skill directory paths for git exclude
-        // (mirrors the logic in updateGitExcludeForLocalOnly)
-        const pathsForExclude = this.consolidateSkillPathsForGitExclude(removedPaths);
-        await this.removeFromGitExclude(pathsForExclude);
-
-        // Clean up empty prompt registry subdirectories
-        // Only removes directories that are completely empty
-        await this.cleanupEmptyPromptRegistryDirectories();
-      }
-
-      if (skippedPaths.length > 0) {
-        this.logger.info(`[RepositoryScopeService] Preserved ${skippedPaths.length} files: ${skippedPaths.map((s) => `${s.path} (${s.reason})`).join(', ')}`);
-      }
-
-      this.logger.info(`[RepositoryScopeService] ✅ Removed ${removedPaths.length} files for bundle: ${bundleId}`);
-    } catch (error) {
-      this.logger.error(`[RepositoryScopeService] Failed to unsync bundle ${bundleId}`, error as Error);
-    }
-  }
-
-  /**
    * Consolidate skill file paths to skill directory paths for git exclude.
    * Skill files like .github/skills/my-skill/SKILL.md are consolidated to .github/skills/my-skill
    * @param paths
@@ -748,147 +559,6 @@ export class RepositoryScopeService implements IScopeService {
   }
 
   /**
-   * Get the current status of the scope service.
-   * Implements IScopeService.getStatus
-   */
-  async getStatus(): Promise<ScopeStatus> {
-    const githubDir = this.getGitHubDirectory();
-    const status: ScopeStatus = {
-      baseDirectory: githubDir,
-      dirExists: fs.existsSync(githubDir),
-      syncedFiles: 0,
-      files: []
-    };
-
-    if (!status.dirExists) {
-      return status;
-    }
-
-    // Scan all .github subdirectories for files
-    for (const subdir of PROMPT_REGISTRY_MANAGED_DIRS) {
-      const subdirPath = path.join(githubDir, subdir);
-      if (fs.existsSync(subdirPath)) {
-        try {
-          const files = await readdir(subdirPath);
-          for (const file of files) {
-            const filePath = path.join(subdirPath, file);
-            const fileStat = await stat(filePath);
-            if (fileStat.isFile()) {
-              status.syncedFiles++;
-              status.files.push(file);
-            }
-          }
-        } catch {
-          this.logger.debug(`[RepositoryScopeService] Could not read directory: ${subdirPath}`);
-        }
-      }
-    }
-
-    return status;
-  }
-
-  /**
-   * Switch the commit mode for a bundle
-   * @param bundleId - Bundle identifier
-   * @param newMode - New commit mode
-   */
-  async switchCommitMode(bundleId: string, newMode: RepositoryCommitMode): Promise<void> {
-    try {
-      this.logger.debug(`[RepositoryScopeService] Switching commit mode for ${bundleId} to ${newMode}`);
-
-      // Get installed bundle info from lockfile (repository scope bundles are tracked via lockfile)
-      // Use getInstalledBundles() to search both main and local lockfiles
-      const lockfileManager = LockfileManager.getInstance(this.workspaceRoot);
-      const installedBundles = await lockfileManager.getInstalledBundles();
-      const bundle = installedBundles.find((b) => b.bundleId === bundleId);
-
-      if (!bundle) {
-        this.logger.warn(`[RepositoryScopeService] Bundle ${bundleId} not found in any lockfile`);
-        return;
-      }
-
-      const currentMode = bundle.commitMode ?? 'commit';
-      if (currentMode === newMode) {
-        this.logger.debug(`[RepositoryScopeService] Bundle ${bundleId} already in ${newMode} mode`);
-        return;
-      }
-
-      // Find installed files in .github/ directories
-      // The lockfile files point to the bundle cache, not the installed location
-      // We need to scan the .github/ directories for files that belong to this bundle
-      const filePaths: string[] = [];
-
-      // Check .github/prompts directory
-      const githubPromptsDir = path.join(this.workspaceRoot, '.github', 'prompts');
-      if (fs.existsSync(githubPromptsDir)) {
-        const files = await readdir(githubPromptsDir);
-        for (const file of files) {
-          const relativePath = path.join('.github', 'prompts', file);
-          filePaths.push(relativePath);
-        }
-      }
-
-      // Check .github/agents directory
-      const githubAgentsDir = path.join(this.workspaceRoot, '.github', 'agents');
-      if (fs.existsSync(githubAgentsDir)) {
-        const files = await readdir(githubAgentsDir);
-        for (const file of files) {
-          const relativePath = path.join('.github', 'agents', file);
-          filePaths.push(relativePath);
-        }
-      }
-
-      // Check .github/copilot-instructions.md
-      const copilotInstructionsPath = path.join(this.workspaceRoot, '.github', 'copilot-instructions.md');
-      if (fs.existsSync(copilotInstructionsPath)) {
-        filePaths.push('.github/copilot-instructions.md');
-      }
-
-      this.logger.debug(`[RepositoryScopeService] Found ${filePaths.length} files to update git exclude for`);
-
-      // Update git exclude based on new mode
-      await (newMode === 'local-only' ? this.addToGitExclude(filePaths) : this.removeFromGitExclude(filePaths));
-
-      this.logger.info(`[RepositoryScopeService] ✅ Switched ${bundleId} to ${newMode} mode`);
-    } catch (error) {
-      this.logger.error(`[RepositoryScopeService] Failed to switch commit mode for ${bundleId}`, error as Error);
-    }
-  }
-
-  /**
-   * Add the local lockfile to .git/info/exclude.
-   * This ensures the local lockfile is not tracked by Git.
-   *
-   * Handles edge cases:
-   * - Missing .git directory: skips without error
-   * - Missing .git/info/exclude file: creates it
-   * - Duplicate entries: prevents adding if already present
-   * @see Requirements 2.1, 2.3, 2.4, 2.5
-   */
-  async addLocalLockfileToGitExclude(): Promise<void> {
-    if (!this.hasGitDirectory()) {
-      this.logger.debug('[RepositoryScopeService] No .git directory, skipping git exclude');
-      return;
-    }
-    await this.addToGitExclude([LOCAL_LOCKFILE_NAME]);
-  }
-
-  /**
-   * Remove the local lockfile from .git/info/exclude.
-   * Called when the local lockfile is deleted (last local-only bundle removed).
-   *
-   * Handles edge cases:
-   * - Missing .git directory: skips without error
-   * @see Requirements 2.2, 2.3
-   */
-  async removeLocalLockfileFromGitExclude(): Promise<void> {
-    if (!this.hasGitDirectory()) {
-      return;
-    }
-    await this.removeFromGitExclude([LOCAL_LOCKFILE_NAME]);
-  }
-
-  /**
    * Add paths to .git/info/exclude under the Prompt Registry section
    * @param paths - Relative paths to add
    */
@@ -1017,5 +687,335 @@ export class RepositoryScopeService implements IScopeService {
     } catch (error) {
       this.logger.warn(`[RepositoryScopeService] Failed to update git exclude: ${error}`);
     }
+  }
+
+  /**
+   * Get the target path for a file of a given type.
+   * Implements IScopeService.getTargetPath
+   * @param fileType - The Copilot file type
+   * @param fileName - The name of the file (without extension)
+   * @returns The full target path where the file should be placed
+   */
+  public getTargetPath(fileType: CopilotFileType, fileName: string): string {
+    const relativeDir = getRepositoryTargetDirectory(fileType);
+    const targetFileName = getTargetFileName(fileName, fileType);
+    return path.join(this.workspaceRoot, relativeDir, targetFileName);
+  }
+
+  /**
+   * Sync a bundle's files to the appropriate .github/ directories.
+   * Implements IScopeService.syncBundle
+   * @param bundleId - The unique identifier of the bundle
+   * @param bundlePath - The path to the installed bundle directory
+   * @param options - Optional sync options including commitMode
+   */
+  public async syncBundle(bundleId: string, bundlePath: string, options?: SyncBundleOptions): Promise<void> {
+    try {
+      this.logger.debug(`[RepositoryScopeService] Syncing bundle: ${bundleId}`);
+      this.logger.debug(`[RepositoryScopeService] Bundle path: ${bundlePath}`);
+      this.logger.debug(`[RepositoryScopeService] Workspace root: ${this.workspaceRoot}`);
+
+      // Get commit mode from options first, then fall back to storage lookup
+      let commitMode: RepositoryCommitMode;
+      if (options?.commitMode) {
+        commitMode = options.commitMode;
+        this.logger.debug(`[RepositoryScopeService] Using commitMode from options: ${commitMode}`);
+      } else {
+        const installedBundle = await this.storage.getInstalledBundle(bundleId, 'repository');
+        commitMode = installedBundle?.commitMode ?? 'commit';
+        this.logger.debug(`[RepositoryScopeService] Using commitMode from storage: ${commitMode}`);
+      }
+
+      // Read deployment manifest
+      const manifestPath = path.join(bundlePath, 'deployment-manifest.yml');
+      this.logger.debug(`[RepositoryScopeService] Looking for manifest at: ${manifestPath}`);
+      if (!fs.existsSync(manifestPath)) {
+        this.logger.warn(`[RepositoryScopeService] No manifest found for bundle: ${bundleId}`);
+        return;
+      }
+      this.logger.debug(`[RepositoryScopeService] Manifest found, reading content...`);
+
+      const manifestContent = await readFile(manifestPath, 'utf8');
+      const manifest = yaml.load(manifestContent) as DeploymentManifest;
+      this.logger.debug(`[RepositoryScopeService] Manifest parsed. Keys: ${Object.keys(manifest).join(', ')}`);
+      this.logger.debug(`[RepositoryScopeService] manifest.prompts exists: ${!!manifest.prompts}, length: ${manifest.prompts?.length ?? 'N/A'}`);
+
+      if (!manifest.prompts || manifest.prompts.length === 0) {
+        this.logger.info(`[RepositoryScopeService] Bundle ${bundleId} has no prompts to sync`);
+      } else {
+        this.logger.info(`[RepositoryScopeService] Found ${manifest.prompts.length} prompts to sync`);
+        for (const p of manifest.prompts) {
+          this.logger.info(`[RepositoryScopeService]   - Prompt: id=${p.id}, file=${p.file}, type=${p.type}`);
+        }
+      }
+
+      // Install files (handles empty prompts array gracefully)
+      const installedPaths = await this.installFiles(bundlePath, manifest, commitMode);
+
+      this.logger.info(`[RepositoryScopeService] ✅ Synced ${installedPaths.length} files for bundle: ${bundleId}`);
+    } catch (error) {
+      this.logger.error(`[RepositoryScopeService] Failed to sync bundle ${bundleId}`, error as Error);
+      throw error;
+    }
+  }
+
+  /**
+   * Remove synced files for a bundle.
+   * Implements IScopeService.unsyncBundle
+   *
+   * Only removes files that:
+   * 1. Are tracked in the lockfile for this bundle
+   * 2. Have matching checksums (not modified by user)
+   * 3. Are not used by other bundles in the lockfile
+   *
+   * User-created files and modified files are preserved.
+   * @param bundleId - The unique identifier of the bundle to unsync
+   */
+  public async unsyncBundle(bundleId: string): Promise<void> {
+    try {
+      this.logger.debug(`[RepositoryScopeService] Removing files for bundle: ${bundleId}`);
+
+      const lockfileManager = LockfileManager.getInstance(this.workspaceRoot);
+
+      // Read both lockfiles to get complete picture
+      const mainLockfile = await lockfileManager.read();
+      const localLockfilePath = lockfileManager.getLocalLockfilePath();
+      let localLockfile = null;
+      if (fs.existsSync(localLockfilePath)) {
+        try {
+          const content = await readFile(localLockfilePath, 'utf8');
+          localLockfile = JSON.parse(content);
+        } catch {
+          // Ignore parse errors
+        }
+      }
+
+      // Find the bundle entry in either lockfile
+      const bundleEntry = mainLockfile?.bundles[bundleId] || localLockfile?.bundles[bundleId];
+
+      if (!bundleEntry) {
+        this.logger.debug(`[RepositoryScopeService] Bundle ${bundleId} not found in any lockfile`);
+        return;
+      }
+
+      // Get files tracked by this bundle
+      const bundleFiles = bundleEntry.files || [];
+
+      if (bundleFiles.length === 0) {
+        this.logger.debug(`[RepositoryScopeService] Bundle ${bundleId} has no tracked files in lockfile`);
+        return;
+      }
+
+      // Collect files used by OTHER bundles (to avoid removing shared files)
+      const filesUsedByOtherBundles = this.collectFilesUsedByOtherBundles(
+        bundleId,
+        mainLockfile,
+        localLockfile
+      );
+
+      const removedPaths: string[] = [];
+      const skippedPaths: { path: string; reason: string }[] = [];
+
+      // Remove each file tracked in the lockfile
+      for (const fileEntry of bundleFiles) {
+        const targetPath = path.join(this.workspaceRoot, fileEntry.path);
+
+        // Skip if file doesn't exist
+        if (!fs.existsSync(targetPath)) {
+          this.logger.debug(`[RepositoryScopeService] File already removed: ${fileEntry.path}`);
+          continue;
+        }
+
+        // Skip if file is used by another bundle
+        if (filesUsedByOtherBundles.has(fileEntry.path)) {
+          skippedPaths.push({ path: fileEntry.path, reason: 'used by another bundle' });
+          this.logger.debug(`[RepositoryScopeService] Skipping file used by another bundle: ${fileEntry.path}`);
+          continue;
+        }
+
+        // Check if file has been modified by user (checksum mismatch)
+        try {
+          const currentChecksum = await calculateFileChecksum(targetPath);
+          if (currentChecksum !== fileEntry.checksum) {
+            skippedPaths.push({ path: fileEntry.path, reason: 'modified by user' });
+            this.logger.info(`[RepositoryScopeService] Preserving user-modified file: ${fileEntry.path}`);
+            continue;
+          }
+        } catch {
+          this.logger.warn(`[RepositoryScopeService] Failed to calculate checksum for: ${fileEntry.path}`);
+          continue;
+        }
+
+        // Safe to remove - file is tracked, unmodified, and not shared
+        try {
+          await unlink(targetPath);
+          removedPaths.push(fileEntry.path);
+          this.logger.debug(`[RepositoryScopeService] Removed: ${fileEntry.path}`);
+        } catch {
+          this.logger.warn(`[RepositoryScopeService] Failed to remove file: ${fileEntry.path}`);
+        }
+      }
+
+      // Remove from git exclude if needed
+      if (removedPaths.length > 0) {
+        // Consolidate skill file paths to skill directory paths for git exclude
+        // (mirrors the logic in updateGitExcludeForLocalOnly)
+        const pathsForExclude = this.consolidateSkillPathsForGitExclude(removedPaths);
+        await this.removeFromGitExclude(pathsForExclude);
+
+        // Clean up empty prompt registry subdirectories
+        // Only removes directories that are completely empty
+        await this.cleanupEmptyPromptRegistryDirectories();
+      }
+
+      if (skippedPaths.length > 0) {
+        this.logger.info(`[RepositoryScopeService] Preserved ${skippedPaths.length} files: ${skippedPaths.map((s) => `${s.path} (${s.reason})`).join(', ')}`);
+      }
+
+      this.logger.info(`[RepositoryScopeService] ✅ Removed ${removedPaths.length} files for bundle: ${bundleId}`);
+    } catch (error) {
+      this.logger.error(`[RepositoryScopeService] Failed to unsync bundle ${bundleId}`, error as Error);
+    }
+  }
+
+  /**
+   * Get the current status of the scope service.
+   * Implements IScopeService.getStatus
+   */
+  public async getStatus(): Promise<ScopeStatus> {
+    const githubDir = this.getGitHubDirectory();
+    const status: ScopeStatus = {
+      baseDirectory: githubDir,
+      dirExists: fs.existsSync(githubDir),
+      syncedFiles: 0,
+      files: []
+    };
+
+    if (!status.dirExists) {
+      return status;
+    }
+
+    // Scan all .github subdirectories for files
+    for (const subdir of PROMPT_REGISTRY_MANAGED_DIRS) {
+      const subdirPath = path.join(githubDir, subdir);
+      if (fs.existsSync(subdirPath)) {
+        try {
+          const files = await readdir(subdirPath);
+          for (const file of files) {
+            const filePath = path.join(subdirPath, file);
+            const fileStat = await stat(filePath);
+            if (fileStat.isFile()) {
+              status.syncedFiles++;
+              status.files.push(file);
+            }
+          }
+        } catch {
+          this.logger.debug(`[RepositoryScopeService] Could not read directory: ${subdirPath}`);
+        }
+      }
+    }
+
+    return status;
+  }
+
+  /**
+   * Switch the commit mode for a bundle
+   * @param bundleId - Bundle identifier
+   * @param newMode - New commit mode
+   */
+  public async switchCommitMode(bundleId: string, newMode: RepositoryCommitMode): Promise<void> {
+    try {
+      this.logger.debug(`[RepositoryScopeService] Switching commit mode for ${bundleId} to ${newMode}`);
+
+      // Get installed bundle info from lockfile (repository scope bundles are tracked via lockfile)
+      // Use getInstalledBundles() to search both main and local lockfiles
+      const lockfileManager = LockfileManager.getInstance(this.workspaceRoot);
+      const installedBundles = await lockfileManager.getInstalledBundles();
+      const bundle = installedBundles.find((b) => b.bundleId === bundleId);
+
+      if (!bundle) {
+        this.logger.warn(`[RepositoryScopeService] Bundle ${bundleId} not found in any lockfile`);
+        return;
+      }
+
+      const currentMode = bundle.commitMode ?? 'commit';
+      if (currentMode === newMode) {
+        this.logger.debug(`[RepositoryScopeService] Bundle ${bundleId} already in ${newMode} mode`);
+        return;
+      }
+
+      // Find installed files in .github/ directories
+      // The lockfile files point to the bundle cache, not the installed location
+      // We need to scan the .github/ directories for files that belong to this bundle
+      const filePaths: string[] = [];
+
+      // Check .github/prompts directory
+      const githubPromptsDir = path.join(this.workspaceRoot, '.github', 'prompts');
+      if (fs.existsSync(githubPromptsDir)) {
+        const files = await readdir(githubPromptsDir);
+        for (const file of files) {
+          const relativePath = path.join('.github', 'prompts', file);
+          filePaths.push(relativePath);
+        }
+      }
+
+      // Check .github/agents directory
+      const githubAgentsDir = path.join(this.workspaceRoot, '.github', 'agents');
+      if (fs.existsSync(githubAgentsDir)) {
+        const files = await readdir(githubAgentsDir);
+        for (const file of files) {
+          const relativePath = path.join('.github', 'agents', file);
+          filePaths.push(relativePath);
+        }
+      }
+
+      // Check .github/copilot-instructions.md
+      const copilotInstructionsPath = path.join(this.workspaceRoot, '.github', 'copilot-instructions.md');
+      if (fs.existsSync(copilotInstructionsPath)) {
+        filePaths.push('.github/copilot-instructions.md');
+      }
+
+      this.logger.debug(`[RepositoryScopeService] Found ${filePaths.length} files to update git exclude for`);
+
+      // Update git exclude based on new mode
+      await (newMode === 'local-only' ? this.addToGitExclude(filePaths) : this.removeFromGitExclude(filePaths));
+
+      this.logger.info(`[RepositoryScopeService] ✅ Switched ${bundleId} to ${newMode} mode`);
+    } catch (error) {
+      this.logger.error(`[RepositoryScopeService] Failed to switch commit mode for ${bundleId}`, error as Error);
+    }
+  }
+
+  /**
+   * Add the local lockfile to .git/info/exclude.
+   * This ensures the local lockfile is not tracked by Git.
+   *
+   * Handles edge cases:
+   * - Missing .git directory: skips without error
+   * - Missing .git/info/exclude file: creates it
+   * - Duplicate entries: prevents adding if already present
+   * @see Requirements 2.1, 2.3, 2.4, 2.5
+   */
+  public async addLocalLockfileToGitExclude(): Promise<void> {
+    if (!this.hasGitDirectory()) {
+      this.logger.debug('[RepositoryScopeService] No .git directory, skipping git exclude');
+      return;
+    }
+    await this.addToGitExclude([LOCAL_LOCKFILE_NAME]);
+  }
+
+  /**
+   * Remove the local lockfile from .git/info/exclude.
+   * Called when the local lockfile is deleted (last local-only bundle removed).
+   *
+   * Handles edge cases:
+   * - Missing .git directory: skips without error
+   * @see Requirements 2.2, 2.3
+   */
+  public async removeLocalLockfileFromGitExclude(): Promise<void> {
+    if (!this.hasGitDirectory()) {
+      return;
+    }
+    await this.removeFromGitExclude([LOCAL_LOCKFILE_NAME]);
   }
 }

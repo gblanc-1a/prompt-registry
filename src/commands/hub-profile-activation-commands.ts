@@ -117,9 +117,9 @@ export async function activateHubProfile(hubManager: HubManager, item?: any): Pr
 /**
  *
  * @param hubManager
- * @param item
+ * @param _item
  */
-export async function deactivateHubProfile(hubManager: HubManager, item?: any): Promise<void> {
+export async function deactivateHubProfile(hubManager: HubManager, _item?: any): Promise<void> {
   try {
     // Get the active hub ID first
     const activeHubId = await (hubManager as any).storage.getActiveHubId();

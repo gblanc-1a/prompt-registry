@@ -8,18 +8,9 @@ import * as vscode from 'vscode';
 
 suite('Source Management Commands', () => {
   let sandbox: sinon.SinonSandbox;
-  let mockContext: vscode.ExtensionContext;
 
   setup(() => {
     sandbox = sinon.createSandbox();
-    mockContext = {
-      globalState: {
-        get: sandbox.stub().returns(undefined),
-        update: sandbox.stub().resolves(),
-        keys: sandbox.stub().returns([])
-      },
-      globalStorageUri: { fsPath: '/mock/storage' } as vscode.Uri
-    } as any;
   });
 
   teardown(() => {
@@ -27,7 +18,7 @@ suite('Source Management Commands', () => {
   });
 
   suite('addSource', () => {
-    test('should prompt for source details', async () => {
+    test('should prompt for source details', () => {
       const showInputBoxStub = sandbox.stub(vscode.window, 'showInputBox');
       showInputBoxStub.onFirstCall().resolves('Test Source');
       showInputBoxStub.onSecondCall().resolves('https://github.com/test/repo');
@@ -40,12 +31,10 @@ suite('Source Management Commands', () => {
       assert.ok(showQuickPickStub);
     });
 
-    test('should validate source URL format', async () => {
+    test('should validate source URL format', () => {
       const showInputBoxStub = sandbox.stub(vscode.window, 'showInputBox');
       showInputBoxStub.onFirstCall().resolves('Test Source');
       showInputBoxStub.onSecondCall().resolves('invalid-url');
-
-      const showErrorMessageStub = sandbox.stub(vscode.window, 'showErrorMessage');
 
       // Validation would typically happen in the command
       const url = 'invalid-url';
@@ -56,7 +45,7 @@ suite('Source Management Commands', () => {
       }
     });
 
-    test('should support GitHub sources', async () => {
+    test('should support GitHub sources', () => {
       const source = {
         id: 'test-source',
         name: 'Test Source',
@@ -70,7 +59,7 @@ suite('Source Management Commands', () => {
       assert.ok(source.url.includes('github.com'));
     });
 
-    test('should support GitLab sources', async () => {
+    test('should support GitLab sources', () => {
       const source = {
         id: 'test-source',
         name: 'Test Source',
@@ -84,7 +73,7 @@ suite('Source Management Commands', () => {
       assert.ok(source.url.includes('gitlab.com'));
     });
 
-    test('should support HTTP sources', async () => {
+    test('should support HTTP sources', () => {
       const source = {
         id: 'test-source',
         name: 'Test Source',
@@ -98,7 +87,7 @@ suite('Source Management Commands', () => {
       assert.ok(source.url.startsWith('https://'));
     });
 
-    test('should support local sources', async () => {
+    test('should support local sources', () => {
       const source = {
         id: 'test-source',
         name: 'Test Source',
@@ -114,7 +103,7 @@ suite('Source Management Commands', () => {
   });
 
   suite('editSource', () => {
-    test('should allow editing source name', async () => {
+    test('should allow editing source name', () => {
       const originalSource = {
         id: 'test-source',
         name: 'Old Name',
@@ -133,7 +122,7 @@ suite('Source Management Commands', () => {
       assert.strictEqual(updatedSource.name, 'New Name');
     });
 
-    test('should allow editing source URL', async () => {
+    test('should allow editing source URL', () => {
       const originalSource = {
         id: 'test-source',
         name: 'Test Source',
@@ -152,7 +141,7 @@ suite('Source Management Commands', () => {
       assert.strictEqual(updatedSource.url, 'https://github.com/test/new-repo');
     });
 
-    test('should allow changing source type', async () => {
+    test('should allow changing source type', () => {
       const originalSource = {
         id: 'test-source',
         name: 'Test Source',
@@ -172,7 +161,7 @@ suite('Source Management Commands', () => {
       assert.strictEqual(updatedSource.type, 'gitlab');
     });
 
-    test('should preserve source priority when editing', async () => {
+    test('should preserve source priority when editing', () => {
       const originalSource = {
         id: 'test-source',
         name: 'Test Source',
@@ -192,19 +181,19 @@ suite('Source Management Commands', () => {
   });
 
   suite('removeSource', () => {
-    test('should prompt for confirmation before removing', async () => {
+    test('should prompt for confirmation before removing', () => {
       // Simulated confirmation
       const confirmed = true;
       assert.strictEqual(confirmed, true);
     });
 
-    test('should cancel removal if user declines', async () => {
+    test('should cancel removal if user declines', () => {
       // Simulated cancellation
       const cancelled = true;
       assert.strictEqual(cancelled, true);
     });
 
-    test('should remove source from storage', async () => {
+    test('should remove source from storage', () => {
       const sources = [
         { id: 'source-1', name: 'Source 1', type: 'github', url: 'url1', enabled: true, priority: 1 },
         { id: 'source-2', name: 'Source 2', type: 'github', url: 'url2', enabled: true, priority: 2 }
@@ -216,7 +205,7 @@ suite('Source Management Commands', () => {
       assert.strictEqual(updatedSources[0].id, 'source-2');
     });
 
-    test('should not affect other sources when removing one', async () => {
+    test('should not affect other sources when removing one', () => {
       const sources = [
         { id: 'source-1', name: 'Source 1', type: 'github', url: 'url1', enabled: true, priority: 1 },
         { id: 'source-2', name: 'Source 2', type: 'github', url: 'url2', enabled: true, priority: 2 },
@@ -233,7 +222,7 @@ suite('Source Management Commands', () => {
   });
 
   suite('toggleSource', () => {
-    test('should enable disabled source', async () => {
+    test('should enable disabled source', () => {
       const source = {
         id: 'test-source',
         name: 'Test Source',
@@ -248,7 +237,7 @@ suite('Source Management Commands', () => {
       assert.strictEqual(toggled.enabled, true);
     });
 
-    test('should disable enabled source', async () => {
+    test('should disable enabled source', () => {
       const source = {
         id: 'test-source',
         name: 'Test Source',
@@ -263,7 +252,7 @@ suite('Source Management Commands', () => {
       assert.strictEqual(toggled.enabled, false);
     });
 
-    test('should preserve all other properties when toggling', async () => {
+    test('should preserve all other properties when toggling', () => {
       const source = {
         id: 'test-source',
         name: 'Test Source',
@@ -297,7 +286,7 @@ suite('Source Management Commands', () => {
       assert.ok(syncEndTime >= syncStartTime);
     });
 
-    test('should handle sync errors gracefully', async () => {
+    test('should handle sync errors gracefully', () => {
       const showErrorMessageStub = sandbox.stub(vscode.window, 'showErrorMessage');
 
       const error = new Error('Sync failed');
@@ -306,7 +295,7 @@ suite('Source Management Commands', () => {
       assert.ok(error.message.includes('Sync failed'));
     });
 
-    test('should update last sync timestamp', async () => {
+    test('should update last sync timestamp', () => {
       const source = {
         id: 'test-source',
         name: 'Test Source',
@@ -328,7 +317,7 @@ suite('Source Management Commands', () => {
   });
 
   suite('syncAllSources', () => {
-    test('should sync all enabled sources', async () => {
+    test('should sync all enabled sources', () => {
       const sources = [
         { id: 'source-1', name: 'Source 1', type: 'github', url: 'url1', enabled: true, priority: 1 },
         { id: 'source-2', name: 'Source 2', type: 'github', url: 'url2', enabled: false, priority: 2 },
@@ -341,7 +330,7 @@ suite('Source Management Commands', () => {
       assert.ok(enabledSources.every((s) => s.enabled));
     });
 
-    test('should skip disabled sources', async () => {
+    test('should skip disabled sources', () => {
       const sources = [
         { id: 'source-1', name: 'Source 1', type: 'github', url: 'url1', enabled: false, priority: 1 },
         { id: 'source-2', name: 'Source 2', type: 'github', url: 'url2', enabled: false, priority: 2 }
@@ -360,11 +349,14 @@ suite('Source Management Commands', () => {
       ];
 
       const results = await Promise.allSettled(
-        sources.map(async (source) => {
-          if (source.id === 'source-2') {
-            throw new Error('Sync failed');
-          }
-          return source;
+        sources.map((source) => {
+          return new Promise((resolve, reject) => {
+            if (source.id === 'source-2') {
+              reject(new Error('Sync failed'));
+            } else {
+              resolve(source);
+            }
+          });
         })
       );
 

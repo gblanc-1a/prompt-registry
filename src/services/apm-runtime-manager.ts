@@ -75,18 +75,11 @@ const MAX_VERSION_LENGTH = 100;
  */
 export class ApmRuntimeManager {
   private static instance: ApmRuntimeManager | null = null;
-  private readonly logger: Logger;
-  private statusCache: StatusCache | null = null;
-  private context: vscode.ExtensionContext | undefined;
-
-  private constructor() {
-    this.logger = Logger.getInstance();
-  }
 
   /**
    * Get singleton instance
    */
-  static getInstance(): ApmRuntimeManager {
+  public static getInstance(): ApmRuntimeManager {
     if (!ApmRuntimeManager.instance) {
       ApmRuntimeManager.instance = new ApmRuntimeManager();
     }
@@ -94,63 +87,18 @@ export class ApmRuntimeManager {
   }
 
   /**
-   * Initialize manager with extension context
-   * @param context
+   * Reset singleton instance (for testing)
    */
-  initialize(context: vscode.ExtensionContext): void {
-    this.context = context;
+  public static resetInstance(): void {
+    ApmRuntimeManager.instance = null;
   }
 
-  /**
-   * Setup runtime (install if missing)
-   * Shows progress in UI
-   */
-  async setupRuntime(): Promise<boolean> {
-    const status = await this.getStatus(true);
-    if (status.installed || status.uvxAvailable) {
-      return true;
-    }
+  private readonly logger: Logger;
+  private statusCache: StatusCache | null = null;
+  private context: vscode.ExtensionContext | undefined;
 
-    // If we have context, try automatic installation
-    if (this.context) {
-      return await vscode.window.withProgress({
-        location: vscode.ProgressLocation.Notification,
-        title: 'Installing APM Runtime...',
-        cancellable: false
-      }, async (progress) => {
-        try {
-          progress.report({ message: 'Checking compatibility...' });
-          this.logger.info('[ApmRuntime] Starting automatic runtime installation...');
-
-          await this.installLocalUv(progress);
-
-          // Refresh status
-          this.clearCache();
-          const newStatus = await this.getStatus(true);
-
-          if (newStatus.uvxAvailable) {
-            vscode.window.showInformationMessage('APM Runtime installed successfully.');
-            return true;
-          }
-        } catch (error) {
-          this.logger.error('[ApmRuntime] Automatic installation failed', error as Error);
-          // Fall through to manual instructions
-        }
-
-        // If automatic install failed or wasn't sufficient
-        const selection = await vscode.window.showErrorMessage(
-          'APM Runtime could not be installed automatically.',
-          'View Instructions'
-        );
-        if (selection === 'View Instructions') {
-          this.showInstallInstructions();
-        }
-        return false;
-      });
-    }
-
-    this.showInstallInstructions();
-    return false;
+  private constructor() {
+    this.logger = Logger.getInstance();
   }
 
   /**
@@ -315,89 +263,6 @@ export class ApmRuntimeManager {
   }
 
   /**
-   * Reset singleton instance (for testing)
-   */
-  static resetInstance(): void {
-    ApmRuntimeManager.instance = null;
-  }
-
-  /**
-   * Get current APM runtime status
-   * @param forceRefresh Force refresh ignoring cache
-   */
-  async getStatus(forceRefresh = false): Promise<ApmRuntimeStatus> {
-    // Check cache
-    if (!forceRefresh && this.statusCache
-      && Date.now() - this.statusCache.timestamp < CACHE_TTL) {
-      return this.statusCache.status;
-    }
-
-    try {
-      const status = await this.detectRuntime();
-      this.statusCache = { status, timestamp: Date.now() };
-      return status;
-    } catch (error) {
-      this.logger.error('[ApmRuntime] Detection failed', error as Error);
-      const status: ApmRuntimeStatus = { installed: false };
-      this.statusCache = { status, timestamp: Date.now() };
-      return status;
-    }
-  }
-
-  /**
-   * Check if APM is available
-   */
-  async isAvailable(): Promise<boolean> {
-    const status = await this.getStatus();
-    return status.installed;
-  }
-
-  /**
-   * Clear cached status
-   */
-  clearCache(): void {
-    this.statusCache = null;
-  }
-
-  /**
-   * Get platform-appropriate installation instructions
-   */
-  getInstallInstructions(): string {
-    const platform = process.platform;
-
-    let instructions = '# APM CLI Installation\n\n';
-
-    switch (platform) {
-      case 'darwin': {
-        instructions += '## macOS (Homebrew recommended)\n';
-        instructions += '```bash\nbrew install danielmeppiel/tap/apm-cli\n```\n\n';
-        instructions += '## Alternative: pip\n';
-        instructions += '```bash\npip install apm-cli\n```\n\n';
-
-        break;
-      }
-      case 'linux': {
-        instructions += '## Linux (pip)\n';
-        instructions += '```bash\npip install apm-cli\n```\n\n';
-
-        break;
-      }
-      case 'win32': {
-        instructions += '## Windows (pip)\n';
-        instructions += '```bash\npip install apm-cli\n```\n\n';
-
-        break;
-      }
-        // No default
-    }
-
-    instructions += '## More information\n';
-    instructions += 'Visit: https://github.com/danielmeppiel/apm\n';
-
-    return instructions;
-  }
-
-  /**
    * Get local uv path if exists
    */
   private getLocalUvPath(): string | undefined {
@@ -430,10 +295,10 @@ export class ApmRuntimeManager {
 
       if (!version) {
         // Fallback to checking uvx/uv
-        const uvxAvailable = await this.checkUvx();
+        const isUvxAvailable = await this.checkUvx();
         return {
           installed: false,
-          uvxAvailable: uvxAvailable || !!localUvPath,
+          uvxAvailable: isUvxAvailable || !!localUvPath,
           localUvPath
         };
       }
@@ -492,7 +357,7 @@ export class ApmRuntimeManager {
     // Remove any HTML special chars
     let sanitized = truncated.replace(/[<>'"&]/g, '');
     // Remove control characters (eslint-disable-next-line no-control-regex)
-    // eslint-disable-next-line no-control-regex
+    // eslint-disable-next-line no-control-regex -- control characters are intentionally matched
     sanitized = sanitized.replace(/[\u0000-\u001F\u007F]/g, '');
     return sanitized.trim();
   }
@@ -583,5 +448,141 @@ export class ApmRuntimeManager {
     } catch {
       return undefined;
     }
+  }
+
+  /**
+   * Initialize manager with extension context
+   * @param context
+   */
+  public initialize(context: vscode.ExtensionContext): void {
+    this.context = context;
+  }
+
+  /**
+   * Setup runtime (install if missing)
+   * Shows progress in UI
+   */
+  public async setupRuntime(): Promise<boolean> {
+    const status = await this.getStatus(true);
+    if (status.installed || status.uvxAvailable) {
+      return true;
+    }
+
+    // If we have context, try automatic installation
+    if (this.context) {
+      return await vscode.window.withProgress({
+        location: vscode.ProgressLocation.Notification,
+        title: 'Installing APM Runtime...',
+        cancellable: false
+      }, async (progress) => {
+        try {
+          progress.report({ message: 'Checking compatibility...' });
+          this.logger.info('[ApmRuntime] Starting automatic runtime installation...');
+
+          await this.installLocalUv(progress);
+
+          // Refresh status
+          this.clearCache();
+          const newStatus = await this.getStatus(true);
+
+          if (newStatus.uvxAvailable) {
+            vscode.window.showInformationMessage('APM Runtime installed successfully.');
+            return true;
+          }
+        } catch (error) {
+          this.logger.error('[ApmRuntime] Automatic installation failed', error as Error);
+          // Fall through to manual instructions
+        }
+
+        // If automatic install failed or wasn't sufficient
+        const selection = await vscode.window.showErrorMessage(
+          'APM Runtime could not be installed automatically.',
+          'View Instructions'
+        );
+        if (selection === 'View Instructions') {
+          void this.showInstallInstructions();
+        }
+        return false;
+      });
+    }
+
+    void this.showInstallInstructions();
+    return false;
+  }
+
+  /**
+   * Get current APM runtime status
+   * @param forceRefresh Force refresh ignoring cache
+   */
+  public async getStatus(forceRefresh = false): Promise<ApmRuntimeStatus> {
+    // Check cache
+    if (!forceRefresh && this.statusCache
+      && Date.now() - this.statusCache.timestamp < CACHE_TTL) {
+      return this.statusCache.status;
+    }
+
+    try {
+      const status = await this.detectRuntime();
+      this.statusCache = { status, timestamp: Date.now() };
+      return status;
+    } catch (error) {
+      this.logger.error('[ApmRuntime] Detection failed', error as Error);
+      const status: ApmRuntimeStatus = { installed: false };
+      this.statusCache = { status, timestamp: Date.now() };
+      return status;
+    }
+  }
+
+  /**
+   * Check if APM is available
+   */
+  public async isAvailable(): Promise<boolean> {
+    const status = await this.getStatus();
+    return status.installed;
+  }
+
+  /**
+   * Clear cached status
+   */
+  public clearCache(): void {
+    this.statusCache = null;
+  }
+
+  /**
+   * Get platform-appropriate installation instructions
+   */
+  public getInstallInstructions(): string {
+    const platform = process.platform;
+
+    let instructions = '# APM CLI Installation\n\n';
+
+    switch (platform) {
+      case 'darwin': {
+        instructions += '## macOS (Homebrew recommended)\n';
+        instructions += '```bash\nbrew install danielmeppiel/tap/apm-cli\n```\n\n';
+        instructions += '## Alternative: pip\n';
+        instructions += '```bash\npip install apm-cli\n```\n\n';
+
+        break;
+      }
+      case 'linux': {
+        instructions += '## Linux (pip)\n';
+        instructions += '```bash\npip install apm-cli\n```\n\n';
+
+        break;
+      }
+      case 'win32': {
+        instructions += '## Windows (pip)\n';
+        instructions += '```bash\npip install apm-cli\n```\n\n';
+
+        break;
+      }
+        // No default
+    }
+
+    instructions += '## More information\n';
+    instructions += 'Visit: https://github.com/danielmeppiel/apm\n';
+
+    return instructions;
   }
 }

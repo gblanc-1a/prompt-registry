@@ -49,21 +49,21 @@ suite('RegistryManager.listInstalledBundles Property Tests', () => {
   /**
    * Create a mock VS Code ExtensionContext for testing.
    * Uses sinon sandbox for proper cleanup.
-   * @param sandbox
+   * @param mockSandbox
    */
-  const createMockContext = (sandbox: sinon.SinonSandbox): vscode.ExtensionContext => {
+  const createMockContext = (mockSandbox: sinon.SinonSandbox): vscode.ExtensionContext => {
     return {
       globalState: {
-        get: sandbox.stub(),
-        update: sandbox.stub().resolves(),
-        keys: sandbox.stub().returns([]),
-        setKeysForSync: sandbox.stub()
+        get: mockSandbox.stub(),
+        update: mockSandbox.stub().resolves(),
+        keys: mockSandbox.stub().returns([]),
+        setKeysForSync: mockSandbox.stub()
       } as any,
       workspaceState: {
-        get: sandbox.stub(),
-        update: sandbox.stub().resolves(),
-        keys: sandbox.stub().returns([]),
-        setKeysForSync: sandbox.stub()
+        get: mockSandbox.stub(),
+        update: mockSandbox.stub().resolves(),
+        keys: mockSandbox.stub().returns([]),
+        setKeysForSync: mockSandbox.stub()
       } as any,
       subscriptions: [],
       extensionPath: '/mock/path',

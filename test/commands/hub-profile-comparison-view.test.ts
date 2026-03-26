@@ -21,7 +21,7 @@ suite('Hub Profile Comparison View', () => {
   let comparisonView: HubProfileComparisonView;
   let testDir: string;
 
-  setup(async () => {
+  setup(() => {
     testDir = path.join(__dirname, '..', 'test-data', 'comparison-view-test');
     if (fs.existsSync(testDir)) {
       fs.rmSync(testDir, { recursive: true });

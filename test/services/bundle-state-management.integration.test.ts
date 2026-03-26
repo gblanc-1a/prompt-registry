@@ -199,7 +199,7 @@ suite('Bundle State Management - Integration Tests', () => {
         .withVersion('1.0.0')
         .build();
 
-      const bundleV1_1 = BundleBuilder.github('microsoft', 'vscode-copilot')
+      const bundleV1x1 = BundleBuilder.github('microsoft', 'vscode-copilot')
         .withVersion('1.1.0')
         .build();
 
@@ -245,7 +245,7 @@ suite('Bundle State Management - Integration Tests', () => {
       await registryManager.installBundle(bundleV1.id, { scope: 'user' });
 
       // Step 2: Sync source (v1.1.0 becomes available)
-      mockAdapter.fetchBundles.onSecondCall().resolves([bundleV1_1]);
+      mockAdapter.fetchBundles.onSecondCall().resolves([bundleV1x1]);
       mockStorage.cacheSourceBundles.resolves();
 
       await registryManager.syncSource('github-source');
@@ -256,12 +256,12 @@ suite('Bundle State Management - Integration Tests', () => {
       // Step 3: Verify UI state (button should be "update")
       const installed = await mockStorage.getInstalledBundles();
       const matchingInstalled = installed.find((i) =>
-        matchesBundleIdentity(i.bundleId, bundleV1_1.id, source.type)
+        matchesBundleIdentity(i.bundleId, bundleV1x1.id, source.type)
       );
 
       const buttonState = determineButtonState(
         matchingInstalled?.version,
-        bundleV1_1.version
+        bundleV1x1.version
       );
 
       assert.strictEqual(buttonState, 'update', 'Button state should be "update" when newer version available');
@@ -271,7 +271,7 @@ suite('Bundle State Management - Integration Tests', () => {
   suite('Workflow 3: Install v1.0.0 → Select v1.0.1 from dropdown → Verify v1.0.1 installed', () => {
     test('should install specific version when selected from dropdown', async () => {
       // Setup: Create GitHub bundle with specific version
-      const bundleV1_0_1 = BundleBuilder.github('microsoft', 'vscode-copilot')
+      const bundleV1x0x1 = BundleBuilder.github('microsoft', 'vscode-copilot')
         .withVersion('1.0.1')
         .build();
 
@@ -286,18 +286,18 @@ suite('Bundle State Management - Integration Tests', () => {
 
       // Source retrieved via getSources()
       mockStorage.getSources.resolves([source]);
-      mockStorage.getCachedSourceBundles.withArgs('github-source').resolves([bundleV1_0_1]);
+      mockStorage.getCachedSourceBundles.withArgs('github-source').resolves([bundleV1x0x1]);
 
       const mockAdapter = {
-        fetchBundles: sandbox.stub().resolves([bundleV1_0_1]),
+        fetchBundles: sandbox.stub().resolves([bundleV1x0x1]),
         downloadBundle: sandbox.stub().resolves(Buffer.from('mock-bundle-data'))
       };
 
       sandbox.stub(RepositoryAdapterFactory, 'create').returns(mockAdapter as any);
 
       // Step 1: Install specific version v1.0.1 from dropdown
-      const installedBundleV1_0_1: InstalledBundle = {
-        bundleId: bundleV1_0_1.id,
+      const installedBundleV1x0x1: InstalledBundle = {
+        bundleId: bundleV1x0x1.id,
         version: '1.0.1',
         installPath: '/mock/install/path',
         installedAt: new Date().toISOString(),
@@ -307,12 +307,12 @@ suite('Bundle State Management - Integration Tests', () => {
         manifest: createMockManifest()
       };
 
-      mockInstaller.installFromBuffer.resolves(installedBundleV1_0_1);
+      mockInstaller.installFromBuffer.resolves(installedBundleV1x0x1);
       mockStorage.recordInstallation.resolves();
-      mockStorage.getInstalledBundles.resolves([installedBundleV1_0_1]);
+      mockStorage.getInstalledBundles.resolves([installedBundleV1x0x1]);
 
       // Install specific version (simulating dropdown selection)
-      await registryManager.installBundle(bundleV1_0_1.id, {
+      await registryManager.installBundle(bundleV1x0x1.id, {
         scope: 'user',
         version: '1.0.1'
       });
@@ -320,7 +320,7 @@ suite('Bundle State Management - Integration Tests', () => {
       // Step 2: Verify v1.0.1 is installed
       const installed = await mockStorage.getInstalledBundles();
       const matchingInstalled = installed.find((i) =>
-        matchesBundleIdentity(i.bundleId, bundleV1_0_1.id, source.type)
+        matchesBundleIdentity(i.bundleId, bundleV1x0x1.id, source.type)
       );
 
       assert.ok(matchingInstalled, 'Bundle should be installed');
@@ -383,7 +383,7 @@ suite('Bundle State Management - Integration Tests', () => {
         .withVersion('1.0.0')
         .build();
 
-      const bundleV1_1 = BundleBuilder.github('microsoft', 'vscode-copilot')
+      const bundleV1x1 = BundleBuilder.github('microsoft', 'vscode-copilot')
         .withVersion('1.1.0')
         .build();
 
@@ -409,12 +409,12 @@ suite('Bundle State Management - Integration Tests', () => {
 
       // Source retrieved via getSources()
       mockStorage.getSources.resolves([source]);
-      mockStorage.getCachedSourceBundles.withArgs('github-source').resolves([bundleV1, bundleV1_1]);
+      mockStorage.getCachedSourceBundles.withArgs('github-source').resolves([bundleV1, bundleV1x1]);
       mockStorage.getInstalledBundles.resolves([installedBundle]);
 
       // Mock adapter returns new version
       const mockAdapter = {
-        fetchBundles: sandbox.stub().resolves([bundleV1_1]),
+        fetchBundles: sandbox.stub().resolves([bundleV1x1]),
         downloadBundle: sandbox.stub().resolves(Buffer.from('mock-bundle-data'))
       };
 
@@ -449,7 +449,7 @@ suite('Bundle State Management - Integration Tests', () => {
         .withVersion('1.0.0')
         .build();
 
-      const bundleV1_1 = BundleBuilder.fromSource('awesome-bundle', 'AWESOME_COPILOT')
+      const bundleV1x1 = BundleBuilder.fromSource('awesome-bundle', 'AWESOME_COPILOT')
         .withVersion('1.1.0')
         .build();
 
@@ -475,13 +475,13 @@ suite('Bundle State Management - Integration Tests', () => {
 
       // Source retrieved via getSources()
       mockStorage.getSources.resolves([source]);
-      mockStorage.getCachedSourceBundles.withArgs('awesome-copilot-source').resolves([bundleV1, bundleV1_1]);
+      mockStorage.getCachedSourceBundles.withArgs('awesome-copilot-source').resolves([bundleV1, bundleV1x1]);
       mockStorage.getInstalledBundles.resolves([installedBundle]);
       mockStorage.getInstalledBundle.withArgs(bundleV1.id).resolves(installedBundle);
 
       // Mock adapter returns new version
       const mockAdapter = {
-        fetchBundles: sandbox.stub().resolves([bundleV1_1]),
+        fetchBundles: sandbox.stub().resolves([bundleV1x1]),
         downloadBundle: sandbox.stub().resolves(Buffer.from('mock-bundle-data'))
       };
 
@@ -491,7 +491,7 @@ suite('Bundle State Management - Integration Tests', () => {
       // Mock update operation
       const updatedBundle: InstalledBundle = {
         ...installedBundle,
-        bundleId: bundleV1_1.id,
+        bundleId: bundleV1x1.id,
         version: '1.1.0',
         installedAt: new Date().toISOString()
       };
@@ -569,12 +569,12 @@ suite('Bundle State Management - Integration Tests', () => {
       mockStorage.getInstalledBundles.resolves([installedAwesomeBundle, installedGitHubBundle]);
 
       // Mock adapter returns updated awesome bundle
-      const awesomeBundleV1_1 = BundleBuilder.fromSource('awesome-bundle', 'AWESOME_COPILOT')
+      const awesomeBundleV1x1 = BundleBuilder.fromSource('awesome-bundle', 'AWESOME_COPILOT')
         .withVersion('1.1.0')
         .build();
 
       const mockAdapter = {
-        fetchBundles: sandbox.stub().resolves([awesomeBundleV1_1]),
+        fetchBundles: sandbox.stub().resolves([awesomeBundleV1x1]),
         downloadBundle: sandbox.stub().resolves(Buffer.from('mock-bundle-data'))
       };
 
@@ -600,11 +600,11 @@ suite('Bundle State Management - Integration Tests', () => {
       // got amadeus-airlines-solutions-workflow-instructions-1.0.16"
 
       // Setup: Create bundles with v1.0.16 and v1.0.17 (latest)
-      const bundleV1_0_16 = BundleBuilder.github('amadeus', 'airlines-solutions-workflow-instructions')
+      const bundleV1x0x16 = BundleBuilder.github('amadeus', 'airlines-solutions-workflow-instructions')
         .withVersion('1.0.16')
         .build();
 
-      const bundleV1_0_17 = BundleBuilder.github('amadeus', 'airlines-solutions-workflow-instructions')
+      const bundleV1x0x17 = BundleBuilder.github('amadeus', 'airlines-solutions-workflow-instructions')
         .withVersion('1.0.17')
         .build();
 
@@ -620,18 +620,18 @@ suite('Bundle State Management - Integration Tests', () => {
       // Mock source retrieval
       mockStorage.getSources.resolves([source]);
       // Cache has both versions, with v1.0.17 as the latest
-      mockStorage.getCachedSourceBundles.withArgs('github-source').resolves([bundleV1_0_17, bundleV1_0_16]);
+      mockStorage.getCachedSourceBundles.withArgs('github-source').resolves([bundleV1x0x17, bundleV1x0x16]);
 
       const mockAdapter = {
-        fetchBundles: sandbox.stub().resolves([bundleV1_0_17, bundleV1_0_16]),
+        fetchBundles: sandbox.stub().resolves([bundleV1x0x17, bundleV1x0x16]),
         downloadBundle: sandbox.stub().resolves(Buffer.from('mock-bundle-data'))
       };
 
       sandbox.stub(RepositoryAdapterFactory, 'create').returns(mockAdapter as any);
 
       // Step 1: Install specific older version v1.0.16 (NOT the latest v1.0.17)
-      const installedBundleV1_0_16: InstalledBundle = {
-        bundleId: bundleV1_0_16.id, // Should be 'amadeus-airlines-solutions-workflow-instructions-1.0.16'
+      const installedBundleV1x0x16: InstalledBundle = {
+        bundleId: bundleV1x0x16.id, // Should be 'amadeus-airlines-solutions-workflow-instructions-1.0.16'
         version: '1.0.16',
         installPath: '/mock/install/path',
         installedAt: new Date().toISOString(),
@@ -641,16 +641,16 @@ suite('Bundle State Management - Integration Tests', () => {
         manifest: createMockManifest()
       };
 
-      mockInstaller.installFromBuffer.resolves(installedBundleV1_0_16);
+      mockInstaller.installFromBuffer.resolves(installedBundleV1x0x16);
       mockStorage.recordInstallation.resolves();
-      mockStorage.getInstalledBundles.resolves([installedBundleV1_0_16]);
+      mockStorage.getInstalledBundles.resolves([installedBundleV1x0x16]);
 
       // Populate version consolidator by calling searchBundles first
       // This simulates what happens in real usage when marketplace loads bundles
       await registryManager.searchBundles({});
 
       // Install specific version v1.0.16 (not the latest)
-      await registryManager.installBundle(bundleV1_0_16.id, {
+      await registryManager.installBundle(bundleV1x0x16.id, {
         scope: 'user',
         version: '1.0.16'
       });
@@ -658,18 +658,18 @@ suite('Bundle State Management - Integration Tests', () => {
       // Step 2: Verify v1.0.16 is installed (not v1.0.17)
       const installed = await mockStorage.getInstalledBundles();
       const matchingInstalled = installed.find((i) =>
-        matchesBundleIdentity(i.bundleId, bundleV1_0_16.id, source.type)
+        matchesBundleIdentity(i.bundleId, bundleV1x0x16.id, source.type)
       );
 
       assert.ok(matchingInstalled, 'Bundle should be installed');
       assert.strictEqual(matchingInstalled?.version, '1.0.16', 'Installed version should be 1.0.16, not 1.0.17');
-      assert.strictEqual(matchingInstalled?.bundleId, bundleV1_0_16.id, 'Bundle ID should match the requested version');
+      assert.strictEqual(matchingInstalled?.bundleId, bundleV1x0x16.id, 'Bundle ID should match the requested version');
 
       // Verify the correct bundle was passed to the installer
       const installCalls = mockInstaller.installFromBuffer.getCalls();
       assert.strictEqual(installCalls.length, 1, 'Should have called installFromBuffer once');
       const installedBundle = installCalls[0].args[0];
-      assert.strictEqual(installedBundle.id, bundleV1_0_16.id, 'Should install v1.0.16, not v1.0.17');
+      assert.strictEqual(installedBundle.id, bundleV1x0x16.id, 'Should install v1.0.16, not v1.0.17');
       assert.strictEqual(installedBundle.version, '1.0.16', 'Bundle version should be 1.0.16');
     });
   });
@@ -692,7 +692,7 @@ suite('Bundle State Management - Integration Tests', () => {
       await storage.initialize();
 
       // Step 1: Record v1.0.18 as installed
-      const installedV1_0_18: InstalledBundle = {
+      const installedV1x0x18: InstalledBundle = {
         bundleId: `${bundleIdBase}-1.0.18`,
         version: '1.0.18',
         installedAt: new Date().toISOString(),
@@ -703,14 +703,14 @@ suite('Bundle State Management - Integration Tests', () => {
         manifest: createMockManifest()
       };
 
-      await storage.recordInstallation(installedV1_0_18);
+      await storage.recordInstallation(installedV1x0x18);
 
       let installed = await storage.getInstalledBundles('user');
       assert.strictEqual(installed.length, 1, 'Should have v1.0.18 installed initially');
       assert.strictEqual(installed[0].version, '1.0.18', 'Initial version should be 1.0.18');
 
       // Step 2: Record v1.0.17 WITHOUT removing v1.0.18 (simulating the bug)
-      const installedV1_0_17: InstalledBundle = {
+      const installedV1x0x17: InstalledBundle = {
         bundleId: `${bundleIdBase}-1.0.17`,
         version: '1.0.17',
         installedAt: new Date().toISOString(),
@@ -721,7 +721,7 @@ suite('Bundle State Management - Integration Tests', () => {
         manifest: createMockManifest()
       };
 
-      await storage.recordInstallation(installedV1_0_17);
+      await storage.recordInstallation(installedV1x0x17);
 
       // Step 3: Verify BUG: both versions are now installed
       installed = await storage.getInstalledBundles('user');
@@ -746,7 +746,7 @@ suite('Bundle State Management - Integration Tests', () => {
       await storage.initialize();
 
       // Simulate installing v1.0.18 initially
-      const installedV1_0_18: InstalledBundle = {
+      const installedV1x0x18: InstalledBundle = {
         bundleId: `${bundleIdBase}-1.0.18`,
         version: '1.0.18',
         installedAt: new Date().toISOString(),
@@ -757,7 +757,7 @@ suite('Bundle State Management - Integration Tests', () => {
         manifest: createMockManifest()
       };
 
-      await storage.recordInstallation(installedV1_0_18);
+      await storage.recordInstallation(installedV1x0x18);
 
       // Verify v1.0.18 is installed
       let installed = await storage.getInstalledBundles('user');
@@ -781,7 +781,7 @@ suite('Bundle State Management - Integration Tests', () => {
       }
 
       // 4. Record new version
-      const installedV1_0_17: InstalledBundle = {
+      const installedV1x0x17: InstalledBundle = {
         bundleId: `${bundleIdBase}-1.0.17`,
         version: '1.0.17',
         installedAt: new Date().toISOString(),
@@ -792,7 +792,7 @@ suite('Bundle State Management - Integration Tests', () => {
         manifest: createMockManifest()
       };
 
-      await storage.recordInstallation(installedV1_0_17);
+      await storage.recordInstallation(installedV1x0x17);
 
       // Verify only v1.0.17 is now installed (v1.0.18 was removed)
       installed = await storage.getInstalledBundles('user');
@@ -818,7 +818,7 @@ suite('Bundle State Management - Integration Tests', () => {
       let removeInstallationCalled = false;
 
       const bundleIdBase = 'amadeus-airlines-solutions-workflow-instructions';
-      const bundleV1_0_18 = {
+      const bundleV1x0x18 = {
         id: `${bundleIdBase}-1.0.18`,
         name: 'Test',
         version: '1.0.18',
@@ -835,23 +835,23 @@ suite('Bundle State Management - Integration Tests', () => {
       };
 
       // Setup mock storage to track what gets recorded
-      (mockStorage.recordInstallation as sinon.SinonStub).callsFake(async (bundle: InstalledBundle) => {
+      (mockStorage.recordInstallation as sinon.SinonStub).callsFake((bundle: InstalledBundle) => {
         recordInstallationCalled = true;
         installedBundles.set(bundle.bundleId, bundle);
       });
 
-      (mockStorage.removeInstallation as sinon.SinonStub).callsFake(async (bundleId: string) => {
+      (mockStorage.removeInstallation as sinon.SinonStub).callsFake((bundleId: string) => {
         removeInstallationCalled = true;
         installedBundles.delete(bundleId);
       });
 
-      (mockStorage.getInstalledBundles as sinon.SinonStub).callsFake(async (scope?: string) => {
+      (mockStorage.getInstalledBundles as sinon.SinonStub).callsFake((_scope?: string) => {
         // Return all bundles regardless of scope for this test
         return Array.from(installedBundles.values());
       });
 
       // Setup stubs for the other methods
-      sandbox.stub(registryManager as any, 'resolveInstallationBundle').resolves(bundleV1_0_18);
+      sandbox.stub(registryManager as any, 'resolveInstallationBundle').resolves(bundleV1x0x18);
       sandbox.stub(registryManager as any, 'getSourceForBundle').resolves({ id: 'test-source', type: 'github' });
       sandbox.stub(registryManager as any, 'downloadAndInstall').resolves({
         bundleId: `${bundleIdBase}-1.0.18`,
@@ -912,7 +912,7 @@ suite('Bundle State Management - Integration Tests', () => {
       await storage.initialize();
 
       // Step 1: Install v1.0.17 initially
-      const installedV1_0_17: InstalledBundle = {
+      const installedV1x0x17: InstalledBundle = {
         bundleId: `${bundleIdBase}-1.0.17`,
         version: '1.0.17',
         installedAt: new Date().toISOString(),
@@ -923,7 +923,7 @@ suite('Bundle State Management - Integration Tests', () => {
         manifest: createMockManifest()
       };
 
-      await storage.recordInstallation(installedV1_0_17);
+      await storage.recordInstallation(installedV1x0x17);
 
       const installed = await storage.getInstalledBundles('user');
       assert.strictEqual(installed.length, 1, 'Should have v1.0.17 installed initially');
@@ -932,7 +932,7 @@ suite('Bundle State Management - Integration Tests', () => {
       // Step 2: Simulate update to v1.0.18 with storage failure
       // This tests the correct order: Record FIRST, cleanup AFTER
 
-      const installedV1_0_18: InstalledBundle = {
+      const installedV1x0x18: InstalledBundle = {
         bundleId: `${bundleIdBase}-1.0.18`,
         version: '1.0.18',
         installedAt: new Date().toISOString(),
@@ -946,7 +946,7 @@ suite('Bundle State Management - Integration Tests', () => {
       // Simulate the CORRECT order: Record first, then cleanup
       try {
         // Step 2a: Record new version
-        await storage.recordInstallation(installedV1_0_18);
+        await storage.recordInstallation(installedV1x0x18);
 
         // Step 2b: Now both versions are in storage
         const bothInstalled = await storage.getInstalledBundles('user');
@@ -1008,7 +1008,7 @@ suite('Bundle State Management - Integration Tests', () => {
       await storage.initialize();
 
       // Step 1: Initial installation v1.0.17
-      const v1_0_17: InstalledBundle = {
+      const v1x0x17: InstalledBundle = {
         bundleId: `${bundleIdBase}-1.0.17`,
         version: '1.0.17',
         installedAt: new Date().toISOString(),
@@ -1019,10 +1019,10 @@ suite('Bundle State Management - Integration Tests', () => {
         manifest: createMockManifest()
       };
 
-      await storage.recordInstallation(v1_0_17);
+      await storage.recordInstallation(v1x0x17);
 
       // Step 2: Attempt update to v1.0.18 (simulate partial failure)
-      const v1_0_18: InstalledBundle = {
+      const v1x0x18: InstalledBundle = {
         bundleId: `${bundleIdBase}-1.0.18`,
         version: '1.0.18',
         installedAt: new Date().toISOString(),
@@ -1034,7 +1034,7 @@ suite('Bundle State Management - Integration Tests', () => {
       };
 
       // Record new version (succeeds)
-      await storage.recordInstallation(v1_0_18);
+      await storage.recordInstallation(v1x0x18);
 
       // Simulate cleanup failure - old version NOT removed
       // (in real scenario, could be permission error, disk error, etc.)
@@ -1042,11 +1042,11 @@ suite('Bundle State Management - Integration Tests', () => {
 
       // Step 3: Verify both versions exist (old one is still usable as fallback)
       const current = await storage.getInstalledBundles('user');
-      const v1_0_17_exists = current.some((b) => b.version === '1.0.17');
-      const v1_0_18_exists = current.some((b) => b.version === '1.0.18');
+      const v1x0x17exists = current.some((b) => b.version === '1.0.17');
+      const v1x0x18exists = current.some((b) => b.version === '1.0.18');
 
-      assert.ok(v1_0_18_exists, 'New version should be recorded');
-      assert.ok(v1_0_17_exists, 'Old version should still be available for rollback');
+      assert.ok(v1x0x18exists, 'New version should be recorded');
+      assert.ok(v1x0x17exists, 'Old version should still be available for rollback');
 
       // Step 4: Simulate retry of the failed cleanup
       // Application detects v1.0.17 still exists and safely removes it after v1.0.18 is confirmed

@@ -22,6 +22,7 @@ export const VERSION_SUFFIX_REGEX = /-v?\d{1,3}\.\d{1,3}\.\d{1,3}(?:-[\w.]+)?$/;
  * Bundle Identity Matcher
  * Centralized utility for comparing bundle identities
  */
+// eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
 export const BundleIdentityMatcher = {
   /**
    * Check if two bundle IDs match based on source type

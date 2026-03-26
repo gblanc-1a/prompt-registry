@@ -91,7 +91,7 @@ export class BundleScopeCommands {
    *
    * Requirements: 7.2, 7.3
    */
-  async moveToRepository(bundleId: string, commitMode: RepositoryCommitMode): Promise<void> {
+  public async moveToRepository(bundleId: string, commitMode: RepositoryCommitMode): Promise<void> {
     try {
       this.logger.debug(`[BundleScopeCommands] Moving bundle ${bundleId} to repository scope (${commitMode})`);
 
@@ -174,7 +174,7 @@ export class BundleScopeCommands {
    *
    * Requirements: 7.4, 7.6
    */
-  async moveToUser(bundleId: string): Promise<void> {
+  public async moveToUser(bundleId: string): Promise<void> {
     try {
       this.logger.debug(`[BundleScopeCommands] Moving bundle ${bundleId} to user scope`);
 
@@ -246,7 +246,7 @@ export class BundleScopeCommands {
    *
    * Requirements: 7.5, 7.7, 7.8, 7.9
    */
-  async switchCommitMode(bundleId: string, newMode: RepositoryCommitMode): Promise<void> {
+  public async switchCommitMode(bundleId: string, newMode: RepositoryCommitMode): Promise<void> {
     try {
       this.logger.debug(`[BundleScopeCommands] Switching commit mode for ${bundleId} to ${newMode}`);
 
@@ -322,7 +322,7 @@ export class BundleScopeCommands {
    *
    * Requirements: 7.1-7.7
    */
-  async getContextMenuActions(bundleId: string): Promise<ContextMenuAction[]> {
+  public async getContextMenuActions(bundleId: string): Promise<ContextMenuAction[]> {
     const actions: ContextMenuAction[] = [];
     const workspaceOpen = hasOpenWorkspace();
 
@@ -396,7 +396,7 @@ export class BundleScopeCommands {
    * @param bundleId - The bundle ID
    * @param actionId - The action ID to execute
    */
-  async executeAction(bundleId: string, actionId: string): Promise<void> {
+  public async executeAction(bundleId: string, actionId: string): Promise<void> {
     switch (actionId) {
       case 'moveToRepositoryCommit': {
         await this.moveToRepository(bundleId, 'commit');

@@ -135,6 +135,7 @@ suite('BundleInstaller - Bundle Storage Location', () => {
       };
 
       // Create a valid bundle buffer
+      // eslint-disable-next-line @typescript-eslint/naming-convention -- matches library export name
       const AdmZip = require('adm-zip');
       const zip = new AdmZip();
       zip.addFile('deployment-manifest.yml', Buffer.from(`
@@ -177,6 +178,7 @@ prompts:
         commitMode: 'commit'
       };
 
+      // eslint-disable-next-line @typescript-eslint/naming-convention -- matches library export name
       const AdmZip = require('adm-zip');
       const zip = new AdmZip();
       zip.addFile('deployment-manifest.yml', Buffer.from(`
@@ -232,6 +234,7 @@ prompts:
         commitMode: 'commit'
       };
 
+      // eslint-disable-next-line @typescript-eslint/naming-convention -- matches library export name
       const AdmZip = require('adm-zip');
       const zip = new AdmZip();
       zip.addFile('deployment-manifest.yml', Buffer.from(`
@@ -279,6 +282,7 @@ prompts:
         scope: 'user'
       };
 
+      // eslint-disable-next-line @typescript-eslint/naming-convention -- matches library export name
       const AdmZip = require('adm-zip');
       const zip = new AdmZip();
       zip.addFile('deployment-manifest.yml', Buffer.from(`

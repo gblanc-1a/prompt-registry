@@ -60,7 +60,7 @@ export class HubSyncHistory {
    * @param status
    * @param error
    */
-  async recordSync(
+  public async recordSync(
     hubId: string,
     profileId: string,
     changes: SyncHistoryEntry['changes'],
@@ -91,7 +91,7 @@ export class HubSyncHistory {
    * @param profileId
    * @param limit Maximum number of entries to return (default: all)
    */
-  async getHistory(hubId: string, profileId: string, limit?: number): Promise<SyncHistoryEntry[]> {
+  public async getHistory(hubId: string, profileId: string, limit?: number): Promise<SyncHistoryEntry[]> {
     const key = this.getHistoryKey(hubId, profileId);
     const history = this.historyMap.get(key) || [];
 
@@ -106,7 +106,7 @@ export class HubSyncHistory {
    * Format a history entry as human-readable text
    * @param entry
    */
-  formatHistoryEntry(entry: SyncHistoryEntry): string {
+  public formatHistoryEntry(entry: SyncHistoryEntry): string {
     const lines: string[] = [];
     const timestamp = new Date(entry.timestamp).toLocaleString();
 
@@ -159,7 +159,7 @@ export class HubSyncHistory {
    * Create QuickPick items from history entries
    * @param entries
    */
-  createHistoryQuickPickItems(entries: SyncHistoryEntry[]): HistoryQuickPickItem[] {
+  public createHistoryQuickPickItems(entries: SyncHistoryEntry[]): HistoryQuickPickItem[] {
     return entries.map((entry) => {
       const timestamp = new Date(entry.timestamp);
       const dateStr = timestamp.toISOString().split('T')[0]; // YYYY-MM-DD
@@ -209,7 +209,7 @@ export class HubSyncHistory {
    * @param options
    * @param options.installBundles
    */
-  async rollbackToEntry(
+  public async rollbackToEntry(
     hubId: string,
     profileId: string,
     entry: SyncHistoryEntry,
@@ -294,7 +294,7 @@ export class HubSyncHistory {
    * @param hubId
    * @param profileId
    */
-  async clearHistory(hubId: string, profileId: string): Promise<void> {
+  public async clearHistory(hubId: string, profileId: string): Promise<void> {
     const key = this.getHistoryKey(hubId, profileId);
     this.historyMap.delete(key);
   }
@@ -302,7 +302,7 @@ export class HubSyncHistory {
   /**
    * Clear all history for all profiles
    */
-  async clearAllHistory(): Promise<void> {
+  public async clearAllHistory(): Promise<void> {
     this.historyMap.clear();
   }
 }

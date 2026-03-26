@@ -58,6 +58,7 @@ interface Collection {
   items?: CollectionItem[];
   display?: {
     ordering?: string;
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API response shape
     show_badge?: boolean;
   };
 }
@@ -81,154 +82,6 @@ export class CollectionValidator {
   private readonly MAX_TAG_LENGTH = 30;
   private readonly MAX_ITEMS = 50;
   private readonly ID_PATTERN = /^[a-z0-9-]+$/;
-
-  /**
-   * Validate a single collection file
-   * @param collectionPath - Absolute path to collection file
-   * @param projectRoot - Project root directory for resolving item paths
-   * @returns Validation result with errors and warnings
-   */
-  validateCollection(collectionPath: string, projectRoot: string): ValidationResult {
-    const errors: ValidationError[] = [];
-    const warnings: ValidationWarning[] = [];
-    const fileName = path.basename(collectionPath);
-
-    try {
-      // Check file exists
-      if (!fs.existsSync(collectionPath)) {
-        return {
-          valid: false,
-          errors: [{
-            file: fileName,
-            message: 'Collection file does not exist'
-          }],
-          warnings: []
-        };
-      }
-
-      // Parse YAML
-      const content = fs.readFileSync(collectionPath, 'utf8');
-      let collection: Collection;
-
-      try {
-        collection = yaml.load(content) as Collection;
-      } catch (parseError) {
-        return {
-          valid: false,
-          errors: [{
-            file: fileName,
-            message: `Failed to parse YAML: ${(parseError as Error).message}`
-          }],
-          warnings: []
-        };
-      }
-
-      if (!collection) {
-        return {
-          valid: false,
-          errors: [{
-            file: fileName,
-            message: 'Empty or invalid YAML file'
-          }],
-          warnings: []
-        };
-      }
-
-      // Validate required fields
-      this.validateRequiredFields(collection, fileName, errors);
-
-      // Validate ID format
-      if (collection.id) {
-        this.validateId(collection.id, fileName, errors);
-      }
-
-      // Validate description
-      if (collection.description) {
-        this.validateDescription(collection.description, fileName, warnings);
-      }
-
-      // Validate items
-      if (collection.items) {
-        this.validateItems(collection.items, fileName, projectRoot, errors, warnings);
-      }
-
-      // Validate tags
-      if (collection.tags) {
-        this.validateTags(collection.tags, fileName, errors, warnings);
-      }
-
-      return {
-        valid: errors.length === 0,
-        errors,
-        warnings
-      };
-    } catch (error) {
-      return {
-        valid: false,
-        errors: [{
-          file: fileName,
-          message: `Unexpected error: ${(error as Error).message}`
-        }],
-        warnings: []
-      };
-    }
-  }
-
-  /**
-   * Validate all collections in a directory
-   * @param collectionsDir - Absolute path to collections directory
-   * @returns Aggregated validation result
-   */
-  validateAllCollections(collectionsDir: string): ValidationResult {
-    const allErrors: ValidationError[] = [];
-    const allWarnings: ValidationWarning[] = [];
-
-    // Check directory exists
-    if (!fs.existsSync(collectionsDir)) {
-      return {
-        valid: false,
-        errors: [{
-          file: '',
-          message: `Collections directory not found: ${collectionsDir}`
-        }],
-        warnings: []
-      };
-    }
-
-    // Get project root (parent of collections dir)
-    const projectRoot = path.dirname(collectionsDir);
-
-    try {
-      // Find all collection files
-      const files = fs.readdirSync(collectionsDir)
-        .filter((f) => f.endsWith('.collection.yml'))
-        .toSorted();
-
-      // Validate each file
-      for (const file of files) {
-        const filePath = path.join(collectionsDir, file);
-        const result = this.validateCollection(filePath, projectRoot);
-
-        allErrors.push(...result.errors);
-        allWarnings.push(...result.warnings);
-      }
-
-      return {
-        valid: allErrors.length === 0,
-        errors: allErrors,
-        warnings: allWarnings
-      };
-    } catch (error) {
-      return {
-        valid: false,
-        errors: [{
-          file: '',
-          message: `Failed to read collections directory: ${(error as Error).message}`
-        }],
-        warnings: []
-      };
-    }
-  }
 
   /**
    * Validate required fields
@@ -405,5 +258,153 @@ export class CollectionValidator {
         });
       }
     });
+  }
+
+  /**
+   * Validate a single collection file
+   * @param collectionPath - Absolute path to collection file
+   * @param projectRoot - Project root directory for resolving item paths
+   * @returns Validation result with errors and warnings
+   */
+  public validateCollection(collectionPath: string, projectRoot: string): ValidationResult {
+    const errors: ValidationError[] = [];
+    const warnings: ValidationWarning[] = [];
+    const fileName = path.basename(collectionPath);
+
+    try {
+      // Check file exists
+      if (!fs.existsSync(collectionPath)) {
+        return {
+          valid: false,
+          errors: [{
+            file: fileName,
+            message: 'Collection file does not exist'
+          }],
+          warnings: []
+        };
+      }
+
+      // Parse YAML
+      const content = fs.readFileSync(collectionPath, 'utf8');
+      let collection: Collection;
+
+      try {
+        collection = yaml.load(content) as Collection;
+      } catch (parseError) {
+        return {
+          valid: false,
+          errors: [{
+            file: fileName,
+            message: `Failed to parse YAML: ${(parseError as Error).message}`
+          }],
+          warnings: []
+        };
+      }
+
+      if (!collection) {
+        return {
+          valid: false,
+          errors: [{
+            file: fileName,
+            message: 'Empty or invalid YAML file'
+          }],
+          warnings: []
+        };
+      }
+
+      // Validate required fields
+      this.validateRequiredFields(collection, fileName, errors);
+
+      // Validate ID format
+      if (collection.id) {
+        this.validateId(collection.id, fileName, errors);
+      }
+
+      // Validate description
+      if (collection.description) {
+        this.validateDescription(collection.description, fileName, warnings);
+      }
+
+      // Validate items
+      if (collection.items) {
+        this.validateItems(collection.items, fileName, projectRoot, errors, warnings);
+      }
+
+      // Validate tags
+      if (collection.tags) {
+        this.validateTags(collection.tags, fileName, errors, warnings);
+      }
+
+      return {
+        valid: errors.length === 0,
+        errors,
+        warnings
+      };
+    } catch (error) {
+      return {
+        valid: false,
+        errors: [{
+          file: fileName,
+          message: `Unexpected error: ${(error as Error).message}`
+        }],
+        warnings: []
+      };
+    }
+  }
+
+  /**
+   * Validate all collections in a directory
+   * @param collectionsDir - Absolute path to collections directory
+   * @returns Aggregated validation result
+   */
+  public validateAllCollections(collectionsDir: string): ValidationResult {
+    const allErrors: ValidationError[] = [];
+    const allWarnings: ValidationWarning[] = [];
+
+    // Check directory exists
+    if (!fs.existsSync(collectionsDir)) {
+      return {
+        valid: false,
+        errors: [{
+          file: '',
+          message: `Collections directory not found: ${collectionsDir}`
+        }],
+        warnings: []
+      };
+    }
+
+    // Get project root (parent of collections dir)
+    const projectRoot = path.dirname(collectionsDir);
+
+    try {
+      // Find all collection files
+      const files = fs.readdirSync(collectionsDir)
+        .filter((f) => f.endsWith('.collection.yml'))
+        .toSorted();
+
+      // Validate each file
+      for (const file of files) {
+        const filePath = path.join(collectionsDir, file);
+        const result = this.validateCollection(filePath, projectRoot);
+
+        allErrors.push(...result.errors);
+        allWarnings.push(...result.warnings);
+      }
+
+      return {
+        valid: allErrors.length === 0,
+        errors: allErrors,
+        warnings: allWarnings
+      };
+    } catch (error) {
+      return {
+        valid: false,
+        errors: [{
+          file: '',
+          message: `Failed to read collections directory: ${(error as Error).message}`
+        }],
+        warnings: []
+      };
+    }
   }
 }

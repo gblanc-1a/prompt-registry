@@ -46,46 +46,6 @@ export class PromptLoader {
   }
 
   /**
-   * Get list of available prompts from all installed bundles
-   */
-  async getAvailablePrompts(): Promise<PromptInfo[]> {
-    const prompts: PromptInfo[] = [];
-
-    try {
-      // Get bundles directory
-      const bundlesDir = path.join(this.context.globalStorageUri.fsPath, 'bundles');
-
-      if (!fs.existsSync(bundlesDir)) {
-        this.logger.debug('Bundles directory does not exist');
-        return [];
-      }
-
-      // Read all bundle directories
-      const bundleDirs = await readdir(bundlesDir);
-
-      for (const bundleId of bundleDirs) {
-        const bundlePath = path.join(bundlesDir, bundleId);
-
-        // Check if it's a directory
-        const stat = fs.statSync(bundlePath);
-        if (!stat.isDirectory()) {
-          continue;
-        }
-
-        // Load prompts from this bundle
-        const bundlePrompts = await this.getPromptsFromBundle(bundleId, bundlePath);
-        prompts.push(...bundlePrompts);
-      }
-
-      this.logger.debug(`Found ${prompts.length} available prompts`);
-      return prompts;
-    } catch (error) {
-      this.logger.error('Failed to get available prompts', error as Error);
-      return [];
-    }
-  }
-
-  /**
    * Get prompts from a specific bundle
    * @param bundleId
    * @param bundlePath
@@ -137,10 +97,50 @@ export class PromptLoader {
   }
 
   /**
+   * Get list of available prompts from all installed bundles
+   */
+  public async getAvailablePrompts(): Promise<PromptInfo[]> {
+    const prompts: PromptInfo[] = [];
+
+    try {
+      // Get bundles directory
+      const bundlesDir = path.join(this.context.globalStorageUri.fsPath, 'bundles');
+
+      if (!fs.existsSync(bundlesDir)) {
+        this.logger.debug('Bundles directory does not exist');
+        return [];
+      }
+
+      // Read all bundle directories
+      const bundleDirs = await readdir(bundlesDir);
+
+      for (const bundleId of bundleDirs) {
+        const bundlePath = path.join(bundlesDir, bundleId);
+
+        // Check if it's a directory
+        const stat = fs.statSync(bundlePath);
+        if (!stat.isDirectory()) {
+          continue;
+        }
+
+        // Load prompts from this bundle
+        const bundlePrompts = await this.getPromptsFromBundle(bundleId, bundlePath);
+        prompts.push(...bundlePrompts);
+      }
+
+      this.logger.debug(`Found ${prompts.length} available prompts`);
+      return prompts;
+    } catch (error) {
+      this.logger.error('Failed to get available prompts', error as Error);
+      return [];
+    }
+  }
+
+  /**
    * Load a specific prompt by ID
    * @param promptId
    */
-  async loadPrompt(promptId: string): Promise<PromptContent | null> {
+  public async loadPrompt(promptId: string): Promise<PromptContent | null> {
     try {
       // Check cache first
       if (this.promptCache.has(promptId)) {
@@ -179,7 +179,7 @@ export class PromptLoader {
   /**
    * Clear prompt cache (call when bundles are installed/uninstalled)
    */
-  clearCache(): void {
+  public clearCache(): void {
     this.promptCache.clear();
     this.logger.debug('Prompt cache cleared');
   }
@@ -188,7 +188,7 @@ export class PromptLoader {
    * Search prompts by tag
    * @param tag
    */
-  async searchByTag(tag: string): Promise<PromptInfo[]> {
+  public async searchByTag(tag: string): Promise<PromptInfo[]> {
     const allPrompts = await this.getAvailablePrompts();
     return allPrompts.filter((p) => p.tags.includes(tag));
   }
@@ -197,7 +197,7 @@ export class PromptLoader {
    * Search prompts by keyword in name or description
    * @param keyword
    */
-  async search(keyword: string): Promise<PromptInfo[]> {
+  public async search(keyword: string): Promise<PromptInfo[]> {
     const allPrompts = await this.getAvailablePrompts();
     const lowerKeyword = keyword.toLowerCase();
 

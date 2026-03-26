@@ -68,14 +68,14 @@ suite('Hub Conflict Resolution UI', () => {
     };
   }
 
-  setup(async () => {
+  setup(() => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hub-conflict-ui-test-'));
     storage = new HubStorage(tempDir);
     hubManager = new HubManager(storage, {} as any, process.cwd(), undefined, undefined);
     (hubManager as any).storage = storage;
   });
 
-  teardown(async () => {
+  teardown(() => {
     if (fs.existsSync(tempDir)) {
       fs.rmSync(tempDir, { recursive: true, force: true });
     }

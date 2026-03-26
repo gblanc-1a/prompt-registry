@@ -61,7 +61,7 @@ export class BundleBuilder {
    * @param owner
    * @param repo
    */
-  static github(owner: string, repo: string): BundleBuilder {
+  public static github(owner: string, repo: string): BundleBuilder {
     const builder = new BundleBuilder();
     builder.bundle.sourceId = TEST_SOURCE_IDS.GITHUB;
     builder.bundle.name = `${owner}/${repo}`;
@@ -77,7 +77,7 @@ export class BundleBuilder {
    * @param bundleId
    * @param sourceType
    */
-  static fromSource(bundleId: string, sourceType: keyof typeof TEST_SOURCE_IDS): BundleBuilder {
+  public static fromSource(bundleId: string, sourceType: keyof typeof TEST_SOURCE_IDS): BundleBuilder {
     const builder = new BundleBuilder();
     builder.bundle.sourceId = TEST_SOURCE_IDS[sourceType];
     builder.bundle.id = bundleId;
@@ -92,7 +92,7 @@ export class BundleBuilder {
    * Set the version and update URLs accordingly
    * @param version
    */
-  withVersion(version: string): BundleBuilder {
+  public withVersion(version: string): BundleBuilder {
     this.bundle.version = version;
 
     // Update ID to include version
@@ -113,27 +113,27 @@ export class BundleBuilder {
     return this;
   }
 
-  withDescription(description: string): BundleBuilder {
+  public withDescription(description: string): BundleBuilder {
     this.bundle.description = description;
     return this;
   }
 
-  withAuthor(author: string): BundleBuilder {
+  public withAuthor(author: string): BundleBuilder {
     this.bundle.author = author;
     return this;
   }
 
-  withTags(tags: string[]): BundleBuilder {
+  public withTags(tags: string[]): BundleBuilder {
     this.bundle.tags = tags;
     return this;
   }
 
-  withLastUpdated(date: string): BundleBuilder {
+  public withLastUpdated(date: string): BundleBuilder {
     this.bundle.lastUpdated = date;
     return this;
   }
 
-  build(): Bundle {
+  public build(): Bundle {
     if (!this.bundle.id || !this.bundle.version) {
       throw new Error('Bundle must have id and version. Call withVersion() before build()');
     }

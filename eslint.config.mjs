@@ -75,5 +75,14 @@ export default defineConfig([
         ...globals.browser
       }
     }
+  },
+  {
+    name: 'prompt-registry/test',
+    files: ['test/**/*.ts'],
+    languageOptions: {
+      globals: {
+        ...globals.node
+      }
+    }
   }
 ]);

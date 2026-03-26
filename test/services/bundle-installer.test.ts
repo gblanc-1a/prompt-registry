@@ -79,7 +79,7 @@ suite('BundleInstaller', () => {
       );
     });
 
-    test('should accept file:// URLs for local bundles', async () => {
+    test('should accept file:// URLs for local bundles', () => {
       // This would require actual file setup, so we just verify the method exists
       assert.ok(typeof installer.install === 'function');
     });
@@ -99,17 +99,17 @@ suite('BundleInstaller', () => {
   });
 
   suite('uninstall', () => {
-    test('should remove all bundle files', async () => {
+    test('should remove all bundle files', () => {
       // Test complete file removal
       assert.ok(installer);
     });
 
-    test('should handle missing installation directory gracefully', async () => {
+    test('should handle missing installation directory gracefully', () => {
       // Test uninstalling non-existent bundle
       assert.ok(installer);
     });
 
-    test('should not fail if some files are locked', async () => {
+    test('should not fail if some files are locked', () => {
       // Test resilience to file system errors
       assert.ok(installer);
     });
@@ -129,7 +129,7 @@ suite('BundleInstaller', () => {
   });
 
   suite('Validation', () => {
-    test('should validate manifest structure', async () => {
+    test('should validate manifest structure', () => {
       const validManifest = {
         id: 'test-bundle',
         version: '1.0.0',
@@ -143,7 +143,7 @@ suite('BundleInstaller', () => {
       assert.ok(validManifest);
     });
 
-    test('should reject manifest with missing required fields', async () => {
+    test('should reject manifest with missing required fields', () => {
       const invalidManifest = {
         id: 'test-bundle'
         // missing version, name, etc.
@@ -153,7 +153,7 @@ suite('BundleInstaller', () => {
       assert.ok(invalidManifest);
     });
 
-    test('should reject manifest with wrong bundle ID', async () => {
+    test('should reject manifest with wrong bundle ID', () => {
       const manifest = {
         id: 'wrong-id', // doesn't match bundle.id
         version: '1.0.0',
@@ -227,22 +227,22 @@ suite('BundleInstaller', () => {
   });
 
   suite('File Operations', () => {
-    test('should create installation directory if not exists', async () => {
+    test('should create installation directory if not exists', () => {
       // Test directory creation
       assert.ok(installer);
     });
 
-    test('should copy files recursively', async () => {
+    test('should copy files recursively', () => {
       // Test recursive copy
       assert.ok(installer);
     });
 
-    test('should preserve file permissions', async () => {
+    test('should preserve file permissions', () => {
       // Test permission preservation
       assert.ok(installer);
     });
 
-    test('should handle deeply nested directories', async () => {
+    test('should handle deeply nested directories', () => {
       // Test deep nesting
       assert.ok(installer);
     });
@@ -262,17 +262,17 @@ suite('BundleInstaller', () => {
       );
     });
 
-    test('should handle extraction failures in installFromBuffer', async () => {
+    test('should handle extraction failures in installFromBuffer', () => {
       // installFromBuffer handles extraction
       assert.ok(typeof installer.installFromBuffer === 'function');
     });
 
-    test('should handle validation failures', async () => {
+    test('should handle validation failures', () => {
       // Test validation error handling
       assert.ok(installer);
     });
 
-    test('should provide descriptive error messages', async () => {
+    test('should provide descriptive error messages', () => {
       // Test error message quality
       assert.ok(installer);
     });

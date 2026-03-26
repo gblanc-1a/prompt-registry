@@ -231,7 +231,7 @@ suite('MarketplaceViewProvider Empty State - Property Tests', () => {
     await fc.assert(
       fc.asyncProperty(
         fc.boolean(), // Whether to check for setup prompt elements
-        async (checkSetupPrompt) => {
+        (_checkSetupPrompt) => {
           const html = (marketplaceProvider as any).getHtmlContent(mockWebview);
 
           // Verify HTML references external CSS and JS
@@ -269,7 +269,7 @@ suite('MarketplaceViewProvider Empty State - Property Tests', () => {
             assert.ok(js.includes('Syncing sources...'), 'JS should include syncing message');
           }
 
-          return true;
+          return Promise.resolve(true);
         }
       ),
       { ...PropertyTestConfig.FAST_CHECK_OPTIONS, numRuns: 10 } // Fewer runs since content is static

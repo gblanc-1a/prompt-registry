@@ -503,7 +503,7 @@ prompts:
       const userPath = path.join(tempDir, 'Library', 'Application Support', 'Code', 'User');
       const globalStoragePath = path.join(userPath, 'profiles', profileId, 'globalStorage', 'publisher.extension');
 
-      const mockContext = {
+      mockContext = {
         globalStorageUri: { fsPath: globalStoragePath },
         storageUri: { fsPath: path.join(tempDir, 'workspace') },
         extensionPath: __dirname,
@@ -522,7 +522,7 @@ prompts:
       const profileId = 'abc-profile';
       const globalStoragePath = path.join(customDataDir, 'profiles', profileId, 'globalStorage', 'publisher.extension');
 
-      const mockContext = {
+      mockContext = {
         globalStorageUri: { fsPath: globalStoragePath },
         storageUri: { fsPath: path.join(tempDir, 'workspace') },
         extensionPath: __dirname,
@@ -540,7 +540,7 @@ prompts:
       const customDataDir = path.join(tempDir, 'custom-data-no-profile');
       const globalStoragePath = path.join(customDataDir, 'globalStorage', 'publisher.extension');
 
-      const mockContext = {
+      mockContext = {
         globalStorageUri: { fsPath: globalStoragePath },
         storageUri: { fsPath: path.join(tempDir, 'workspace') },
         extensionPath: __dirname,
@@ -911,7 +911,7 @@ prompts:
       }
     });
 
-    test('should correctly identify broken vs valid symlinks', async () => {
+    test('should correctly identify broken vs valid symlinks', () => {
       const validTarget = path.join(tempDir, 'valid-target.txt');
       const validSymlink = path.join(tempDir, 'valid-symlink.txt');
 

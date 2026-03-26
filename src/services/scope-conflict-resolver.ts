@@ -102,7 +102,7 @@ export class ScopeConflictResolver {
    *
    * Requirements: 6.1, 6.2, 6.3
    */
-  async checkConflict(bundleId: string, targetScope: InstallationScope): Promise<ScopeConflict | null> {
+  public async checkConflict(bundleId: string, targetScope: InstallationScope): Promise<ScopeConflict | null> {
     this.logger.debug(`[ScopeConflictResolver] Checking conflict for bundle ${bundleId} at scope ${targetScope}`);
 
     // Check all scopes except the target scope
@@ -136,7 +136,7 @@ export class ScopeConflictResolver {
    * @param targetScope - The scope where installation is intended
    * @returns true if conflict exists, false otherwise
    */
-  async hasConflict(bundleId: string, targetScope: InstallationScope): Promise<boolean> {
+  public async hasConflict(bundleId: string, targetScope: InstallationScope): Promise<boolean> {
     const conflict = await this.checkConflict(bundleId, targetScope);
     return conflict !== null;
   }
@@ -146,7 +146,7 @@ export class ScopeConflictResolver {
    * @param bundleId - The bundle ID to check
    * @returns Array of scopes where the bundle is installed
    */
-  async getConflictingScopes(bundleId: string): Promise<InstallationScope[]> {
+  public async getConflictingScopes(bundleId: string): Promise<InstallationScope[]> {
     const installedScopes: InstallationScope[] = [];
 
     for (const scope of this.ALL_SCOPES) {
@@ -179,7 +179,7 @@ export class ScopeConflictResolver {
    *
    * Requirements: 6.4, 6.5
    */
-  async migrateBundle(
+  public async migrateBundle(
     bundleId: string,
     fromScope: InstallationScope,
     toScope: InstallationScope,

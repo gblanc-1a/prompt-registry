@@ -143,6 +143,7 @@ export interface EntryPoint {
  */
 export interface LocalOlafSkillManifest extends SkillManifest {
   /** Entry points for competency index integration */
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API property name
   entry_points: EntryPoint[];
 }
 

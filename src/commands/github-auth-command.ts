@@ -15,7 +15,7 @@ export class GitHubAuthCommand {
 
   constructor(private readonly registryManager: RegistryManager) {}
 
-  async execute(): Promise<void> {
+  public async execute(): Promise<void> {
     try {
       this.logger.info('Executing Force GitHub Authentication command');
 

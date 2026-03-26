@@ -261,7 +261,7 @@ items:
         return spawnSync(cmd, args, opts);
       };
 
-      const result = await main({
+      await main({
         repoRoot: tempDir,
         argv: ['--dry-run', '--changed-path', 'collections/test.collection.yml', '--repo-slug', 'test-owner/test-repo'],
         env: { GITHUB_TOKEN: 'fake-token' },

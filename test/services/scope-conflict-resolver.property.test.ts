@@ -10,11 +10,8 @@
  */
 
 import * as assert from 'node:assert';
-import * as os from 'node:os';
-import * as path from 'node:path';
 import * as fc from 'fast-check';
 import * as sinon from 'sinon';
-import * as vscode from 'vscode';
 import {
   ScopeConflictResolver,
 } from '../../src/services/scope-conflict-resolver';
@@ -39,45 +36,6 @@ suite('ScopeConflictResolver Property Tests', () => {
 
   // ===== Test Utilities =====
   const ALL_SCOPES: InstallationScope[] = ['user', 'workspace', 'repository'];
-
-  const createMockContext = (): vscode.ExtensionContext => {
-    const globalStateData = new Map<string, any>();
-    return {
-      globalState: {
-        get: (key: string, defaultValue?: any) => globalStateData.get(key) ?? defaultValue,
-        update: async (key: string, value: any) => {
-          globalStateData.set(key, value);
-        },
-        keys: () => Array.from(globalStateData.keys()),
-        setKeysForSync: sandbox.stub()
-      } as any,
-      globalStorageUri: vscode.Uri.file(path.join(os.tmpdir(), 'test-storage')),
-      subscriptions: [],
-      extensionUri: vscode.Uri.file('/mock/extension'),
-      extensionPath: '/mock/extension',
-      storagePath: '/mock/storage',
-      globalStoragePath: path.join(os.tmpdir(), 'test-storage'),
-      logPath: '/mock/log',
-      extensionMode: 3 as any,
-      workspaceState: {
-        get: sandbox.stub(),
-        update: sandbox.stub(),
-        keys: sandbox.stub().returns([])
-      } as any,
-      secrets: {
-        get: sandbox.stub(),
-        store: sandbox.stub(),
-        delete: sandbox.stub(),
-        onDidChange: sandbox.stub()
-      } as any,
-      environmentVariableCollection: {} as any,
-      extension: {} as any,
-      asAbsolutePath: (relativePath: string) => path.join('/mock/extension', relativePath),
-      storageUri: vscode.Uri.file('/mock/storage'),
-      logUri: vscode.Uri.file('/mock/log'),
-      languageModelAccessInformation: {} as any
-    } as vscode.ExtensionContext;
-  };
 
   setup(() => {
     sandbox = sinon.createSandbox();
@@ -249,17 +207,19 @@ suite('ScopeConflictResolver Property Tests', () => {
             let uninstallCalled = false;
             let installCalled = false;
 
-            const mockUninstall = async () => {
+            const mockUninstall = () => {
               uninstallCalled = true;
               // After uninstall, bundle no longer at fromScope
               mockStorage.getInstalledBundle.withArgs(bundleId, fromScope).resolves(undefined);
+              return Promise.resolve();
             };
 
-            const mockInstall = async () => {
+            const mockInstall = () => {
               installCalled = true;
               // After install, bundle at toScope
               const newBundle = createMockInstalledBundle(bundleId, version, { scope: toScope });
               mockStorage.getInstalledBundle.withArgs(bundleId, toScope).resolves(newBundle);
+              return Promise.resolve();
             };
 
             // Act: migrate bundle

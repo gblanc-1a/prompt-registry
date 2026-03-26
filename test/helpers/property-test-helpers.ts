@@ -41,6 +41,7 @@ export const HTTP_STATUS_MESSAGES: Record<number, string> = {
  * Provides consistent error message validation across property-based tests.
  * These helpers check for specific error patterns in adapter error messages.
  */
+// eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
 export const ErrorCheckers = {
   /**
    * Check if error indicates HTML content was detected instead of JSON
@@ -134,7 +135,7 @@ export class LoggerHelpers {
    * Reset all logger stub history
    * Call this before capturing logs for a specific test scenario
    */
-  resetHistory(): void {
+  public resetHistory(): void {
     this.loggerStub.debug?.resetHistory();
     this.loggerStub.info?.resetHistory();
     this.loggerStub.warn?.resetHistory();
@@ -145,7 +146,7 @@ export class LoggerHelpers {
    * Collect all log calls from all log levels
    * Returns array of sinon spy calls
    */
-  collectAllCalls(): sinon.SinonSpyCall[] {
+  public collectAllCalls(): sinon.SinonSpyCall[] {
     return [
       ...(this.loggerStub.debug?.getCalls() || []),
       ...(this.loggerStub.info?.getCalls() || []),
@@ -159,7 +160,7 @@ export class LoggerHelpers {
    * Useful for verifying specific log messages were emitted
    * @param searchText
    */
-  hasLogContaining(searchText: string): boolean {
+  public hasLogContaining(searchText: string): boolean {
     return this.collectAllCalls().some((call) => {
       const message = call.args[0]?.toString().toLowerCase() || '';
       return message.includes(searchText.toLowerCase());
@@ -170,7 +171,7 @@ export class LoggerHelpers {
    * Get all error-level log messages
    * Returns array of error message strings
    */
-  getErrorMessages(): string[] {
+  public getErrorMessages(): string[] {
     return (this.loggerStub.error?.getCalls() || [])
       .map((call: sinon.SinonSpyCall) => call.args[0]?.toString() || '');
   }
@@ -179,7 +180,7 @@ export class LoggerHelpers {
    * Get all debug-level log messages
    * Returns array of debug message strings
    */
-  getDebugMessages(): string[] {
+  public getDebugMessages(): string[] {
     return (this.loggerStub.debug?.getCalls() || [])
       .map((call: sinon.SinonSpyCall) => call.args[0]?.toString() || '');
   }
@@ -189,7 +190,7 @@ export class LoggerHelpers {
    * @param level
    * @param searchText
    */
-  hasLogAtLevel(level: 'debug' | 'info' | 'warn' | 'error', searchText: string): boolean {
+  public hasLogAtLevel(level: 'debug' | 'info' | 'warn' | 'error', searchText: string): boolean {
     const calls = this.loggerStub[level]?.getCalls() || [];
     return calls.some((call: sinon.SinonSpyCall) => {
       const message = call.args[0]?.toString().toLowerCase() || '';
@@ -204,6 +205,7 @@ export class LoggerHelpers {
  * Centralized configuration for property-based tests.
  * Optimized for speed while maintaining good coverage.
  */
+// eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
 export const PropertyTestConfig = {
   /**
    * Number of test runs for different test complexity levels
@@ -317,6 +319,7 @@ export const stubHttpsWithResponse = (
  * These generators provide reusable arbitraries for property-based tests.
  * They ensure consistent test data generation across different test files.
  */
+// eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
 export const TestGenerators = {
   /**
    * Generate a valid GitHub token string
@@ -397,6 +400,7 @@ export const TestGenerators = {
  * Shared generators for bundle-related property-based tests.
  * Ensures consistent version and bundle ID generation across test files.
  */
+// eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
 export const BundleGenerators = {
   /**
    * Generate semantic version strings (0-10 for each component)

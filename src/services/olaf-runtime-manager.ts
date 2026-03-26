@@ -13,6 +13,7 @@
 import * as fs from 'node:fs';
 import * as https from 'node:https';
 import * as path from 'node:path';
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- top-level import, cannot use await import
 import AdmZip = require('adm-zip');
 import * as vscode from 'vscode';
 import {
@@ -46,19 +47,11 @@ const MAX_DOWNLOAD_SIZE = 500 * 1024 * 1024;
  */
 export class OlafRuntimeManager {
   private static instance: OlafRuntimeManager | null = null;
-  private readonly logger: Logger;
-  private context: vscode.ExtensionContext | undefined;
-  private readonly runtimeStatusCache: Map<string, { info: OlafRuntimeInfo; timestamp: number }> = new Map();
-  private readonly workspaceConfigCache: Map<string, OlafWorkspaceConfig> = new Map();
-
-  private constructor() {
-    this.logger = Logger.getInstance();
-  }
 
   /**
    * Get singleton instance
    */
-  static getInstance(): OlafRuntimeManager {
+  public static getInstance(): OlafRuntimeManager {
     if (!OlafRuntimeManager.instance) {
       OlafRuntimeManager.instance = new OlafRuntimeManager();
     }
@@ -66,12 +59,19 @@ export class OlafRuntimeManager {
   }
 
   /**
-   * Initialize manager with extension context
-   * @param context
+   * Reset singleton instance (for testing)
    */
-  initialize(context: vscode.ExtensionContext): void {
-    this.context = context;
-    this.logger.info('[OlafRuntime] Manager initialized');
+  public static resetInstance(): void {
+    OlafRuntimeManager.instance = null;
+  }
+
+  private readonly logger: Logger;
+  private context: vscode.ExtensionContext | undefined;
+  private readonly runtimeStatusCache: Map<string, { info: OlafRuntimeInfo; timestamp: number }> = new Map();
+  private readonly workspaceConfigCache: Map<string, OlafWorkspaceConfig> = new Map();
+
+  private constructor() {
+    this.logger = Logger.getInstance();
   }
 
   /**
@@ -143,58 +143,6 @@ export class OlafRuntimeManager {
   }
 
   /**
-   * Check if runtime is installed for a specific version
-   * @param version
-   */
-  isRuntimeInstalled(version = 'latest'): boolean {
-    try {
-      const runtimePath = this.getUserRuntimePath(version);
-      const olafPath = path.join(runtimePath, '.olaf');
-      const idePath = path.join(runtimePath, this.getIdeSpecificFolderName());
-
-      return fs.existsSync(olafPath) && fs.existsSync(idePath);
-    } catch (error) {
-      this.logger.error(`[OlafRuntime] Error checking runtime installation: ${error}`);
-      return false;
-    }
-  }
-
-  /**
-   * Get runtime information for a specific version
-   * @param version
-   * @param forceRefresh
-   */
-  async getRuntimeInfo(version = 'latest', forceRefresh = false): Promise<OlafRuntimeInfo> {
-    const cacheKey = version;
-    const cached = this.runtimeStatusCache.get(cacheKey);
-
-    // Return cached result if valid and not forcing refresh
-    if (!forceRefresh && cached && Date.now() - cached.timestamp < RUNTIME_STATUS_CACHE_TTL) {
-      return cached.info;
-    }
-
-    const ideType = this.detectIDE();
-    const installPath = this.getUserRuntimePath(version);
-    const isInstalled = this.isRuntimeInstalled(version);
-
-    const info: OlafRuntimeInfo = {
-      version,
-      installPath,
-      isInstalled,
-      ideType,
-      installedAt: isInstalled ? await this.getInstallationTimestamp(installPath) : undefined
-    };
-
-    // Cache the result
-    this.runtimeStatusCache.set(cacheKey, {
-      info,
-      timestamp: Date.now()
-    });
-
-    return info;
-  }
-
-  /**
    * Get installation timestamp from runtime directory
    * @param installPath
    */
@@ -205,73 +153,6 @@ export class OlafRuntimeManager {
     } catch {
       return undefined;
     }
-  }
-
-  /**
-   * Clear runtime status cache
-   */
-  clearCache(): void {
-    this.runtimeStatusCache.clear();
-    this.workspaceConfigCache.clear();
-    this.logger.debug('[OlafRuntime] Cache cleared');
-  }
-
-  /**
-   * Ensure runtime is installed for the current workspace
-   * Downloads and installs if not present
-   * @param workspacePath
-   */
-  async ensureRuntimeInstalled(workspacePath?: string): Promise<boolean> {
-    const version = 'latest'; // For now, always use latest
-    const runtimeInfo = await this.getRuntimeInfo(version);
-
-    if (runtimeInfo.isInstalled) {
-      this.logger.info(`[OlafRuntime] Runtime v${version} already installed`);
-      return true;
-    }
-
-    this.logger.info(`[OlafRuntime] Runtime v${version} not found, installing...`);
-
-    try {
-      await this.installRuntime(version);
-
-      // Verify installation
-      const updatedInfo = await this.getRuntimeInfo(version, true);
-      if (updatedInfo.isInstalled) {
-        this.logger.info(`[OlafRuntime] Runtime v${version} installed successfully`);
-        return true;
-      } else {
-        throw new Error('Runtime installation verification failed');
-      }
-    } catch (error) {
-      this.logger.error(`[OlafRuntime] Failed to install runtime: ${error}`);
-      return false;
-    }
-  }
-
-  /**
-   * Install OLAF runtime for a specific version
-   * @param version
-   */
-  async installRuntime(version = 'latest'): Promise<void> {
-    if (!this.context) {
-      throw new Error('OlafRuntimeManager not initialized. Call initialize() first.');
-    }
-
-    const ideType = this.detectIDE();
-    this.logger.info(`[OlafRuntime] Installing runtime v${version} for ${ideType}`);
-
-    // Download runtime bundle
-    const runtimeBuffer = await this.downloadRuntimeBundle(ideType, version);
-
-    // Extract runtime to user space
-    const runtimePath = this.getUserRuntimePath(version);
-    await this.extractRuntime(runtimeBuffer, runtimePath);
-
-    // Clear cache to reflect new installation
-    this.clearCache();
-
-    this.logger.info(`[OlafRuntime] Runtime v${version} installed to ${runtimePath}`);
   }
 
   /**
@@ -294,11 +175,10 @@ export class OlafRuntimeManager {
     this.logger.info(`[OlafRuntime] Fetching release info from: ${releaseUrl}`);
 
     try {
-      const releaseInfo = await this.makeGitHubRequest(releaseUrl);
-      const actualVersion = releaseInfo.tag_name;
+      const { tag_name: githubReleaseTagName, assets } = await this.makeGitHubRequest(releaseUrl);
 
-      this.logger.info(`[OlafRuntime] Found release: ${actualVersion}`);
-      this.logger.info(`[OlafRuntime] Available assets: ${releaseInfo.assets?.map((a: any) => a.name).join(', ') || 'none'}`);
+      this.logger.info(`[OlafRuntime] Found release: ${githubReleaseTagName}`);
+      this.logger.info(`[OlafRuntime] Available assets: ${assets?.map((a: any) => a.name).join(', ') || 'none'}`);
     } catch (error) {
       this.logger.error(`[OlafRuntime] Failed to fetch release information: ${error}`);
       throw error;
@@ -508,62 +388,6 @@ export class OlafRuntimeManager {
   }
 
   /**
-   * Create workspace symbolic links to runtime
-   * @param workspacePath
-   * @param version
-   */
-  async createWorkspaceLinks(workspacePath: string, version = 'latest'): Promise<void> {
-    if (!this.context) {
-      throw new Error('OlafRuntimeManager not initialized. Call initialize() first.');
-    }
-
-    // Ensure runtime is installed
-    const runtimeInfo = await this.getRuntimeInfo(version);
-    if (!runtimeInfo.isInstalled) {
-      throw new Error(`Runtime v${version} is not installed. Install it first.`);
-    }
-
-    const runtimePath = this.getUserRuntimePath(version);
-    const workspaceOlafPath = path.join(workspacePath, '.olaf');
-    const workspaceIdePath = path.join(workspacePath, this.getIdeSpecificFolderName());
-
-    this.logger.info(`[OlafRuntime] Creating workspace links in ${workspacePath}`);
-
-    try {
-      // Create symbolic link for .olaf directory
-      await this.createSymbolicLink(
-        path.join(runtimePath, '.olaf'),
-        workspaceOlafPath
-      );
-
-      // Create symbolic link for IDE-specific directory
-      await this.createSymbolicLink(
-        path.join(runtimePath, this.getIdeSpecificFolderName()),
-        workspaceIdePath
-      );
-
-      // Cache workspace configuration
-      const config: OlafWorkspaceConfig = {
-        workspacePath,
-        runtimeVersion: version,
-        hasSymbolicLinks: true,
-        symbolicLinks: {
-          olafPath: workspaceOlafPath,
-          idePath: workspaceIdePath
-        },
-        configuredAt: new Date().toISOString()
-      };
-
-      this.workspaceConfigCache.set(workspacePath, config);
-
-      this.logger.info(`[OlafRuntime] Workspace links created successfully`);
-    } catch (error) {
-      this.logger.error(`[OlafRuntime] Failed to create workspace links: ${error}`);
-      throw error;
-    }
-  }
-
-  /**
    * Create a symbolic link with conflict detection and fallback
    *
    * Uses checkPathExists() to properly detect broken symlinks.
@@ -670,10 +494,194 @@ export class OlafRuntimeManager {
   }
 
   /**
+   * Initialize manager with extension context
+   * @param context
+   */
+  public initialize(context: vscode.ExtensionContext): void {
+    this.context = context;
+    this.logger.info('[OlafRuntime] Manager initialized');
+  }
+
+  /**
+   * Check if runtime is installed for a specific version
+   * @param version
+   */
+  public isRuntimeInstalled(version = 'latest'): boolean {
+    try {
+      const runtimePath = this.getUserRuntimePath(version);
+      const olafPath = path.join(runtimePath, '.olaf');
+      const idePath = path.join(runtimePath, this.getIdeSpecificFolderName());
+
+      return fs.existsSync(olafPath) && fs.existsSync(idePath);
+    } catch (error) {
+      this.logger.error(`[OlafRuntime] Error checking runtime installation: ${error}`);
+      return false;
+    }
+  }
+
+  /**
+   * Get runtime information for a specific version
+   * @param version
+   * @param forceRefresh
+   */
+  public async getRuntimeInfo(version = 'latest', forceRefresh = false): Promise<OlafRuntimeInfo> {
+    const cacheKey = version;
+    const cached = this.runtimeStatusCache.get(cacheKey);
+
+    // Return cached result if valid and not forcing refresh
+    if (!forceRefresh && cached && Date.now() - cached.timestamp < RUNTIME_STATUS_CACHE_TTL) {
+      return cached.info;
+    }
+
+    const ideType = this.detectIDE();
+    const installPath = this.getUserRuntimePath(version);
+    const isInstalled = this.isRuntimeInstalled(version);
+
+    const info: OlafRuntimeInfo = {
+      version,
+      installPath,
+      isInstalled,
+      ideType,
+      installedAt: isInstalled ? await this.getInstallationTimestamp(installPath) : undefined
+    };
+
+    // Cache the result
+    this.runtimeStatusCache.set(cacheKey, {
+      info,
+      timestamp: Date.now()
+    });
+
+    return info;
+  }
+
+  /**
+   * Clear runtime status cache
+   */
+  public clearCache(): void {
+    this.runtimeStatusCache.clear();
+    this.workspaceConfigCache.clear();
+    this.logger.debug('[OlafRuntime] Cache cleared');
+  }
+
+  /**
+   * Ensure runtime is installed for the current workspace
+   * Downloads and installs if not present
+   * @param _workspacePath
+   */
+  public async ensureRuntimeInstalled(_workspacePath?: string): Promise<boolean> {
+    const version = 'latest'; // For now, always use latest
+    const runtimeInfo = await this.getRuntimeInfo(version);
+
+    if (runtimeInfo.isInstalled) {
+      this.logger.info(`[OlafRuntime] Runtime v${version} already installed`);
+      return true;
+    }
+
+    this.logger.info(`[OlafRuntime] Runtime v${version} not found, installing...`);
+
+    try {
+      await this.installRuntime(version);
+
+      // Verify installation
+      const updatedInfo = await this.getRuntimeInfo(version, true);
+      if (updatedInfo.isInstalled) {
+        this.logger.info(`[OlafRuntime] Runtime v${version} installed successfully`);
+        return true;
+      } else {
+        throw new Error('Runtime installation verification failed');
+      }
+    } catch (error) {
+      this.logger.error(`[OlafRuntime] Failed to install runtime: ${error}`);
+      return false;
+    }
+  }
+
+  /**
+   * Install OLAF runtime for a specific version
+   * @param version
+   */
+  public async installRuntime(version = 'latest'): Promise<void> {
+    if (!this.context) {
+      throw new Error('OlafRuntimeManager not initialized. Call initialize() first.');
+    }
+
+    const ideType = this.detectIDE();
+    this.logger.info(`[OlafRuntime] Installing runtime v${version} for ${ideType}`);
+
+    // Download runtime bundle
+    const runtimeBuffer = await this.downloadRuntimeBundle(ideType, version);
+
+    // Extract runtime to user space
+    const runtimePath = this.getUserRuntimePath(version);
+    await this.extractRuntime(runtimeBuffer, runtimePath);
+
+    // Clear cache to reflect new installation
+    this.clearCache();
+
+    this.logger.info(`[OlafRuntime] Runtime v${version} installed to ${runtimePath}`);
+  }
+
+  /**
+   * Create workspace symbolic links to runtime
+   * @param workspacePath
+   * @param version
+   */
+  public async createWorkspaceLinks(workspacePath: string, version = 'latest'): Promise<void> {
+    if (!this.context) {
+      throw new Error('OlafRuntimeManager not initialized. Call initialize() first.');
+    }
+
+    // Ensure runtime is installed
+    const runtimeInfo = await this.getRuntimeInfo(version);
+    if (!runtimeInfo.isInstalled) {
+      throw new Error(`Runtime v${version} is not installed. Install it first.`);
+    }
+
+    const runtimePath = this.getUserRuntimePath(version);
+    const workspaceOlafPath = path.join(workspacePath, '.olaf');
+    const workspaceIdePath = path.join(workspacePath, this.getIdeSpecificFolderName());
+
+    this.logger.info(`[OlafRuntime] Creating workspace links in ${workspacePath}`);
+
+    try {
+      // Create symbolic link for .olaf directory
+      await this.createSymbolicLink(
+        path.join(runtimePath, '.olaf'),
+        workspaceOlafPath
+      );
+
+      // Create symbolic link for IDE-specific directory
+      await this.createSymbolicLink(
+        path.join(runtimePath, this.getIdeSpecificFolderName()),
+        workspaceIdePath
+      );
+
+      // Cache workspace configuration
+      const config: OlafWorkspaceConfig = {
+        workspacePath,
+        runtimeVersion: version,
+        hasSymbolicLinks: true,
+        symbolicLinks: {
+          olafPath: workspaceOlafPath,
+          idePath: workspaceIdePath
+        },
+        configuredAt: new Date().toISOString()
+      };
+
+      this.workspaceConfigCache.set(workspacePath, config);
+
+      this.logger.info(`[OlafRuntime] Workspace links created successfully`);
+    } catch (error) {
+      this.logger.error(`[OlafRuntime] Failed to create workspace links: ${error}`);
+      throw error;
+    }
+  }
+
+  /**
    * Check if workspace has OLAF runtime links
    * @param workspacePath
    */
-  async hasWorkspaceLinks(workspacePath: string): Promise<boolean> {
+  public async hasWorkspaceLinks(workspacePath: string): Promise<boolean> {
     const olafPath = path.join(workspacePath, '.olaf');
     const idePath = path.join(workspacePath, this.getIdeSpecificFolderName());
 
@@ -691,7 +699,7 @@ export class OlafRuntimeManager {
    * Get workspace configuration
    * @param workspacePath
    */
-  getWorkspaceConfig(workspacePath: string): OlafWorkspaceConfig | undefined {
+  public getWorkspaceConfig(workspacePath: string): OlafWorkspaceConfig | undefined {
     return this.workspaceConfigCache.get(workspacePath);
   }
 
@@ -701,7 +709,7 @@ export class OlafRuntimeManager {
    * Uses checkPathExists() to properly detect and clean up broken symlinks.
    * @param workspacePath
    */
-  async removeWorkspaceLinks(workspacePath: string): Promise<void> {
+  public async removeWorkspaceLinks(workspacePath: string): Promise<void> {
     const olafPath = path.join(workspacePath, '.olaf');
     const idePath = path.join(workspacePath, this.getIdeSpecificFolderName());
 
@@ -748,12 +756,5 @@ export class OlafRuntimeManager {
       this.logger.error(`[OlafRuntime] Failed to remove workspace links: ${error}`);
       throw error;
     }
-  }
-
-  /**
-   * Reset singleton instance (for testing)
-   */
-  static resetInstance(): void {
-    OlafRuntimeManager.instance = null;
   }
 }

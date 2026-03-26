@@ -507,8 +507,9 @@ suite('RegistryManager - Event Emission Behavior', () => {
     sandbox.stub(RepositoryAdapterFactory, 'create').returns(mockAdapter as any);
     mockStorage.getInstalledBundles.resolves([localSkillInstall]);
     const updatedInstallations: InstalledBundle[] = [];
-    mockStorage.recordInstallation.callsFake(async (installation: InstalledBundle) => {
+    mockStorage.recordInstallation.callsFake((installation: InstalledBundle) => {
       updatedInstallations.push(installation);
+      return Promise.resolve();
     });
 
     let updatedEventPayload: InstalledBundle | undefined;

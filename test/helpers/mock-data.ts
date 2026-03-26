@@ -5,15 +5,19 @@
 export interface MockBundleAsset {
   id: number;
   name: string;
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API response shape
   browser_download_url: string;
   size: number;
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
   content_type: string;
 }
 
 export interface MockReleaseResponse {
   id: number;
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API response shape
   tag_name: string;
   name: string;
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API response shape
   published_at: string;
   assets: MockBundleAsset[];
 }

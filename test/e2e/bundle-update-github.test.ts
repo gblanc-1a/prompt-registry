@@ -220,7 +220,7 @@ license: MIT
   }
 
   suite('Test Setup Validation', () => {
-    test('should create isolated test context with unique storage path', async function () {
+    test('should create isolated test context with unique storage path', function () {
       this.timeout(10_000);
 
       // Verify test context was created

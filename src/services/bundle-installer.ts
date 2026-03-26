@@ -15,6 +15,7 @@ import * as path from 'node:path';
 import {
   promisify,
 } from 'node:util';
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- top-level import, cannot use await import
 import AdmZip = require('adm-zip');
 import * as yaml from 'js-yaml';
 import * as vscode from 'vscode';
@@ -83,7 +84,6 @@ const lstat = promisify(fs.lstat);
 const unlink = promisify(fs.unlink);
 const rmdir = promisify(fs.rmdir);
 const symlink = promisify(fs.symlink);
-const readlink = promisify(fs.readlink);
 
 /**
  * Bundle Installer
@@ -99,27 +99,6 @@ export class BundleInstaller {
     this.copilotSync = new UserScopeService(context);
     this.mcpManager = new McpServerManager();
     this.storage = new RegistryStorage(context);
-  }
-
-  /**
-   * Get the UserScopeService instance
-   * Used by BundleScopeCommands for scope migration
-   */
-  getUserScopeService(): UserScopeService {
-    return this.copilotSync;
-  }
-
-  /**
-   * Create a RepositoryScopeService for the current workspace
-   * Used by BundleScopeCommands for scope migration
-   * @returns RepositoryScopeService or undefined if no workspace is open
-   */
-  createRepositoryScopeService(): RepositoryScopeService | undefined {
-    const workspaceRoot = getWorkspaceRoot();
-    if (!workspaceRoot) {
-      return undefined;
-    }
-    return new RepositoryScopeService(workspaceRoot, this.storage);
   }
 
   /**
@@ -167,330 +146,6 @@ export class BundleInstaller {
 
     await collectFromDir(installDir);
     return entries;
-  }
-
-  /**
-   * Install a bundle from a local file:// URL
-   * Note: Remote bundles should use installFromBuffer() via the unified adapter architecture
-   * @param bundle
-   * @param downloadUrl
-   * @param options
-   * @deprecated for remote bundles - use installFromBuffer() instead
-   */
-  async install(
-    bundle: Bundle,
-    downloadUrl: string,
-    options: InstallOptions
-  ): Promise<InstalledBundle> {
-    this.logger.info(`Installing bundle: ${bundle.name} v${bundle.version}`);
-
-    try {
-      // This method is now only used for local file:// URLs
-      // Remote bundles use the unified architecture: adapter.downloadBundle() -> installFromBuffer()
-      if (!downloadUrl.startsWith('file://')) {
-        throw new Error('install() method is only for local file:// URLs. Use installFromBuffer() for remote bundles.');
-      }
-
-      // Local bundle: use the directory directly
-      const extractDir = downloadUrl.replace('file://', '');
-      this.logger.debug(`Using local bundle directory: ${extractDir}`);
-
-      // Validate bundle structure
-      const manifest = await this.validateBundle(extractDir, bundle);
-      this.logger.debug('Bundle validation passed');
-
-      // Get installation directory (pass undefined for sourceType since it's not available in install method)
-      const installDir = this.getInstallDirectory(bundle.id, options.scope, undefined, undefined, bundle.name);
-      await ensureDirectory(installDir);
-      this.logger.debug(`Installation directory: ${installDir}`);
-
-      // Copy files to installation directory
-      await this.copyBundleFiles(extractDir, installDir);
-      this.logger.debug('Files copied to installation directory');
-
-      // Create installation record
-      const installed: InstalledBundle = {
-        bundleId: bundle.id,
-        version: bundle.version,
-        installedAt: new Date().toISOString(),
-        scope: options.scope,
-        profileId: options.profileId,
-        installPath: installDir,
-        manifest: manifest,
-        sourceId: bundle.sourceId,
-        sourceType: undefined, // Will be set by RegistryManager
-        commitMode: options.scope === 'repository' ? (options.commitMode ?? 'commit') : undefined
-      };
-
-      // Install MCP servers if defined
-      await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope, options.commitMode);
-      this.logger.debug('MCP servers installation completed');
-
-      // Sync to appropriate scope directory
-      const scopeService = this.getScopeService(options.scope);
-      // Pass commitMode explicitly to syncBundle to avoid timing issues:
-      // The installation record hasn't been saved to RegistryStorage yet at this point,
-      // so RepositoryScopeService can't look up commitMode from storage.
-      await scopeService.syncBundle(bundle.id, installDir, { commitMode: options.commitMode });
-      this.logger.debug(`Synced to ${options.scope} scope`);
-
-      // Update lockfile for repository scope
-      if (options.scope === 'repository') {
-        await this.updateLockfileOnInstall(bundle, installed, options);
-      }
-
-      this.logger.info(`Bundle installed successfully: ${bundle.name}`);
-      return installed;
-    } catch (error) {
-      this.logger.error('Bundle installation failed', error as Error);
-      throw error;
-    }
-  }
-
-  /**
-   * Install a bundle from a Buffer (for adapters that create bundles on-the-fly)
-   * @param bundle
-   * @param bundleBuffer
-   * @param options
-   * @param sourceType
-   * @param sourceName
-   */
-  async installFromBuffer(
-    bundle: Bundle,
-    bundleBuffer: Buffer,
-    options: InstallOptions,
-    sourceType?: string,
-    sourceName?: string
-  ): Promise<InstalledBundle> {
-    this.logger.info(`Installing bundle from buffer: ${bundle.name} v${bundle.version}`);
-
-    try {
-      // Step 1: Create temp directory
-      const tempDir = await this.createTempDir();
-      this.logger.debug(`Created temp directory: ${tempDir}`);
-
-      // Step 2: Write buffer to temp file
-      const bundleFile = path.join(tempDir, `${bundle.id}.zip`);
-      await writeFile(bundleFile, bundleBuffer);
-      this.logger.debug(`Wrote bundle buffer to: ${bundleFile} (${bundleBuffer.length} bytes)`);
-
-      // Step 3: Extract bundle
-      const extractDir = path.join(tempDir, 'extracted');
-      await this.extractBundle(bundleFile, extractDir);
-      this.logger.debug(`Extracted bundle to: ${extractDir}`);
-
-      // Step 4: Validate bundle structure
-      const manifest = await this.validateBundle(extractDir, bundle);
-      this.logger.debug('Bundle validation passed');
-
-      // Check if this is a skills bundle (Anthropic-style skills source)
-      const isSkillsBundle = sourceType === 'skills' || sourceType === 'local-skills';
-      // For repository scope we must still run through the standard sync/lockfile flow; only
-      // user/workspace scopes should install directly into the Copilot skills directory.
-      const installSkillsToCopilotDir = isSkillsBundle && options.scope !== 'repository';
-
-      let installDir: string;
-
-      if (installSkillsToCopilotDir) {
-        // Skills bundles install directly to Copilot skills directory for user/workspace scopes
-        // Extract skill name from the bundle - look in skills/ directory
-        const skillName = await this.extractSkillNameFromBundle(extractDir);
-        const copilotScope = options.scope === 'workspace' ? 'workspace' : 'user';
-        installDir = this.copilotSync.getCopilotSkillsDirectory(copilotScope);
-        await ensureDirectory(installDir);
-        installDir = path.join(installDir, skillName);
-
-        this.logger.debug(`[BundleInstaller] Skills bundle detected, installing to: ${installDir}`);
-
-        // Copy skill files directly to ~/.copilot/skills/{skill-name}
-        const skillSourceDir = path.join(extractDir, 'skills', skillName);
-        if (fs.existsSync(skillSourceDir)) {
-          // Check for existing skill using checkPathExists to detect broken symlinks
-          const existingEntry = await checkPathExists(installDir);
-          if (existingEntry.exists) {
-            // For broken symlinks, we can safely remove without prompting
-            if (existingEntry.isBroken) {
-              await fs.promises.unlink(installDir);
-              this.logger.debug(`Removed broken symlink: ${installDir}`);
-            } else {
-              const existingIsSymlink = existingEntry.isSymbolicLink;
-              const shouldOverwrite = await this.promptOverwriteSkill(skillName, installDir, existingIsSymlink);
-              if (!shouldOverwrite) {
-                await this.cleanupTempDir(tempDir);
-                throw new Error(`Installation cancelled: skill '${skillName}' already exists`);
-              }
-              await this.removeDirectory(installDir);
-            }
-          }
-          await this.copyDirectory(skillSourceDir, installDir);
-        } else {
-          throw new Error(`Skill directory not found in bundle: skills/${skillName}`);
-        }
-      } else {
-        // Step 5: Get installation directory (standard bundles)
-        installDir = this.getInstallDirectory(bundle.id, options.scope, sourceType, sourceName, bundle.name);
-        await ensureDirectory(installDir);
-        this.logger.debug(`Installation directory: ${installDir}`);
-
-        // Step 6: Copy files to installation directory
-        // For OLAF bundles, copy all skill folders directly (skip deployment-manifest.yml)
-        const isOlafBundle = sourceType === 'olaf' || sourceType === 'local-olaf' || bundle.id.startsWith('olaf-');
-        if (isOlafBundle) {
-          // Copy all directories (skill folders) from the extracted bundle
-          // Skip deployment-manifest.yml as it's only needed for validation
-          this.logger.debug(`[BundleInstaller] OLAF bundle detected, copying skill folders to: ${installDir}`);
-          await this.copyOlafSkillFolders(extractDir, installDir);
-        } else {
-          await this.copyBundleFiles(extractDir, installDir);
-        }
-      }
-      this.logger.debug('Files copied to installation directory');
-
-      // Step 7: Clean up temp directory
-      await this.cleanupTempDir(tempDir);
-      this.logger.debug('Temp directory cleaned up');
-
-      // Step 8: Create installation record
-      const installed: InstalledBundle = {
-        bundleId: bundle.id,
-        version: bundle.version,
-        installedAt: new Date().toISOString(),
-        scope: options.scope,
-        profileId: options.profileId,
-        installPath: installDir,
-        manifest: manifest,
-        sourceId: bundle.sourceId,
-        sourceType: sourceType,
-        commitMode: options.scope === 'repository' ? (options.commitMode ?? 'commit') : undefined
-      };
-
-      // Step 9: Install MCP servers if defined (skip for skills bundles)
-      if (installSkillsToCopilotDir) {
-        this.logger.debug('Skills bundle - skipping MCP servers and Copilot sync (already installed to ~/.copilot/skills/)');
-      } else {
-        // Skills bundles going through repository scope should still skip MCP servers
-        if (!isSkillsBundle) {
-          await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope, options.commitMode);
-          this.logger.debug('MCP servers installation completed');
-        }
-
-        // Step 10: Sync to appropriate scope directory (skills for repository scope must run through this)
-        const scopeService = this.getScopeService(options.scope);
-        // Pass commitMode explicitly to syncBundle to avoid timing issues:
-        // The installation record hasn't been saved to RegistryStorage yet at this point,
-        // so RepositoryScopeService can't look up commitMode from storage.
-        await scopeService.syncBundle(bundle.id, installDir, { commitMode: options.commitMode });
-        this.logger.debug(`Synced to ${options.scope} scope`);
-
-        // Step 11: Update lockfile for repository scope
-        if (options.scope === 'repository') {
-          await this.updateLockfileOnInstall(bundle, installed, options, sourceType);
-        }
-      }
-
-      this.logger.info(`Bundle installed successfully from buffer: ${bundle.name}`);
-      return installed;
-    } catch (error) {
-      this.logger.error('Bundle installation from buffer failed', error as Error);
-      throw error;
-    }
-  }
-
-  /**
-   * Uninstall a bundle
-   * @param installed
-   */
-  async uninstall(installed: InstalledBundle): Promise<void> {
-    this.logger.info(`Uninstalling bundle: ${installed.bundleId}`);
-
-    try {
-      // Uninstall MCP servers
-      await this.uninstallMcpServers(installed.bundleId, installed.scope);
-      this.logger.debug('MCP servers uninstalled');
-
-      // Unsync from appropriate scope directory
-      const scopeService = this.getScopeService(installed.scope);
-      await scopeService.unsyncBundle(installed.bundleId);
-      this.logger.debug(`Removed from ${installed.scope} scope`);
-
-      // Remove from lockfile for repository scope
-      if (installed.scope === 'repository') {
-        await this.updateLockfileOnUninstall(installed.bundleId);
-      }
-
-      // Remove installation directory (bundle cache)
-      // For repository scope, the installPath may point to .github which is NOT the bundle cache.
-      // The actual bundle cache is in extension global storage under bundles/{bundleId}.
-      // We should only remove the bundle cache directory, not the .github directory.
-      if (installed.installPath && fs.existsSync(installed.installPath)) {
-        if (installed.scope === 'repository' && this.isGitHubDirectory(installed.installPath)) {
-          // Skip removal of .github directory - unsyncBundle already handled removing synced files
-          // and we don't want to remove unrelated files (workflows, CODEOWNERS, etc.)
-          this.logger.debug(`Skipping removal of .github directory: ${installed.installPath}`);
-
-          // Remove the actual bundle cache from global storage instead
-          const bundleCachePath = this.getInstallDirectory(installed.bundleId, 'repository');
-          if (bundleCachePath && fs.existsSync(bundleCachePath) && bundleCachePath !== installed.installPath) {
-            await this.removeDirectory(bundleCachePath);
-            this.logger.debug(`Removed bundle cache directory: ${bundleCachePath}`);
-          }
-        } else {
-          await this.removeDirectory(installed.installPath);
-          this.logger.debug(`Removed directory: ${installed.installPath}`);
-        }
-      }
-
-      this.logger.info('Bundle uninstalled successfully');
-    } catch (error) {
-      this.logger.error('Bundle uninstallation failed', error as Error);
-      throw error;
-    }
-  }
-
-  /**
-   * Update a bundle
-   * Note: This method expects a Buffer for remote bundles via the unified architecture
-   * @param installed
-   * @param bundle
-   * @param bundleBuffer
-   * @param sourceType
-   * @param sourceName
-   * @deprecated - RegistryManager should handle updates directly using downloadBundle() + installFromBuffer()
-   */
-  async update(
-    installed: InstalledBundle,
-    bundle: Bundle,
-    bundleBuffer: Buffer,
-    sourceType?: string,
-    sourceName?: string
-  ): Promise<InstalledBundle> {
-    this.logger.info(`Updating bundle: ${installed.bundleId} to v${bundle.version}`);
-
-    try {
-      // Uninstall old version
-      await this.uninstall(installed);
-
-      const resolvedSourceType = sourceType ?? installed.sourceType;
-
-      // Install new version using the unified architecture
-      const newInstalled = await this.installFromBuffer(
-        bundle,
-        bundleBuffer,
-        {
-          scope: installed.scope,
-          version: bundle.version,
-          commitMode: installed.commitMode
-        },
-        resolvedSourceType,
-        sourceName
-      );
-
-      this.logger.info('Bundle updated successfully');
-      return newInstalled;
-    } catch (error) {
-      this.logger.error('Bundle update failed', error as Error);
-      throw error;
-    }
   }
 
   /**
@@ -752,9 +407,9 @@ export class BundleInstaller {
    * @param scope
    * @param sourceType
    * @param sourceName
-   * @param bundleName
+   * @param _bundleName
    */
-  private getInstallDirectory(bundleId: string, scope: InstallationScope, sourceType?: string, sourceName?: string, bundleName?: string): string {
+  private getInstallDirectory(bundleId: string, scope: InstallationScope, sourceType?: string, sourceName?: string, _bundleName?: string): string {
     // Check if this is an OLAF bundle
     const isOlafBundle = sourceType === 'olaf' || sourceType === 'local-olaf' || bundleId.startsWith('olaf-');
 
@@ -805,17 +460,6 @@ export class BundleInstaller {
       }
       return path.join(workspaceStorage, 'bundles', bundleId);
     }
-  }
-
-  /**
-   * Get the installation path for a bundle (public accessor)
-   * Used by RegistryManager to construct InstalledBundle objects from lockfile data
-   * @param bundleId - The bundle ID
-   * @param scope - The installation scope
-   * @returns The path where the bundle is/would be installed
-   */
-  getInstallPath(bundleId: string, scope: InstallationScope): string {
-    return this.getInstallDirectory(bundleId, scope);
   }
 
   /**
@@ -1006,7 +650,7 @@ export class BundleInstaller {
           return;
         }
 
-        const result = await this.mcpManager.installServersToWorkspace(
+        const workspaceInstallationResult = await this.mcpManager.installServersToWorkspace(
           bundleId,
           bundleVersion,
           workspaceRoot,
@@ -1019,14 +663,14 @@ export class BundleInstaller {
           }
         );
 
-        if (result.success) {
-          this.logger.info(`Successfully installed ${result.serversInstalled} MCP servers to workspace`);
+        if (workspaceInstallationResult.success) {
+          this.logger.info(`Successfully installed ${workspaceInstallationResult.serversInstalled} MCP servers to workspace`);
         } else {
-          this.logger.warn(`MCP server installation had issues: ${result.errors?.join(', ')}`);
+          this.logger.warn(`MCP server installation had issues: ${workspaceInstallationResult.errors?.join(', ')}`);
         }
 
-        if (result.warnings && result.warnings.length > 0) {
-          this.logger.warn(`MCP installation warnings: ${result.warnings.join(', ')}`);
+        if (workspaceInstallationResult.warnings && workspaceInstallationResult.warnings.length > 0) {
+          this.logger.warn(`MCP installation warnings: ${workspaceInstallationResult.warnings.join(', ')}`);
         }
         return;
       }
@@ -1077,12 +721,12 @@ export class BundleInstaller {
           return;
         }
 
-        const result = await this.mcpManager.uninstallServersFromWorkspace(bundleId, workspaceRoot);
+        const workspaceUninstallationResult = await this.mcpManager.uninstallServersFromWorkspace(bundleId, workspaceRoot);
 
-        if (!result.success) {
-          this.logger.warn(`MCP server uninstallation had issues: ${result.errors?.join(', ')}`);
-        } else if (result.serversRemoved > 0) {
-          this.logger.info(`Successfully uninstalled ${result.serversRemoved} MCP servers from workspace`);
+        if (!workspaceUninstallationResult.success) {
+          this.logger.warn(`MCP server uninstallation had issues: ${workspaceUninstallationResult.errors?.join(', ')}`);
+        } else if (workspaceUninstallationResult.serversRemoved > 0) {
+          this.logger.info(`Successfully uninstalled ${workspaceUninstallationResult.serversRemoved} MCP servers from workspace`);
         } else {
           this.logger.debug(`No MCP servers found for bundle ${bundleId} in workspace`);
         }
@@ -1127,6 +771,362 @@ export class BundleInstaller {
   }
 
   /**
+   * Get the UserScopeService instance
+   * Used by BundleScopeCommands for scope migration
+   */
+  public getUserScopeService(): UserScopeService {
+    return this.copilotSync;
+  }
+
+  /**
+   * Create a RepositoryScopeService for the current workspace
+   * Used by BundleScopeCommands for scope migration
+   * @returns RepositoryScopeService or undefined if no workspace is open
+   */
+  public createRepositoryScopeService(): RepositoryScopeService | undefined {
+    const workspaceRoot = getWorkspaceRoot();
+    if (!workspaceRoot) {
+      return undefined;
+    }
+    return new RepositoryScopeService(workspaceRoot, this.storage);
+  }
+
+  /**
+   * Install a bundle from a local file:// URL
+   * Note: Remote bundles should use installFromBuffer() via the unified adapter architecture
+   * @param bundle
+   * @param downloadUrl
+   * @param options
+   * @deprecated for remote bundles - use installFromBuffer() instead
+   */
+  public async install(
+    bundle: Bundle,
+    downloadUrl: string,
+    options: InstallOptions
+  ): Promise<InstalledBundle> {
+    this.logger.info(`Installing bundle: ${bundle.name} v${bundle.version}`);
+
+    try {
+      // This method is now only used for local file:// URLs
+      // Remote bundles use the unified architecture: adapter.downloadBundle() -> installFromBuffer()
+      if (!downloadUrl.startsWith('file://')) {
+        throw new Error('install() method is only for local file:// URLs. Use installFromBuffer() for remote bundles.');
+      }
+
+      // Local bundle: use the directory directly
+      const extractDir = downloadUrl.replace('file://', '');
+      this.logger.debug(`Using local bundle directory: ${extractDir}`);
+
+      // Validate bundle structure
+      const manifest = await this.validateBundle(extractDir, bundle);
+      this.logger.debug('Bundle validation passed');
+
+      // Get installation directory (pass undefined for sourceType since it's not available in install method)
+      const installDir = this.getInstallDirectory(bundle.id, options.scope, undefined, undefined, bundle.name);
+      await ensureDirectory(installDir);
+      this.logger.debug(`Installation directory: ${installDir}`);
+
+      // Copy files to installation directory
+      await this.copyBundleFiles(extractDir, installDir);
+      this.logger.debug('Files copied to installation directory');
+
+      // Create installation record
+      const installed: InstalledBundle = {
+        bundleId: bundle.id,
+        version: bundle.version,
+        installedAt: new Date().toISOString(),
+        scope: options.scope,
+        profileId: options.profileId,
+        installPath: installDir,
+        manifest: manifest,
+        sourceId: bundle.sourceId,
+        sourceType: undefined, // Will be set by RegistryManager
+        commitMode: options.scope === 'repository' ? (options.commitMode ?? 'commit') : undefined
+      };
+
+      // Install MCP servers if defined
+      await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope, options.commitMode);
+      this.logger.debug('MCP servers installation completed');
+
+      // Sync to appropriate scope directory
+      const scopeService = this.getScopeService(options.scope);
+      // Pass commitMode explicitly to syncBundle to avoid timing issues:
+      // The installation record hasn't been saved to RegistryStorage yet at this point,
+      // so RepositoryScopeService can't look up commitMode from storage.
+      await scopeService.syncBundle(bundle.id, installDir, { commitMode: options.commitMode });
+      this.logger.debug(`Synced to ${options.scope} scope`);
+
+      // Update lockfile for repository scope
+      if (options.scope === 'repository') {
+        await this.updateLockfileOnInstall(bundle, installed, options);
+      }
+
+      this.logger.info(`Bundle installed successfully: ${bundle.name}`);
+      return installed;
+    } catch (error) {
+      this.logger.error('Bundle installation failed', error as Error);
+      throw error;
+    }
+  }
+
+  /**
+   * Install a bundle from a Buffer (for adapters that create bundles on-the-fly)
+   * @param bundle
+   * @param bundleBuffer
+   * @param options
+   * @param sourceType
+   * @param sourceName
+   */
+  public async installFromBuffer(
+    bundle: Bundle,
+    bundleBuffer: Buffer,
+    options: InstallOptions,
+    sourceType?: string,
+    sourceName?: string
+  ): Promise<InstalledBundle> {
+    this.logger.info(`Installing bundle from buffer: ${bundle.name} v${bundle.version}`);
+
+    try {
+      // Step 1: Create temp directory
+      const tempDir = await this.createTempDir();
+      this.logger.debug(`Created temp directory: ${tempDir}`);
+
+      // Step 2: Write buffer to temp file
+      const bundleFile = path.join(tempDir, `${bundle.id}.zip`);
+      await writeFile(bundleFile, bundleBuffer);
+      this.logger.debug(`Wrote bundle buffer to: ${bundleFile} (${bundleBuffer.length} bytes)`);
+
+      // Step 3: Extract bundle
+      const extractDir = path.join(tempDir, 'extracted');
+      await this.extractBundle(bundleFile, extractDir);
+      this.logger.debug(`Extracted bundle to: ${extractDir}`);
+
+      // Step 4: Validate bundle structure
+      const manifest = await this.validateBundle(extractDir, bundle);
+      this.logger.debug('Bundle validation passed');
+
+      // Check if this is a skills bundle (Anthropic-style skills source)
+      const isSkillsBundle = sourceType === 'skills' || sourceType === 'local-skills';
+      // For repository scope we must still run through the standard sync/lockfile flow; only
+      // user/workspace scopes should install directly into the Copilot skills directory.
+      const installSkillsToCopilotDir = isSkillsBundle && options.scope !== 'repository';
+
+      let installDir: string;
+
+      if (installSkillsToCopilotDir) {
+        // Skills bundles install directly to Copilot skills directory for user/workspace scopes
+        // Extract skill name from the bundle - look in skills/ directory
+        const skillName = await this.extractSkillNameFromBundle(extractDir);
+        const copilotScope = options.scope === 'workspace' ? 'workspace' : 'user';
+        installDir = this.copilotSync.getCopilotSkillsDirectory(copilotScope);
+        await ensureDirectory(installDir);
+        installDir = path.join(installDir, skillName);
+
+        this.logger.debug(`[BundleInstaller] Skills bundle detected, installing to: ${installDir}`);
+
+        // Copy skill files directly to ~/.copilot/skills/{skill-name}
+        const skillSourceDir = path.join(extractDir, 'skills', skillName);
+        if (fs.existsSync(skillSourceDir)) {
+          // Check for existing skill using checkPathExists to detect broken symlinks
+          const existingEntry = await checkPathExists(installDir);
+          if (existingEntry.exists) {
+            // For broken symlinks, we can safely remove without prompting
+            if (existingEntry.isBroken) {
+              await fs.promises.unlink(installDir);
+              this.logger.debug(`Removed broken symlink: ${installDir}`);
+            } else {
+              const existingIsSymlink = existingEntry.isSymbolicLink;
+              const shouldOverwrite = await this.promptOverwriteSkill(skillName, installDir, existingIsSymlink);
+              if (!shouldOverwrite) {
+                await this.cleanupTempDir(tempDir);
+                throw new Error(`Installation cancelled: skill '${skillName}' already exists`);
+              }
+              await this.removeDirectory(installDir);
+            }
+          }
+          await this.copyDirectory(skillSourceDir, installDir);
+        } else {
+          throw new Error(`Skill directory not found in bundle: skills/${skillName}`);
+        }
+      } else {
+        // Step 5: Get installation directory (standard bundles)
+        installDir = this.getInstallDirectory(bundle.id, options.scope, sourceType, sourceName, bundle.name);
+        await ensureDirectory(installDir);
+        this.logger.debug(`Installation directory: ${installDir}`);
+
+        // Step 6: Copy files to installation directory
+        // For OLAF bundles, copy all skill folders directly (skip deployment-manifest.yml)
+        const isOlafBundle = sourceType === 'olaf' || sourceType === 'local-olaf' || bundle.id.startsWith('olaf-');
+        if (isOlafBundle) {
+          // Copy all directories (skill folders) from the extracted bundle
+          // Skip deployment-manifest.yml as it's only needed for validation
+          this.logger.debug(`[BundleInstaller] OLAF bundle detected, copying skill folders to: ${installDir}`);
+          await this.copyOlafSkillFolders(extractDir, installDir);
+        } else {
+          await this.copyBundleFiles(extractDir, installDir);
+        }
+      }
+      this.logger.debug('Files copied to installation directory');
+
+      // Step 7: Clean up temp directory
+      await this.cleanupTempDir(tempDir);
+      this.logger.debug('Temp directory cleaned up');
+
+      // Step 8: Create installation record
+      const installed: InstalledBundle = {
+        bundleId: bundle.id,
+        version: bundle.version,
+        installedAt: new Date().toISOString(),
+        scope: options.scope,
+        profileId: options.profileId,
+        installPath: installDir,
+        manifest: manifest,
+        sourceId: bundle.sourceId,
+        sourceType: sourceType,
+        commitMode: options.scope === 'repository' ? (options.commitMode ?? 'commit') : undefined
+      };
+
+      // Step 9: Install MCP servers if defined (skip for skills bundles)
+      if (installSkillsToCopilotDir) {
+        this.logger.debug('Skills bundle - skipping MCP servers and Copilot sync (already installed to ~/.copilot/skills/)');
+      } else {
+        // Skills bundles going through repository scope should still skip MCP servers
+        if (!isSkillsBundle) {
+          await this.installMcpServers(bundle.id, bundle.version, installDir, manifest, options.scope, options.commitMode);
+          this.logger.debug('MCP servers installation completed');
+        }
+
+        // Step 10: Sync to appropriate scope directory (skills for repository scope must run through this)
+        const scopeService = this.getScopeService(options.scope);
+        // Pass commitMode explicitly to syncBundle to avoid timing issues:
+        // The installation record hasn't been saved to RegistryStorage yet at this point,
+        // so RepositoryScopeService can't look up commitMode from storage.
+        await scopeService.syncBundle(bundle.id, installDir, { commitMode: options.commitMode });
+        this.logger.debug(`Synced to ${options.scope} scope`);
+
+        // Step 11: Update lockfile for repository scope
+        if (options.scope === 'repository') {
+          await this.updateLockfileOnInstall(bundle, installed, options, sourceType);
+        }
+      }
+
+      this.logger.info(`Bundle installed successfully from buffer: ${bundle.name}`);
+      return installed;
+    } catch (error) {
+      this.logger.error('Bundle installation from buffer failed', error as Error);
+      throw error;
+    }
+  }
+
+  /**
+   * Uninstall a bundle
+   * @param installed
+   */
+  public async uninstall(installed: InstalledBundle): Promise<void> {
+    this.logger.info(`Uninstalling bundle: ${installed.bundleId}`);
+
+    try {
+      // Uninstall MCP servers
+      await this.uninstallMcpServers(installed.bundleId, installed.scope);
+      this.logger.debug('MCP servers uninstalled');
+
+      // Unsync from appropriate scope directory
+      const scopeService = this.getScopeService(installed.scope);
+      await scopeService.unsyncBundle(installed.bundleId);
+      this.logger.debug(`Removed from ${installed.scope} scope`);
+
+      // Remove from lockfile for repository scope
+      if (installed.scope === 'repository') {
+        await this.updateLockfileOnUninstall(installed.bundleId);
+      }
+
+      // Remove installation directory (bundle cache)
+      // For repository scope, the installPath may point to .github which is NOT the bundle cache.
+      // The actual bundle cache is in extension global storage under bundles/{bundleId}.
+      // We should only remove the bundle cache directory, not the .github directory.
+      if (installed.installPath && fs.existsSync(installed.installPath)) {
+        if (installed.scope === 'repository' && this.isGitHubDirectory(installed.installPath)) {
+          // Skip removal of .github directory - unsyncBundle already handled removing synced files
+          // and we don't want to remove unrelated files (workflows, CODEOWNERS, etc.)
+          this.logger.debug(`Skipping removal of .github directory: ${installed.installPath}`);
+
+          // Remove the actual bundle cache from global storage instead
+          const bundleCachePath = this.getInstallDirectory(installed.bundleId, 'repository');
+          if (bundleCachePath && fs.existsSync(bundleCachePath) && bundleCachePath !== installed.installPath) {
+            await this.removeDirectory(bundleCachePath);
+            this.logger.debug(`Removed bundle cache directory: ${bundleCachePath}`);
+          }
+        } else {
+          await this.removeDirectory(installed.installPath);
+          this.logger.debug(`Removed directory: ${installed.installPath}`);
+        }
+      }
+
+      this.logger.info('Bundle uninstalled successfully');
+    } catch (error) {
+      this.logger.error('Bundle uninstallation failed', error as Error);
+      throw error;
+    }
+  }
+
+  /**
+   * Update a bundle
+   * Note: This method expects a Buffer for remote bundles via the unified architecture
+   * @param installed
+   * @param bundle
+   * @param bundleBuffer
+   * @param sourceType
+   * @param sourceName
+   * @deprecated - RegistryManager should handle updates directly using downloadBundle() + installFromBuffer()
+   */
+  public async update(
+    installed: InstalledBundle,
+    bundle: Bundle,
+    bundleBuffer: Buffer,
+    sourceType?: string,
+    sourceName?: string
+  ): Promise<InstalledBundle> {
+    this.logger.info(`Updating bundle: ${installed.bundleId} to v${bundle.version}`);
+
+    try {
+      // Uninstall old version
+      await this.uninstall(installed);
+
+      const resolvedSourceType = sourceType ?? installed.sourceType;
+
+      // Install new version using the unified architecture
+      const newInstalled = await this.installFromBuffer(
+        bundle,
+        bundleBuffer,
+        {
+          scope: installed.scope,
+          version: bundle.version,
+          commitMode: installed.commitMode
+        },
+        resolvedSourceType,
+        sourceName
+      );
+
+      this.logger.info('Bundle updated successfully');
+      return newInstalled;
+    } catch (error) {
+      this.logger.error('Bundle update failed', error as Error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get the installation path for a bundle (public accessor)
+   * Used by RegistryManager to construct InstalledBundle objects from lockfile data
+   * @param bundleId - The bundle ID
+   * @param scope - The installation scope
+   * @returns The path where the bundle is/would be installed
+   */
+  public getInstallPath(bundleId: string, scope: InstallationScope): string {
+    return this.getInstallDirectory(bundleId, scope);
+  }
+
+  /**
    * Install a local skill using a symlink instead of copying
    * This is used for local-skills sources to maintain a live link to the source directory
    * @param bundle
@@ -1135,7 +1135,7 @@ export class BundleInstaller {
    * @param options Installation options
    * @returns The installed bundle record
    */
-  async installLocalSkillAsSymlink(
+  public async installLocalSkillAsSymlink(
     bundle: Bundle,
     skillName: string,
     sourcePath: string,
@@ -1238,7 +1238,7 @@ export class BundleInstaller {
    * Only removes the symlink, not the original source directory
    * @param installed The installed bundle record
    */
-  async uninstallSkillSymlink(installed: InstalledBundle): Promise<void> {
+  public async uninstallSkillSymlink(installed: InstalledBundle): Promise<void> {
     this.logger.info(`Uninstalling skill symlink: ${installed.bundleId}`);
 
     try {

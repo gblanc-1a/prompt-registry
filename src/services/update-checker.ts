@@ -44,74 +44,6 @@ export class UpdateChecker {
   }
 
   /**
-   * Check all installed bundles for updates
-   * Uses cache if available and valid, otherwise queries RegistryManager
-   * Enriches results with auto-update preferences
-   * @param bypassCache
-   */
-  async checkForUpdates(bypassCache = false): Promise<UpdateCheckResult[]> {
-    this.logger.info('Checking for bundle updates');
-
-    // Try cache first unless bypassed
-    if (!bypassCache) {
-      const cached = await this.cache.get();
-      if (cached) {
-        this.logger.debug('Returning cached update results');
-        return cached;
-      }
-    }
-
-    // Sync GitHub release sources before checking for updates (only when not using cache)
-    if (bypassCache || !this.cache.isValid()) {
-      await this.syncGitHubReleaseSources();
-    }
-
-    // Query RegistryManager for updates
-    const updates = await this.registryManager.checkUpdates();
-
-    // Type guard: ensure updates is a valid BundleUpdate array
-    if (!isBundleUpdateArray(updates)) {
-      this.logger.error('RegistryManager.checkUpdates() returned invalid data structure');
-      throw new Error('Invalid update data received from registry manager');
-    }
-
-    // Enrich with auto-update preferences and additional metadata
-    const enrichedResults = await this.enrichUpdateResults(updates);
-
-    // Cache the results
-    await this.cache.set(enrichedResults);
-
-    this.logger.info(`Found ${enrichedResults.length} bundle updates`);
-    return enrichedResults;
-  }
-
-  /**
-   * Check a specific bundle for updates
-   * @param bundleId
-   */
-  async checkBundleUpdate(bundleId: string): Promise<UpdateCheckResult | null> {
-    this.logger.debug(`Checking update for bundle: ${bundleId}`);
-
-    const updates = await this.checkForUpdates();
-    return updates.find((u) => u.bundleId === bundleId) || null;
-  }
-
-  /**
-   * Get cached update results without triggering a new check
-   */
-  async getCachedResults(): Promise<UpdateCheckResult[] | null> {
-    return await this.cache.get();
-  }
-
-  /**
-   * Clear update cache
-   */
-  async clearCache(): Promise<void> {
-    this.logger.debug('Clearing update cache');
-    await this.cache.clear();
-  }
-
-  /**
    * Enrich update results with auto-update preferences and metadata
    * Handles errors gracefully by categorizing them and skipping problematic bundles
    * @param updates
@@ -198,20 +130,6 @@ export class UpdateChecker {
   }
 
   /**
-   * Check if cache is valid
-   */
-  isCacheValid(): boolean {
-    return this.cache.isValid();
-  }
-
-  /**
-   * Get cache age in milliseconds
-   */
-  getCacheAge(): number {
-    return this.cache.getCacheAge();
-  }
-
-  /**
    * Sync GitHub release sources before checking for updates
    * Only syncs sources where type === 'github'
    * Explicitly excludes: 'awesome-copilot', 'local-awesome-copilot', 'local'
@@ -270,5 +188,87 @@ export class UpdateChecker {
       this.logger.error('Failed to sync GitHub sources', err);
       // Log error but don't throw - continue with cached data
     }
+  }
+
+  /**
+   * Check all installed bundles for updates
+   * Uses cache if available and valid, otherwise queries RegistryManager
+   * Enriches results with auto-update preferences
+   * @param bypassCache
+   */
+  public async checkForUpdates(bypassCache = false): Promise<UpdateCheckResult[]> {
+    this.logger.info('Checking for bundle updates');
+
+    // Try cache first unless bypassed
+    if (!bypassCache) {
+      const cached = await this.cache.get();
+      if (cached) {
+        this.logger.debug('Returning cached update results');
+        return cached;
+      }
+    }
+
+    // Sync GitHub release sources before checking for updates (only when not using cache)
+    if (bypassCache || !this.cache.isValid()) {
+      await this.syncGitHubReleaseSources();
+    }
+
+    // Query RegistryManager for updates
+    const updates = await this.registryManager.checkUpdates();
+
+    // Type guard: ensure updates is a valid BundleUpdate array
+    if (!isBundleUpdateArray(updates)) {
+      this.logger.error('RegistryManager.checkUpdates() returned invalid data structure');
+      throw new Error('Invalid update data received from registry manager');
+    }
+
+    // Enrich with auto-update preferences and additional metadata
+    const enrichedResults = await this.enrichUpdateResults(updates);
+
+    // Cache the results
+    await this.cache.set(enrichedResults);
+
+    this.logger.info(`Found ${enrichedResults.length} bundle updates`);
+    return enrichedResults;
+  }
+
+  /**
+   * Check a specific bundle for updates
+   * @param bundleId
+   */
+  public async checkBundleUpdate(bundleId: string): Promise<UpdateCheckResult | null> {
+    this.logger.debug(`Checking update for bundle: ${bundleId}`);
+
+    const updates = await this.checkForUpdates();
+    return updates.find((u) => u.bundleId === bundleId) || null;
+  }
+
+  /**
+   * Get cached update results without triggering a new check
+   */
+  public async getCachedResults(): Promise<UpdateCheckResult[] | null> {
+    return await this.cache.get();
+  }
+
+  /**
+   * Clear update cache
+   */
+  public async clearCache(): Promise<void> {
+    this.logger.debug('Clearing update cache');
+    await this.cache.clear();
+  }
+
+  /**
+   * Check if cache is valid
+   */
+  public isCacheValid(): boolean {
+    return this.cache.isValid();
+  }
+
+  /**
+   * Get cache age in milliseconds
+   */
+  public getCacheAge(): number {
+    return this.cache.getCacheAge();
   }
 }

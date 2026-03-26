@@ -433,16 +433,16 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
       private uninstallCalls: { bundleId: string; scope: string }[] = [];
       private installCalls: { bundleId: string; options: any }[] = [];
 
-      async listInstalledBundles() {
+      public listInstalledBundles() {
         return Array.from(this.installedBundles.values());
       }
 
-      async uninstallBundle(bundleId: string, scope: string) {
+      public uninstallBundle(bundleId: string, scope: string) {
         this.uninstallCalls.push({ bundleId, scope });
         this.installedBundles.delete(bundleId);
       }
 
-      async installBundle(bundleId: string, options: any) {
+      public installBundle(bundleId: string, options: any) {
         this.installCalls.push({ bundleId, options });
         this.installedBundles.set(bundleId, {
           bundleId,
@@ -451,25 +451,25 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
         });
       }
 
-      setInstalledBundle(bundleId: string, version: string, scope: string) {
+      public setInstalledBundle(bundleId: string, version: string, scope: string) {
         this.installedBundles.set(bundleId, { bundleId, version, scope });
       }
 
-      getUninstallCalls() {
+      public getUninstallCalls() {
         return this.uninstallCalls;
       }
 
-      getInstallCalls() {
+      public getInstallCalls() {
         return this.installCalls;
       }
 
-      clearCalls() {
+      public clearCalls() {
         this.uninstallCalls = [];
         this.installCalls = [];
       }
     }
 
-    test('should successfully update bundle from older to latest version', async () => {
+    test('should successfully update bundle from older to latest version', () => {
       const mockManager = new MockRegistryManager();
       const bundleId = 'test-bundle';
       const oldVersion = '1.0.0';
@@ -479,8 +479,8 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
       mockManager.setInstalledBundle(bundleId, oldVersion, 'user');
 
       // Simulate update action: uninstall then install
-      await mockManager.uninstallBundle(bundleId, 'user');
-      await mockManager.installBundle(bundleId, { scope: 'user', version: newVersion });
+      mockManager.uninstallBundle(bundleId, 'user');
+      mockManager.installBundle(bundleId, { scope: 'user', version: newVersion });
 
       // Verify uninstall was called
       const uninstallCalls = mockManager.getUninstallCalls();
@@ -496,7 +496,7 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
       assert.strictEqual(installCalls[0].options.scope, 'user');
     });
 
-    test('should handle update with uninstall failure', async () => {
+    test('should handle update with uninstall failure', () => {
       const mockManager = new MockRegistryManager();
       const bundleId = 'test-bundle';
 
@@ -504,14 +504,13 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
       mockManager.setInstalledBundle(bundleId, '1.0.0', 'user');
 
       // Override uninstallBundle to throw error
-      const originalUninstall = mockManager.uninstallBundle.bind(mockManager);
-      mockManager.uninstallBundle = async () => {
+      mockManager.uninstallBundle = () => {
         throw new Error('Uninstall failed');
       };
 
       // Attempt update - should fail at uninstall
       try {
-        await mockManager.uninstallBundle(bundleId, 'user');
+        mockManager.uninstallBundle(bundleId, 'user');
         assert.fail('Should have thrown error');
       } catch (error) {
         assert.ok(error instanceof Error);
@@ -523,7 +522,7 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
       assert.strictEqual(installCalls.length, 0);
     });
 
-    test('should handle update with install failure', async () => {
+    test('should handle update with install failure', () => {
       const mockManager = new MockRegistryManager();
       const bundleId = 'test-bundle';
 
@@ -531,16 +530,16 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
       mockManager.setInstalledBundle(bundleId, '1.0.0', 'user');
 
       // Uninstall succeeds
-      await mockManager.uninstallBundle(bundleId, 'user');
+      mockManager.uninstallBundle(bundleId, 'user');
 
       // Override installBundle to throw error
-      mockManager.installBundle = async () => {
+      mockManager.installBundle = () => {
         throw new Error('Install failed');
       };
 
       // Attempt install - should fail
       try {
-        await mockManager.installBundle(bundleId, { scope: 'user', version: '2.0.0' });
+        mockManager.installBundle(bundleId, { scope: 'user', version: '2.0.0' });
         assert.fail('Should have thrown error');
       } catch (error) {
         assert.ok(error instanceof Error);
@@ -552,15 +551,15 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
       assert.strictEqual(uninstallCalls.length, 1);
     });
 
-    test('should preserve bundle scope during update', async () => {
+    test('should preserve bundle scope during update', () => {
       const mockManager = new MockRegistryManager();
       const bundleId = 'test-bundle';
 
       // Test with 'workspace' scope
       mockManager.setInstalledBundle(bundleId, '1.0.0', 'workspace');
 
-      await mockManager.uninstallBundle(bundleId, 'workspace');
-      await mockManager.installBundle(bundleId, { scope: 'workspace', version: '2.0.0' });
+      mockManager.uninstallBundle(bundleId, 'workspace');
+      mockManager.installBundle(bundleId, { scope: 'workspace', version: '2.0.0' });
 
       const uninstallCalls = mockManager.getUninstallCalls();
       const installCalls = mockManager.getInstallCalls();
@@ -569,7 +568,7 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
       assert.strictEqual(installCalls[0].options.scope, 'workspace');
     });
 
-    test('should handle update for GitHub bundles with version suffix', async () => {
+    test('should handle update for GitHub bundles with version suffix', () => {
       const mockManager = new MockRegistryManager();
       const bundleId = 'microsoft-vscode-1.0.0';
       const newBundleId = 'microsoft-vscode-2.0.0';
@@ -578,8 +577,8 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
       mockManager.setInstalledBundle(bundleId, '1.0.0', 'user');
 
       // Update should uninstall old and install new
-      await mockManager.uninstallBundle(bundleId, 'user');
-      await mockManager.installBundle(newBundleId, { scope: 'user', version: '2.0.0' });
+      mockManager.uninstallBundle(bundleId, 'user');
+      mockManager.installBundle(newBundleId, { scope: 'user', version: '2.0.0' });
 
       const uninstallCalls = mockManager.getUninstallCalls();
       const installCalls = mockManager.getInstallCalls();
@@ -588,7 +587,7 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
       assert.strictEqual(installCalls[0].bundleId, newBundleId);
     });
 
-    test('should handle multiple sequential updates', async () => {
+    test('should handle multiple sequential updates', () => {
       const mockManager = new MockRegistryManager();
       const bundleId = 'test-bundle';
 
@@ -596,14 +595,14 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
       mockManager.setInstalledBundle(bundleId, '1.0.0', 'user');
 
       // Update to v1.5.0
-      await mockManager.uninstallBundle(bundleId, 'user');
-      await mockManager.installBundle(bundleId, { scope: 'user', version: '1.5.0' });
+      mockManager.uninstallBundle(bundleId, 'user');
+      mockManager.installBundle(bundleId, { scope: 'user', version: '1.5.0' });
       mockManager.clearCalls();
 
       // Update to v2.0.0
       mockManager.setInstalledBundle(bundleId, '1.5.0', 'user');
-      await mockManager.uninstallBundle(bundleId, 'user');
-      await mockManager.installBundle(bundleId, { scope: 'user', version: '2.0.0' });
+      mockManager.uninstallBundle(bundleId, 'user');
+      mockManager.installBundle(bundleId, { scope: 'user', version: '2.0.0' });
 
       const uninstallCalls = mockManager.getUninstallCalls();
       const installCalls = mockManager.getInstallCalls();
@@ -614,7 +613,7 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
       assert.strictEqual(installCalls[0].options.version, '2.0.0');
     });
 
-    test('should handle update when bundle is not installed', async () => {
+    test('should handle update when bundle is not installed', () => {
       const mockManager = new MockRegistryManager();
       const bundleId = 'test-bundle';
 
@@ -624,27 +623,27 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
       // 2. Throw an error
       // For this test, we'll verify the behavior
 
-      const installedBundles = await mockManager.listInstalledBundles();
+      const installedBundles = mockManager.listInstalledBundles();
       const isInstalled = installedBundles.some((b) => b.bundleId === bundleId);
 
       assert.strictEqual(isInstalled, false);
 
       // If not installed, update should just install
       if (!isInstalled) {
-        await mockManager.installBundle(bundleId, { scope: 'user', version: '2.0.0' });
+        mockManager.installBundle(bundleId, { scope: 'user', version: '2.0.0' });
       }
 
       const installCalls = mockManager.getInstallCalls();
       assert.strictEqual(installCalls.length, 1);
     });
 
-    test('should handle installVersion with specific version', async () => {
+    test('should handle installVersion with specific version', () => {
       const mockManager = new MockRegistryManager();
       const bundleId = 'test-bundle';
       const version = '1.5.0';
 
       // Install specific version
-      await mockManager.installBundle(bundleId, { scope: 'user', version });
+      mockManager.installBundle(bundleId, { scope: 'user', version });
 
       const installCalls = mockManager.getInstallCalls();
       assert.strictEqual(installCalls.length, 1);
@@ -652,13 +651,13 @@ suite('MarketplaceViewProvider - Dynamic Filtering', () => {
       assert.strictEqual(installCalls[0].options.version, version);
     });
 
-    test('should pass version parameter to RegistryManager.installBundle', async () => {
+    test('should pass version parameter to RegistryManager.installBundle', () => {
       const mockManager = new MockRegistryManager();
       const bundleId = 'owner-repo-v2.0.0';
       const requestedVersion = '1.0.0';
 
       // Simulate version-specific installation
-      await mockManager.installBundle(bundleId, {
+      mockManager.installBundle(bundleId, {
         scope: 'user',
         version: requestedVersion
       });

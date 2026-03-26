@@ -5,13 +5,9 @@
 
 import * as assert from 'node:assert';
 import * as sinon from 'sinon';
-import * as vscode from 'vscode';
 import {
   BundleInstaller,
 } from '../../src/services/bundle-installer';
-import {
-  RegistryManager,
-} from '../../src/services/registry-manager';
 import {
   RegistryStorage,
 } from '../../src/storage/registry-storage';
@@ -20,18 +16,10 @@ import {
 } from '../../src/types/registry';
 
 suite('RegistryManager - Installation Record Management', () => {
-  let context: vscode.ExtensionContext;
-  let registryManager: RegistryManager;
   let storageStub: sinon.SinonStubbedInstance<RegistryStorage>;
   let installerStub: sinon.SinonStubbedInstance<BundleInstaller>;
 
   setup(() => {
-    // Create mock context
-    context = {
-      globalStorageUri: { fsPath: '/mock/storage' },
-      storageUri: { fsPath: '/mock/workspace' }
-    } as any;
-
     // Create stubs
     storageStub = sinon.createStubInstance(RegistryStorage);
     installerStub = sinon.createStubInstance(BundleInstaller);
@@ -96,7 +84,7 @@ suite('RegistryManager - Installation Record Management', () => {
       assert.ok(mockInstalled.bundleId.includes('v1.0.0'));
     });
 
-    test('should use bundleId from installation record for uninstall', async () => {
+    test('should use bundleId from installation record for uninstall', () => {
       const mockInstalled: InstalledBundle = {
         bundleId: 'owner-repo-v1.0.0',
         version: '1.0.0',
@@ -111,12 +99,6 @@ suite('RegistryManager - Installation Record Management', () => {
       storageStub.getInstalledBundle.resolves(mockInstalled);
       storageStub.removeInstallation.resolves();
       installerStub.uninstall.resolves();
-
-      // Track what bundleId is passed to removeInstallation
-      let removedBundleId: string | undefined;
-      storageStub.removeInstallation.callsFake(async (bundleId: string) => {
-        removedBundleId = bundleId;
-      });
 
       // The actual uninstall would use the stored bundleId
       // Verify it matches the installation record

@@ -58,7 +58,7 @@ export class LockfileBuilder {
   /**
    * Create a new LockfileBuilder instance
    */
-  static create(): LockfileBuilder {
+  public static create(): LockfileBuilder {
     return new LockfileBuilder();
   }
 
@@ -66,7 +66,7 @@ export class LockfileBuilder {
    * Set the schema URL
    * @param schemaUrl
    */
-  withSchema(schemaUrl: string): LockfileBuilder {
+  public withSchema(schemaUrl: string): LockfileBuilder {
     this.lockfile.$schema = schemaUrl;
     return this;
   }
@@ -75,7 +75,7 @@ export class LockfileBuilder {
    * Set the lockfile version
    * @param version
    */
-  withVersion(version: string): LockfileBuilder {
+  public withVersion(version: string): LockfileBuilder {
     this.lockfile.version = version;
     return this;
   }
@@ -84,7 +84,7 @@ export class LockfileBuilder {
    * Set the generatedAt timestamp
    * @param timestamp
    */
-  withGeneratedAt(timestamp: string): LockfileBuilder {
+  public withGeneratedAt(timestamp: string): LockfileBuilder {
     this.lockfile.generatedAt = timestamp;
     return this;
   }
@@ -93,7 +93,7 @@ export class LockfileBuilder {
    * Set the generatedBy field
    * @param generatedBy
    */
-  withGeneratedBy(generatedBy: string): LockfileBuilder {
+  public withGeneratedBy(generatedBy: string): LockfileBuilder {
     this.lockfile.generatedBy = generatedBy;
     return this;
   }
@@ -105,7 +105,7 @@ export class LockfileBuilder {
    * @param sourceId
    * @param options
    */
-  withBundle(
+  public withBundle(
     bundleId: string,
     version: string,
     sourceId: string,
@@ -131,7 +131,7 @@ export class LockfileBuilder {
    * @param files
    * @param options
    */
-  withBundleAndFiles(
+  public withBundleAndFiles(
     bundleId: string,
     version: string,
     sourceId: string,
@@ -148,7 +148,7 @@ export class LockfileBuilder {
    * @param url
    * @param branch
    */
-  withSource(
+  public withSource(
     sourceId: string,
     type: string,
     url: string,
@@ -168,7 +168,7 @@ export class LockfileBuilder {
    * @param name
    * @param url
    */
-  withHub(hubId: string, name: string, url: string): LockfileBuilder {
+  public withHub(hubId: string, name: string, url: string): LockfileBuilder {
     if (!this.lockfile.hubs) {
       this.lockfile.hubs = {};
     }
@@ -182,7 +182,7 @@ export class LockfileBuilder {
    * @param name
    * @param bundleIds
    */
-  withProfile(profileId: string, name: string, bundleIds: string[]): LockfileBuilder {
+  public withProfile(profileId: string, name: string, bundleIds: string[]): LockfileBuilder {
     if (!this.lockfile.profiles) {
       this.lockfile.profiles = {};
     }
@@ -193,7 +193,7 @@ export class LockfileBuilder {
   /**
    * Build the lockfile object
    */
-  build(): Lockfile {
+  public build(): Lockfile {
     return { ...this.lockfile };
   }
 }
@@ -360,6 +360,7 @@ export function generateMockChecksum(): string {
  * These generators create valid lockfile objects and their components
  * for use in property-based tests.
  */
+// eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
 export const LockfileGenerators = {
   /**
    * Generate a valid SHA256 checksum (64 lowercase hex characters)

@@ -27,7 +27,7 @@ import {
 
 // Mock SchemaValidator
 class MockSchemaValidator {
-  async validate(_data: any, _schemaPath: string): Promise<ValidationResult> {
+  public async validate(_data: any, _schemaPath: string): Promise<ValidationResult> {
     return { valid: true, errors: [], warnings: [] };
   }
 }
@@ -37,19 +37,19 @@ class MockRegistryManager {
   public activateProfileCalls: string[] = [];
   public sources: any[] = [];
 
-  async activateProfile(profileId: string): Promise<void> {
+  public async activateProfile(profileId: string): Promise<void> {
     this.activateProfileCalls.push(profileId);
   }
 
-  async listSources(): Promise<any[]> {
+  public async listSources(): Promise<any[]> {
     return this.sources;
   }
 
-  async addSource(source: any): Promise<void> {
+  public async addSource(source: any): Promise<void> {
     this.sources.push(source);
   }
 
-  async updateSource(_id: string, _updates: any): Promise<void> {
+  public async updateSource(_id: string, _updates: any): Promise<void> {
     // no-op for tests
   }
 }

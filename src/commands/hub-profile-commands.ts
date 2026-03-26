@@ -56,202 +56,6 @@ export class HubProfileCommands {
   }
 
   /**
-   * Toggle profile favorite status
-   * @param arg
-   */
-  async toggleProfileFavorite(arg: any): Promise<void> {
-    try {
-      let hubId: string;
-      let profileId: string;
-
-      // Handle tree item argument
-      if (arg?.data?.hubId && arg?.data?.id) {
-        hubId = arg.data.hubId;
-        profileId = arg.data.id;
-      } else if (arg?.hubId && arg?.profileId) {
-        // Handle direct argument
-        hubId = arg.hubId;
-        profileId = arg.profileId;
-      } else {
-        this.logger.error('Invalid arguments for toggleProfileFavorite');
-        return;
-      }
-
-      this.logger.info(`Toggling favorite for profile ${profileId} in hub ${hubId}`);
-      await this.hubManager.toggleProfileFavorite(hubId, profileId);
-      const isFavorite = await this.hubManager.isProfileFavorite(hubId, profileId);
-      const status = isFavorite ? 'added to' : 'removed from';
-      this.logger.info(`Profile ${profileId} ${status} favorites`);
-      vscode.window.showInformationMessage(`Profile ${status} favorites`);
-    } catch (error) {
-      this.logger.error('Failed to toggle profile favorite', error as Error);
-      vscode.window.showErrorMessage(`Failed to toggle favorite: ${(error as Error).message}`);
-    }
-  }
-
-  /**
-   * List all hub profiles from all imported hubs
-   */
-  async listHubProfiles(): Promise<void> {
-    try {
-      const profiles = await this.hubManager.listAllHubProfiles();
-
-      if (profiles.length === 0) {
-        const action = await vscode.window.showInformationMessage(
-          'No hub profiles found. Import a hub to access curated profiles!',
-          'Import Hub'
-        );
-
-        if (action === 'Import Hub') {
-          await vscode.commands.executeCommand('promptregistry.importHub');
-        }
-        return;
-      }
-
-      // Group profiles by hub
-      const hubGroups = new Map<string, typeof profiles>();
-      for (const profile of profiles) {
-        if (!hubGroups.has(profile.hubId)) {
-          hubGroups.set(profile.hubId, []);
-        }
-        hubGroups.get(profile.hubId)!.push(profile);
-      }
-
-      // Create quick pick items
-      const items: (vscode.QuickPickItem & { profile?: HubProfile & { hubId: string; hubName: string } })[] = [];
-
-      for (const [hubId, hubProfiles] of hubGroups) {
-        const hubName = hubProfiles[0].hubName;
-
-        // Hub separator
-        items.push({
-          label: `$(package) ${hubName}`,
-          kind: vscode.QuickPickItemKind.Separator
-        });
-
-        // Profiles from this hub
-        for (const profile of hubProfiles) {
-          items.push({
-            label: `${profile.icon || '$(file)'} ${profile.name}`,
-            description: `${profile.bundles.length} bundles`,
-            detail: profile.description,
-            profile: profile
-          });
-        }
-      }
-
-      const selected = await vscode.window.showQuickPick(items.filter((i) => i.profile), {
-        placeHolder: 'Select a hub profile to view details',
-        title: `Hub Profiles (${profiles.length} available)`,
-        ignoreFocusOut: true
-      });
-
-      if (selected?.profile) {
-        await this.showProfileDetails(selected.profile);
-      }
-    } catch (error) {
-      this.logger.error('Failed to list hub profiles', error as Error);
-      vscode.window.showErrorMessage(`Failed to list hub profiles: ${(error as Error).message}`);
-    }
-  }
-
-  /**
-   * Browse hub profiles with filtering and search
-   */
-  async browseHubProfiles(): Promise<void> {
-    try {
-      const hubs = await this.hubManager.listHubs();
-
-      if (hubs.length === 0) {
-        const action = await vscode.window.showInformationMessage(
-          'No hubs imported. Import a hub to browse profiles!',
-          'Import Hub'
-        );
-
-        if (action === 'Import Hub') {
-          await vscode.commands.executeCommand('promptregistry.importHub');
-        }
-        return;
-      }
-
-      // Select hub first
-      const hubItems = hubs.map((hub) => ({
-        label: `$(package) ${hub.name}`,
-        description: hub.description,
-        detail: `Source: ${hub.reference.type}`,
-        hub: hub
-      }));
-
-      const selectedHub = await vscode.window.showQuickPick(hubItems, {
-        placeHolder: 'Select a hub to browse its profiles',
-        title: 'Browse Hub Profiles',
-        ignoreFocusOut: true
-      });
-
-      if (!selectedHub) {
-        return;
-      }
-
-      // List profiles from selected hub
-      const profiles = await this.hubManager.listProfilesFromHub(selectedHub.hub.id);
-
-      if (profiles.length === 0) {
-        vscode.window.showInformationMessage(
-          `Hub "${selectedHub.hub.name}" has no profiles.`
-        );
-        return;
-      }
-
-      const profileItems = profiles.map((profile) => ({
-        label: `${profile.icon || '$(file)'} ${profile.name}`,
-        description: `${profile.bundles.length} bundles`,
-        detail: profile.description,
-        profile: profile,
-        hubId: selectedHub.hub.id,
-        hubName: selectedHub.hub.name
-      }));
-
-      const selectedProfile = await vscode.window.showQuickPick(profileItems, {
-        placeHolder: `Select a profile from "${selectedHub.hub.name}"`,
-        title: `${selectedHub.hub.name} - Profiles`,
-        ignoreFocusOut: true
-      });
-
-      if (selectedProfile) {
-        await this.showProfileDetails({
-          ...selectedProfile.profile,
-          hubId: selectedProfile.hubId,
-          hubName: selectedProfile.hubName
-        });
-      }
-    } catch (error) {
-      this.logger.error('Failed to browse hub profiles', error as Error);
-      vscode.window.showErrorMessage(`Failed to browse hub profiles: ${(error as Error).message}`);
-    }
-  }
-
-  /**
-   * View details of a specific hub profile
-   * @param hubId
-   * @param profileId
-   */
-  async viewHubProfile(hubId: string, profileId: string): Promise<void> {
-    try {
-      const profile = await this.hubManager.getHubProfile(hubId, profileId);
-      const hubInfo = await this.hubManager.getHubInfo(hubId);
-
-      await this.showProfileDetails({
-        ...profile,
-        hubId: hubId,
-        hubName: hubInfo.config.metadata.name
-      });
-    } catch (error) {
-      this.logger.error('Failed to view hub profile', error as Error);
-      vscode.window.showErrorMessage(`Failed to view profile: ${(error as Error).message}`);
-    }
-  }
-
-  /**
    * Show detailed information about a hub profile with actions
    * @param profile
    */
@@ -303,9 +107,9 @@ export class HubProfileCommands {
   /**
    * Generate HTML for profile details webview
    * @param profile
-   * @param markdown
+   * @param _markdown
    */
-  private getProfileDetailsHtml(profile: HubProfile & { hubId: string; hubName: string }, markdown: string): string {
+  private getProfileDetailsHtml(profile: HubProfile & { hubId: string; hubName: string }, _markdown: string): string {
     const bundleRows = profile.bundles.map((b) => `
             <tr>
                 <td>${b.id}</td>
@@ -456,6 +260,202 @@ export class HubProfileCommands {
     } catch (error) {
       this.logger.error('Failed to copy profile', error as Error);
       vscode.window.showErrorMessage(`Failed to copy profile: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Toggle profile favorite status
+   * @param arg
+   */
+  public async toggleProfileFavorite(arg: any): Promise<void> {
+    try {
+      let hubId: string;
+      let profileId: string;
+
+      // Handle tree item argument
+      if (arg?.data?.hubId && arg?.data?.id) {
+        hubId = arg.data.hubId;
+        profileId = arg.data.id;
+      } else if (arg?.hubId && arg?.profileId) {
+        // Handle direct argument
+        hubId = arg.hubId;
+        profileId = arg.profileId;
+      } else {
+        this.logger.error('Invalid arguments for toggleProfileFavorite');
+        return;
+      }
+
+      this.logger.info(`Toggling favorite for profile ${profileId} in hub ${hubId}`);
+      await this.hubManager.toggleProfileFavorite(hubId, profileId);
+      const isFavorite = await this.hubManager.isProfileFavorite(hubId, profileId);
+      const status = isFavorite ? 'added to' : 'removed from';
+      this.logger.info(`Profile ${profileId} ${status} favorites`);
+      vscode.window.showInformationMessage(`Profile ${status} favorites`);
+    } catch (error) {
+      this.logger.error('Failed to toggle profile favorite', error as Error);
+      vscode.window.showErrorMessage(`Failed to toggle favorite: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * List all hub profiles from all imported hubs
+   */
+  public async listHubProfiles(): Promise<void> {
+    try {
+      const profiles = await this.hubManager.listAllHubProfiles();
+
+      if (profiles.length === 0) {
+        const action = await vscode.window.showInformationMessage(
+          'No hub profiles found. Import a hub to access curated profiles!',
+          'Import Hub'
+        );
+
+        if (action === 'Import Hub') {
+          await vscode.commands.executeCommand('promptregistry.importHub');
+        }
+        return;
+      }
+
+      // Group profiles by hub
+      const hubGroups = new Map<string, typeof profiles>();
+      for (const profile of profiles) {
+        if (!hubGroups.has(profile.hubId)) {
+          hubGroups.set(profile.hubId, []);
+        }
+        hubGroups.get(profile.hubId)!.push(profile);
+      }
+
+      // Create quick pick items
+      const items: (vscode.QuickPickItem & { profile?: HubProfile & { hubId: string; hubName: string } })[] = [];
+
+      for (const [, hubProfiles] of hubGroups) {
+        const hubName = hubProfiles[0].hubName;
+
+        // Hub separator
+        items.push({
+          label: `$(package) ${hubName}`,
+          kind: vscode.QuickPickItemKind.Separator
+        });
+
+        // Profiles from this hub
+        for (const profile of hubProfiles) {
+          items.push({
+            label: `${profile.icon || '$(file)'} ${profile.name}`,
+            description: `${profile.bundles.length} bundles`,
+            detail: profile.description,
+            profile: profile
+          });
+        }
+      }
+
+      const selected = await vscode.window.showQuickPick(items.filter((i) => i.profile), {
+        placeHolder: 'Select a hub profile to view details',
+        title: `Hub Profiles (${profiles.length} available)`,
+        ignoreFocusOut: true
+      });
+
+      if (selected?.profile) {
+        await this.showProfileDetails(selected.profile);
+      }
+    } catch (error) {
+      this.logger.error('Failed to list hub profiles', error as Error);
+      vscode.window.showErrorMessage(`Failed to list hub profiles: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Browse hub profiles with filtering and search
+   */
+  public async browseHubProfiles(): Promise<void> {
+    try {
+      const hubs = await this.hubManager.listHubs();
+
+      if (hubs.length === 0) {
+        const action = await vscode.window.showInformationMessage(
+          'No hubs imported. Import a hub to browse profiles!',
+          'Import Hub'
+        );
+
+        if (action === 'Import Hub') {
+          await vscode.commands.executeCommand('promptregistry.importHub');
+        }
+        return;
+      }
+
+      // Select hub first
+      const hubItems = hubs.map((hub) => ({
+        label: `$(package) ${hub.name}`,
+        description: hub.description,
+        detail: `Source: ${hub.reference.type}`,
+        hub: hub
+      }));
+
+      const selectedHub = await vscode.window.showQuickPick(hubItems, {
+        placeHolder: 'Select a hub to browse its profiles',
+        title: 'Browse Hub Profiles',
+        ignoreFocusOut: true
+      });
+
+      if (!selectedHub) {
+        return;
+      }
+
+      // List profiles from selected hub
+      const profiles = await this.hubManager.listProfilesFromHub(selectedHub.hub.id);
+
+      if (profiles.length === 0) {
+        vscode.window.showInformationMessage(
+          `Hub "${selectedHub.hub.name}" has no profiles.`
+        );
+        return;
+      }
+
+      const profileItems = profiles.map((profile) => ({
+        label: `${profile.icon || '$(file)'} ${profile.name}`,
+        description: `${profile.bundles.length} bundles`,
+        detail: profile.description,
+        profile: profile,
+        hubId: selectedHub.hub.id,
+        hubName: selectedHub.hub.name
+      }));
+
+      const selectedProfile = await vscode.window.showQuickPick(profileItems, {
+        placeHolder: `Select a profile from "${selectedHub.hub.name}"`,
+        title: `${selectedHub.hub.name} - Profiles`,
+        ignoreFocusOut: true
+      });
+
+      if (selectedProfile) {
+        await this.showProfileDetails({
+          ...selectedProfile.profile,
+          hubId: selectedProfile.hubId,
+          hubName: selectedProfile.hubName
+        });
+      }
+    } catch (error) {
+      this.logger.error('Failed to browse hub profiles', error as Error);
+      vscode.window.showErrorMessage(`Failed to browse hub profiles: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * View details of a specific hub profile
+   * @param hubId
+   * @param profileId
+   */
+  public async viewHubProfile(hubId: string, profileId: string): Promise<void> {
+    try {
+      const profile = await this.hubManager.getHubProfile(hubId, profileId);
+      const hubInfo = await this.hubManager.getHubInfo(hubId);
+
+      await this.showProfileDetails({
+        ...profile,
+        hubId: hubId,
+        hubName: hubInfo.config.metadata.name
+      });
+    } catch (error) {
+      this.logger.error('Failed to view hub profile', error as Error);
+      vscode.window.showErrorMessage(`Failed to view profile: ${(error as Error).message}`);
     }
   }
 }

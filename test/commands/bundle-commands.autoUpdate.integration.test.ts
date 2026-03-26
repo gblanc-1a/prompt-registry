@@ -41,7 +41,7 @@ suite('Auto-Update Preference Storage - Integration', () => {
           const value = globalStateData.get(key);
           return value === undefined ? defaultValue : value;
         },
-        update: async (key: string, value: any) => {
+        update: (key: string, value: any) => {
           globalStateData.set(key, value);
         },
         keys: () => Array.from(globalStateData.keys()),
@@ -99,7 +99,7 @@ suite('Auto-Update Preference Storage - Integration', () => {
   });
 
   suite('RegistryManager.getStorage() integration', () => {
-    test('should provide access to storage for setting auto-update preferences', async () => {
+    test('should provide access to storage for setting auto-update preferences', () => {
       // Execute: Get storage from RegistryManager
       const storageFromManager = registryManager.getStorage();
 

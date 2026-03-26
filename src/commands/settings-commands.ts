@@ -23,7 +23,7 @@ export class SettingsCommands {
   /**
    * Export complete registry settings (sources + profiles + configuration)
    */
-  async exportSettings(): Promise<void> {
+  public async exportSettings(): Promise<void> {
     try {
       // Step 1: Choose format
       const formatChoice = await vscode.window.showQuickPick(
@@ -88,7 +88,7 @@ export class SettingsCommands {
   /**
    * Import registry settings (sources + profiles + configuration)
    */
-  async importSettings(): Promise<void> {
+  public async importSettings(): Promise<void> {
     try {
       // Step 1: Choose file
       const uris = await vscode.window.showOpenDialog({

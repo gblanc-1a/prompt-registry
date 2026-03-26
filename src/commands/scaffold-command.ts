@@ -21,8 +21,11 @@ import {
 } from '../utils/npm-cli-wrapper';
 
 export enum ScaffoldType {
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
   Skill = 'skill',
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
   GitHub = 'github',
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
   Apm = 'apm'
 }
 
@@ -31,10 +34,13 @@ export enum ScaffoldType {
  */
 export enum MigrationScenario {
   /** No migration needed */
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
   None = 'none',
   /** Has collections but no publish workflow */
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
   MissingWorkflow = 'missing-workflow',
   /** Has chatmode references that need updating */
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
   ChatmodeReferences = 'chatmode-references'
 }
 
@@ -92,7 +98,7 @@ export class ScaffoldCommand {
    * @param targetPath - Target directory path or URI
    * @param options - Scaffold options
    */
-  async execute(targetPath: string | vscode.Uri, options?: ScaffoldOptions): Promise<void> {
+  public async execute(targetPath: string | vscode.Uri, options?: ScaffoldOptions): Promise<void> {
     try {
       const targetUri = typeof targetPath === 'string' ? vscode.Uri.file(targetPath) : targetPath;
       this.logger.info(`Scaffolding ${this.scaffoldType} structure at: ${targetUri.fsPath}`);
@@ -135,7 +141,7 @@ export class ScaffoldCommand {
    * @param targetPath - Directory path to check
    * @returns Migration scenario detected
    */
-  static async detectMigrationScenario(targetPath: string): Promise<MigrationScenario> {
+  public static async detectMigrationScenario(targetPath: string): Promise<MigrationScenario> {
     try {
       const collectionsDir = path.join(targetPath, 'collections');
 
@@ -182,7 +188,7 @@ export class ScaffoldCommand {
    * Get migration recommendation for a scenario
    * @param scenario
    */
-  static getMigrationRecommendation(scenario: MigrationScenario): MigrationRecommendation | undefined {
+  public static getMigrationRecommendation(scenario: MigrationScenario): MigrationRecommendation | undefined {
     switch (scenario) {
       case MigrationScenario.MissingWorkflow: {
         return {
@@ -208,7 +214,7 @@ export class ScaffoldCommand {
    * Show migration recommendation warning message
    * @param recommendation - Migration recommendation to display
    */
-  static async showMigrationRecommendation(recommendation: MigrationRecommendation): Promise<void> {
+  public static async showMigrationRecommendation(recommendation: MigrationRecommendation): Promise<void> {
     const action = await vscode.window.showWarningMessage(
       recommendation.message,
       'View Migration Guide',
@@ -225,7 +231,7 @@ export class ScaffoldCommand {
    * @param targetPath - Directory path to check
    * @returns The detected scenario
    */
-  static async checkAndShowMigrationRecommendation(targetPath: string): Promise<MigrationScenario> {
+  public static async checkAndShowMigrationRecommendation(targetPath: string): Promise<MigrationScenario> {
     const scenario = await ScaffoldCommand.detectMigrationScenario(targetPath);
     const recommendation = ScaffoldCommand.getMigrationRecommendation(scenario);
 
@@ -239,7 +245,7 @@ export class ScaffoldCommand {
   /**
    * Run the scaffold command with full UI flow
    */
-  static async runWithUI(): Promise<void> {
+  public static async runWithUI(): Promise<void> {
     const logger = Logger.getInstance();
 
     try {

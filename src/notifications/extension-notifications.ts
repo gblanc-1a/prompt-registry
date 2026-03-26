@@ -33,7 +33,7 @@ export class ExtensionNotifications {
    * @param newVersion
    * @param scope
    */
-  async showUpdateNotification(
+  public async showUpdateNotification(
     currentVersion: string,
     newVersion: string,
     scope?: string
@@ -62,7 +62,7 @@ export class ExtensionNotifications {
    * @param scope
    * @param path
    */
-  async showInstallationSuccess(
+  public async showInstallationSuccess(
     version: string,
     scope: string,
     path: string
@@ -90,7 +90,7 @@ export class ExtensionNotifications {
    * @param version
    * @param scope
    */
-  async showUpdateSuccess(
+  public async showUpdateSuccess(
     version: string,
     scope: string
   ): Promise<'details' | 'dismiss' | undefined> {
@@ -116,7 +116,7 @@ export class ExtensionNotifications {
    * Show uninstall confirmation
    * @param scope
    */
-  async showUninstallConfirmation(
+  public async showUninstallConfirmation(
     scope: string
   ): Promise<'confirm' | 'cancel' | undefined> {
     const message = `Are you sure you want to uninstall Prompt Registry from ${scope} scope? This action cannot be undone.`;
@@ -140,7 +140,7 @@ export class ExtensionNotifications {
    * Show installation error notification
    * @param error
    */
-  async showInstallationError(
+  public async showInstallationError(
     error: string
   ): Promise<'retry' | 'logs' | 'dismiss' | undefined> {
     const message = `Failed to install Prompt Registry: ${error}`;
@@ -169,7 +169,7 @@ export class ExtensionNotifications {
    * Show update error notification
    * @param error
    */
-  async showUpdateError(
+  public async showUpdateError(
     error: string
   ): Promise<'retry' | 'logs' | 'dismiss' | undefined> {
     const message = `Failed to update Prompt Registry: ${error}`;
@@ -197,7 +197,7 @@ export class ExtensionNotifications {
   /**
    * Show connectivity error notification
    */
-  async showConnectivityError(): Promise<'retry' | 'dismiss' | undefined> {
+  public async showConnectivityError(): Promise<'retry' | 'dismiss' | undefined> {
     const message = 'Unable to connect to GitHub. Please check your internet connection.';
 
     const action = await this.notificationManager.showError(message, 'Retry', 'Dismiss');
@@ -218,7 +218,7 @@ export class ExtensionNotifications {
   /**
    * Show first install welcome notification
    */
-  async showWelcomeNotification(): Promise<'install' | 'learn' | 'dismiss' | undefined> {
+  public async showWelcomeNotification(): Promise<'install' | 'learn' | 'dismiss' | undefined> {
     // Currently disabled - returning undefined
     return undefined;
   }
@@ -230,7 +230,7 @@ export class ExtensionNotifications {
    * @param message
    * @param {...any} actions
    */
-  async showInfo(message: string, ...actions: string[]): Promise<string | undefined> {
+  public async showInfo(message: string, ...actions: string[]): Promise<string | undefined> {
     return await this.notificationManager.showInfo(message, ...actions);
   }
 
@@ -241,7 +241,7 @@ export class ExtensionNotifications {
    * @param message
    * @param {...any} actions
    */
-  async showWarning(message: string, ...actions: string[]): Promise<string | undefined> {
+  public async showWarning(message: string, ...actions: string[]): Promise<string | undefined> {
     return await this.notificationManager.showWarning(message, ...actions);
   }
 
@@ -252,7 +252,7 @@ export class ExtensionNotifications {
    * @param message
    * @param {...any} actions
    */
-  async showError(message: string, ...actions: string[]): Promise<string | undefined> {
+  public async showError(message: string, ...actions: string[]): Promise<string | undefined> {
     return await this.notificationManager.showError(message, ...actions);
   }
 }

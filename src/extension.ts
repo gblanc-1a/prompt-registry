@@ -220,111 +220,6 @@ export class PromptRegistryExtension {
     return undefined;
   }
 
-  public async activate(): Promise<void> {
-    try {
-      this.logger.info('Activating Prompt Registry extension...');
-
-      // Initialize McpConfigLocator for profile support
-      McpConfigLocator.initialize(this.context);
-
-      // Initialize Runtime Managers with context
-      ApmRuntimeManager.getInstance().initialize(this.context);
-      OlafRuntimeManager.getInstance().initialize(this.context);
-
-      // Initialize Registry Manager
-      await this.registryManager.initialize();
-
-      // Run data migrations (idempotent, skips if already completed)
-      await this.runMigrations();
-
-      // Register commands
-      this.registerCommands();
-
-      // Initialize UI components
-      await this.initializeUI();
-
-      // Register TreeView
-      await this.registerTreeView();
-
-      // Register Marketplace View
-      await this.registerMarketplaceView();
-
-      // Initialize Copilot Integration
-      await this.initializeCopilot();
-
-      // Initialize update notification system
-      await this.initializeUpdateSystem();
-
-      // Initialize telemetry service
-      this.initializeTelemetry();
-
-      // Initialize repository-level installation services
-      await this.initializeRepositoryServices();
-
-      // Register workspace folder change listener
-      this.registerWorkspaceFolderListener();
-
-      // Check for automatic updates if enabled
-      await this.checkForAutomaticUpdates();
-
-      // Check if this is first run and show welcome message
-      await this.checkFirstRun();
-
-      // Always sync active hub on activation to keep it up-to-date
-      await this.syncActiveHub();
-
-      // Ensure only one profile is active (cleanup any multi-active state)
-      await this.ensureSingleActiveProfile();
-
-      this.logger.info('Prompt Registry extension activated successfully');
-    } catch (error) {
-      this.logger.error('Failed to activate Prompt Registry extension', error as Error);
-      await this.notifications.showError(
-        `Failed to activate Prompt Registry extension: ${(error as Error).message}`,
-        'Show Logs'
-      ).then((action) => {
-        if (action === 'Show Logs') {
-          this.logger.show();
-        }
-      });
-    }
-  }
-
-  /**
-   * Deactivate the extension
-   */
-  public deactivate(): void {
-    try {
-      this.logger.info('Deactivating Prompt Registry extension...');
-
-      // Dispose of all resources
-      this.disposables.forEach((disposable) => disposable.dispose());
-      this.disposables = [];
-
-      // Dispose telemetry event subscriptions
-      this.telemetryService?.dispose();
-
-      // Dispose update scheduler
-      this.updateScheduler?.dispose();
-
-      // Dispose Copilot integration
-      this.copilotIntegration?.dispose();
-
-      // Dispose collection commands
-      this.validateCollectionsCommand?.dispose();
-      this.validateApmCommand?.dispose();
-      this.createCollectionCommand?.dispose();
-
-      // Dispose UI components
-      this.statusBar.dispose();
-      this.logger.dispose();
-
-      this.logger.info('Prompt Registry extension deactivated successfully');
-    } catch (error) {
-      console.error('Error during Prompt Registry extension deactivation:', error);
-    }
-  }
-
   /**
    * Initialize telemetry service and subscribe to bundle lifecycle events.
    */
@@ -425,10 +320,10 @@ export class PromptRegistryExtension {
         const bundleId = this.extractBundleId(arg);
         if (bundleId) {
           // Check single bundle update - show dialog instead of directly updating
-          this.bundleCommands!.checkSingleBundleUpdate(bundleId);
+          void this.bundleCommands!.checkSingleBundleUpdate(bundleId);
         } else {
           // Check all bundles
-          this.bundleCommands!.checkAllUpdates();
+          void this.bundleCommands!.checkAllUpdates();
         }
       }),
       vscode.commands.registerCommand('promptRegistry.manualCheckForUpdates', async () => {
@@ -453,31 +348,31 @@ export class PromptRegistryExtension {
       vscode.commands.registerCommand('promptRegistry.moveToRepositoryCommit', (arg?) => {
         const bundleId = this.extractBundleId(arg);
         if (bundleId && this.bundleScopeCommands) {
-          this.bundleScopeCommands.moveToRepository(bundleId, 'commit');
+          void this.bundleScopeCommands.moveToRepository(bundleId, 'commit');
         }
       }),
       vscode.commands.registerCommand('promptRegistry.moveToRepositoryLocalOnly', (arg?) => {
         const bundleId = this.extractBundleId(arg);
         if (bundleId && this.bundleScopeCommands) {
-          this.bundleScopeCommands.moveToRepository(bundleId, 'local-only');
+          void this.bundleScopeCommands.moveToRepository(bundleId, 'local-only');
         }
       }),
       vscode.commands.registerCommand('promptRegistry.moveToUser', (arg?) => {
         const bundleId = this.extractBundleId(arg);
         if (bundleId && this.bundleScopeCommands) {
-          this.bundleScopeCommands.moveToUser(bundleId);
+          void this.bundleScopeCommands.moveToUser(bundleId);
         }
       }),
       vscode.commands.registerCommand('promptRegistry.switchToLocalOnly', (arg?) => {
         const bundleId = this.extractBundleId(arg);
         if (bundleId && this.bundleScopeCommands) {
-          this.bundleScopeCommands.switchCommitMode(bundleId, 'local-only');
+          void this.bundleScopeCommands.switchCommitMode(bundleId, 'local-only');
         }
       }),
       vscode.commands.registerCommand('promptRegistry.switchToCommit', (arg?) => {
         const bundleId = this.extractBundleId(arg);
         if (bundleId && this.bundleScopeCommands) {
-          this.bundleScopeCommands.switchCommitMode(bundleId, 'commit');
+          void this.bundleScopeCommands.switchCommitMode(bundleId, 'commit');
         }
       }),
 
@@ -903,7 +798,6 @@ export class PromptRegistryExtension {
 
       // Register BundleScopeCommands (requires scope services from RegistryManager)
       const bundleInstaller = this.registryManager.getBundleInstaller();
-      const userScopeService = bundleInstaller.getUserScopeService();
       const repositoryScopeService = bundleInstaller.createRepositoryScopeService();
 
       if (repositoryScopeService) {
@@ -1441,7 +1335,7 @@ export class PromptRegistryExtension {
     }
 
     // Mark prompt as shown to prevent showing it multiple times in the same session
-    this.setupStateManager.markResumePromptShown();
+    void this.setupStateManager.markResumePromptShown();
 
     // Fire-and-forget: the .then() handler runs when the user clicks a button
     vscode.window.showInformationMessage(
@@ -1703,9 +1597,9 @@ export class PromptRegistryExtension {
 
     if (hubs.length === 1) {
       // Auto-activate the only hub
-      const hubId = hubs[0].id;
-      this.logger.info(`Auto-activating single hub: ${hubId}`);
-      await hubManager.setActiveHub(hubId);
+      const id = hubs[0].id;
+      this.logger.info(`Auto-activating single hub: ${id}`);
+      await hubManager.setActiveHub(id);
       await vscode.commands.executeCommand('promptRegistry.refresh');
       return;
     }
@@ -1728,6 +1622,111 @@ export class PromptRegistryExtension {
     this.logger.info(`Migrating to active hub: ${hubId}`);
     await hubManager.setActiveHub(hubId);
     await vscode.commands.executeCommand('promptRegistry.refresh');
+  }
+
+  public async activate(): Promise<void> {
+    try {
+      this.logger.info('Activating Prompt Registry extension...');
+
+      // Initialize McpConfigLocator for profile support
+      McpConfigLocator.initialize(this.context);
+
+      // Initialize Runtime Managers with context
+      ApmRuntimeManager.getInstance().initialize(this.context);
+      OlafRuntimeManager.getInstance().initialize(this.context);
+
+      // Initialize Registry Manager
+      await this.registryManager.initialize();
+
+      // Run data migrations (idempotent, skips if already completed)
+      await this.runMigrations();
+
+      // Register commands
+      this.registerCommands();
+
+      // Initialize UI components
+      await this.initializeUI();
+
+      // Register TreeView
+      await this.registerTreeView();
+
+      // Register Marketplace View
+      await this.registerMarketplaceView();
+
+      // Initialize Copilot Integration
+      await this.initializeCopilot();
+
+      // Initialize update notification system
+      await this.initializeUpdateSystem();
+
+      // Initialize telemetry service
+      this.initializeTelemetry();
+
+      // Initialize repository-level installation services
+      await this.initializeRepositoryServices();
+
+      // Register workspace folder change listener
+      this.registerWorkspaceFolderListener();
+
+      // Check for automatic updates if enabled
+      await this.checkForAutomaticUpdates();
+
+      // Check if this is first run and show welcome message
+      await this.checkFirstRun();
+
+      // Always sync active hub on activation to keep it up-to-date
+      await this.syncActiveHub();
+
+      // Ensure only one profile is active (cleanup any multi-active state)
+      await this.ensureSingleActiveProfile();
+
+      this.logger.info('Prompt Registry extension activated successfully');
+    } catch (error) {
+      this.logger.error('Failed to activate Prompt Registry extension', error as Error);
+      await this.notifications.showError(
+        `Failed to activate Prompt Registry extension: ${(error as Error).message}`,
+        'Show Logs'
+      ).then((action) => {
+        if (action === 'Show Logs') {
+          this.logger.show();
+        }
+      });
+    }
+  }
+
+  /**
+   * Deactivate the extension
+   */
+  public deactivate(): void {
+    try {
+      this.logger.info('Deactivating Prompt Registry extension...');
+
+      // Dispose of all resources
+      this.disposables.forEach((disposable) => disposable.dispose());
+      this.disposables = [];
+
+      // Dispose telemetry event subscriptions
+      this.telemetryService?.dispose();
+
+      // Dispose update scheduler
+      this.updateScheduler?.dispose();
+
+      // Dispose Copilot integration
+      this.copilotIntegration?.dispose();
+
+      // Dispose collection commands
+      this.validateCollectionsCommand?.dispose();
+      this.validateApmCommand?.dispose();
+      this.createCollectionCommand?.dispose();
+
+      // Dispose UI components
+      this.statusBar.dispose();
+      this.logger.dispose();
+
+      this.logger.info('Prompt Registry extension deactivated successfully');
+    } catch (error) {
+      console.error('Error during Prompt Registry extension deactivation:', error);
+    }
   }
 }
 

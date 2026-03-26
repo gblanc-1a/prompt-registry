@@ -18,7 +18,7 @@ suite('Bundle Management Commands', () => {
   });
 
   suite('viewBundle', () => {
-    test('should display bundle metadata', async () => {
+    test('should display bundle metadata', () => {
       const bundle = {
         id: 'test-bundle',
         name: 'Test Bundle',
@@ -34,7 +34,7 @@ suite('Bundle Management Commands', () => {
       assert.strictEqual(bundle.prompts, 5);
     });
 
-    test('should show installation status', async () => {
+    test('should show installation status', () => {
       const bundle = {
         id: 'test-bundle',
         name: 'Test Bundle',
@@ -47,7 +47,7 @@ suite('Bundle Management Commands', () => {
       assert.strictEqual(bundle.installedVersion, '1.0.0');
     });
 
-    test('should display bundle dependencies', async () => {
+    test('should display bundle dependencies', () => {
       const bundle = {
         id: 'test-bundle',
         name: 'Test Bundle',
@@ -61,7 +61,7 @@ suite('Bundle Management Commands', () => {
   });
 
   suite('updateBundle', () => {
-    test('should check for updates', async () => {
+    test('should check for updates', () => {
       const currentVersion = '1.0.0';
       const latestVersion = '1.1.0';
 
@@ -69,19 +69,19 @@ suite('Bundle Management Commands', () => {
       assert.strictEqual(hasUpdate, true);
     });
 
-    test('should prompt user to update when available', async () => {
+    test('should prompt user to update when available', () => {
       // Simulated user choice
       const userChoice = 'Update';
       assert.strictEqual(userChoice, 'Update');
     });
 
-    test('should skip update if user declines', async () => {
+    test('should skip update if user declines', () => {
       // Simulated user decline
       const userChoice = 'Later';
       assert.strictEqual(userChoice, 'Later');
     });
 
-    test('should preserve user settings during update', async () => {
+    test('should preserve user settings during update', () => {
       const originalBundle = {
         id: 'test-bundle',
         version: '1.0.0',
@@ -96,7 +96,7 @@ suite('Bundle Management Commands', () => {
       assert.deepStrictEqual(updatedBundle.userSettings, originalBundle.userSettings);
     });
 
-    test('should backup before updating', async () => {
+    test('should backup before updating', () => {
       const bundle = {
         id: 'test-bundle',
         version: '1.0.0',
@@ -111,7 +111,7 @@ suite('Bundle Management Commands', () => {
   });
 
   suite('checkBundleUpdates', () => {
-    test('should compare versions correctly', async () => {
+    test('should compare versions correctly', () => {
       const testCases = [
         { current: '1.0.0', latest: '1.1.0', hasUpdate: true },
         { current: '1.0.0', latest: '1.0.0', hasUpdate: false },
@@ -126,7 +126,7 @@ suite('Bundle Management Commands', () => {
       }
     });
 
-    test('should check all installed bundles', async () => {
+    test('should check all installed bundles', () => {
       const installedBundles = [
         { id: 'bundle-1', version: '1.0.0' },
         { id: 'bundle-2', version: '2.0.0' },
@@ -136,7 +136,7 @@ suite('Bundle Management Commands', () => {
       assert.strictEqual(installedBundles.length, 3);
     });
 
-    test('should handle network errors gracefully', async () => {
+    test('should handle network errors gracefully', () => {
       const showErrorMessageStub = sandbox.stub(vscode.window, 'showErrorMessage');
 
       const error = new Error('Network error');
@@ -145,7 +145,7 @@ suite('Bundle Management Commands', () => {
       assert.ok(error.message.includes('Network error'));
     });
 
-    test('should cache update check results', async () => {
+    test('should cache update check results', () => {
       const cache = {
         'bundle-1': { checked: new Date(), hasUpdate: false },
         'bundle-2': { checked: new Date(), hasUpdate: true }
@@ -157,34 +157,24 @@ suite('Bundle Management Commands', () => {
   });
 
   suite('uninstallBundle', () => {
-    test('should prompt for confirmation', async () => {
+    test('should prompt for confirmation', () => {
       // Simulated confirmation
       const confirmed = true;
       assert.strictEqual(confirmed, true);
     });
 
-    test('should remove bundle files', async () => {
-      const bundle = {
-        id: 'test-bundle',
-        installPath: '/path/to/bundle'
-      };
-
+    test('should remove bundle files', () => {
       const filesShouldBeRemoved = true;
       assert.strictEqual(filesShouldBeRemoved, true);
     });
 
-    test('should clean up dependencies', async () => {
-      const bundle = {
-        id: 'test-bundle',
-        dependencies: ['dep-1', 'dep-2']
-      };
-
+    test('should clean up dependencies', () => {
       // Check if dependencies are used by other bundles
       const shouldCleanDeps = true;
       assert.ok(shouldCleanDeps);
     });
 
-    test('should update registry after uninstall', async () => {
+    test('should update registry after uninstall', () => {
       const installedBundles = [
         { id: 'bundle-1', name: 'Bundle 1' },
         { id: 'bundle-2', name: 'Bundle 2' }
@@ -196,7 +186,7 @@ suite('Bundle Management Commands', () => {
       assert.strictEqual(afterUninstall[0].id, 'bundle-2');
     });
 
-    test('should handle uninstall errors', async () => {
+    test('should handle uninstall errors', () => {
       const showErrorMessageStub = sandbox.stub(vscode.window, 'showErrorMessage');
 
       const error = new Error('Uninstall failed');
@@ -207,7 +197,7 @@ suite('Bundle Management Commands', () => {
   });
 
   suite('installBundle', () => {
-    test('should validate bundle before installation', async () => {
+    test('should validate bundle before installation', () => {
       const bundle = {
         id: 'test-bundle',
         name: 'Test Bundle',
@@ -219,7 +209,7 @@ suite('Bundle Management Commands', () => {
       assert.ok(bundle.version);
     });
 
-    test('should check for conflicts with existing bundles', async () => {
+    test('should check for conflicts with existing bundles', () => {
       const newBundle = { id: 'test-bundle', name: 'Test Bundle' };
       const installedBundles = [
         { id: 'other-bundle', name: 'Other Bundle' }
@@ -229,14 +219,14 @@ suite('Bundle Management Commands', () => {
       assert.strictEqual(hasConflict, false);
     });
 
-    test('should create installation directory', async () => {
+    test('should create installation directory', () => {
       const bundle = { id: 'test-bundle', name: 'Test Bundle' };
       const installPath = `/storage/bundles/${bundle.id}`;
 
       assert.ok(installPath.includes(bundle.id));
     });
 
-    test('should extract bundle contents', async () => {
+    test('should extract bundle contents', () => {
       const bundle = {
         id: 'test-bundle',
         downloadUrl: 'https://example.com/bundle.zip'
@@ -245,7 +235,7 @@ suite('Bundle Management Commands', () => {
       assert.ok(bundle.downloadUrl.endsWith('.zip'));
     });
 
-    test('should validate deployment-manifest.yml', async () => {
+    test('should validate deployment-manifest.yml', () => {
       const manifest = {
         id: 'test-bundle',
         version: '1.0.0',
@@ -257,7 +247,7 @@ suite('Bundle Management Commands', () => {
       assert.ok(manifest.name);
     });
 
-    test('should update registry after successful install', async () => {
+    test('should update registry after successful install', () => {
       const installedBundles = [
         { id: 'bundle-1', name: 'Bundle 1' }
       ];
@@ -271,7 +261,7 @@ suite('Bundle Management Commands', () => {
   });
 
   suite('Bundle Lifecycle', () => {
-    test('should handle install-update-uninstall cycle', async () => {
+    test('should handle install-update-uninstall cycle', () => {
       let installedBundles: any[] = [];
 
       // Install
@@ -290,7 +280,7 @@ suite('Bundle Management Commands', () => {
       assert.strictEqual(installedBundles.length, 0);
     });
 
-    test('should maintain bundle state consistency', async () => {
+    test('should maintain bundle state consistency', () => {
       const bundle = {
         id: 'test-bundle',
         version: '1.0.0',

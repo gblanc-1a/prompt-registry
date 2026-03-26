@@ -73,25 +73,6 @@ export interface MissingBundleInstallResult {
  */
 export class RepositoryActivationService {
   private static readonly instances: Map<string, RepositoryActivationService> = new Map();
-  private readonly logger: Logger;
-  private readonly DECLINED_KEY = 'repositoryActivation.declined';
-  private readonly workspaceRoot: string;
-  private readonly bundleInstaller?: IBundleInstaller;
-  private readonly setupStateManager?: SetupStateManager;
-
-  constructor(
-    private readonly lockfileManager: LockfileManager,
-    private readonly hubManager: HubManager,
-    private readonly storage: RegistryStorage,
-    workspaceRoot: string,
-    bundleInstaller?: IBundleInstaller,
-    setupStateManager?: SetupStateManager
-  ) {
-    this.logger = Logger.getInstance();
-    this.workspaceRoot = workspaceRoot;
-    this.bundleInstaller = bundleInstaller;
-    this.setupStateManager = setupStateManager;
-  }
 
   /**
    * Get or create a RepositoryActivationService instance for a workspace.
@@ -105,7 +86,7 @@ export class RepositoryActivationService {
    * @returns RepositoryActivationService instance for the workspace
    * @throws Error if workspaceRoot is not provided on first call
    */
-  static getInstance(
+  public static getInstance(
     workspaceRoot?: string,
     lockfileManager?: LockfileManager,
     hubManager?: HubManager,
@@ -138,7 +119,7 @@ export class RepositoryActivationService {
    * @param workspaceRoot - Path to the workspace root
    * @returns RepositoryActivationService instance or undefined
    */
-  static getExistingInstance(workspaceRoot: string): RepositoryActivationService | undefined {
+  public static getExistingInstance(workspaceRoot: string): RepositoryActivationService | undefined {
     const normalizedPath = path.normalize(workspaceRoot);
     return RepositoryActivationService.instances.get(normalizedPath);
   }
@@ -147,7 +128,7 @@ export class RepositoryActivationService {
    * Reset instance(s) (for testing purposes)
    * @param workspaceRoot - If provided, reset only that workspace's instance. Otherwise, reset all instances.
    */
-  static resetInstance(workspaceRoot?: string): void {
+  public static resetInstance(workspaceRoot?: string): void {
     if (workspaceRoot) {
       const normalizedPath = path.normalize(workspaceRoot);
       RepositoryActivationService.instances.delete(normalizedPath);
@@ -157,10 +138,75 @@ export class RepositoryActivationService {
     }
   }
 
+  private readonly logger: Logger;
+  private readonly DECLINED_KEY = 'repositoryActivation.declined';
+  private readonly workspaceRoot: string;
+  private readonly bundleInstaller?: IBundleInstaller;
+  private readonly setupStateManager?: SetupStateManager;
+
+  constructor(
+    private readonly lockfileManager: LockfileManager,
+    private readonly hubManager: HubManager,
+    private readonly storage: RegistryStorage,
+    workspaceRoot: string,
+    bundleInstaller?: IBundleInstaller,
+    setupStateManager?: SetupStateManager
+  ) {
+    this.logger = Logger.getInstance();
+    this.workspaceRoot = workspaceRoot;
+    this.bundleInstaller = bundleInstaller;
+    this.setupStateManager = setupStateManager;
+  }
+
+  /**
+   * Check if user previously declined activation for this repository
+   * @param repositoryPath - Path to the repository
+   * @returns True if previously declined
+   */
+  private async wasDeclined(repositoryPath: string): Promise<boolean> {
+    const declined = await this.getDeclinedRepositories();
+    return declined.includes(repositoryPath);
+  }
+
+  /**
+   * Get list of declined repositories from global state
+   * @returns Array of repository paths
+   */
+  private async getDeclinedRepositories(): Promise<string[]> {
+    const context = this.storage.getContext();
+    return context.globalState.get<string[]>(this.DECLINED_KEY, []);
+  }
+
+  /**
+   * Extract repository path from lockfile path
+   * @param lockfilePath - Full path to lockfile
+   * @returns Repository root path
+   */
+  private getRepositoryPath(lockfilePath: string): string {
+    return path.dirname(lockfilePath);
+  }
+
+  /**
+   * Check if setup is complete before proceeding with source/hub detection.
+   * Fail-open: if SetupStateManager is not available or throws, proceed with detection.
+   */
+  private async isSetupComplete(): Promise<boolean> {
+    if (!this.setupStateManager) {
+      this.logger.debug('SetupStateManager not available, proceeding with detection');
+      return true;
+    }
+    try {
+      return await this.setupStateManager.isComplete();
+    } catch (error) {
+      this.logger.warn('Failed to check setup completion, proceeding with detection', error as Error);
+      return true;
+    }
+  }
+
   /**
    * Get the workspace root path for this instance
    */
-  getWorkspaceRoot(): string {
+  public getWorkspaceRoot(): string {
     return this.workspaceRoot;
   }
 
@@ -176,7 +222,7 @@ export class RepositoryActivationService {
    * Note: No longer shows activation prompt - files are already present in repository.
    * Only checks for missing sources and hubs that need to be configured.
    */
-  async checkAndPromptActivation(): Promise<void> {
+  public async checkAndPromptActivation(): Promise<void> {
     try {
       // Check if setup is complete before proceeding
       if (!await this.isSetupComplete()) {
@@ -216,7 +262,7 @@ export class RepositoryActivationService {
    *
    * Requirements: 13.6 - "IF bundles are missing from the repository, THE Extension SHALL offer to download and install them"
    */
-  async installMissingBundles(lockfile: Lockfile, missingBundleIds: string[]): Promise<MissingBundleInstallResult> {
+  public async installMissingBundles(lockfile: Lockfile, missingBundleIds: string[]): Promise<MissingBundleInstallResult> {
     const result: MissingBundleInstallResult = {
       succeeded: [],
       failed: [],
@@ -303,7 +349,7 @@ export class RepositoryActivationService {
    * @param lockfile - The lockfile to check
    * @returns Result with missing sources/hubs and whether offer was made
    */
-  async checkAndOfferMissingSources(lockfile: Lockfile): Promise<MissingSourcesResult> {
+  public async checkAndOfferMissingSources(lockfile: Lockfile): Promise<MissingSourcesResult> {
     const result: MissingSourcesResult = {
       missingSources: [],
       missingHubs: [],
@@ -366,50 +412,5 @@ export class RepositoryActivationService {
     }
 
     return result;
-  }
-
-  /**
-   * Check if user previously declined activation for this repository
-   * @param repositoryPath - Path to the repository
-   * @returns True if previously declined
-   */
-  private async wasDeclined(repositoryPath: string): Promise<boolean> {
-    const declined = await this.getDeclinedRepositories();
-    return declined.includes(repositoryPath);
-  }
-
-  /**
-   * Get list of declined repositories from global state
-   * @returns Array of repository paths
-   */
-  private async getDeclinedRepositories(): Promise<string[]> {
-    const context = this.storage.getContext();
-    return context.globalState.get<string[]>(this.DECLINED_KEY, []);
-  }
-
-  /**
-   * Extract repository path from lockfile path
-   * @param lockfilePath - Full path to lockfile
-   * @returns Repository root path
-   */
-  private getRepositoryPath(lockfilePath: string): string {
-    return path.dirname(lockfilePath);
-  }
-
-  /**
-   * Check if setup is complete before proceeding with source/hub detection.
-   * Fail-open: if SetupStateManager is not available or throws, proceed with detection.
-   */
-  private async isSetupComplete(): Promise<boolean> {
-    if (!this.setupStateManager) {
-      this.logger.debug('SetupStateManager not available, proceeding with detection');
-      return true;
-    }
-    try {
-      return await this.setupStateManager.isComplete();
-    } catch (error) {
-      this.logger.warn('Failed to check setup completion, proceeding with detection', error as Error);
-      return true;
-    }
   }
 }

@@ -39,8 +39,6 @@ suite('UpdateManager', () => {
     });
 
     test('should handle pre-release versions', () => {
-      const versions = ['1.0.0-alpha', '1.0.0-beta', '1.0.0'];
-
       // alpha < beta < release
       assert.ok('1.0.0-alpha' < '1.0.0-beta');
       // String comparison doesn't work for semver - this test needs a semver library
@@ -78,7 +76,7 @@ suite('UpdateManager', () => {
       assert.ok(updatesAvailable.find((b) => b.id === 'bundle-3'));
     });
 
-    test('should check for updates periodically', async () => {
+    test('should check for updates periodically', () => {
       let lastCheck = Date.now() - 7_200_000; // 2 hours ago
       const checkInterval = 3_600_000; // 1 hour
 
@@ -107,18 +105,12 @@ suite('UpdateManager', () => {
   });
 
   suite('Update Installation', () => {
-    test('should download update before installing', async () => {
-      const update = {
-        id: 'bundle-1',
-        version: '1.1.0',
-        downloadUrl: 'https://example.com/bundle-1-v1.1.0.zip'
-      };
-
+    test('should download update before installing', () => {
       const downloaded = true;
       assert.strictEqual(downloaded, true);
     });
 
-    test('should verify download integrity', async () => {
+    test('should verify download integrity', () => {
       const download = {
         url: 'https://example.com/bundle.zip',
         checksum: 'abc123',
@@ -132,7 +124,7 @@ suite('UpdateManager', () => {
       assert.strictEqual(isValid, true);
     });
 
-    test('should backup before updating', async () => {
+    test('should backup before updating', () => {
       const bundle = {
         id: 'bundle-1',
         version: '1.0.0',
@@ -145,7 +137,7 @@ suite('UpdateManager', () => {
       assert.ok(backupPath.includes(bundle.id));
     });
 
-    test('should rollback on update failure', async () => {
+    test('should rollback on update failure', () => {
       const bundle = {
         id: 'bundle-1',
         version: '1.0.0'
@@ -164,7 +156,7 @@ suite('UpdateManager', () => {
       assert.strictEqual(bundle.version, '1.0.0');
     });
 
-    test('should cleanup after successful update', async () => {
+    test('should cleanup after successful update', () => {
       const tempFiles = [
         '/tmp/bundle-download.zip',
         '/tmp/bundle-extract/'
@@ -215,8 +207,6 @@ suite('UpdateManager', () => {
         notifyOnMajor: true
       };
 
-      const update = { severity: 'patch' };
-
       const shouldNotify = preferences.notifyOnPatch;
 
       assert.strictEqual(shouldNotify, false);
@@ -236,7 +226,7 @@ suite('UpdateManager', () => {
       assert.ok(scheduled.get(bundleId)! > new Date());
     });
 
-    test('should process scheduled updates', async () => {
+    test('should process scheduled updates', () => {
       const scheduled = new Map<string, Date>([
         ['bundle-1', new Date(Date.now() - 1000)], // Past
         ['bundle-2', new Date(Date.now() + 1000)] // Future (not yet due)
@@ -264,7 +254,7 @@ suite('UpdateManager', () => {
   });
 
   suite('Batch Updates', () => {
-    test('should update multiple bundles', async () => {
+    test('should update multiple bundles', () => {
       const bundles = [
         { id: 'bundle-1', needsUpdate: true },
         { id: 'bundle-2', needsUpdate: false },
@@ -276,7 +266,7 @@ suite('UpdateManager', () => {
       assert.strictEqual(toUpdate.length, 2);
     });
 
-    test('should handle partial failures in batch update', async () => {
+    test('should handle partial failures in batch update', () => {
       const updates = [
         { id: 'bundle-1', status: 'pending' },
         { id: 'bundle-2', status: 'pending' },
@@ -299,7 +289,7 @@ suite('UpdateManager', () => {
       assert.strictEqual(updates[2].status, 'completed');
     });
 
-    test('should track batch update progress', async () => {
+    test('should track batch update progress', () => {
       const total = 10;
       let completed = 0;
 
@@ -353,7 +343,6 @@ suite('UpdateManager', () => {
 
   suite('Update Channels', () => {
     test('should support stable channel', () => {
-      const channel = 'stable';
       const versions = ['1.0.0', '1.1.0', '2.0.0'];
 
       const stableVersions = versions.filter((v) => !v.includes('-'));
@@ -362,7 +351,6 @@ suite('UpdateManager', () => {
     });
 
     test('should support beta channel', () => {
-      const channel = 'beta';
       const versions = ['1.0.0-beta.1', '1.0.0-beta.2', '1.0.0'];
 
       const betaVersions = versions.filter((v) => v.includes('-beta'));
@@ -379,7 +367,6 @@ suite('UpdateManager', () => {
         '2.0.0'
       ];
 
-      const channel = 'stable';
       const filtered = allVersions.filter((v) => !v.includes('-'));
 
       assert.strictEqual(filtered.length, 3);

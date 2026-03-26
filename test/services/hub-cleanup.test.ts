@@ -22,47 +22,47 @@ import {
 
 // Mock SchemaValidator
 class MockSchemaValidator {
-  async validate(): Promise<any> {
-    return { valid: true, errors: [], warnings: [] };
+  public validate(): Promise<any> {
+    return Promise.resolve({ valid: true, errors: [], warnings: [] });
   }
 }
 
 // Mock RegistryManager that tracks calls
 class MockRegistryManager {
-  sources: any[] = [];
-  profiles: any[] = [];
-  removedSourceIds: string[] = [];
-  deactivatedProfileIds: string[] = [];
+  public sources: any[] = [];
+  public profiles: any[] = [];
+  public removedSourceIds: string[] = [];
+  public deactivatedProfileIds: string[] = [];
 
-  async listSources() {
+  public listSources() {
     return this.sources;
   }
 
-  async addSource(source: any) {
+  public addSource(source: any) {
     this.sources.push(source);
   }
 
-  async removeSource(sourceId: string) {
+  public removeSource(sourceId: string) {
     this.removedSourceIds.push(sourceId);
     this.sources = this.sources.filter((s) => s.id !== sourceId);
   }
 
-  async updateSource(sourceId: string, updates: any) {
+  public updateSource(sourceId: string, updates: any) {
     const source = this.sources.find((s) => s.id === sourceId);
     if (source) {
       Object.assign(source, updates);
     }
   }
 
-  async listProfiles() {
+  public listProfiles() {
     return this.profiles;
   }
 
-  async createProfile(profile: any) {
+  public createProfile(profile: any) {
     this.profiles.push(profile);
   }
 
-  async updateProfile(profileId: string, updates: any) {
+  public updateProfile(profileId: string, updates: any) {
     const profile = this.profiles.find((p) => p.id === profileId);
     if (profile) {
       if (updates.active === false) {
@@ -72,7 +72,7 @@ class MockRegistryManager {
     }
   }
 
-  async deleteProfile(profileId: string) {
+  public deleteProfile(profileId: string) {
     this.profiles = this.profiles.filter((p) => p.id !== profileId);
   }
 }

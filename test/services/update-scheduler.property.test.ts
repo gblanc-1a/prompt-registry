@@ -38,7 +38,7 @@ suite('UpdateScheduler Property Tests', () => {
       get: (key: string, defaultValue?: any) => {
         return storage.get(key) ?? defaultValue;
       },
-      update: async (key: string, value: any) => {
+      update: (key: string, value: any) => {
         if (value === undefined) {
           storage.delete(key);
         } else {

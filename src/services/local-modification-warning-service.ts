@@ -41,13 +41,36 @@ export class LocalModificationWarningService {
   }
 
   /**
+   * Build the warning message for the dialog
+   * @param bundleId - ID of the bundle
+   * @param modifiedFiles - Array of modified file information
+   * @returns Formatted warning message
+   */
+  private buildWarningMessage(bundleId: string, modifiedFiles: ModifiedFileInfo[]): string {
+    const fileCount = modifiedFiles.length;
+    const fileWord = fileCount === 1 ? 'file has' : 'files have';
+
+    let message = `The bundle "${bundleId}" has ${fileCount} ${fileWord} been modified locally:\n\n`;
+
+    // List modified files with their modification type
+    for (const file of modifiedFiles) {
+      const typeIndicator = file.modificationType === 'missing' ? ' (missing)' : '';
+      message += `  • ${file.path}${typeIndicator}\n`;
+    }
+
+    message += '\nUpdating will override your local changes. What would you like to do?';
+
+    return message;
+  }
+
+  /**
    * Check for modifications to a bundle's files
    * @param bundleId - ID of the bundle to check
    * @returns Array of modified file information
    *
    * Requirements: 14.1-14.3
    */
-  async checkForModifications(bundleId: string): Promise<ModifiedFileInfo[]> {
+  public async checkForModifications(bundleId: string): Promise<ModifiedFileInfo[]> {
     try {
       return await this.lockfileManager.detectModifiedFiles(bundleId);
     } catch (error) {
@@ -70,7 +93,7 @@ export class LocalModificationWarningService {
    *
    * Requirements: 14.4-14.10
    */
-  async showWarningDialog(
+  public async showWarningDialog(
     bundleId: string,
     modifiedFiles: ModifiedFileInfo[],
     bundleRepoUrl?: string
@@ -117,7 +140,7 @@ export class LocalModificationWarningService {
    *
    * Requirements: 14.1-14.10
    */
-  async checkAndWarn(
+  public async checkAndWarn(
     bundleId: string,
     bundleRepoUrl?: string
   ): Promise<ModificationWarningResult | null> {
@@ -131,28 +154,5 @@ export class LocalModificationWarningService {
 
     // Show warning dialog and return result
     return await this.showWarningDialog(bundleId, modifiedFiles, bundleRepoUrl);
-  }
-
-  /**
-   * Build the warning message for the dialog
-   * @param bundleId - ID of the bundle
-   * @param modifiedFiles - Array of modified file information
-   * @returns Formatted warning message
-   */
-  private buildWarningMessage(bundleId: string, modifiedFiles: ModifiedFileInfo[]): string {
-    const fileCount = modifiedFiles.length;
-    const fileWord = fileCount === 1 ? 'file has' : 'files have';
-
-    let message = `The bundle "${bundleId}" has ${fileCount} ${fileWord} been modified locally:\n\n`;
-
-    // List modified files with their modification type
-    for (const file of modifiedFiles) {
-      const typeIndicator = file.modificationType === 'missing' ? ' (missing)' : '';
-      message += `  • ${file.path}${typeIndicator}\n`;
-    }
-
-    message += '\nUpdating will override your local changes. What would you like to do?';
-
-    return message;
   }
 }

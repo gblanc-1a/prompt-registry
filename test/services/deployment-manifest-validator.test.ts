@@ -581,8 +581,8 @@ suite('DeploymentManifestValidator - Resource Type Validation', () => {
         'prompts/subfolder/test.prompt.md'
       ];
 
-      validPaths.forEach((path) => {
-        assert.ok(path.startsWith('prompts/'));
+      validPaths.forEach((p) => {
+        assert.ok(p.startsWith('prompts/'));
       });
     });
 
@@ -592,8 +592,8 @@ suite('DeploymentManifestValidator - Resource Type Validation', () => {
         'instructions/subfolder/test.instructions.md'
       ];
 
-      validPaths.forEach((path) => {
-        assert.ok(path.startsWith('instructions/'));
+      validPaths.forEach((p) => {
+        assert.ok(p.startsWith('instructions/'));
       });
     });
 
@@ -603,8 +603,8 @@ suite('DeploymentManifestValidator - Resource Type Validation', () => {
         'chatmodes/subfolder/test.chatmode.md'
       ];
 
-      validPaths.forEach((path) => {
-        assert.ok(path.startsWith('chatmodes/'));
+      validPaths.forEach((p) => {
+        assert.ok(p.startsWith('chatmodes/'));
       });
     });
 
@@ -614,8 +614,8 @@ suite('DeploymentManifestValidator - Resource Type Validation', () => {
         'agents/subfolder/test.agent.md'
       ];
 
-      validPaths.forEach((path) => {
-        assert.ok(path.startsWith('agents/'));
+      validPaths.forEach((p) => {
+        assert.ok(p.startsWith('agents/'));
       });
     });
   });
@@ -706,7 +706,6 @@ suite('DeploymentManifestValidator - Integration with Real Fixtures', () => {
         .map((dirent) => dirent.name);
 
       let validCount = 0;
-      let invalidCount = 0;
       const errors: string[] = [];
 
       bundles.forEach((bundleName) => {
@@ -721,11 +720,9 @@ suite('DeploymentManifestValidator - Integration with Real Fixtures', () => {
             if (manifest.id && manifest.name && manifest.version) {
               validCount++;
             } else {
-              invalidCount++;
               errors.push(`${bundleName}: Missing required fields`);
             }
           } catch (error) {
-            invalidCount++;
             errors.push(`${bundleName}: ${error}`);
           }
         }

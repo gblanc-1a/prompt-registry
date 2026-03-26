@@ -73,7 +73,7 @@ export class HubSyncCommands {
    * @param hubId
    * @param profileId
    */
-  async checkForUpdates(hubId: string, profileId: string): Promise<UpdateCheckResult> {
+  public async checkForUpdates(hubId: string, profileId: string): Promise<UpdateCheckResult> {
     const state = await this.hubManager.getActiveProfile(hubId);
 
     if (!state || state.profileId !== profileId) {
@@ -102,7 +102,7 @@ export class HubSyncCommands {
    * @param hubId
    * @param profileId
    */
-  async viewChanges(hubId: string, profileId: string): Promise<ViewChangesResult | null> {
+  public async viewChanges(hubId: string, profileId: string): Promise<ViewChangesResult | null> {
     const changes = await this.hubManager.getProfileChanges(hubId, profileId);
 
     if (!changes) {
@@ -132,7 +132,7 @@ export class HubSyncCommands {
    * @param hubId
    * @param profileId
    */
-  async syncProfile(hubId: string, profileId: string): Promise<void> {
+  public async syncProfile(hubId: string, profileId: string): Promise<void> {
     const state = await this.hubManager.getActiveProfile(hubId);
 
     if (!state || state.profileId !== profileId) {
@@ -191,7 +191,7 @@ export class HubSyncCommands {
    * @param hubId
    * @param profileId
    */
-  async reviewAndSync(hubId: string, profileId: string): Promise<ReviewSyncResult | null> {
+  public async reviewAndSync(hubId: string, profileId: string): Promise<ReviewSyncResult | null> {
     const changes = await this.hubManager.getProfileChanges(hubId, profileId);
 
     if (!changes) {
@@ -219,7 +219,7 @@ export class HubSyncCommands {
   /**
    * Check all hubs for updates
    */
-  async checkAllHubsForUpdates(): Promise<HubUpdateSummary[]> {
+  public async checkAllHubsForUpdates(): Promise<HubUpdateSummary[]> {
     const activeProfiles = await this.hubManager.listAllActiveProfiles();
     const results: HubUpdateSummary[] = [];
 
@@ -252,7 +252,7 @@ export class HubSyncCommands {
   /**
    * Get list of registered command IDs
    */
-  getRegisteredCommands(): string[] {
+  public getRegisteredCommands(): string[] {
     return [...this.registeredCommands];
   }
 }

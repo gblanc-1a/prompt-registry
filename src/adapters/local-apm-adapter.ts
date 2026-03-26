@@ -85,7 +85,7 @@ const CACHE_TTL = 5 * 60 * 1000;
  * LocalApmAdapter - Handles local filesystem APM packages
  */
 export class LocalApmAdapter extends RepositoryAdapter {
-  readonly type = 'local-apm';
+  public readonly type = 'local-apm';
 
   private readonly config: Required<LocalApmConfig>;
   private readonly mapper: ApmPackageMapper;
@@ -154,43 +154,6 @@ export class LocalApmAdapter extends RepositoryAdapter {
     } catch {
       return false;
     }
-  }
-
-  /**
-   * Fetch list of available bundles from local filesystem
-   */
-  async fetchBundles(): Promise<Bundle[]> {
-    const cacheKey = this.source.url;
-    const cached = this.cache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
-      return cached.bundles;
-    }
-
-    const localPath = this.getLocalPath();
-
-    // Validate directory exists
-    const exists = await this.directoryExists(localPath);
-    if (!exists) {
-      throw new Error(`Local APM packages directory not found: ${localPath}`);
-    }
-
-    const bundles: LocalApmBundle[] = [];
-
-    // Check if root has apm.yml (single package)
-    const rootManifest = await this.readApmManifest(localPath);
-    if (rootManifest) {
-      const bundle = this.manifestToBundle(rootManifest, localPath, '');
-      bundles.push(bundle);
-    }
-
-    // Scan subdirectories if enabled
-    if (this.config.scanSubdirectories) {
-      const subdirBundles = await this.scanSubdirectories(localPath, 1);
-      bundles.push(...subdirBundles);
-    }
-
-    this.cache.set(cacheKey, { bundles, timestamp: Date.now() });
-    return bundles;
   }
 
   /**
@@ -299,25 +262,6 @@ export class LocalApmAdapter extends RepositoryAdapter {
     };
 
     return localBundle;
-  }
-
-  /**
-   * Download a bundle by creating ZIP from local directory
-   * @param bundle
-   */
-  async downloadBundle(bundle: Bundle): Promise<Buffer> {
-    const packageDir = (bundle as LocalApmBundle).localPackagePath;
-
-    if (!packageDir) {
-      throw new Error(`No local path for bundle: ${bundle.id}`);
-    }
-
-    const exists = await this.directoryExists(packageDir);
-    if (!exists) {
-      throw new Error(`Package directory not found: ${packageDir}`);
-    }
-
-    return this.createBundleArchive(bundle, packageDir);
   }
 
   /**
@@ -487,9 +431,65 @@ export class LocalApmAdapter extends RepositoryAdapter {
   }
 
   /**
+   * Fetch list of available bundles from local filesystem
+   */
+  public async fetchBundles(): Promise<Bundle[]> {
+    const cacheKey = this.source.url;
+    const cached = this.cache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+      return cached.bundles;
+    }
+
+    const localPath = this.getLocalPath();
+
+    // Validate directory exists
+    const exists = await this.directoryExists(localPath);
+    if (!exists) {
+      throw new Error(`Local APM packages directory not found: ${localPath}`);
+    }
+
+    const bundles: LocalApmBundle[] = [];
+
+    // Check if root has apm.yml (single package)
+    const rootManifest = await this.readApmManifest(localPath);
+    if (rootManifest) {
+      const bundle = this.manifestToBundle(rootManifest, localPath, '');
+      bundles.push(bundle);
+    }
+
+    // Scan subdirectories if enabled
+    if (this.config.scanSubdirectories) {
+      const subdirBundles = await this.scanSubdirectories(localPath, 1);
+      bundles.push(...subdirBundles);
+    }
+
+    this.cache.set(cacheKey, { bundles, timestamp: Date.now() });
+    return bundles;
+  }
+
+  /**
+   * Download a bundle by creating ZIP from local directory
+   * @param bundle
+   */
+  public async downloadBundle(bundle: Bundle): Promise<Buffer> {
+    const packageDir = (bundle as LocalApmBundle).localPackagePath;
+
+    if (!packageDir) {
+      throw new Error(`No local path for bundle: ${bundle.id}`);
+    }
+
+    const exists = await this.directoryExists(packageDir);
+    if (!exists) {
+      throw new Error(`Package directory not found: ${packageDir}`);
+    }
+
+    return this.createBundleArchive(bundle, packageDir);
+  }
+
+  /**
    * Fetch source metadata
    */
-  async fetchMetadata(): Promise<SourceMetadata> {
+  public async fetchMetadata(): Promise<SourceMetadata> {
     const localPath = this.getLocalPath();
 
     const exists = await this.directoryExists(localPath);
@@ -519,7 +519,7 @@ export class LocalApmAdapter extends RepositoryAdapter {
   /**
    * Validate local directory
    */
-  async validate(): Promise<ValidationResult> {
+  public async validate(): Promise<ValidationResult> {
     const localPath = this.getLocalPath();
 
     const exists = await this.directoryExists(localPath);
@@ -553,12 +553,12 @@ export class LocalApmAdapter extends RepositoryAdapter {
     }
   }
 
-  getManifestUrl(bundleId: string, version?: string): string {
+  public getManifestUrl(bundleId: string, _version?: string): string {
     const localPath = this.getLocalPath();
     return `file://${path.join(localPath, bundleId, 'apm.yml')}`;
   }
 
-  getDownloadUrl(bundleId: string, version?: string): string {
+  public getDownloadUrl(bundleId: string, version?: string): string {
     return this.getManifestUrl(bundleId, version);
   }
 }

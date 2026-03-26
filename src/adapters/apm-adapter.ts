@@ -99,7 +99,7 @@ interface CacheEntry {
  * ApmAdapter - Handles remote GitHub-based APM packages
  */
 export class ApmAdapter extends RepositoryAdapter {
-  readonly type = 'apm';
+  public readonly type = 'apm';
 
   private readonly config: Required<ApmAdapterConfig>;
   private readonly mapper: ApmPackageMapper;
@@ -132,14 +132,6 @@ export class ApmAdapter extends RepositoryAdapter {
     this.logger = Logger.getInstance();
 
     this.logger.info(`[ApmAdapter] Initialized for: ${source.url}`);
-  }
-
-  /**
-   * Execute shell command
-   * @param command
-   */
-  protected async execShell(command: string): Promise<{ stdout: string; stderr: string }> {
-    return promisify(exec)(command);
   }
 
   /**
@@ -242,32 +234,6 @@ export class ApmAdapter extends RepositoryAdapter {
           'APM runtime is not available. Please install apm-cli or uv.'
         );
       }
-    }
-  }
-
-  /**
-   * Fetch available bundles from GitHub repository
-   */
-  async fetchBundles(): Promise<Bundle[]> {
-    this.logger.debug('[ApmAdapter] Fetching bundles...');
-
-    // Check cache
-    const cacheKey = this.source.url;
-    const cached = this.cache.get(cacheKey);
-    if (cached && Date.now() - cached.timestamp < this.config.cacheTtl) {
-      this.logger.debug('[ApmAdapter] Using cached bundles');
-      return cached.bundles;
-    }
-
-    await this.ensureRuntime();
-
-    try {
-      const bundles = await this.fetchFromGitHub();
-      this.cache.set(cacheKey, { bundles, timestamp: Date.now() });
-      return bundles;
-    } catch (error) {
-      this.logger.error('[ApmAdapter] Failed to fetch bundles', error as Error);
-      throw error;
     }
   }
 
@@ -406,35 +372,6 @@ export class ApmAdapter extends RepositoryAdapter {
   }
 
   /**
-   * Download a bundle by installing via APM CLI
-   * @param bundle
-   */
-  async downloadBundle(bundle: Bundle): Promise<Buffer> {
-    this.logger.debug(`[ApmAdapter] Downloading: ${bundle.id}`);
-
-    await this.ensureRuntime();
-    const token = await this.getAuthenticationToken();
-
-    const packageRef = (bundle as ApmBundle).apmPackageRef || bundle.id;
-    const tempDir = await this.createTempDir();
-
-    try {
-      // Install using APM CLI
-      const result = await this.cli.install(packageRef, tempDir, token);
-
-      if (!result.success) {
-        throw new Error(`Failed to install package: ${result.error}`);
-      }
-
-      // Create archive from installed package
-      return await this.createBundleArchive(bundle, tempDir);
-    } finally {
-      // Cleanup
-      await this.cleanupTempDir(tempDir);
-    }
-  }
-
-  /**
    * Create temporary directory
    */
   private async createTempDir(): Promise<string> {
@@ -502,7 +439,6 @@ export class ApmAdapter extends RepositoryAdapter {
       const promptFiles = await this.findPromptFiles(modulesDir);
       for (const file of promptFiles) {
         const content = await fs.promises.readFile(file, 'utf8');
-        const relativePath = path.relative(modulesDir, file);
         archive.append(content, { name: `prompts/${path.basename(file)}` });
       }
     }
@@ -637,9 +573,72 @@ export class ApmAdapter extends RepositoryAdapter {
   }
 
   /**
+   * Execute shell command
+   * @param command
+   */
+  protected async execShell(command: string): Promise<{ stdout: string; stderr: string }> {
+    return promisify(exec)(command);
+  }
+
+  /**
+   * Fetch available bundles from GitHub repository
+   */
+  public async fetchBundles(): Promise<Bundle[]> {
+    this.logger.debug('[ApmAdapter] Fetching bundles...');
+
+    // Check cache
+    const cacheKey = this.source.url;
+    const cached = this.cache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < this.config.cacheTtl) {
+      this.logger.debug('[ApmAdapter] Using cached bundles');
+      return cached.bundles;
+    }
+
+    await this.ensureRuntime();
+
+    try {
+      const bundles = await this.fetchFromGitHub();
+      this.cache.set(cacheKey, { bundles, timestamp: Date.now() });
+      return bundles;
+    } catch (error) {
+      this.logger.error('[ApmAdapter] Failed to fetch bundles', error as Error);
+      throw error;
+    }
+  }
+
+  /**
+   * Download a bundle by installing via APM CLI
+   * @param bundle
+   */
+  public async downloadBundle(bundle: Bundle): Promise<Buffer> {
+    this.logger.debug(`[ApmAdapter] Downloading: ${bundle.id}`);
+
+    await this.ensureRuntime();
+    const token = await this.getAuthenticationToken();
+
+    const packageRef = (bundle as ApmBundle).apmPackageRef || bundle.id;
+    const tempDir = await this.createTempDir();
+
+    try {
+      // Install using APM CLI
+      const result = await this.cli.install(packageRef, tempDir, token);
+
+      if (!result.success) {
+        throw new Error(`Failed to install package: ${result.error}`);
+      }
+
+      // Create archive from installed package
+      return await this.createBundleArchive(bundle, tempDir);
+    } finally {
+      // Cleanup
+      await this.cleanupTempDir(tempDir);
+    }
+  }
+
+  /**
    * Fetch source metadata
    */
-  async fetchMetadata(): Promise<SourceMetadata> {
+  public async fetchMetadata(): Promise<SourceMetadata> {
     const { owner, repo } = this.parseGitHubUrl();
     const bundles = await this.fetchBundles();
     const runtimeStatus = await this.runtime.getStatus();
@@ -656,7 +655,7 @@ export class ApmAdapter extends RepositoryAdapter {
   /**
    * Validate source
    */
-  async validate(): Promise<ValidationResult> {
+  public async validate(): Promise<ValidationResult> {
     const errors: string[] = [];
     const warnings: string[] = [];
 
@@ -682,12 +681,12 @@ export class ApmAdapter extends RepositoryAdapter {
     }
   }
 
-  getManifestUrl(bundleId: string, version?: string): string {
+  public getManifestUrl(_bundleId: string, _version?: string): string {
     const { owner, repo } = this.parseGitHubUrl();
     return `https://raw.githubusercontent.com/${owner}/${repo}/${this.config.branch}/apm.yml`;
   }
 
-  getDownloadUrl(bundleId: string, version?: string): string {
+  public getDownloadUrl(bundleId: string, version?: string): string {
     return this.getManifestUrl(bundleId, version);
   }
 }

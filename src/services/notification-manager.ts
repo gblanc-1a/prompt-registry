@@ -33,7 +33,7 @@ export class NotificationManager {
    *     // Handle update action
    * }
    */
-  async showInfo(message: string, ...actions: string[]): Promise<string | undefined> {
+  public async showInfo(message: string, ...actions: string[]): Promise<string | undefined> {
     this.logger.info(`Notification (Info): ${message}`);
     return await vscode.window.showInformationMessage(message, ...actions);
   }
@@ -49,7 +49,7 @@ export class NotificationManager {
    *     // Handle fix action
    * }
    */
-  async showWarning(message: string, ...actions: string[]): Promise<string | undefined> {
+  public async showWarning(message: string, ...actions: string[]): Promise<string | undefined> {
     this.logger.warn(`Notification (Warning): ${message}`);
     return await vscode.window.showWarningMessage(message, ...actions);
   }
@@ -65,7 +65,7 @@ export class NotificationManager {
    *     // Show error logs
    * }
    */
-  async showError(message: string, ...actions: string[]): Promise<string | undefined> {
+  public async showError(message: string, ...actions: string[]): Promise<string | undefined> {
     this.logger.error(`Notification (Error): ${message}`);
     return await vscode.window.showErrorMessage(message, ...actions);
   }

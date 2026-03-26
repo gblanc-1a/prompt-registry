@@ -58,36 +58,6 @@ const MAX_ID_LENGTH = 200;
  */
 export class ApmPackageMapper {
   /**
-   * Convert APM manifest to Bundle
-   * @param manifest APM manifest object
-   * @param context Package context (source, owner, repo, path)
-   * @returns Bundle object compatible with Prompt Registry
-   */
-  toBundle(manifest: ApmManifest, context: PackageContext): Bundle & { apmPackageRef: string } {
-    const packageRef = this.buildPackageRef(context);
-    const tags = this.buildTags(manifest.tags);
-
-    return {
-      id: this.generateBundleId(manifest, context),
-      name: manifest.name,
-      version: manifest.version || '1.0.0',
-      description: manifest.description || `APM package from ${packageRef}`,
-      author: manifest.author || context.owner,
-      sourceId: context.sourceId,
-      environments: this.inferEnvironments(manifest.tags),
-      tags,
-      lastUpdated: new Date().toISOString(),
-      size: this.formatDependencyCount(manifest.dependencies?.apm),
-      dependencies: this.mapDependencies(manifest.dependencies?.apm),
-      license: manifest.license || 'MIT',
-      manifestUrl: this.buildManifestUrl(context),
-      downloadUrl: this.buildManifestUrl(context),
-      repository: `https://github.com/${context.owner}/${context.repo}`,
-      apmPackageRef: packageRef
-    };
-  }
-
-  /**
    * Generate a sanitized bundle ID
    * Security: Sanitizes input to prevent injection and limits length
    * @param manifest
@@ -190,5 +160,35 @@ export class ApmPackageMapper {
   private buildManifestUrl(context: PackageContext): string {
     const pathPrefix = context.path ? `${context.path}/` : '';
     return `https://raw.githubusercontent.com/${context.owner}/${context.repo}/main/${pathPrefix}apm.yml`;
+  }
+
+  /**
+   * Convert APM manifest to Bundle
+   * @param manifest APM manifest object
+   * @param context Package context (source, owner, repo, path)
+   * @returns Bundle object compatible with Prompt Registry
+   */
+  public toBundle(manifest: ApmManifest, context: PackageContext): Bundle & { apmPackageRef: string } {
+    const packageRef = this.buildPackageRef(context);
+    const tags = this.buildTags(manifest.tags);
+
+    return {
+      id: this.generateBundleId(manifest, context),
+      name: manifest.name,
+      version: manifest.version || '1.0.0',
+      description: manifest.description || `APM package from ${packageRef}`,
+      author: manifest.author || context.owner,
+      sourceId: context.sourceId,
+      environments: this.inferEnvironments(manifest.tags),
+      tags,
+      lastUpdated: new Date().toISOString(),
+      size: this.formatDependencyCount(manifest.dependencies?.apm),
+      dependencies: this.mapDependencies(manifest.dependencies?.apm),
+      license: manifest.license || 'MIT',
+      manifestUrl: this.buildManifestUrl(context),
+      downloadUrl: this.buildManifestUrl(context),
+      repository: `https://github.com/${context.owner}/${context.repo}`,
+      apmPackageRef: packageRef
+    };
   }
 }

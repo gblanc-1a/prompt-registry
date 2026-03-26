@@ -35,7 +35,7 @@ export class BundleInstallationCommands {
    * Install a specific bundle
    * @param bundleId
    */
-  async installBundle(bundleId?: string): Promise<void> {
+  public async installBundle(bundleId?: string): Promise<void> {
     try {
       // If no bundleId, let user search
       if (!bundleId) {
@@ -115,7 +115,7 @@ export class BundleInstallationCommands {
         if (action === 'View Bundle') {
           vscode.commands.executeCommand('promptRegistry.viewBundle', bundleId);
         } else if (action === 'Install More') {
-          this.searchAndInstall();
+          void this.searchAndInstall();
         }
       });
     } catch (error) {
@@ -130,7 +130,7 @@ export class BundleInstallationCommands {
   /**
    * Search and install a bundle
    */
-  async searchAndInstall(): Promise<void> {
+  public async searchAndInstall(): Promise<void> {
     try {
       // Search for bundles
       const searchQuery = await vscode.window.showInputBox({
@@ -194,7 +194,7 @@ export class BundleInstallationCommands {
    * Uninstall a bundle
    * @param bundleId
    */
-  async uninstallBundle(bundleId?: string): Promise<void> {
+  public async uninstallBundle(bundleId?: string): Promise<void> {
     try {
       // If no bundleId, let user select
       if (!bundleId) {

@@ -112,7 +112,7 @@ suite('E2E: Npm Install Integration Tests', () => {
 
       // Mock child_process.spawn to prevent actual npm execution
       const childProcess = require('node:child_process');
-      const spawnStub = sandbox.stub(childProcess, 'spawn').callsFake((...spawnArgs: any[]) => {
+      const spawnStub = sandbox.stub(childProcess, 'spawn').callsFake((..._spawnArgs: any[]) => {
         const mockProcess = {
           on: (event: string, callback: (...args: unknown[]) => void) => {
             if (event === 'close') {
@@ -129,17 +129,17 @@ suite('E2E: Npm Install Integration Tests', () => {
 
       // Mock VS Code withProgress
       sandbox.stub(vscode.window, 'withProgress')
-        .callsFake(async (_options: any, task: (progress: any, token: any) => Thenable<unknown>) => {
+        .callsFake((_options: any, task: (progress: any, token: any) => Thenable<unknown>) => {
           const progress = { report: sandbox.stub() };
           const token = {
             isCancellationRequested: false,
             onCancellationRequested: sandbox.stub()
           };
-          return await task(progress, token);
+          return task(progress, token);
         });
 
       const npmWrapper = NpmCliWrapper.getInstance();
-      const result = await npmWrapper.installWithProgress(testDir);
+      await npmWrapper.installWithProgress(testDir);
 
       assert.ok(spawnStub.called, 'Should attempt to spawn npm process');
     });

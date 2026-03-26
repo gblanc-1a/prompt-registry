@@ -14,6 +14,7 @@ import * as path from 'node:path';
 import {
   promisify,
 } from 'node:util';
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- top-level import, cannot use await import
 import AdmZip = require('adm-zip');
 import * as yaml from 'js-yaml';
 import {
@@ -44,7 +45,7 @@ const access = promisify(fs.access);
  * Expects a directory structure with skills/ subdirectory containing skill folders
  */
 export class LocalSkillsAdapter extends RepositoryAdapter {
-  readonly type = 'local-skills';
+  public readonly type = 'local-skills';
   private readonly logger: Logger;
 
   constructor(source: RegistrySource) {
@@ -67,6 +68,7 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
     }
 
     if (localPath.startsWith('~/')) {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports -- sync method cannot use await import
       const os = require('node:os');
       localPath = path.join(os.homedir(), localPath.slice(2));
     }
@@ -154,100 +156,6 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
       errors,
       warnings
     };
-  }
-
-  /**
-   * Validate local skills source
-   */
-  async validate(): Promise<ValidationResult> {
-    const errors: string[] = [];
-    const warnings: string[] = [];
-
-    try {
-      this.logger.info(`[LocalSkillsAdapter] Validating local skills source: ${this.source.url}`);
-
-      const structureValidation = await this.validateDirectoryStructure();
-      if (!structureValidation.valid) {
-        return structureValidation;
-      }
-
-      let skillCount = 0;
-      try {
-        const skills = await this.scanSkillsDirectory();
-        skillCount = skills.length;
-
-        if (skillCount === 0) {
-          warnings.push('No valid skills found in skills/ directory (skills must have SKILL.md file)');
-        } else {
-          this.logger.info(`[LocalSkillsAdapter] Found ${skillCount} valid skill(s)`);
-        }
-      } catch (scanError) {
-        warnings.push(`Failed to scan skills: ${scanError}`);
-      }
-
-      return {
-        valid: true,
-        errors: [],
-        warnings,
-        bundlesFound: skillCount
-      };
-    } catch (error) {
-      return {
-        valid: false,
-        errors: [`Local skills source validation failed: ${error}`],
-        warnings
-      };
-    }
-  }
-
-  /**
-   * Fetch repository metadata
-   */
-  async fetchMetadata(): Promise<SourceMetadata> {
-    try {
-      const localPath = this.getLocalPath();
-      const skills = await this.scanSkillsDirectory();
-      const stats = await stat(localPath);
-
-      return {
-        name: path.basename(localPath),
-        description: 'Local Skills Repository',
-        bundleCount: skills.length,
-        lastUpdated: stats.mtime.toISOString(),
-        version: '1.0.0'
-      };
-    } catch (error) {
-      throw new Error(`Failed to fetch local skills metadata: ${error}`);
-    }
-  }
-
-  /**
-   * Fetch all skills as bundles
-   */
-  async fetchBundles(): Promise<Bundle[]> {
-    this.logger.info(`[LocalSkillsAdapter] Fetching skills from: ${this.source.url}`);
-
-    try {
-      const skills = await this.scanSkillsDirectory();
-      this.logger.info(`[LocalSkillsAdapter] Found ${skills.length} skills`);
-
-      const bundles: Bundle[] = [];
-      for (const skill of skills) {
-        try {
-          const bundle = this.createBundleFromSkill(skill);
-          bundles.push(bundle);
-          this.logger.debug(`[LocalSkillsAdapter] Created bundle: ${bundle.id}`);
-        } catch (error) {
-          this.logger.warn(`[LocalSkillsAdapter] Failed to create bundle from skill ${skill.id}: ${error}`);
-        }
-      }
-
-      this.logger.info(`[LocalSkillsAdapter] Successfully created ${bundles.length} bundles`);
-      return bundles;
-    } catch (error) {
-      this.logger.error(`[LocalSkillsAdapter] Failed to fetch skills: ${error}`);
-      throw new Error(`Failed to fetch local skills: ${error}`);
-    }
   }
 
   /**
@@ -459,83 +367,6 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
   }
 
   /**
-   * Get manifest URL
-   * @param bundleId
-   * @param version
-   */
-  getManifestUrl(bundleId: string, version?: string): string {
-    const localPath = this.getLocalPath();
-    const sourceName = path.basename(localPath);
-    const skillId = bundleId.replace(`local-skills-${sourceName}-`, '');
-    return `file://${path.join(localPath, 'skills', skillId, 'SKILL.md')}`;
-  }
-
-  /**
-   * Get download URL
-   * @param bundleId
-   * @param version
-   */
-  getDownloadUrl(bundleId: string, version?: string): string {
-    const localPath = this.getLocalPath();
-    const sourceName = path.basename(localPath);
-    const skillId = bundleId.replace(`local-skills-${sourceName}-`, '');
-    return `file://${path.join(localPath, 'skills', skillId)}`;
-  }
-
-  /**
-   * Download a skill bundle
-   * @param bundle
-   */
-  async downloadBundle(bundle: Bundle): Promise<Buffer> {
-    const localPath = this.getLocalPath();
-    const sourceName = path.basename(localPath);
-    const skillId = bundle.id.replace(`local-skills-${sourceName}-`, '');
-
-    this.logger.info(`[LocalSkillsAdapter] Downloading skill: ${skillId}`);
-
-    try {
-      const skills = await this.scanSkillsDirectory();
-      const skill = skills.find((s) => s.id === skillId);
-
-      if (!skill) {
-        throw new Error(`Skill not found: ${skillId}`);
-      }
-
-      const zipBuffer = await this.packageSkillAsZip(skill);
-
-      this.logger.info(`[LocalSkillsAdapter] Successfully packaged skill ${skillId} (${zipBuffer.length} bytes)`);
-      return zipBuffer;
-    } catch (error) {
-      this.logger.error(`[LocalSkillsAdapter] Failed to download skill ${skillId}: ${error}`);
-      throw new Error(`Failed to download skill ${skillId}: ${error}`);
-    }
-  }
-
-  /**
-   * Get the original source path for a skill (for symlink creation)
-   * This is used by BundleInstaller to create symlinks instead of copying for local skills
-   * @param bundle The bundle to get the source path for
-   * @returns The absolute path to the skill directory
-   */
-  getSkillSourcePath(bundle: Bundle): string {
-    const localPath = this.getLocalPath();
-    const sourceName = path.basename(localPath);
-    const skillId = bundle.id.replace(`local-skills-${sourceName}-`, '');
-    return path.join(localPath, 'skills', skillId);
-  }
-
-  /**
-   * Get the skill name from a bundle ID
-   * @param bundle The bundle to extract skill name from
-   * @returns The skill name/ID
-   */
-  getSkillName(bundle: Bundle): string {
-    const localPath = this.getLocalPath();
-    const sourceName = path.basename(localPath);
-    return bundle.id.replace(`local-skills-${sourceName}-`, '');
-  }
-
-  /**
    * Package skill as ZIP
    * @param skill
    */
@@ -645,5 +476,175 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
         }
       ]
     };
+  }
+
+  /**
+   * Validate local skills source
+   */
+  public async validate(): Promise<ValidationResult> {
+    const warnings: string[] = [];
+
+    try {
+      this.logger.info(`[LocalSkillsAdapter] Validating local skills source: ${this.source.url}`);
+
+      const structureValidation = await this.validateDirectoryStructure();
+      if (!structureValidation.valid) {
+        return structureValidation;
+      }
+
+      let skillCount = 0;
+      try {
+        const skills = await this.scanSkillsDirectory();
+        skillCount = skills.length;
+
+        if (skillCount === 0) {
+          warnings.push('No valid skills found in skills/ directory (skills must have SKILL.md file)');
+        } else {
+          this.logger.info(`[LocalSkillsAdapter] Found ${skillCount} valid skill(s)`);
+        }
+      } catch (scanError) {
+        warnings.push(`Failed to scan skills: ${scanError}`);
+      }
+
+      return {
+        valid: true,
+        errors: [],
+        warnings,
+        bundlesFound: skillCount
+      };
+    } catch (error) {
+      return {
+        valid: false,
+        errors: [`Local skills source validation failed: ${error}`],
+        warnings
+      };
+    }
+  }
+
+  /**
+   * Fetch repository metadata
+   */
+  public async fetchMetadata(): Promise<SourceMetadata> {
+    try {
+      const localPath = this.getLocalPath();
+      const skills = await this.scanSkillsDirectory();
+      const stats = await stat(localPath);
+
+      return {
+        name: path.basename(localPath),
+        description: 'Local Skills Repository',
+        bundleCount: skills.length,
+        lastUpdated: stats.mtime.toISOString(),
+        version: '1.0.0'
+      };
+    } catch (error) {
+      throw new Error(`Failed to fetch local skills metadata: ${error}`);
+    }
+  }
+
+  /**
+   * Fetch all skills as bundles
+   */
+  public async fetchBundles(): Promise<Bundle[]> {
+    this.logger.info(`[LocalSkillsAdapter] Fetching skills from: ${this.source.url}`);
+
+    try {
+      const skills = await this.scanSkillsDirectory();
+      this.logger.info(`[LocalSkillsAdapter] Found ${skills.length} skills`);
+
+      const bundles: Bundle[] = [];
+      for (const skill of skills) {
+        try {
+          const bundle = this.createBundleFromSkill(skill);
+          bundles.push(bundle);
+          this.logger.debug(`[LocalSkillsAdapter] Created bundle: ${bundle.id}`);
+        } catch (error) {
+          this.logger.warn(`[LocalSkillsAdapter] Failed to create bundle from skill ${skill.id}: ${error}`);
+        }
+      }
+
+      this.logger.info(`[LocalSkillsAdapter] Successfully created ${bundles.length} bundles`);
+      return bundles;
+    } catch (error) {
+      this.logger.error(`[LocalSkillsAdapter] Failed to fetch skills: ${error}`);
+      throw new Error(`Failed to fetch local skills: ${error}`);
+    }
+  }
+
+  /**
+   * Get manifest URL
+   * @param bundleId
+   * @param _version
+   */
+  public getManifestUrl(bundleId: string, _version?: string): string {
+    const localPath = this.getLocalPath();
+    const sourceName = path.basename(localPath);
+    const skillId = bundleId.replace(`local-skills-${sourceName}-`, '');
+    return `file://${path.join(localPath, 'skills', skillId, 'SKILL.md')}`;
+  }
+
+  /**
+   * Get download URL
+   * @param bundleId
+   * @param _version
+   */
+  public getDownloadUrl(bundleId: string, _version?: string): string {
+    const localPath = this.getLocalPath();
+    const sourceName = path.basename(localPath);
+    const skillId = bundleId.replace(`local-skills-${sourceName}-`, '');
+    return `file://${path.join(localPath, 'skills', skillId)}`;
+  }
+
+  /**
+   * Download a skill bundle
+   * @param bundle
+   */
+  public async downloadBundle(bundle: Bundle): Promise<Buffer> {
+    const localPath = this.getLocalPath();
+    const sourceName = path.basename(localPath);
+    const skillId = bundle.id.replace(`local-skills-${sourceName}-`, '');
+
+    this.logger.info(`[LocalSkillsAdapter] Downloading skill: ${skillId}`);
+
+    try {
+      const skills = await this.scanSkillsDirectory();
+      const skill = skills.find((s) => s.id === skillId);
+
+      if (!skill) {
+        throw new Error(`Skill not found: ${skillId}`);
+      }
+
+      const zipBuffer = await this.packageSkillAsZip(skill);
+
+      this.logger.info(`[LocalSkillsAdapter] Successfully packaged skill ${skillId} (${zipBuffer.length} bytes)`);
+      return zipBuffer;
+    } catch (error) {
+      this.logger.error(`[LocalSkillsAdapter] Failed to download skill ${skillId}: ${error}`);
+      throw new Error(`Failed to download skill ${skillId}: ${error}`);
+    }
+  }
+
+  /**
+   * Get the original source path for a skill (for symlink creation)
+   * This is used by BundleInstaller to create symlinks instead of copying for local skills
+   * @param bundle The bundle to get the source path for
+   * @returns The absolute path to the skill directory
+   */
+  public getSkillSourcePath(bundle: Bundle): string {
+    const localPath = this.getLocalPath();
+    const sourceName = path.basename(localPath);
+    const skillId = bundle.id.replace(`local-skills-${sourceName}-`, '');
+    return path.join(localPath, 'skills', skillId);
+  }
+
+  /**
+   * Get the skill name from a bundle ID
+   * @param bundle The bundle to extract skill name from
+   * @returns The skill name/ID
+   */
+  public getSkillName(bundle: Bundle): string {
+    const localPath = this.getLocalPath();
+    const sourceName = path.basename(localPath);
+    return bundle.id.replace(`local-skills-${sourceName}-`, '');
   }
 }

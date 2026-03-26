@@ -33,24 +33,24 @@ class MockSchemaValidator {
   private shouldFail = false;
   private errors: string[] = [];
 
-  setShouldFail(fail: boolean, errors: string[] = []): void {
+  public setShouldFail(fail: boolean, errors: string[] = []): void {
     this.shouldFail = fail;
     this.errors = errors;
   }
 
-  async validate(data: any, schemaPath: string): Promise<ValidationResult> {
+  public validate(_data: any, _schemaPath: string): Promise<ValidationResult> {
     if (this.shouldFail) {
-      return {
+      return Promise.resolve({
         valid: false,
         errors: this.errors.length > 0 ? this.errors : ['Schema validation failed'],
         warnings: []
-      };
+      });
     }
-    return {
+    return Promise.resolve({
       valid: true,
       errors: [],
       warnings: []
-    };
+    });
   }
 }
 
@@ -430,7 +430,6 @@ suite('HubManager', () => {
 
     test('should list profiles from active hub only', async () => {
       const hubId1 = await hubManager.importHub(localRef, 'test-profiles-hub-1');
-      const hubId2 = await hubManager.importHub(localRef, 'test-profiles-hub-2');
 
       // Set first hub as active
       await hubManager.setActiveHub(hubId1);
@@ -602,16 +601,16 @@ suite('Hub Source Loading - SourceId Format', () => {
     public addSourceCalls: RegistrySource[] = [];
     public updateSourceCalls: { id: string; updates: Partial<RegistrySource> }[] = [];
 
-    async listSources(): Promise<RegistrySource[]> {
+    public async listSources(): Promise<RegistrySource[]> {
       return [...this.sources];
     }
 
-    async addSource(source: RegistrySource): Promise<void> {
+    public async addSource(source: RegistrySource): Promise<void> {
       this.sources.push(source);
       this.addSourceCalls.push(source);
     }
 
-    async updateSource(id: string, updates: Partial<RegistrySource>): Promise<void> {
+    public async updateSource(id: string, updates: Partial<RegistrySource>): Promise<void> {
       const index = this.sources.findIndex((s) => s.id === id);
       if (index !== -1) {
         this.sources[index] = { ...this.sources[index], ...updates };
@@ -619,17 +618,17 @@ suite('Hub Source Loading - SourceId Format', () => {
       }
     }
 
-    reset(): void {
+    public reset(): void {
       this.sources = [];
       this.addSourceCalls = [];
       this.updateSourceCalls = [];
     }
 
-    getSourceCount(): number {
+    public getSourceCount(): number {
       return this.sources.length;
     }
 
-    hasSource(id: string): boolean {
+    public hasSource(id: string): boolean {
       return this.sources.some((s) => s.id === id);
     }
   }
@@ -882,7 +881,7 @@ suite('HubManager HTTP Redirect Handling', () => {
     // Initialize services
     storage = new HubStorage(tempDir);
     mockValidator = {
-      async validate() {
+      validate() {
         return { valid: true, errors: [], warnings: [] };
       }
     };

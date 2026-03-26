@@ -37,7 +37,6 @@ suite('RepositoryActivationService', () => {
   let mockContext: vscode.ExtensionContext;
   let service: RepositoryActivationService;
   let showInformationMessageStub: sinon.SinonStub;
-  let showWarningMessageStub: sinon.SinonStub;
   const testWorkspaceRoot = '/test/workspace';
 
   setup(() => {
@@ -69,7 +68,7 @@ suite('RepositoryActivationService', () => {
 
     // Mock VS Code APIs
     showInformationMessageStub = sandbox.stub(vscode.window, 'showInformationMessage');
-    showWarningMessageStub = sandbox.stub(vscode.window, 'showWarningMessage');
+    sandbox.stub(vscode.window, 'showWarningMessage');
   });
 
   teardown(() => {
@@ -472,7 +471,7 @@ suite('RepositoryActivationService', () => {
       showInformationMessageStub.resolves('Add Sources');
 
       // Act
-      const result = await service.checkAndOfferMissingSources(lockfile);
+      await service.checkAndOfferMissingSources(lockfile);
 
       // Assert
       const message = showInformationMessageStub.firstCall.args[0] as string;
@@ -599,7 +598,7 @@ suite('RepositoryActivationService - Workspace Switching Scenarios', () => {
     RepositoryActivationService.resetInstance();
   });
 
-  test('should maintain separate state for different workspaces', async () => {
+  test('should maintain separate state for different workspaces', () => {
     // Arrange
     const workspace1 = '/workspace/one';
     const workspace2 = '/workspace/two';
@@ -774,7 +773,6 @@ suite('RepositoryActivationService - Missing Bundle Installation', () => {
   let mockRegistryManager: any;
   let mockContext: vscode.ExtensionContext;
   let service: RepositoryActivationService;
-  let showInformationMessageStub: sinon.SinonStub;
   let withProgressStub: sinon.SinonStub;
   const testWorkspaceRoot = '/test/workspace/missing-bundles';
 
@@ -807,7 +805,6 @@ suite('RepositoryActivationService - Missing Bundle Installation', () => {
     RepositoryActivationService.resetInstance();
 
     // Mock VS Code APIs
-    showInformationMessageStub = sandbox.stub(vscode.window, 'showInformationMessage');
     withProgressStub = sandbox.stub(vscode.window, 'withProgress');
 
     // Default withProgress behavior - execute the task immediately
@@ -968,7 +965,7 @@ suite('RepositoryActivationService - Missing Bundle Installation', () => {
         };
 
         // Override installBundle to check cancellation
-        mockRegistryManager.installBundle.callsFake(async () => {
+        mockRegistryManager.installBundle.callsFake(() => {
           installCount++;
           if (installCount >= 2) {
             mockToken.isCancellationRequested = true;

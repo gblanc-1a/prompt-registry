@@ -69,11 +69,11 @@ export function createMockProcess(options: MockProcessOptions = {}): {
     pid = 12_345
   } = options;
 
-  // eslint-disable-next-line unicorn/prefer-event-target
+  // eslint-disable-next-line unicorn/prefer-event-target -- EventEmitter used for Node.js compatibility
   const process = new EventEmitter() as MockProcess;
-  // eslint-disable-next-line unicorn/prefer-event-target
+  // eslint-disable-next-line unicorn/prefer-event-target -- EventEmitter used for Node.js compatibility
   process.stdout = new EventEmitter();
-  // eslint-disable-next-line unicorn/prefer-event-target
+  // eslint-disable-next-line unicorn/prefer-event-target -- EventEmitter used for Node.js compatibility
   process.stderr = new EventEmitter();
   process.kill = sinon.stub();
   process.pid = pid;

@@ -53,7 +53,7 @@ export class UpdateCache {
    * @param results
    * @param ttl
    */
-  async set(results: UpdateCheckResult[], ttl?: number): Promise<void> {
+  public async set(results: UpdateCheckResult[], ttl?: number): Promise<void> {
     const cached: CachedUpdateResult = {
       results,
       timestamp: new Date(),
@@ -67,7 +67,7 @@ export class UpdateCache {
    * Retrieve cached results if still valid
    * Returns null if cache is expired or doesn't exist
    */
-  async get(): Promise<UpdateCheckResult[] | null> {
+  public async get(): Promise<UpdateCheckResult[] | null> {
     const cached = this.storage.get<CachedUpdateResult>(CACHE_CONSTANTS.CACHE_KEY);
 
     if (!cached) {
@@ -87,7 +87,7 @@ export class UpdateCache {
    * Optimized to avoid redundant Date object creation
    * @param cached
    */
-  isValid(cached?: CachedUpdateResult): boolean {
+  public isValid(cached?: CachedUpdateResult): boolean {
     const entry = cached ?? this.storage.get<CachedUpdateResult>(CACHE_CONSTANTS.CACHE_KEY);
     if (!entry) {
       return false;
@@ -104,7 +104,7 @@ export class UpdateCache {
   /**
    * Clear the cache
    */
-  async clear(): Promise<void> {
+  public async clear(): Promise<void> {
     await this.storage.update(CACHE_CONSTANTS.CACHE_KEY, undefined);
   }
 
@@ -113,7 +113,7 @@ export class UpdateCache {
    * Returns -1 if cache doesn't exist
    * Optimized to avoid redundant Date object creation
    */
-  getCacheAge(): number {
+  public getCacheAge(): number {
     const cached = this.storage.get<CachedUpdateResult>(CACHE_CONSTANTS.CACHE_KEY);
 
     if (!cached) {

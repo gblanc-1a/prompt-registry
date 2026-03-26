@@ -65,7 +65,7 @@ export class UpdateScheduler {
 
   // Event emitter for update detection - typed with UpdateCheckResult[]
   private readonly _onUpdatesDetected = new vscode.EventEmitter<UpdateCheckResult[]>();
-  readonly onUpdatesDetected = this._onUpdatesDetected.event;
+  public readonly onUpdatesDetected = this._onUpdatesDetected.event;
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -106,31 +106,6 @@ export class UpdateScheduler {
   }
 
   /**
-   * Initialize scheduler and perform startup check
-   */
-  async initialize(): Promise<void> {
-    if (this.isInitialized) {
-      this.logger.debug('UpdateScheduler already initialized');
-      return;
-    }
-
-    this.logger.info('Initializing UpdateScheduler');
-
-    // Schedule startup check
-    if (this.config.enabled && !this.isTestEnvironment) {
-      this.scheduleStartupCheck();
-      this.schedulePeriodicChecks();
-    } else if (!this.config.enabled) {
-      this.logger.debug('UpdateScheduler disabled by configuration, skipping timers');
-    } else if (this.isTestEnvironment) {
-      this.logger.debug('Test environment detected, skipping scheduler timers');
-    }
-
-    this.isInitialized = true;
-    this.logger.info('UpdateScheduler initialized successfully');
-  }
-
-  /**
    * Schedule startup update check
    * Triggers within configured delay after activation
    */
@@ -147,92 +122,6 @@ export class UpdateScheduler {
         this.startupCheckTimer = undefined;
       }
     }, this.config.startupCheckDelay);
-  }
-
-  /**
-   * Schedule periodic update checks based on configuration
-   */
-  schedulePeriodicChecks(): void {
-    if (this.isTestEnvironment) {
-      this.logger.debug('Test environment detected, skipping periodic check timers');
-      return;
-    }
-
-    // Clear existing timer
-    if (this.scheduledCheckTimer) {
-      clearTimeout(this.scheduledCheckTimer);
-      this.scheduledCheckTimer = undefined;
-    }
-
-    // Don't schedule if disabled or manual-only
-    if (!this.config.enabled || this.config.frequency === 'manual') {
-      this.logger.debug('Periodic checks disabled or set to manual');
-      return;
-    }
-
-    const intervalMs = this.getCheckInterval();
-    this.logger.debug(`Scheduling periodic checks every ${intervalMs}ms (${this.config.frequency})`);
-
-    this.scheduledCheckTimer = setTimeout(async () => {
-      // Prevent overlapping checks
-      if (this.isCheckInProgress) {
-        this.logger.warn('Previous check still in progress, skipping this cycle');
-        this.schedulePeriodicChecks();
-        return;
-      }
-
-      this.isCheckInProgress = true;
-      try {
-        this.logger.info('Performing scheduled update check');
-        await this.performUpdateCheck();
-      } catch (error) {
-        this.logger.error('Scheduled update check failed', error as Error);
-      } finally {
-        this.isCheckInProgress = false;
-        // Reschedule next check
-        this.schedulePeriodicChecks();
-      }
-    }, intervalMs);
-  }
-
-  /**
-   * Manually trigger an update check
-   * Bypasses cache and schedule
-   */
-  async checkNow(): Promise<void> {
-    this.logger.info('Manual update check triggered');
-    await this.performUpdateCheck(true);
-  }
-
-  /**
-   * Update check frequency when settings change
-   * @param frequency
-   */
-  updateSchedule(frequency: UpdateCheckFrequency): void {
-    this.logger.info(`Updating check frequency to: ${frequency}`);
-    this.config.frequency = frequency;
-
-    // Reschedule with new frequency
-    this.schedulePeriodicChecks();
-  }
-
-  /**
-   * Update enabled state when settings change
-   * @param enabled
-   */
-  updateEnabled(enabled: boolean): void {
-    this.logger.info(`Updating enabled state to: ${enabled}`);
-    this.config.enabled = enabled;
-
-    if (enabled) {
-      this.schedulePeriodicChecks();
-    } else {
-      // Clear scheduled checks
-      if (this.scheduledCheckTimer) {
-        clearTimeout(this.scheduledCheckTimer);
-        this.scheduledCheckTimer = undefined;
-      }
-    }
   }
 
   /**
@@ -377,23 +266,134 @@ export class UpdateScheduler {
   }
 
   /**
+   * Initialize scheduler and perform startup check
+   */
+  public async initialize(): Promise<void> {
+    if (this.isInitialized) {
+      this.logger.debug('UpdateScheduler already initialized');
+      return;
+    }
+
+    this.logger.info('Initializing UpdateScheduler');
+
+    // Schedule startup check
+    if (this.config.enabled && !this.isTestEnvironment) {
+      this.scheduleStartupCheck();
+      this.schedulePeriodicChecks();
+    } else if (!this.config.enabled) {
+      this.logger.debug('UpdateScheduler disabled by configuration, skipping timers');
+    } else if (this.isTestEnvironment) {
+      this.logger.debug('Test environment detected, skipping scheduler timers');
+    }
+
+    this.isInitialized = true;
+    this.logger.info('UpdateScheduler initialized successfully');
+  }
+
+  /**
+   * Schedule periodic update checks based on configuration
+   */
+  public schedulePeriodicChecks(): void {
+    if (this.isTestEnvironment) {
+      this.logger.debug('Test environment detected, skipping periodic check timers');
+      return;
+    }
+
+    // Clear existing timer
+    if (this.scheduledCheckTimer) {
+      clearTimeout(this.scheduledCheckTimer);
+      this.scheduledCheckTimer = undefined;
+    }
+
+    // Don't schedule if disabled or manual-only
+    if (!this.config.enabled || this.config.frequency === 'manual') {
+      this.logger.debug('Periodic checks disabled or set to manual');
+      return;
+    }
+
+    const intervalMs = this.getCheckInterval();
+    this.logger.debug(`Scheduling periodic checks every ${intervalMs}ms (${this.config.frequency})`);
+
+    this.scheduledCheckTimer = setTimeout(async () => {
+      // Prevent overlapping checks
+      if (this.isCheckInProgress) {
+        this.logger.warn('Previous check still in progress, skipping this cycle');
+        this.schedulePeriodicChecks();
+        return;
+      }
+
+      this.isCheckInProgress = true;
+      try {
+        this.logger.info('Performing scheduled update check');
+        await this.performUpdateCheck();
+      } catch (error) {
+        this.logger.error('Scheduled update check failed', error as Error);
+      } finally {
+        this.isCheckInProgress = false;
+        // Reschedule next check
+        this.schedulePeriodicChecks();
+      }
+    }, intervalMs);
+  }
+
+  /**
+   * Manually trigger an update check
+   * Bypasses cache and schedule
+   */
+  public async checkNow(): Promise<void> {
+    this.logger.info('Manual update check triggered');
+    await this.performUpdateCheck(true);
+  }
+
+  /**
+   * Update check frequency when settings change
+   * @param frequency
+   */
+  public updateSchedule(frequency: UpdateCheckFrequency): void {
+    this.logger.info(`Updating check frequency to: ${frequency}`);
+    this.config.frequency = frequency;
+
+    // Reschedule with new frequency
+    this.schedulePeriodicChecks();
+  }
+
+  /**
+   * Update enabled state when settings change
+   * @param enabled
+   */
+  public updateEnabled(enabled: boolean): void {
+    this.logger.info(`Updating enabled state to: ${enabled}`);
+    this.config.enabled = enabled;
+
+    if (enabled) {
+      this.schedulePeriodicChecks();
+    } else {
+      // Clear scheduled checks
+      if (this.scheduledCheckTimer) {
+        clearTimeout(this.scheduledCheckTimer);
+        this.scheduledCheckTimer = undefined;
+      }
+    }
+  }
+
+  /**
    * Get last check time
    */
-  getLastCheckTime(): Date | undefined {
+  public getLastCheckTime(): Date | undefined {
     return this.lastCheckTime;
   }
 
   /**
    * Check if scheduler is initialized
    */
-  isSchedulerInitialized(): boolean {
+  public isSchedulerInitialized(): boolean {
     return this.isInitialized;
   }
 
   /**
    * Cleanup timers
    */
-  dispose(): void {
+  public dispose(): void {
     this.logger.debug('Disposing UpdateScheduler');
 
     if (this.startupCheckTimer) {

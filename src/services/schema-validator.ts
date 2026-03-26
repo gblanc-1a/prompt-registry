@@ -34,6 +34,7 @@ export class SchemaValidator {
 
   constructor(extensionPath?: string) {
     // Use default export for AJV v6
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
     const AjvConstructor = (Ajv as any).default || Ajv;
     this.ajv = new AjvConstructor({
       allErrors: true, // Collect all errors, not just first
@@ -72,82 +73,6 @@ export class SchemaValidator {
       this.logger.error(`Failed to load schema ${schemaPath}:`, error instanceof Error ? error : undefined);
       throw error;
     }
-  }
-
-  /**
-   * Validate data against a JSON schema
-   * @param data Data to validate
-   * @param schemaPath Path to the JSON schema file
-   * @param options Validation options
-   * @returns Validation result with errors and warnings
-   */
-  async validate(
-    data: any,
-    schemaPath: string,
-    options: ValidationOptions = {}
-  ): Promise<ValidationResult> {
-    try {
-      const validate = await this.loadSchema(schemaPath);
-      const valid = validate(data);
-
-      const result: ValidationResult = {
-        valid: valid === true,
-        errors: [],
-        warnings: []
-      };
-
-      // Format validation errors
-      if (!valid && validate.errors) {
-        result.errors = this.formatErrors(validate.errors);
-      }
-
-      // Check file references if requested
-      if (options.checkFileReferences && options.workspaceRoot) {
-        const fileResult = this.validateFileReferences(data, options.workspaceRoot);
-        result.errors.push(...fileResult.errors);
-        result.warnings.push(...fileResult.warnings);
-      }
-
-      // Generate warnings for best practices
-      result.warnings.push(...this.generateWarnings(data));
-
-      return result;
-    } catch (error) {
-      this.logger.error('Validation failed:', error instanceof Error ? error : undefined);
-      return {
-        valid: false,
-        errors: [`Validation error: ${error instanceof Error ? error.message : String(error)}`],
-        warnings: []
-      };
-    }
-  }
-
-  /**
-   * Validate a collection against the collection schema
-   * @param data Collection data to validate
-   * @param options Validation options
-   * @returns Validation result
-   */
-  async validateCollection(
-    data: any,
-    options: ValidationOptions = {}
-  ): Promise<ValidationResult> {
-    const schemaPath = path.join(this.extensionPath, 'schemas', 'collection.schema.json');
-    return this.validate(data, schemaPath, options);
-  }
-
-  /**
-   * Validate an APM manifest against the schema
-   * @param data APM manifest data
-   * @param options Validation options
-   * @returns Validation result
-   */
-  async validateApm(
-    data: any,
-    options: ValidationOptions = {}
-  ): Promise<ValidationResult> {
-    const schemaPath = path.join(this.extensionPath, 'schemas', 'apm.schema.json');
-    return this.validate(data, schemaPath, options);
   }
 
   /**
@@ -257,9 +182,85 @@ export class SchemaValidator {
   }
 
   /**
+   * Validate data against a JSON schema
+   * @param data Data to validate
+   * @param schemaPath Path to the JSON schema file
+   * @param options Validation options
+   * @returns Validation result with errors and warnings
+   */
+  public async validate(
+    data: any,
+    schemaPath: string,
+    options: ValidationOptions = {}
+  ): Promise<ValidationResult> {
+    try {
+      const validate = await this.loadSchema(schemaPath);
+      const valid = validate(data);
+
+      const result: ValidationResult = {
+        valid: valid === true,
+        errors: [],
+        warnings: []
+      };
+
+      // Format validation errors
+      if (!valid && validate.errors) {
+        result.errors = this.formatErrors(validate.errors);
+      }
+
+      // Check file references if requested
+      if (options.checkFileReferences && options.workspaceRoot) {
+        const fileResult = this.validateFileReferences(data, options.workspaceRoot);
+        result.errors.push(...fileResult.errors);
+        result.warnings.push(...fileResult.warnings);
+      }
+
+      // Generate warnings for best practices
+      result.warnings.push(...this.generateWarnings(data));
+
+      return result;
+    } catch (error) {
+      this.logger.error('Validation failed:', error instanceof Error ? error : undefined);
+      return {
+        valid: false,
+        errors: [`Validation error: ${error instanceof Error ? error.message : String(error)}`],
+        warnings: []
+      };
+    }
+  }
+
+  /**
+   * Validate a collection against the collection schema
+   * @param data Collection data to validate
+   * @param options Validation options
+   * @returns Validation result
+   */
+  public async validateCollection(
+    data: any,
+    options: ValidationOptions = {}
+  ): Promise<ValidationResult> {
+    const schemaPath = path.join(this.extensionPath, 'schemas', 'collection.schema.json');
+    return this.validate(data, schemaPath, options);
+  }
+
+  /**
+   * Validate an APM manifest against the schema
+   * @param data APM manifest data
+   * @param options Validation options
+   * @returns Validation result
+   */
+  public async validateApm(
+    data: any,
+    options: ValidationOptions = {}
+  ): Promise<ValidationResult> {
+    const schemaPath = path.join(this.extensionPath, 'schemas', 'apm.schema.json');
+    return this.validate(data, schemaPath, options);
+  }
+
+  /**
    * Clear the schema cache (useful for testing)
    */
-  clearCache(): void {
+  public clearCache(): void {
     this.schemaCache.clear();
   }
 }

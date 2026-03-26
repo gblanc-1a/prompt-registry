@@ -13,22 +13,22 @@ import {
 
 // Mock RegistryManager
 class MockRegistryManager {
-  sources: any[] = [];
-  profiles: any[] = [];
+  public sources: any[] = [];
+  public profiles: any[] = [];
 
-  async listSources() {
+  public listSources() {
     return this.sources;
   }
 
-  async addSource(source: any) {
+  public addSource(source: any) {
     this.sources.push(source);
   }
 
-  async createProfile(profile: any) {
+  public createProfile(profile: any) {
     this.profiles.push(profile);
   }
 
-  async listProfiles() {
+  public listProfiles() {
     return this.profiles;
   }
 }
@@ -43,7 +43,7 @@ class MockHubManager {
     this.registryManager = registryManager;
   }
 
-  async importHub(reference: any, hubId?: string) {
+  public async importHub(reference: any, hubId?: string) {
     // Simulate loadHubSources behavior - add sources with new format IDs
     if (this.registryManager && this.hubConfig.sources) {
       for (const source of this.hubConfig.sources) {
@@ -63,18 +63,18 @@ class MockHubManager {
     return 'test-hub-id';
   }
 
-  async loadHub(hubId: string) {
+  public loadHub(_hubId: string) {
     return {
       config: this.hubConfig,
       reference: { type: 'local', location: '/tmp/hub-config.yml' }
     };
   }
 
-  async listHubs() {
+  public listHubs() {
     return [];
   }
 
-  async setActiveHub(hubId: string) {}
+  public async setActiveHub(_hubId: string) {}
 }
 
 suite('HubCommands Source Sync', () => {
@@ -86,7 +86,6 @@ suite('HubCommands Source Sync', () => {
   let showOpenDialogStub: sinon.SinonStub;
   let showInputBoxStub: sinon.SinonStub;
   let withProgressStub: sinon.SinonStub;
-  let showErrorMessageStub: sinon.SinonStub;
 
   setup(() => {
     // Stub vscode.window methods
@@ -94,7 +93,6 @@ suite('HubCommands Source Sync', () => {
     showOpenDialogStub = sinon.stub(vscode.window, 'showOpenDialog');
     showInputBoxStub = sinon.stub(vscode.window, 'showInputBox');
     withProgressStub = sinon.stub(vscode.window, 'withProgress');
-    showErrorMessageStub = sinon.stub(vscode.window, 'showErrorMessage');
     // We don't use showInformationMessage in this test suite directly but good to stub
     sinon.stub(vscode.window, 'showInformationMessage');
 

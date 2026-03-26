@@ -19,7 +19,7 @@ suite('Hub Sync History', () => {
   let syncHistory: HubSyncHistory;
   let testDir: string;
 
-  setup(async () => {
+  setup(() => {
     const globalStorageUri = vscode.Uri.file(path.join(__dirname, '../../test-workspace', '.test-storage'));
     testDir = globalStorageUri.fsPath;
 
@@ -277,7 +277,7 @@ suite('Hub Sync History', () => {
   });
 
   suite('Format History Entry', () => {
-    test('should format history entry with all change types', async () => {
+    test('should format history entry with all change types', () => {
       const entry: SyncHistoryEntry = {
         hubId: 'test-hub',
         profileId: 'test-profile',
@@ -301,7 +301,7 @@ suite('Hub Sync History', () => {
       assert.ok(formatted.includes('bundle-2 (1.0.0) — Added [NEW]'));
     });
 
-    test('should format history entry with timestamp', async () => {
+    test('should format history entry with timestamp', () => {
       const entry: SyncHistoryEntry = {
         hubId: 'test-hub',
         profileId: 'test-profile',
@@ -325,7 +325,7 @@ suite('Hub Sync History', () => {
       assert.ok(formatted.includes(new Date(entry.timestamp).toLocaleString()));
     });
 
-    test('should format history entry with status', async () => {
+    test('should format history entry with status', () => {
       const entry: SyncHistoryEntry = {
         hubId: 'test-hub',
         profileId: 'test-profile',
@@ -350,7 +350,7 @@ suite('Hub Sync History', () => {
   });
 
   suite('Create History QuickPick Items', () => {
-    test('should create QuickPick items for history entries', async () => {
+    test('should create QuickPick items for history entries', () => {
       const entry: SyncHistoryEntry = {
         hubId: 'test-hub',
         profileId: 'test-profile',
@@ -375,7 +375,7 @@ suite('Hub Sync History', () => {
       assert.strictEqual(items[0].entry, entry);
     });
 
-    test('should include change summary in QuickPick description', async () => {
+    test('should include change summary in QuickPick description', () => {
       const entry: SyncHistoryEntry = {
         hubId: 'test-hub',
         profileId: 'test-profile',
@@ -399,7 +399,7 @@ suite('Hub Sync History', () => {
       assert.ok(items[0].description?.includes('1 updated'));
     });
 
-    test('should format timestamps in QuickPick items', async () => {
+    test('should format timestamps in QuickPick items', () => {
       const entry: SyncHistoryEntry = {
         hubId: 'test-hub',
         profileId: 'test-profile',

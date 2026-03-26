@@ -78,162 +78,6 @@ export class AutoUpdateService {
   }
 
   /**
-   * Update a single bundle automatically with rollback on failure
-   * Prevents concurrent updates and shows notifications on completion
-   * @param options
-   */
-  async autoUpdateBundle(options: AutoUpdateOptions): Promise<void> {
-    this.validateUpdateOptions(options);
-
-    const { bundleId, targetVersion } = options;
-
-    this.ensureUpdateNotInProgress(bundleId);
-    this.activeUpdates.add(bundleId);
-
-    const previousVersion = await this.captureCurrentVersion(bundleId);
-
-    try {
-      this.logger.info(`Starting auto-update for bundle '${bundleId}' to version ${targetVersion}`);
-
-      await this.performUpdateWithVerification(bundleId, targetVersion);
-      await this.showSuccessNotification(bundleId, previousVersion, targetVersion);
-
-      this.logger.info(`Auto-update completed successfully for bundle '${bundleId}'`);
-    } catch (error) {
-      const errorObj = toError(error);
-      this.logger.error(`Auto-update failed for bundle '${bundleId}'`, errorObj);
-
-      await this.handleUpdateFailure(bundleId, errorObj.message, previousVersion);
-      throw errorObj;
-    } finally {
-      this.activeUpdates.delete(bundleId);
-    }
-  }
-
-  /**
-   * Update multiple bundles with controlled concurrency (batch size 3)
-   * Processes bundles in parallel batches and reports summary
-   * @param updates
-   */
-  async autoUpdateBundles(updates: UpdateCheckResult[]): Promise<void> {
-    // Input validation
-    if (!Array.isArray(updates)) {
-      throw new TypeError('Updates must be an array');
-    }
-    if (updates.length === 0) {
-      this.logger.info('No updates to process');
-      return;
-    }
-
-    this.logger.info(`Starting batch auto-update for ${updates.length} bundles`);
-
-    const successful: string[] = [];
-    const failed: { bundleId: string; error: string }[] = [];
-
-    // Filter to only auto-update enabled bundles
-    const toUpdate = updates.filter((u) => {
-      if (!u.autoUpdateEnabled) {
-        this.logger.debug(`Skipping bundle '${u.bundleId}' - auto-update not enabled`);
-        return false;
-      }
-      return true;
-    });
-
-    // CRITICAL: Process in batches for controlled concurrency
-    for (let i = 0; i < toUpdate.length; i += CONCURRENCY_CONSTANTS.BATCH_SIZE) {
-      const batch = toUpdate.slice(i, i + CONCURRENCY_CONSTANTS.BATCH_SIZE);
-
-      this.logger.debug(`Processing batch ${Math.floor(i / CONCURRENCY_CONSTANTS.BATCH_SIZE) + 1} with ${batch.length} bundles`);
-
-      const results = await Promise.allSettled(
-        batch.map((update) =>
-          this.autoUpdateBundle({
-            bundleId: update.bundleId,
-            targetVersion: update.latestVersion,
-            showProgress: false
-          })
-        )
-      );
-
-      results.forEach((result, index) => {
-        const update = batch[index];
-        if (result.status === 'fulfilled') {
-          successful.push(update.bundleId);
-        } else {
-          const errorObj = toError(result.reason);
-          failed.push({
-            bundleId: update.bundleId,
-            error: errorObj.message
-          });
-        }
-      });
-    }
-
-    // Show batch summary notification
-    if (successful.length > 0 || failed.length > 0) {
-      await this.bundleNotifications.showBatchUpdateSummary(successful, failed);
-    }
-
-    this.logger.info(
-      `Batch auto-update completed: ${successful.length} successful, ${failed.length} failed`
-    );
-  }
-
-  /**
-   * Check if auto-update is enabled for a bundle
-   * @param bundleId
-   */
-  async isAutoUpdateEnabled(bundleId: string): Promise<boolean> {
-    return await this.storage.getUpdatePreference(bundleId);
-  }
-
-  /**
-   * Get auto-update preferences for all bundles as a simple lookup map
-   *
-   * This is used by UI layers (tree view, marketplace) to avoid
-   * per-bundle storage I/O when rendering lists of bundles.
-   */
-  async getAllAutoUpdatePreferences(): Promise<Record<string, boolean>> {
-    const rawPrefs = await this.storage.getUpdatePreferences();
-    const result: Record<string, boolean> = {};
-
-    for (const [bundleId, pref] of Object.entries(rawPrefs)) {
-      result[bundleId] = !!pref.autoUpdate;
-    }
-
-    return result;
-  }
-
-  /**
-   * Enable or disable auto-update for a bundle
-   *
-   * ⚠️  WARNING: This method is a low-level storage update. To ensure UI components
-   * stay in sync, use RegistryManager.enableAutoUpdate() or disableAutoUpdate() instead.
-   * Direct calls bypass the event emission mechanism and may leave UI in inconsistent state.
-   * @param bundleId The bundle ID
-   * @param enabled Whether to enable auto-update
-   */
-  async setAutoUpdate(bundleId: string, enabled: boolean): Promise<void> {
-    this.logger.info(`Setting auto-update for bundle '${bundleId}' to ${enabled}`);
-    await this.storage.setUpdatePreference(bundleId, enabled);
-  }
-
-  /**
-   * Check if an update is currently in progress for a bundle
-   * @param bundleId
-   */
-  isUpdateInProgress(bundleId: string): boolean {
-    return this.activeUpdates.has(bundleId);
-  }
-
-  /**
-   * Get list of bundles currently being updated
-   */
-  getActiveUpdates(): string[] {
-    return Array.from(this.activeUpdates);
-  }
-
-  /**
    * Validate update options
    * @param options
    */
@@ -408,5 +252,161 @@ export class AutoUpdateService {
         errorObj
       );
     }
+  }
+
+  /**
+   * Update a single bundle automatically with rollback on failure
+   * Prevents concurrent updates and shows notifications on completion
+   * @param options
+   */
+  public async autoUpdateBundle(options: AutoUpdateOptions): Promise<void> {
+    this.validateUpdateOptions(options);
+
+    const { bundleId, targetVersion } = options;
+
+    this.ensureUpdateNotInProgress(bundleId);
+    this.activeUpdates.add(bundleId);
+
+    const previousVersion = await this.captureCurrentVersion(bundleId);
+
+    try {
+      this.logger.info(`Starting auto-update for bundle '${bundleId}' to version ${targetVersion}`);
+
+      await this.performUpdateWithVerification(bundleId, targetVersion);
+      await this.showSuccessNotification(bundleId, previousVersion, targetVersion);
+
+      this.logger.info(`Auto-update completed successfully for bundle '${bundleId}'`);
+    } catch (error) {
+      const errorObj = toError(error);
+      this.logger.error(`Auto-update failed for bundle '${bundleId}'`, errorObj);
+
+      await this.handleUpdateFailure(bundleId, errorObj.message, previousVersion);
+      throw errorObj;
+    } finally {
+      this.activeUpdates.delete(bundleId);
+    }
+  }
+
+  /**
+   * Update multiple bundles with controlled concurrency (batch size 3)
+   * Processes bundles in parallel batches and reports summary
+   * @param updates
+   */
+  public async autoUpdateBundles(updates: UpdateCheckResult[]): Promise<void> {
+    // Input validation
+    if (!Array.isArray(updates)) {
+      throw new TypeError('Updates must be an array');
+    }
+    if (updates.length === 0) {
+      this.logger.info('No updates to process');
+      return;
+    }
+
+    this.logger.info(`Starting batch auto-update for ${updates.length} bundles`);
+
+    const successful: string[] = [];
+    const failed: { bundleId: string; error: string }[] = [];
+
+    // Filter to only auto-update enabled bundles
+    const toUpdate = updates.filter((u) => {
+      if (!u.autoUpdateEnabled) {
+        this.logger.debug(`Skipping bundle '${u.bundleId}' - auto-update not enabled`);
+        return false;
+      }
+      return true;
+    });
+
+    // CRITICAL: Process in batches for controlled concurrency
+    for (let i = 0; i < toUpdate.length; i += CONCURRENCY_CONSTANTS.BATCH_SIZE) {
+      const batch = toUpdate.slice(i, i + CONCURRENCY_CONSTANTS.BATCH_SIZE);
+
+      this.logger.debug(`Processing batch ${Math.floor(i / CONCURRENCY_CONSTANTS.BATCH_SIZE) + 1} with ${batch.length} bundles`);
+
+      const results = await Promise.allSettled(
+        batch.map((update) =>
+          this.autoUpdateBundle({
+            bundleId: update.bundleId,
+            targetVersion: update.latestVersion,
+            showProgress: false
+          })
+        )
+      );
+
+      results.forEach((result, index) => {
+        const update = batch[index];
+        if (result.status === 'fulfilled') {
+          successful.push(update.bundleId);
+        } else {
+          const errorObj = toError(result.reason);
+          failed.push({
+            bundleId: update.bundleId,
+            error: errorObj.message
+          });
+        }
+      });
+    }
+
+    // Show batch summary notification
+    if (successful.length > 0 || failed.length > 0) {
+      await this.bundleNotifications.showBatchUpdateSummary(successful, failed);
+    }
+
+    this.logger.info(
+      `Batch auto-update completed: ${successful.length} successful, ${failed.length} failed`
+    );
+  }
+
+  /**
+   * Check if auto-update is enabled for a bundle
+   * @param bundleId
+   */
+  public async isAutoUpdateEnabled(bundleId: string): Promise<boolean> {
+    return await this.storage.getUpdatePreference(bundleId);
+  }
+
+  /**
+   * Get auto-update preferences for all bundles as a simple lookup map
+   *
+   * This is used by UI layers (tree view, marketplace) to avoid
+   * per-bundle storage I/O when rendering lists of bundles.
+   */
+  public async getAllAutoUpdatePreferences(): Promise<Record<string, boolean>> {
+    const rawPrefs = await this.storage.getUpdatePreferences();
+    const result: Record<string, boolean> = {};
+
+    for (const [bundleId, pref] of Object.entries(rawPrefs)) {
+      result[bundleId] = !!pref.autoUpdate;
+    }
+
+    return result;
+  }
+
+  /**
+   * Enable or disable auto-update for a bundle
+   *
+   * ⚠️  WARNING: This method is a low-level storage update. To ensure UI components
+   * stay in sync, use RegistryManager.enableAutoUpdate() or disableAutoUpdate() instead.
+   * Direct calls bypass the event emission mechanism and may leave UI in inconsistent state.
+   * @param bundleId The bundle ID
+   * @param enabled Whether to enable auto-update
+   */
+  public async setAutoUpdate(bundleId: string, enabled: boolean): Promise<void> {
+    this.logger.info(`Setting auto-update for bundle '${bundleId}' to ${enabled}`);
+    await this.storage.setUpdatePreference(bundleId, enabled);
+  }
+
+  /**
+   * Check if an update is currently in progress for a bundle
+   * @param bundleId
+   */
+  public isUpdateInProgress(bundleId: string): boolean {
+    return this.activeUpdates.has(bundleId);
+  }
+
+  /**
+   * Get list of bundles currently being updated
+   */
+  public getActiveUpdates(): string[] {
+    return Array.from(this.activeUpdates);
   }
 }

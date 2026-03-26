@@ -28,7 +28,7 @@ import {
 
 // Mock SchemaValidator for unit tests
 class MockSchemaValidator {
-  async validate(data: any, schemaPath: string): Promise<ValidationResult> {
+  public async validate(_data: any, _schemaPath: string): Promise<ValidationResult> {
     return {
       valid: true,
       errors: [],
@@ -43,16 +43,16 @@ class MockRegistryManager {
   public addSourceCalls: RegistrySource[] = [];
   public updateSourceCalls: { id: string; updates: Partial<RegistrySource> }[] = [];
 
-  async listSources(): Promise<RegistrySource[]> {
+  public async listSources(): Promise<RegistrySource[]> {
     return [...this.sources];
   }
 
-  async addSource(source: RegistrySource): Promise<void> {
+  public async addSource(source: RegistrySource): Promise<void> {
     this.sources.push(source);
     this.addSourceCalls.push(source);
   }
 
-  async updateSource(id: string, updates: Partial<RegistrySource>): Promise<void> {
+  public async updateSource(id: string, updates: Partial<RegistrySource>): Promise<void> {
     const index = this.sources.findIndex((s) => s.id === id);
     if (index !== -1) {
       this.sources[index] = { ...this.sources[index], ...updates };
@@ -60,17 +60,17 @@ class MockRegistryManager {
     }
   }
 
-  reset(): void {
+  public reset(): void {
     this.sources = [];
     this.addSourceCalls = [];
     this.updateSourceCalls = [];
   }
 
-  getSourceCount(): number {
+  public getSourceCount(): number {
     return this.sources.length;
   }
 
-  hasSource(id: string): boolean {
+  public hasSource(id: string): boolean {
     return this.sources.some((s) => s.id === id);
   }
 }
@@ -117,7 +117,7 @@ suite('Hub Source Loading', () => {
         location: fixturePath
       };
 
-      const hubId = await hubManager.importHub(ref, 'test-hub');
+      await hubManager.importHub(ref, 'test-hub');
 
       // Verify sources were loaded
       const sources = await mockRegistry.listSources();
@@ -175,7 +175,6 @@ suite('Hub Source Loading', () => {
       assert.strictEqual(sourcesAfterFirst.length, 2, 'Should have 2 sources after first import');
 
       // Reset the mock to track only the second import
-      const addCallsBefore = mockRegistry.addSourceCalls.length;
       mockRegistry.addSourceCalls = [];
       mockRegistry.updateSourceCalls = [];
 

@@ -51,7 +51,7 @@ suite('UpdateChecker Property Tests', () => {
       get: sandbox.stub().callsFake((key: string, defaultValue?: any) => {
         return storage.get(key) ?? defaultValue;
       }),
-      update: sandbox.stub().callsFake(async (key: string, value: any) => {
+      update: sandbox.stub().callsFake((key: string, value: any) => {
         if (value === undefined) {
           storage.delete(key);
         } else {
@@ -253,7 +253,7 @@ suite('UpdateChecker Property Tests', () => {
             get: testSandbox.stub().callsFake((key: string, defaultValue?: any) => {
               return storage.get(key) ?? defaultValue;
             }),
-            update: testSandbox.stub().callsFake(async (key: string, value: any) => {
+            update: testSandbox.stub().callsFake((key: string, value: any) => {
               if (value === undefined) {
                 storage.delete(key);
               } else {
@@ -391,7 +391,7 @@ suite('UpdateChecker Property Tests', () => {
             get: testSandbox.stub().callsFake((key: string, defaultValue?: any) => {
               return storage.get(key) ?? defaultValue;
             }),
-            update: testSandbox.stub().callsFake(async (key: string, value: any) => {
+            update: testSandbox.stub().callsFake((key: string, value: any) => {
               if (value === undefined) {
                 storage.delete(key);
               } else {
@@ -570,7 +570,7 @@ suite('UpdateChecker Property Tests', () => {
             get: testSandbox.stub().callsFake((key: string, defaultValue?: any) => {
               return storage.get(key) ?? defaultValue;
             }),
-            update: testSandbox.stub().callsFake(async (key: string, value: any) => {
+            update: testSandbox.stub().callsFake((key: string, value: any) => {
               if (value === undefined) {
                 storage.delete(key);
               } else {

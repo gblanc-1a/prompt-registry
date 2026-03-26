@@ -14,6 +14,7 @@ interface CollectionTemplate {
   }[];
   display: {
     ordering: string;
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API response shape
     show_badge: boolean;
   };
 }
@@ -31,7 +32,41 @@ export class CreateCollectionCommand {
     this.outputChannel = vscode.window.createOutputChannel('Collection Creator');
   }
 
-  async execute(): Promise<void> {
+  private generateDefaultName(id: string): string {
+    return id.split('-')
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(' ') + ' Collection';
+  }
+
+  private generateTemplate(
+    id: string,
+    name: string,
+    description: string,
+    tags: string[]
+  ): CollectionTemplate {
+    return {
+      id,
+      name,
+      description,
+      tags,
+      items: [
+        {
+          path: `prompts/${id}-example.prompt.md`,
+          kind: 'prompt'
+        }
+      ],
+      display: {
+        ordering: 'manual',
+        show_badge: true
+      }
+    };
+  }
+
+  private log(message: string): void {
+    this.outputChannel.appendLine(message);
+  }
+
+  public async execute(): Promise<void> {
     const workspaceFolders = vscode.workspace.workspaceFolders;
 
     if (!workspaceFolders || workspaceFolders.length === 0) {
@@ -172,41 +207,7 @@ export class CreateCollectionCommand {
     }
   }
 
-  private generateDefaultName(id: string): string {
-    return id.split('-')
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ') + ' Collection';
-  }
-
-  private generateTemplate(
-    id: string,
-    name: string,
-    description: string,
-    tags: string[]
-  ): CollectionTemplate {
-    return {
-      id,
-      name,
-      description,
-      tags,
-      items: [
-        {
-          path: `prompts/${id}-example.prompt.md`,
-          kind: 'prompt'
-        }
-      ],
-      display: {
-        ordering: 'manual',
-        show_badge: true
-      }
-    };
-  }
-
-  private log(message: string): void {
-    this.outputChannel.appendLine(message);
-  }
-
-  dispose(): void {
+  public dispose(): void {
     this.outputChannel.dispose();
   }
 }

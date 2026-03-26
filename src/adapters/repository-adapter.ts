@@ -82,32 +82,9 @@ export interface IRepositoryAdapter {
  * Base abstract class with common adapter functionality
  */
 export abstract class RepositoryAdapter implements IRepositoryAdapter {
-  abstract readonly type: string;
+  public abstract readonly type: string;
 
   constructor(public readonly source: RegistrySource) {}
-
-  abstract fetchBundles(): Promise<Bundle[]>;
-  abstract downloadBundle(bundle: Bundle): Promise<Buffer>;
-  abstract fetchMetadata(): Promise<SourceMetadata>;
-  abstract validate(): Promise<ValidationResult>;
-  abstract getManifestUrl(bundleId: string, version?: string): string;
-  abstract getDownloadUrl(bundleId: string, version?: string): string;
-
-  /**
-   * Force re-authentication
-   * Default implementation does nothing
-   */
-  async forceAuthentication(): Promise<void> {
-    // Default implementation does nothing
-    return Promise.resolve();
-  }
-
-  /**
-   * Check if source requires authentication
-   */
-  requiresAuthentication(): boolean {
-    return this.source.private === true;
-  }
 
   /**
    * Get authentication token from source config
@@ -162,6 +139,29 @@ export abstract class RepositoryAdapter implements IRepositoryAdapter {
       return false;
     }
   }
+
+  public abstract fetchBundles(): Promise<Bundle[]>;
+  public abstract downloadBundle(bundle: Bundle): Promise<Buffer>;
+  public abstract fetchMetadata(): Promise<SourceMetadata>;
+  public abstract validate(): Promise<ValidationResult>;
+  public abstract getManifestUrl(bundleId: string, version?: string): string;
+  public abstract getDownloadUrl(bundleId: string, version?: string): string;
+
+  /**
+   * Force re-authentication
+   * Default implementation does nothing
+   */
+  public async forceAuthentication(): Promise<void> {
+    // Default implementation does nothing
+    return Promise.resolve();
+  }
+
+  /**
+   * Check if source requires authentication
+   */
+  public requiresAuthentication(): boolean {
+    return this.source.private === true;
+  }
 }
 
 /**
@@ -180,7 +180,7 @@ export class RepositoryAdapterFactory {
    * @param type Source type
    * @param adapterClass Adapter class constructor
    */
-  static register(type: string, adapterClass: AdapterConstructor): void {
+  public static register(type: string, adapterClass: AdapterConstructor): void {
     this.adapters.set(type, adapterClass);
   }
 
@@ -189,7 +189,8 @@ export class RepositoryAdapterFactory {
    * @param source Registry source
    * @returns Repository adapter instance
    */
-  static create(source: RegistrySource): IRepositoryAdapter {
+  public static create(source: RegistrySource): IRepositoryAdapter {
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
     const AdapterClass = this.adapters.get(source.type);
 
     if (!AdapterClass) {
@@ -204,7 +205,7 @@ export class RepositoryAdapterFactory {
    * @param type Source type
    * @returns True if adapter exists
    */
-  static hasAdapter(type: string): boolean {
+  public static hasAdapter(type: string): boolean {
     return this.adapters.has(type);
   }
 
@@ -212,7 +213,7 @@ export class RepositoryAdapterFactory {
    * Get all registered adapter types
    * @returns Array of adapter types
    */
-  static getRegisteredTypes(): string[] {
+  public static getRegisteredTypes(): string[] {
     return Array.from(this.adapters.keys());
   }
 }

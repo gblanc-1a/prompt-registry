@@ -48,7 +48,7 @@ interface HttpRegistryIndex {
  * Expects an index.json file at the root URL listing all available bundles
  */
 export class HttpAdapter extends RepositoryAdapter {
-  readonly type = 'http';
+  public readonly type = 'http';
 
   constructor(source: RegistrySource) {
     super(source);
@@ -169,17 +169,32 @@ export class HttpAdapter extends RepositoryAdapter {
   }
 
   /**
+   * Resolve relative URLs to absolute
+   * @param url
+   */
+  private resolveUrl(url: string): string {
+    // If already absolute, return as-is
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+
+    // Resolve relative URL based on source URL
+    const baseUrl = this.source.url.replace(/\/[^/]*$/, ''); // Remove last segment
+    return `${baseUrl}/${url.replace(/^\//, '')}`;
+  }
+
+  /**
    * Check if URL is valid HTTP/HTTPS URL
    * @param url
    */
-  isValidUrl(url: string): boolean {
+  public isValidUrl(url: string): boolean {
     return url.startsWith('http://') || url.startsWith('https://');
   }
 
   /**
    * Fetch repository metadata from index.json
    */
-  async fetchMetadata(): Promise<SourceMetadata> {
+  public async fetchMetadata(): Promise<SourceMetadata> {
     try {
       const indexUrl = this.getIndexUrl();
       const index = await this.makeRequest(indexUrl) as HttpRegistryIndex;
@@ -199,7 +214,7 @@ export class HttpAdapter extends RepositoryAdapter {
   /**
    * Fetch bundles from index.json
    */
-  async fetchBundles(): Promise<Bundle[]> {
+  public async fetchBundles(): Promise<Bundle[]> {
     try {
       const indexUrl = this.getIndexUrl();
       const index = await this.makeRequest(indexUrl) as HttpRegistryIndex;
@@ -235,24 +250,9 @@ export class HttpAdapter extends RepositoryAdapter {
   }
 
   /**
-   * Resolve relative URLs to absolute
-   * @param url
-   */
-  private resolveUrl(url: string): string {
-    // If already absolute, return as-is
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      return url;
-    }
-
-    // Resolve relative URL based on source URL
-    const baseUrl = this.source.url.replace(/\/[^/]*$/, ''); // Remove last segment
-    return `${baseUrl}/${url.replace(/^\//, '')}`;
-  }
-
-  /**
    * Validate HTTP registry
    */
-  async validate(): Promise<ValidationResult> {
+  public async validate(): Promise<ValidationResult> {
     try {
       const indexUrl = this.getIndexUrl();
       await this.makeRequest(indexUrl);
@@ -276,7 +276,7 @@ export class HttpAdapter extends RepositoryAdapter {
    * @param bundleId
    * @param version
    */
-  getManifestUrl(bundleId: string, version?: string): string {
+  public getManifestUrl(bundleId: string, version?: string): string {
     // Try to fetch from index to get the manifest URL
     const baseUrl = this.source.url.replace(/\/$/, '');
     return `${baseUrl}/${bundleId}/${version || 'latest'}/deployment-manifest.yml`;
@@ -287,7 +287,7 @@ export class HttpAdapter extends RepositoryAdapter {
    * @param bundleId
    * @param version
    */
-  getDownloadUrl(bundleId: string, version?: string): string {
+  public getDownloadUrl(bundleId: string, version?: string): string {
     const baseUrl = this.source.url.replace(/\/$/, '');
     return `${baseUrl}/${bundleId}/${version || 'latest'}/bundle.zip`;
   }
@@ -296,7 +296,7 @@ export class HttpAdapter extends RepositoryAdapter {
    * Download a bundle
    * @param bundle
    */
-  async downloadBundle(bundle: Bundle): Promise<Buffer> {
+  public async downloadBundle(bundle: Bundle): Promise<Buffer> {
     try {
       return await this.downloadBinary(bundle.downloadUrl);
     } catch (error) {

@@ -37,30 +37,26 @@ const execAsync = promisify(exec);
  * GitHub API response types
  */
 interface GitHubRelease {
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API response shape
   tag_name: string;
   name: string;
   body: string;
   assets: {
     name: string;
+    // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API response shape
     browser_download_url: string;
     url: string; // API endpoint for downloading the asset
     size: number;
   }[];
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API response shape
   published_at: string;
-}
-
-interface GitHubContent {
-  name: string;
-  path: string;
-  download_url: string;
-  type: string;
 }
 
 /**
  * GitHub repository adapter implementation
  */
 export class GitHubAdapter extends RepositoryAdapter {
-  readonly type = 'github';
+  public readonly type = 'github';
   private readonly apiBase = 'https://api.github.com';
   private authToken: string | undefined;
   private authMethod: 'vscode' | 'gh-cli' | 'explicit' | 'none' = 'none';
@@ -351,9 +347,10 @@ export class GitHubAdapter extends RepositoryAdapter {
             this.logger.error(`[GitHubAdapter] Response: ${data.substring(0, 500)}`);
 
             // Validate response format before processing error
-            const validation = this.validateResponse(res, data);
-            if (!validation.isValid) {
-              this.logger.error(`[GitHubAdapter] ${validation.error}`);
+
+            const { isValid, error } = this.validateResponse(res, data);
+            if (!isValid) {
+              this.logger.error(`[GitHubAdapter] ${error}`);
             }
 
             // Check if this is an authentication error that should trigger retry
@@ -381,8 +378,8 @@ export class GitHubAdapter extends RepositoryAdapter {
             let errorMsg = `GitHub API error: ${res.statusCode} ${res.statusMessage}`;
 
             // Include HTML error information if present
-            if (!validation.isValid && validation.error) {
-              errorMsg = validation.error;
+            if (!isValid && error) {
+              errorMsg = error;
             } else {
               switch (res.statusCode) {
                 case 404: {
@@ -530,59 +527,6 @@ export class GitHubAdapter extends RepositoryAdapter {
   }
 
   /**
-   * Fetch bundles from GitHub releases
-   * Scans all releases in the repository and creates Bundle objects for those
-   * that contain both a deployment manifest and a bundle archive.
-   *
-   * Uses parallel manifest downloads with caching for improved performance.
-   * @returns Promise resolving to array of Bundle objects
-   * @throws Error if GitHub API request fails or authentication issues occur
-   */
-  async fetchBundles(): Promise<Bundle[]> {
-    const { owner, repo } = this.parseGitHubUrl();
-    const url = `${this.apiBase}/repos/${owner}/${repo}/releases`;
-
-    try {
-      const releases: GitHubRelease[] = await this.makeRequest(url);
-
-      // Filter releases that have both manifest and bundle assets
-      const validReleases = releases.filter((release) => {
-        const hasManifest = release.assets.some((a) =>
-          a.name === 'deployment-manifest.yml'
-          || a.name === 'deployment-manifest.yaml'
-          || a.name === 'deployment-manifest.json'
-        );
-        const hasBundle = release.assets.some((a) =>
-          a.name.endsWith('.zip')
-          || a.name.endsWith('.tar.gz')
-        );
-        return hasManifest && hasBundle;
-      });
-
-      // Download manifests in parallel with concurrency limit
-      const concurrency = CONCURRENCY_CONSTANTS.MANIFEST_DOWNLOAD_CONCURRENCY;
-      const bundles: Bundle[] = [];
-
-      for (let i = 0; i < validReleases.length; i += concurrency) {
-        const batch = validReleases.slice(i, i + concurrency);
-        const batchResults = await Promise.allSettled(
-          batch.map((release) => this.processSingleRelease(release, owner, repo))
-        );
-
-        for (const result of batchResults) {
-          if (result.status === 'fulfilled' && result.value) {
-            bundles.push(result.value);
-          }
-        }
-      }
-
-      return bundles;
-    } catch (error) {
-      throw new Error(`Failed to fetch bundles from GitHub: ${error}`);
-    }
-  }
-
-  /**
    * Process a single release to create a Bundle object.
    * Downloads and parses the manifest, using cache to avoid duplicate downloads.
    * @param release - GitHub release object
@@ -682,8 +626,8 @@ export class GitHubAdapter extends RepositoryAdapter {
       manifest = JSON.parse(manifestText);
     } else {
       // Assume YAML for .yml or .yaml
-      const yaml = require('js-yaml');
-      manifest = yaml.load(manifestText);
+      const yaml = await import('js-yaml');
+      manifest = yaml.default.load(manifestText);
     }
 
     // Cache the parsed manifest
@@ -691,137 +635,6 @@ export class GitHubAdapter extends RepositoryAdapter {
     this.logger.debug(`[GitHubAdapter] Cached manifest for ${url}`);
 
     return manifest;
-  }
-
-  /**
-   * Clear the manifest cache.
-   * Should be called when sources are re-synced to ensure fresh data.
-   */
-  clearManifestCache(): void {
-    this.manifestCache.clear();
-    this.logger.debug('[GitHubAdapter] Manifest cache cleared');
-  }
-
-  /**
-   * Download a bundle from GitHub release assets
-   * @param bundle - Bundle object containing downloadUrl
-   * @returns Promise resolving to Buffer containing bundle ZIP file
-   * @throws Error if download fails or network issues occur
-   */
-  async downloadBundle(bundle: Bundle): Promise<Buffer> {
-    try {
-      return await this.downloadFile(bundle.downloadUrl);
-    } catch (error) {
-      throw new Error(`Failed to download bundle: ${error}`);
-    }
-  }
-
-  /**
-   * Fetch repository metadata from GitHub API
-   * Retrieves repository information including name, description, and release count.
-   * @returns Promise resolving to SourceMetadata object
-   * @throws Error if repository not found or API request fails
-   */
-  async fetchMetadata(): Promise<SourceMetadata> {
-    const { owner, repo } = this.parseGitHubUrl();
-    const url = `${this.apiBase}/repos/${owner}/${repo}`;
-
-    try {
-      const repoData: any = await this.makeRequest(url);
-      const releasesUrl = `${this.apiBase}/repos/${owner}/${repo}/releases`;
-      const releases: GitHubRelease[] = await this.makeRequest(releasesUrl);
-
-      return {
-        name: repoData.name,
-        description: repoData.description || '',
-        bundleCount: releases.length,
-        lastUpdated: repoData.updated_at,
-        version: '1.0.0' // Could extract from latest release
-      };
-    } catch (error) {
-      throw new Error(`Failed to fetch GitHub metadata: ${error}`);
-    }
-  }
-
-  /**
-   * Validate GitHub repository accessibility
-   * Checks if the repository exists and is accessible with current authentication.
-   * @returns Promise resolving to ValidationResult with status and any errors/warnings
-   */
-  async validate(): Promise<ValidationResult> {
-    try {
-      const { owner, repo } = this.parseGitHubUrl();
-      const url = `${this.apiBase}/repos/${owner}/${repo}`;
-
-      await this.makeRequest(url);
-
-      // Try to fetch releases
-      const releasesUrl = `${this.apiBase}/repos/${owner}/${repo}/releases`;
-      const releases: GitHubRelease[] = await this.makeRequest(releasesUrl);
-
-      return {
-        valid: true,
-        errors: [],
-        warnings: releases.length === 0 ? ['No releases found in repository'] : [],
-        bundlesFound: releases.length
-      };
-    } catch (error) {
-      return {
-        valid: false,
-        errors: [`GitHub validation failed: ${error}`],
-        warnings: [],
-        bundlesFound: 0
-      };
-    }
-  }
-
-  /**
-   * Get manifest URL for a bundle
-   * Constructs the GitHub release asset URL for the deployment manifest.
-   * @param bundleId - Bundle identifier (not used, URL based on repo)
-   * @param version - Optional version tag (defaults to 'latest')
-   * @returns URL string pointing to deployment-manifest.json in release assets
-   */
-  getManifestUrl(bundleId: string, version?: string): string {
-    const { owner, repo } = this.parseGitHubUrl();
-    const tag = version ? `v${version}` : 'latest';
-    return `https://github.com/${owner}/${repo}/releases/download/${tag}/deployment-manifest.json`;
-  }
-
-  /**
-   * Get download URL for a bundle
-   * Constructs the GitHub release asset URL for the bundle ZIP file.
-   * @param bundleId - Bundle identifier (not used, URL based on repo)
-   * @param version - Optional version tag (defaults to 'latest')
-   * @returns URL string pointing to bundle.zip in release assets
-   */
-  getDownloadUrl(bundleId: string, version?: string): string {
-    const { owner, repo } = this.parseGitHubUrl();
-    const tag = version ? `v${version}` : 'latest';
-    return `https://github.com/${owner}/${repo}/releases/download/${tag}/bundle.zip`;
-  }
-
-  /**
-   * Get the authentication method currently in use
-   */
-  public getAuthenticationMethod(): string {
-    return this.authMethod;
-  }
-
-  /**
-   * Invalidate the cached authentication token
-   * This forces the adapter to re-authenticate on the next request
-   * @param reason - Optional reason for invalidation (e.g., "401 Unauthorized")
-   */
-  public invalidateAuthCache(reason?: string): void {
-    const previousMethod = this.authMethod;
-    this.logger.info(`[GitHubAdapter] Invalidating authentication cache${reason ? `: ${reason}` : ''}`);
-    if (previousMethod !== 'none') {
-      this.logger.debug(`[GitHubAdapter] Previous auth method: ${previousMethod}`);
-      this.attemptedMethods.add(previousMethod);
-    }
-    this.authToken = undefined;
-    this.authMethod = 'none';
   }
 
   /**
@@ -881,5 +694,189 @@ export class GitHubAdapter extends RepositoryAdapter {
     }
 
     return tags;
+  }
+
+  /**
+   * Fetch bundles from GitHub releases
+   * Scans all releases in the repository and creates Bundle objects for those
+   * that contain both a deployment manifest and a bundle archive.
+   *
+   * Uses parallel manifest downloads with caching for improved performance.
+   * @returns Promise resolving to array of Bundle objects
+   * @throws Error if GitHub API request fails or authentication issues occur
+   */
+  public async fetchBundles(): Promise<Bundle[]> {
+    const { owner, repo } = this.parseGitHubUrl();
+    const url = `${this.apiBase}/repos/${owner}/${repo}/releases`;
+
+    try {
+      const releases: GitHubRelease[] = await this.makeRequest(url);
+
+      // Filter releases that have both manifest and bundle assets
+      const validReleases = releases.filter((release) => {
+        const hasManifest = release.assets.some((a) =>
+          a.name === 'deployment-manifest.yml'
+          || a.name === 'deployment-manifest.yaml'
+          || a.name === 'deployment-manifest.json'
+        );
+        const hasBundle = release.assets.some((a) =>
+          a.name.endsWith('.zip')
+          || a.name.endsWith('.tar.gz')
+        );
+        return hasManifest && hasBundle;
+      });
+
+      // Download manifests in parallel with concurrency limit
+      const concurrency = CONCURRENCY_CONSTANTS.MANIFEST_DOWNLOAD_CONCURRENCY;
+      const bundles: Bundle[] = [];
+
+      for (let i = 0; i < validReleases.length; i += concurrency) {
+        const batch = validReleases.slice(i, i + concurrency);
+        const batchResults = await Promise.allSettled(
+          batch.map((release) => this.processSingleRelease(release, owner, repo))
+        );
+
+        for (const result of batchResults) {
+          if (result.status === 'fulfilled' && result.value) {
+            bundles.push(result.value);
+          }
+        }
+      }
+
+      return bundles;
+    } catch (error) {
+      throw new Error(`Failed to fetch bundles from GitHub: ${error}`);
+    }
+  }
+
+  /**
+   * Clear the manifest cache.
+   * Should be called when sources are re-synced to ensure fresh data.
+   */
+  public clearManifestCache(): void {
+    this.manifestCache.clear();
+    this.logger.debug('[GitHubAdapter] Manifest cache cleared');
+  }
+
+  /**
+   * Download a bundle from GitHub release assets
+   * @param bundle - Bundle object containing downloadUrl
+   * @returns Promise resolving to Buffer containing bundle ZIP file
+   * @throws Error if download fails or network issues occur
+   */
+  public async downloadBundle(bundle: Bundle): Promise<Buffer> {
+    try {
+      return await this.downloadFile(bundle.downloadUrl);
+    } catch (error) {
+      throw new Error(`Failed to download bundle: ${error}`);
+    }
+  }
+
+  /**
+   * Fetch repository metadata from GitHub API
+   * Retrieves repository information including name, description, and release count.
+   * @returns Promise resolving to SourceMetadata object
+   * @throws Error if repository not found or API request fails
+   */
+  public async fetchMetadata(): Promise<SourceMetadata> {
+    const { owner, repo } = this.parseGitHubUrl();
+    const url = `${this.apiBase}/repos/${owner}/${repo}`;
+
+    try {
+      const repoData: any = await this.makeRequest(url);
+      const releasesUrl = `${this.apiBase}/repos/${owner}/${repo}/releases`;
+      const releases: GitHubRelease[] = await this.makeRequest(releasesUrl);
+
+      return {
+        name: repoData.name,
+        description: repoData.description || '',
+        bundleCount: releases.length,
+        lastUpdated: repoData.updated_at,
+        version: '1.0.0' // Could extract from latest release
+      };
+    } catch (error) {
+      throw new Error(`Failed to fetch GitHub metadata: ${error}`);
+    }
+  }
+
+  /**
+   * Validate GitHub repository accessibility
+   * Checks if the repository exists and is accessible with current authentication.
+   * @returns Promise resolving to ValidationResult with status and any errors/warnings
+   */
+  public async validate(): Promise<ValidationResult> {
+    try {
+      const { owner, repo } = this.parseGitHubUrl();
+      const url = `${this.apiBase}/repos/${owner}/${repo}`;
+
+      await this.makeRequest(url);
+
+      // Try to fetch releases
+      const releasesUrl = `${this.apiBase}/repos/${owner}/${repo}/releases`;
+      const releases: GitHubRelease[] = await this.makeRequest(releasesUrl);
+
+      return {
+        valid: true,
+        errors: [],
+        warnings: releases.length === 0 ? ['No releases found in repository'] : [],
+        bundlesFound: releases.length
+      };
+    } catch (error) {
+      return {
+        valid: false,
+        errors: [`GitHub validation failed: ${error}`],
+        warnings: [],
+        bundlesFound: 0
+      };
+    }
+  }
+
+  /**
+   * Get manifest URL for a bundle
+   * Constructs the GitHub release asset URL for the deployment manifest.
+   * @param bundleId - Bundle identifier (not used, URL based on repo)
+   * @param version - Optional version tag (defaults to 'latest')
+   * @returns URL string pointing to deployment-manifest.json in release assets
+   */
+  public getManifestUrl(bundleId: string, version?: string): string {
+    const { owner, repo } = this.parseGitHubUrl();
+    const tag = version ? `v${version}` : 'latest';
+    return `https://github.com/${owner}/${repo}/releases/download/${tag}/deployment-manifest.json`;
+  }
+
+  /**
+   * Get download URL for a bundle
+   * Constructs the GitHub release asset URL for the bundle ZIP file.
+   * @param bundleId - Bundle identifier (not used, URL based on repo)
+   * @param version - Optional version tag (defaults to 'latest')
+   * @returns URL string pointing to bundle.zip in release assets
+   */
+  public getDownloadUrl(bundleId: string, version?: string): string {
+    const { owner, repo } = this.parseGitHubUrl();
+    const tag = version ? `v${version}` : 'latest';
+    return `https://github.com/${owner}/${repo}/releases/download/${tag}/bundle.zip`;
+  }
+
+  /**
+   * Get the authentication method currently in use
+   */
+  public getAuthenticationMethod(): string {
+    return this.authMethod;
+  }
+
+  /**
+   * Invalidate the cached authentication token
+   * This forces the adapter to re-authenticate on the next request
+   * @param reason - Optional reason for invalidation (e.g., "401 Unauthorized")
+   */
+  public invalidateAuthCache(reason?: string): void {
+    const previousMethod = this.authMethod;
+    this.logger.info(`[GitHubAdapter] Invalidating authentication cache${reason ? `: ${reason}` : ''}`);
+    if (previousMethod !== 'none') {
+      this.logger.debug(`[GitHubAdapter] Previous auth method: ${previousMethod}`);
+      this.attemptedMethods.add(previousMethod);
+    }
+    this.authToken = undefined;
+    this.authMethod = 'none';
   }
 }

@@ -296,15 +296,6 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
       // Create a stale RegistryStorage record for repository scope
       // This simulates a scenario where RegistryStorage has old data
       const staleBundleId = 'stale-bundle-v1.0.0';
-      const staleRecord = {
-        bundleId: staleBundleId,
-        version: '1.0.0',
-        sourceId: 'stale-source',
-        sourceType: 'github',
-        installedAt: new Date().toISOString(),
-        scope: 'repository' as const,
-        installPath: path.join(workspaceRoot, '.github')
-      };
 
       // Note: RegistryStorage.getInstalledBundles('repository') returns empty array by design
       // This test verifies that listInstalledBundles queries the lockfile, not RegistryStorage
@@ -682,7 +673,7 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
         manifestId: 'bundle-1',
         baseVersion: '1.0.0'
       };
-      const { sourceId: sourceId1, bundle: bundle1 } = await setupSourceWithCustomConfig(
+      const { bundle: bundle1 } = await setupSourceWithCustomConfig(
         deps, testId, 'partial-source-1', config1, 'bundle1'
       );
       await installBundleOrSkip(this, bundle1.id, { scope: 'repository', commitMode: 'commit', version: '1.0.0' });
@@ -817,7 +808,7 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
       assert.strictEqual(installedBundles[0].scope, 'repository', 'Scope should be repository');
     });
 
-    test('Requirement 2.2, 2.3: Same source URL always produces same sourceId (deterministic)', async function () {
+    test('Requirement 2.2, 2.3: Same source URL always produces same sourceId (deterministic)', function () {
       this.timeout(30_000);
 
       const sourceUrl = 'https://github.com/owner/repo';
@@ -833,7 +824,7 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
       assert.strictEqual(sourceId2, sourceId3, 'SourceId should be deterministic (2 vs 3)');
     });
 
-    test('Requirement 2.3: SourceId is URL-normalized (case-insensitive, protocol-agnostic)', async function () {
+    test('Requirement 2.3: SourceId is URL-normalized (case-insensitive, protocol-agnostic)', function () {
       this.timeout(30_000);
 
       const sourceType = 'github';
@@ -917,7 +908,7 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
       assert.strictEqual(installedBundles[0].sourceType, 'github', 'SourceType should match');
     });
 
-    test('Requirement 2.5: Different source types with same URL produce different sourceIds', async function () {
+    test('Requirement 2.5: Different source types with same URL produce different sourceIds', function () {
       this.timeout(30_000);
 
       const url = 'https://example.com/repo';

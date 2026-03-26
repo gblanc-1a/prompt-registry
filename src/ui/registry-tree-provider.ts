@@ -270,7 +270,7 @@ export class RegistryTreeItem extends vscode.TreeItem {
  */
 export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTreeItem> {
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<RegistryTreeItem | undefined | null>();
-  readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+  public readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
   private readonly logger: Logger;
   private readonly availableUpdates: Map<string, UpdateCheckResult> = new Map();
@@ -321,22 +321,6 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
   }
 
   /**
-   * Toggle view mode between all hubs and favorites
-   */
-  toggleViewMode(): void {
-    this.viewMode = this.viewMode === 'all' ? 'favorites' : 'all';
-    vscode.commands.executeCommand('setContext', 'promptRegistry.favoritesViewActive', this.viewMode === 'favorites');
-    this.refresh();
-  }
-
-  /**
-   * Refresh tree view
-   */
-  refresh(): void {
-    this._onDidChangeTreeData.fire(undefined);
-  }
-
-  /**
    * Handle source synced event with debouncing
    * Debounces refresh calls to prevent excessive updates when multiple sources sync
    * @param event
@@ -356,40 +340,6 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
       this.logger.debug('Refreshing tree view after source sync');
       this.refresh();
     }, UI_CONSTANTS.SOURCE_SYNC_DEBOUNCE_MS);
-  }
-
-  /**
-   * Dispose of resources
-   */
-  dispose(): void {
-    // Clear debounce timer
-    if (this.sourceSyncDebounceTimer) {
-      clearTimeout(this.sourceSyncDebounceTimer);
-    }
-
-    // Dispose all event listeners
-    this.disposables.forEach((d) => d.dispose());
-    this.disposables = [];
-  }
-
-  /**
-   * Update tree view when updates are detected
-   * Stores update information and refreshes the tree
-   * @param updates
-   */
-  onUpdatesDetected(updates: UpdateCheckResult[]): void {
-    this.logger.debug(`Updates detected for ${updates.length} bundles`);
-
-    // Clear existing updates
-    this.availableUpdates.clear();
-
-    // Store new updates
-    for (const update of updates) {
-      this.availableUpdates.set(update.bundleId, update);
-    }
-
-    // Refresh tree to show update indicators
-    this.refresh();
   }
 
   /**
@@ -488,95 +438,6 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
     }
 
     return `${baseContextValue}_${scope}`;
-  }
-
-  /**
-   * Get tree item
-   * @param element
-   */
-  getTreeItem(element: RegistryTreeItem): vscode.TreeItem {
-    return element;
-  }
-
-  /**
-   * Get children for tree item
-   * @param element
-   */
-  async getChildren(element?: RegistryTreeItem): Promise<RegistryTreeItem[]> {
-    if (!element) {
-      // Root level items
-      return this.getRootItems();
-    }
-
-    // Get children based on parent type
-    switch (element.type) {
-      case TreeItemType.PROFILES_ROOT: {
-        return this.getProfileItems();
-      }
-
-      case TreeItemType.HUBS_ROOT: {
-        return this.getHubsItems();
-      }
-
-      case TreeItemType.FAVORITES_ROOT: {
-        return this.getFavoritesItems();
-      }
-
-      case TreeItemType.ACTIVE_PROFILE_SECTION: {
-        return this.getActiveProfileItems();
-      }
-
-      case TreeItemType.HUB: {
-        if (this.viewMode === 'favorites') {
-          // In favorites view, HUB item data contains pre-filtered profiles
-          // We need to organize them. If element.data is the Hub object, we need to fetch favorites.
-          const hub = element.data;
-          const profiles = await this.hubManager.listProfilesFromHub(hub.id);
-          const favorites = await this.hubManager.getFavoriteProfiles();
-          const hubFavorites = favorites[hub.id] || [];
-          const favoriteProfiles = profiles.filter((p) => hubFavorites.includes(p.id));
-          return this.organizeProfiles(hub.id, favoriteProfiles, [], hubFavorites);
-        }
-        return this.getHubChildren(element.data);
-      }
-
-      case TreeItemType.PROFILE_FOLDER: {
-        return this.getFolderChildren(element.data);
-      }
-
-      case TreeItemType.PROFILE: {
-        return this.getProfileBundleItems(element.data as Profile);
-      }
-
-      case TreeItemType.HUB_PROFILE: {
-        // Reuse getProfileBundleItems as compatible
-        return this.getProfileBundleItems(element.data as Profile);
-      }
-
-      case TreeItemType.INSTALLED_ROOT: {
-        return this.getInstalledBundleItems();
-      }
-
-      case TreeItemType.DISCOVER_ROOT: {
-        return this.getDiscoverItems();
-      }
-
-      case TreeItemType.DISCOVER_CATEGORY: {
-        return this.getCategoryBundles(element.label);
-      }
-
-      case TreeItemType.SOURCES_ROOT: {
-        return this.getSourceItems();
-      }
-
-      case TreeItemType.LOCAL_PROFILES_FOLDER: {
-        return this.getLocalProfileItems();
-      }
-
-      default: {
-        return [];
-      }
-    }
   }
 
   /**
@@ -1096,9 +957,9 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
 
   /**
    * Get bundles by category
-   * @param category
+   * @param _category
    */
-  private async getCategoryBundles(category: string): Promise<RegistryTreeItem[]> {
+  private async getCategoryBundles(_category: string): Promise<RegistryTreeItem[]> {
     // TODO: Implement category filtering
     // For now, return empty
     return [];
@@ -1137,6 +998,145 @@ export class RegistryTreeProvider implements vscode.TreeDataProvider<RegistryTre
     } catch (error) {
       this.logger.error('Failed to load sources', error as Error);
       return [];
+    }
+  }
+
+  /**
+   * Toggle view mode between all hubs and favorites
+   */
+  public toggleViewMode(): void {
+    this.viewMode = this.viewMode === 'all' ? 'favorites' : 'all';
+    vscode.commands.executeCommand('setContext', 'promptRegistry.favoritesViewActive', this.viewMode === 'favorites');
+    this.refresh();
+  }
+
+  /**
+   * Refresh tree view
+   */
+  public refresh(): void {
+    this._onDidChangeTreeData.fire(undefined);
+  }
+
+  /**
+   * Dispose of resources
+   */
+  public dispose(): void {
+    // Clear debounce timer
+    if (this.sourceSyncDebounceTimer) {
+      clearTimeout(this.sourceSyncDebounceTimer);
+    }
+
+    // Dispose all event listeners
+    this.disposables.forEach((d) => d.dispose());
+    this.disposables = [];
+  }
+
+  /**
+   * Update tree view when updates are detected
+   * Stores update information and refreshes the tree
+   * @param updates
+   */
+  public onUpdatesDetected(updates: UpdateCheckResult[]): void {
+    this.logger.debug(`Updates detected for ${updates.length} bundles`);
+
+    // Clear existing updates
+    this.availableUpdates.clear();
+
+    // Store new updates
+    for (const update of updates) {
+      this.availableUpdates.set(update.bundleId, update);
+    }
+
+    // Refresh tree to show update indicators
+    this.refresh();
+  }
+
+  /**
+   * Get tree item
+   * @param element
+   */
+  public getTreeItem(element: RegistryTreeItem): vscode.TreeItem {
+    return element;
+  }
+
+  /**
+   * Get children for tree item
+   * @param element
+   */
+  public async getChildren(element?: RegistryTreeItem): Promise<RegistryTreeItem[]> {
+    if (!element) {
+      // Root level items
+      return this.getRootItems();
+    }
+
+    // Get children based on parent type
+    switch (element.type) {
+      case TreeItemType.PROFILES_ROOT: {
+        return this.getProfileItems();
+      }
+
+      case TreeItemType.HUBS_ROOT: {
+        return this.getHubsItems();
+      }
+
+      case TreeItemType.FAVORITES_ROOT: {
+        return this.getFavoritesItems();
+      }
+
+      case TreeItemType.ACTIVE_PROFILE_SECTION: {
+        return this.getActiveProfileItems();
+      }
+
+      case TreeItemType.HUB: {
+        if (this.viewMode === 'favorites') {
+          // In favorites view, HUB item data contains pre-filtered profiles
+          // We need to organize them. If element.data is the Hub object, we need to fetch favorites.
+          const hub = element.data;
+          const profiles = await this.hubManager.listProfilesFromHub(hub.id);
+          const favorites = await this.hubManager.getFavoriteProfiles();
+          const hubFavorites = favorites[hub.id] || [];
+          const favoriteProfiles = profiles.filter((p) => hubFavorites.includes(p.id));
+          return this.organizeProfiles(hub.id, favoriteProfiles, [], hubFavorites);
+        }
+        return this.getHubChildren(element.data);
+      }
+
+      case TreeItemType.PROFILE_FOLDER: {
+        return this.getFolderChildren(element.data);
+      }
+
+      case TreeItemType.PROFILE: {
+        return this.getProfileBundleItems(element.data as Profile);
+      }
+
+      case TreeItemType.HUB_PROFILE: {
+        // Reuse getProfileBundleItems as compatible
+        return this.getProfileBundleItems(element.data as Profile);
+      }
+
+      case TreeItemType.INSTALLED_ROOT: {
+        return this.getInstalledBundleItems();
+      }
+
+      case TreeItemType.DISCOVER_ROOT: {
+        return this.getDiscoverItems();
+      }
+
+      case TreeItemType.DISCOVER_CATEGORY: {
+        return this.getCategoryBundles(element.label);
+      }
+
+      case TreeItemType.SOURCES_ROOT: {
+        return this.getSourceItems();
+      }
+
+      case TreeItemType.LOCAL_PROFILES_FOLDER: {
+        return this.getLocalProfileItems();
+      }
+
+      default: {
+        return [];
+      }
     }
   }
 }

@@ -50,7 +50,7 @@ export class ErrorHandler {
    * Categorize an error based on its message and type
    * @param error
    */
-  static categorize(error: Error): ErrorCategory {
+  public static categorize(error: Error): ErrorCategory {
     const msg = error.message.toLowerCase();
 
     if (this.isNetworkError(msg)) {
@@ -77,7 +77,7 @@ export class ErrorHandler {
    * @param error
    * @param category
    */
-  static getUserMessage(error: Error, category: ErrorCategory): string {
+  public static getUserMessage(error: Error, category: ErrorCategory): string {
     switch (category) {
       case 'network': {
         return 'Network connection issue. Please check your internet connection and try again.';
@@ -102,7 +102,7 @@ export class ErrorHandler {
    * @param error
    * @param options
    */
-  static async handle(error: unknown, options: ErrorHandlingOptions): Promise<void> {
+  public static async handle(error: unknown, options: ErrorHandlingOptions): Promise<void> {
     const errorObj = toError(error);
     const { operation, context, showUserMessage = false, userMessagePrefix, logLevel = 'error', rethrow = false } = options;
 
@@ -150,7 +150,7 @@ export class ErrorHandler {
    * @param error
    * @param options
    */
-  static async handleCategorized(error: unknown, options: ErrorHandlingOptions): Promise<void> {
+  public static async handleCategorized(error: unknown, options: ErrorHandlingOptions): Promise<void> {
     const errorObj = toError(error);
     const category = this.categorize(errorObj);
 
@@ -240,7 +240,7 @@ export class ErrorHandler {
    * @param options - Error handling options, including optional fallbackValue
    * @returns The operation result, or fallbackValue/undefined on error
    */
-  static async withErrorHandling<T>(
+  public static async withErrorHandling<T>(
     operation: () => Promise<T>,
     options: ErrorHandlingOptionsWithFallback<T>
   ): Promise<T | undefined> {
@@ -256,7 +256,7 @@ export class ErrorHandler {
    * Create a standardized error handler for a specific service
    * @param serviceName
    */
-  static createServiceHandler(serviceName: string) {
+  public static createServiceHandler(serviceName: string) {
     return {
       async handle(error: unknown, operation: string, context?: Record<string, any>): Promise<void> {
         await ErrorHandler.handle(error, {

@@ -97,12 +97,12 @@ suite('RepositoryAdapterFactory', () => {
   suite('Adapter Registration', () => {
     test('should support custom adapter registration', () => {
       const customAdapters = new Map<string, any>([['custom', class CustomAdapter {
-        type = 'custom';
-        async fetchBundles() {
+        public type = 'custom';
+        public fetchBundles() {
           return [];
         }
 
-        async getDownloadUrl() {
+        public getDownloadUrl() {
           return '';
         }
       }]]);
@@ -113,8 +113,8 @@ suite('RepositoryAdapterFactory', () => {
 
     test('should allow overriding default adapters', () => {
       const adapters = new Map<string, any>([['github', GitHubAdapter], ['github', class CustomGitHubAdapter {
-        type = 'github';
-        async fetchBundles() {
+        public type = 'github';
+        public fetchBundles() {
           return [];
         }
       }]]);
@@ -127,8 +127,6 @@ suite('RepositoryAdapterFactory', () => {
 
   suite('Adapter Interface Compliance', () => {
     test('should verify all adapters implement required methods', () => {
-      const requiredMethods = ['fetchBundles', 'getDownloadUrl', 'validate'];
-
       const adapters = [
         GitHubAdapter,
         GitLabAdapter,
@@ -136,6 +134,7 @@ suite('RepositoryAdapterFactory', () => {
         LocalAdapter
       ];
 
+      // eslint-disable-next-line @typescript-eslint/naming-convention -- name reflects domain terminology
       for (const AdapterClass of adapters) {
         const prototype = AdapterClass.prototype;
         for (const method of ['fetchBundles', 'getDownloadUrl']) {

@@ -74,6 +74,27 @@ graph TD
 | **TemplateEngine** | Scaffold template loading and rendering |
 | **NotificationManager** | User notifications and update alerts |
 
+## Copilot Chat Skills
+
+The extension ships built-in Copilot skills via the `contributes.chatSkills` entry in `package.json`.
+To add a new skill:
+
+1. Create a directory under `resources/skills/<skill-name>/` with a `SKILL.md` file
+2. Register it in `package.json` under `contributes.chatSkills`:
+   ```json
+   "chatSkills": [
+     { "path": "./resources/skills/<skill-name>/SKILL.md" }
+   ]
+   ```
+3. If the skill references docs, add a build step to copy them into the skill's `references/` directory and git-ignore the generated files (see `copy-skill-references` in `package.json` for an example)
+4. Ensure `.vscodeignore` and `.vscodeignore.production` include `!resources/**` so skills ship in the VSIX
+
+> **Tip:** See `resources/skills/prompt-registry-helper/` for a complete example of a documentation-backed skill with build-time reference copying.
+
+> **Heads up — build coupling:** The existing `copy-skill-references` npm script is tailored to `prompt-registry-helper`. Adding a new skill that also needs build-time references will likely require updating that script (or adding a new one) in `package.json`, along with corresponding `.gitignore` entries for the generated files.
+
+> **Heads up — VSIX size:** Skill resources are packaged directly inside the `.vsix`. Be mindful of the size and number of reference files bundled with each skill — large or numerous resources will increase the extension's download and install footprint.
+
 ## Cross-Platform Paths
 
 | Platform | Copilot Directory |

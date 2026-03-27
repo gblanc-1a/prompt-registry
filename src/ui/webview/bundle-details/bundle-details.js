@@ -10,8 +10,8 @@
 
   /**
    * Open a prompt file in the editor
-   * @param installPath
-   * @param filePath
+   * @param {string} installPath
+   * @param {string} filePath
    */
   function openPromptFile(installPath, filePath) {
     vscode.postMessage({

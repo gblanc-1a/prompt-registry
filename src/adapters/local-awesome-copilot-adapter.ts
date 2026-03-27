@@ -499,7 +499,7 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
    * Scans the collections directory for .collection.yml files and creates Bundle objects.
    * Results are cached for 5 minutes to reduce filesystem operations.
    * @returns Promise resolving to array of Bundle objects from collection files
-   * @throws Error if directory access fails or collection parsing fails
+   * @throws {Error} if directory access fails or collection parsing fails
    */
   public async fetchBundles(): Promise<Bundle[]> {
     this.logger.debug('Listing bundles from local awesome-copilot repository');
@@ -546,7 +546,7 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
    * The archive includes prompts, instructions, and a deployment manifest.
    * @param bundle - Bundle object containing collection metadata
    * @returns Promise resolving to Buffer containing the ZIP archive
-   * @throws Error if collection fetch fails or archive creation fails
+   * @throws {Error} if collection fetch fails or archive creation fails
    */
   public async downloadBundle(bundle: Bundle): Promise<Buffer> {
     this.logger.debug(`Downloading bundle: ${bundle.id}`);
@@ -579,7 +579,7 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
    * Fetch repository metadata
    * Retrieves information about the local collection directory including collection count.
    * @returns Promise resolving to SourceMetadata with directory info
-   * @throws Error if directory access fails or collection listing fails
+   * @throws {Error} if directory access fails or collection listing fails
    */
   public async fetchMetadata(): Promise<SourceMetadata> {
     try {

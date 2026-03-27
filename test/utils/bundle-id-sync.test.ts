@@ -6,7 +6,7 @@
  *
  * This is critical because:
  * - Runtime (TS): src/utils/bundle-name-utils.ts - generateBuildScriptBundleId
- * - Shared library: @prompt-registry/collection-scripts - generateBundleId
+ * - Shared library: `@prompt-registry/collection-scripts` - generateBundleId
  *
  * If these drift, bundles built by CI won't match what the runtime expects.
  */

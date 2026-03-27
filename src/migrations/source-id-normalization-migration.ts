@@ -1,5 +1,6 @@
 /**
- * @migration-cleanup(sourceId-normalization-v2): Remove entire file once all lockfiles are migrated
+ * Source ID Normalization Migration.
+ * `@migration-cleanup(sourceId-normalization-v2)`: Remove entire file once all lockfiles are migrated
  *
  * Source ID Normalization Migration (sourceId-normalization-v2)
  *

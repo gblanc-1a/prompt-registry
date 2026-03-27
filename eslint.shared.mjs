@@ -73,15 +73,8 @@ export const temporaryWarnRulesTs = {
 
 // TODO to be discussed and fixed in future PRs
 export const temporaryWarnRules = {
-  'jsdoc/check-tag-names': 'warn',
-  'jsdoc/require-throws-type': 'warn',
   'import/order': 'warn',
   'prefer-arrow/prefer-arrow-functions': 'warn',
-  'jsdoc/require-description': 'warn',
-  'jsdoc/require-param-type': 'warn',
-  'jsdoc/reject-any-type': 'warn',
-  'jsdoc/escape-inline-tags': 'warn',
-  'jsdoc/check-alignment': 'warn',
   'no-underscore-dangle': 'warn',
   'no-console': 'warn',
   'no-undef': 'warn',

@@ -81,7 +81,7 @@ export class LockfileManager {
    * Supports multi-root workspaces by maintaining separate instances per repository.
    * @param repositoryPath - Path to the repository root (required)
    * @returns LockfileManager instance for the repository
-   * @throws Error if repositoryPath is not provided
+   * @throws {Error} if repositoryPath is not provided
    */
   public static getInstance(repositoryPath?: string): LockfileManager {
     if (!repositoryPath) {
@@ -662,7 +662,7 @@ export class LockfileManager {
    * Bundle entries are written WITHOUT the commitMode field since it's implicit
    * based on which lockfile contains the entry.
    * @param options - Bundle creation/update options
-   * @throws Error if required fields are missing or invalid
+   * @throws {Error} if required fields are missing or invalid
    *
    * Requirements covered:
    * - 1.1: Write local-only bundles to prompt-registry.local.lock.json
@@ -865,7 +865,7 @@ export class LockfileManager {
    * preserving all metadata (version, sourceId, files, etc.).
    * @param bundleId - ID of the bundle to update
    * @param newMode - The new commit mode ('commit' or 'local-only')
-   * @throws Error if bundle is not found in the source lockfile
+   * @throws {Error} if bundle is not found in the source lockfile
    *
    * Requirements covered:
    * - 4.1: Move bundle from Main_Lockfile to Local_Lockfile when switching to local-only

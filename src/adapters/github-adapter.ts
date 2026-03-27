@@ -703,7 +703,7 @@ export class GitHubAdapter extends RepositoryAdapter {
    *
    * Uses parallel manifest downloads with caching for improved performance.
    * @returns Promise resolving to array of Bundle objects
-   * @throws Error if GitHub API request fails or authentication issues occur
+   * @throws {Error} if GitHub API request fails or authentication issues occur
    */
   public async fetchBundles(): Promise<Bundle[]> {
     const { owner, repo } = this.parseGitHubUrl();
@@ -762,7 +762,7 @@ export class GitHubAdapter extends RepositoryAdapter {
    * Download a bundle from GitHub release assets
    * @param bundle - Bundle object containing downloadUrl
    * @returns Promise resolving to Buffer containing bundle ZIP file
-   * @throws Error if download fails or network issues occur
+   * @throws {Error} if download fails or network issues occur
    */
   public async downloadBundle(bundle: Bundle): Promise<Buffer> {
     try {
@@ -776,7 +776,7 @@ export class GitHubAdapter extends RepositoryAdapter {
    * Fetch repository metadata from GitHub API
    * Retrieves repository information including name, description, and release count.
    * @returns Promise resolving to SourceMetadata object
-   * @throws Error if repository not found or API request fails
+   * @throws {Error} if repository not found or API request fails
    */
   public async fetchMetadata(): Promise<SourceMetadata> {
     const { owner, repo } = this.parseGitHubUrl();

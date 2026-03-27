@@ -181,7 +181,7 @@ export class FileUtils {
 
   /**
    * Join paths safely
-   * @param {...any} paths
+   * @param {...string} paths
    */
   public static joinPaths(...paths: string[]): string {
     return path.join(...paths);

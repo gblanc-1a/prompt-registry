@@ -177,7 +177,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    * Find installed bundle by marketplace bundle ID using identity matching
    * @param bundleId - Marketplace bundle ID
    * @returns Bundle info including marketplace bundle, installed bundle, and source
-   * @throws Error if marketplace bundle not found
+   * @throws {Error} if marketplace bundle not found
    */
   private async findInstalledBundleByMarketplaceId(bundleId: string): Promise<{
     bundle: Bundle;

@@ -232,7 +232,7 @@ export class LocalAdapter extends RepositoryAdapter {
    * Fetch repository metadata from local filesystem
    * Scans the local directory and reads registry.json if available.
    * @returns Promise resolving to SourceMetadata with directory info
-   * @throws Error if directory doesn't exist or is not accessible
+   * @throws {Error} if directory doesn't exist or is not accessible
    */
   public async fetchMetadata(): Promise<SourceMetadata> {
     try {
@@ -283,7 +283,7 @@ export class LocalAdapter extends RepositoryAdapter {
    * Fetch bundles from local filesystem
    * Scans subdirectories for deployment-manifest.yml files and creates Bundle objects.
    * @returns Promise resolving to array of Bundle objects found in local directory
-   * @throws Error if directory is not accessible or manifest parsing fails
+   * @throws {Error} if directory is not accessible or manifest parsing fails
    */
   public async fetchBundles(): Promise<Bundle[]> {
     try {
@@ -403,7 +403,7 @@ export class LocalAdapter extends RepositoryAdapter {
    * Reads all files from the local bundle directory and creates a ZIP buffer.
    * @param bundle - Bundle object with local file:// path
    * @returns Promise resolving to Buffer containing ZIP archive
-   * @throws Error if directory doesn't exist, is not accessible, or ZIP creation fails
+   * @throws {Error} if directory doesn't exist, is not accessible, or ZIP creation fails
    */
   public async downloadBundle(bundle: Bundle): Promise<Buffer> {
     console.log(`[LocalAdapter] Creating ZIP archive for bundle: ${bundle.id}`);

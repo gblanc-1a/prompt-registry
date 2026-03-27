@@ -1,7 +1,7 @@
 /**
  * VS Code Extension Integration Tests
  *
- * These tests run in a REAL VS Code instance via @vscode/test-electron.
+ * These tests run in a REAL VS Code instance via `@vscode/test-electron`.
  * They verify actual command registration and extension activation.
  *
  * Run with: node test/runExtensionTests.js

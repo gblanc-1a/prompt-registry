@@ -43,7 +43,7 @@ export class VersionManager {
    * @param v1 - First version string
    * @param v2 - Second version string
    * @returns -1 if v1 < v2, 0 if equal, 1 if v1 > v2
-   * @throws Error if either version is empty or exceeds maximum length
+   * @throws {Error} if either version is empty or exceeds maximum length
    */
   public static compareVersions(v1: string, v2: string): number {
     // Input validation
@@ -83,7 +83,7 @@ export class VersionManager {
    * @param installedVersion - Currently installed version
    * @param latestVersion - Latest available version
    * @returns True if update available (latest > installed)
-   * @throws Error if either version is empty or invalid
+   * @throws {Error} if either version is empty or invalid
    */
   public static isUpdateAvailable(installedVersion: string, latestVersion: string): boolean {
     if (!installedVersion || !latestVersion) {
@@ -178,7 +178,7 @@ export class VersionManager {
    * @param bundleId - Bundle ID potentially containing version suffix
    * @param sourceType - Source type of the bundle
    * @returns Bundle identity without version suffix (GitHub only)
-   * @throws Error if bundleId exceeds maximum length
+   * @throws {Error} if bundleId exceeds maximum length
    */
   public static extractBundleIdentity(bundleId: string, sourceType: SourceType): string {
     // Security: Prevent ReDoS attacks with length validation

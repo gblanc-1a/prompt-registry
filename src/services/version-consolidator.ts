@@ -61,7 +61,7 @@ export class VersionConsolidator {
   /**
    * Create a new VersionConsolidator
    * @param maxCacheSize - Maximum number of bundle identities to cache (default: 1000)
-   * @throws Error if maxCacheSize is not a positive number
+   * @throws {Error} if maxCacheSize is not a positive number
    */
   constructor(maxCacheSize: number = VersionConsolidator.DEFAULT_MAX_CACHE_SIZE) {
     if (!Number.isFinite(maxCacheSize) || maxCacheSize <= 0) {

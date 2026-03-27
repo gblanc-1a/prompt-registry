@@ -796,7 +796,7 @@ export class RegistryManager {
    * 3. Handles user response (contribute, override, or cancel)
    * @param bundleId - The bundle ID being updated
    * @param current - The current installed bundle
-   * @throws UpdateCancelledError if user chooses to contribute or cancel
+   * @throws {UpdateCancelledError} if user chooses to contribute or cancel
    *
    * Requirements: 14.1-14.10
    */

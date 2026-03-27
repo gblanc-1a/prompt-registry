@@ -58,7 +58,7 @@ export class HubStorage {
   /**
    * Validate hub ID for security
    * @param hubId Hub identifier to validate
-   * @throws Error if hub ID is invalid
+   * @throws {Error} if hub ID is invalid
    */
   private validateHubId(hubId: string): void {
     try {

@@ -604,7 +604,7 @@ suite('E2E: Script Execution Tests', () => {
   });
 
   /**
-   * Test: Package.json references @prompt-registry/collection-scripts
+   * Test: Package.json references `@prompt-registry/collection-scripts`
    * Requirements: 5.5 - Test validation scripts in generated projects
    */
   test('E2E: Package.json references collection-scripts npm package', async function () {

@@ -44,6 +44,11 @@
     "onStartupFinished"
   ],
   "contributes": {
+    "chatSkills": [
+      {
+        "path": "./resources/skills/prompt-registry-helper/SKILL.md"
+      }
+    ],
     "commands": [
       {
         "command": "promptregistry.selectVersion",
@@ -779,7 +784,8 @@
     "vscode:prepublish": "npm run compile",
     "compile-lib": "npm run build --workspace=lib",
     "copy-webview": "cpy \"src/ui/webview/marketplace/*\" dist/webview/marketplace && cpy \"src/ui/webview/bundle-details/*\" dist/webview/bundle-details",
-    "compile": "npm run compile-lib && webpack --mode production && npm run copy-webview",
+    "copy-skill-references": "cpy docs/README.md resources/skills/prompt-registry-helper/references/docs-index.md && cpy \"docs/**\" \"!docs/README.md\" \"!docs/contributor-guide\" \"!docs/contributor-guide/**\" \"!docs/reference/adapter-api.md\" \"!docs/AGENTS.md\" resources/skills/prompt-registry-helper/references",
+    "compile": "npm run compile-lib && webpack --mode production && npm run copy-webview && npm run copy-skill-references",
     "watch": "webpack --mode development --watch",
     "package": "webpack --mode production --devtool hidden-source-map && npm run copy-webview",
     "package:vsix": "vsce package",

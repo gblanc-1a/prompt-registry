@@ -30,23 +30,11 @@ import {
   ScaffoldCommand,
 } from './commands/scaffold-command';
 import {
-  selectVersionCommand,
-} from './commands/select-version-command';
-import {
   SettingsCommands,
 } from './commands/settings-commands';
 import {
   SourceCommands,
 } from './commands/source-commands';
-import {
-  StatusCommand,
-} from './commands/status-command';
-import {
-  UpdateCommand,
-} from './commands/update-command';
-import {
-  ValidateAccessCommand,
-} from './commands/validate-access-command';
 import {
   ValidateApmCommand,
 } from './commands/validate-apm-command';
@@ -77,9 +65,6 @@ import {
 import {
   HubManager,
 } from './services/hub-manager';
-import {
-  InstallationManager,
-} from './services/installation-manager';
 import {
   LockfileManager,
 } from './services/lockfile-manager';
@@ -181,8 +166,6 @@ export class PromptRegistryExtension {
   private lockfileManager: LockfileManager | undefined;
   private repositoryActivationService: RepositoryActivationService | undefined;
 
-  // Legacy (to be removed)
-  private readonly installationManager: InstallationManager;
   private disposables: vscode.Disposable[] = [];
 
   constructor(private readonly context: vscode.ExtensionContext) {
@@ -190,9 +173,6 @@ export class PromptRegistryExtension {
     this.statusBar = StatusBar.getInstance();
     this.notifications = ExtensionNotifications.getInstance();
     this.registryManager = RegistryManager.getInstance(context);
-
-    // Legacy (to be removed)
-    this.installationManager = InstallationManager.getInstance();
   }
 
   /**
@@ -275,11 +255,6 @@ export class PromptRegistryExtension {
     this.validateCollectionsCommand = new ValidateCollectionsCommand(this.context);
     this.validateApmCommand = new ValidateApmCommand(this.context);
     this.createCollectionCommand = new CreateCollectionCommand();
-
-    // Legacy commands
-    const updateCommand = new UpdateCommand();
-    const statusCommand = new StatusCommand();
-    const validateAccessCommand = new ValidateAccessCommand();
 
     // Register command handlers
     const commands = [
@@ -435,19 +410,7 @@ export class PromptRegistryExtension {
         }
       }),
 
-      // Legacy commands (to be migrated)
-      vscode.commands.registerCommand('promptregistry.selectVersion', () => selectVersionCommand()),
-      vscode.commands.registerCommand('promptregistry.update', () => updateCommand.execute()),
-      vscode.commands.registerCommand('promptregistry.checkUpdates', () => statusCommand.checkUpdates()),
-      vscode.commands.registerCommand('promptregistry.showVersion', () => statusCommand.showVersion()),
-      vscode.commands.registerCommand('promptregistry.uninstall', () => statusCommand.uninstall()),
-      vscode.commands.registerCommand('promptregistry.showHelp', () => statusCommand.showHelp()),
-      vscode.commands.registerCommand('promptregistry.validateAccess', () => validateAccessCommand.execute()),
       vscode.commands.registerCommand('promptregistry.forceGitHubAuth', () => githubAuthCommand.execute())
-
-      // vscode.commands.registerCommand('promptregistry.uninstallAll', () => uninstallCommand.executeUninstallAll()),
-      // vscode.commands.registerCommand('promptregistry.enhancedInstall', () => enhancedInstallCommand.execute()),
-      // vscode.commands.registerCommand('promptregistry.enhancedUninstall', () => refactoredUninstallCommand.execute()),
     ];
 
     // Add to disposables
@@ -1272,12 +1235,9 @@ export class PromptRegistryExtension {
       }
 
       // Show welcome notification
-      const installedScopes = await this.installationManager.getInstalledScopes();
-      if (installedScopes.length === 0) {
-        setTimeout(async () => {
-          await this.notifications.showWelcomeNotification();
-        }, 2000);
-      }
+      setTimeout(async () => {
+        await this.notifications.showWelcomeNotification();
+      }, 2000);
 
       this.logger.info('First run completed successfully');
     }

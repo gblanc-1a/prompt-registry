@@ -9,10 +9,7 @@ module.exports = {
         // Return mock configuration values for testing
         if (section === 'promptregistry') {
           const config = {
-            'repositoryOwner': 'test-owner',
-            'repositoryName': 'test-repo',
-            'githubToken': 'test-token',
-            'usePrivateRepository': false
+            'githubToken': 'test-token'
           };
           return config[key] || defaultValue;
         }

@@ -285,7 +285,7 @@ Open extension global storage path (see `RegistryStorage.getPaths().installed`) 
 
 ## What to Avoid
 
-- Don't assume OS-specific Copilot paths—use `UserScopeService` and `platformDetector.ts`
+- Don't assume OS-specific Copilot paths—use `UserScopeService`
 - Don't change activation events without updating `package.json` and tests
 - Don't duplicate utilities—check `src/utils/` and `test/helpers/` first
 - Don't over-engineer—solve the immediate problem only

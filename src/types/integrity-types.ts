@@ -1,4 +1,5 @@
 /**
+/**
  * Enhanced metadata types for file integrity verification and modification detection
  */
 
@@ -264,7 +265,7 @@ export interface InstallationResult {
 }
 
 // Remove duplicate InstallationScope interface and fix UninstallPreview
-// Use the existing InstallationScope enum from platform.ts
+// Use the existing InstallationScope type from registry.ts
 
 // Phase 3: Smart Uninstallation Types
 export interface ScopeInfo {

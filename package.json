@@ -51,38 +51,8 @@
     ],
     "commands": [
       {
-        "command": "promptregistry.selectVersion",
-        "title": "Select Version to Install",
-        "category": "Prompt Registry"
-      },
-      {
-        "command": "promptregistry.checkUpdates",
-        "title": "Check for Updates",
-        "category": "Prompt Registry"
-      },
-      {
-        "command": "promptregistry.update",
-        "title": "Update to Latest Version",
-        "category": "Prompt Registry"
-      },
-      {
-        "command": "promptregistry.showVersion",
-        "title": "Show Version Information",
-        "category": "Prompt Registry"
-      },
-      {
-        "command": "promptregistry.showHelp",
-        "title": "Show Help Documentation",
-        "category": "Prompt Registry"
-      },
-      {
         "command": "promptRegistry.resetFirstRun",
         "title": "Reset First Run (for Testing)",
-        "category": "Prompt Registry"
-      },
-      {
-        "command": "promptregistry.validateAccess",
-        "title": "Validate Repository Access",
         "category": "Prompt Registry"
       },
       {
@@ -469,24 +439,6 @@
     "menus": {
       "commandPalette": [
         {
-          "command": "promptregistry.selectVersion"
-        },
-        {
-          "command": "promptregistry.checkUpdates"
-        },
-        {
-          "command": "promptregistry.update"
-        },
-        {
-          "command": "promptregistry.showVersion"
-        },
-        {
-          "command": "promptregistry.showHelp"
-        },
-        {
-          "command": "promptregistry.validateAccess"
-        },
-        {
           "command": "promptregistry.forceGitHubAuth"
         }
       ],
@@ -703,40 +655,10 @@
           "default": true,
           "description": "Enable detailed logging for debugging purposes"
         },
-        "promptregistry.githubApiUrl": {
-          "type": "string",
-          "default": "https://api.github.com",
-          "description": "GitHub API URL for fetching releases"
-        },
-        "promptregistry.repositoryOwner": {
-          "type": "string",
-          "default": "AmadeusITGroup",
-          "description": "GitHub repository owner"
-        },
-        "promptregistry.repositoryName": {
-          "type": "string",
-          "default": "prompt-registry",
-          "description": "GitHub repository name"
-        },
         "promptregistry.githubToken": {
           "type": "string",
           "default": "",
           "description": "GitHub personal access token for private repositories (generate with 'gh auth token')"
-        },
-        "promptregistry.usePrivateRepository": {
-          "type": "boolean",
-          "default": false,
-          "description": "Enable access to private GitHub repositories using authentication"
-        },
-        "promptregistry.useGitHubCli": {
-          "type": "boolean",
-          "default": false,
-          "description": "Use GitHub CLI (gh) for automatic token generation instead of manual token"
-        },
-        "promptregistry.defaultVersion": {
-          "type": "string",
-          "default": "latest",
-          "description": "Default version to install (use 'latest' for latest release or specific version like 'v1.0.0')"
         },
         "promptregistry.updateCheck.enabled": {
           "type": "boolean",

@@ -2190,7 +2190,6 @@ export class RegistryManager {
       configuration: {
         autoCheckUpdates: config.get('autoCheckUpdates'),
         installationScope: config.get('installationScope'),
-        defaultVersion: config.get('defaultVersion'),
         enableLogging: config.get('enableLogging')
       }
     };
@@ -2289,9 +2288,6 @@ export class RegistryManager {
       }
       if (settings.configuration.installationScope !== undefined) {
         await config.update('installationScope', settings.configuration.installationScope, true);
-      }
-      if (settings.configuration.defaultVersion !== undefined) {
-        await config.update('defaultVersion', settings.configuration.defaultVersion, true);
       }
       if (settings.configuration.enableLogging !== undefined) {
         await config.update('enableLogging', settings.configuration.enableLogging, true);

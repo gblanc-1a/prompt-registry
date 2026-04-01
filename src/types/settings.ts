@@ -40,9 +40,6 @@ export interface RegistryConfiguration {
   /** Default installation scope (user or workspace) */
   installationScope?: string;
 
-  /** Default version to install (latest or specific) */
-  defaultVersion?: string;
-
   /** Enable logging for debugging */
   enableLogging?: boolean;
 }

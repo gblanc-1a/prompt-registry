@@ -30,23 +30,11 @@ import {
   ScaffoldCommand,
 } from './commands/scaffold-command';
 import {
-  selectVersionCommand,
-} from './commands/select-version-command';
-import {
   SettingsCommands,
 } from './commands/settings-commands';
 import {
   SourceCommands,
 } from './commands/source-commands';
-import {
-  StatusCommand,
-} from './commands/status-command';
-import {
-  UpdateCommand,
-} from './commands/update-command';
-import {
-  ValidateAccessCommand,
-} from './commands/validate-access-command';
 import {
   ValidateApmCommand,
 } from './commands/validate-apm-command';
@@ -77,9 +65,6 @@ import {
 import {
   HubManager,
 } from './services/hub-manager';
-import {
-  InstallationManager,
-} from './services/installation-manager';
 import {
   LockfileManager,
 } from './services/lockfile-manager';
@@ -117,9 +102,6 @@ import {
 import {
   HubStorage,
 } from './storage/hub-storage';
-import {
-  RegistrySource,
-} from './types/registry';
 import {
   MarketplaceViewProvider,
 } from './ui/marketplace-view-provider';
@@ -181,8 +163,6 @@ export class PromptRegistryExtension {
   private lockfileManager: LockfileManager | undefined;
   private repositoryActivationService: RepositoryActivationService | undefined;
 
-  // Legacy (to be removed)
-  private readonly installationManager: InstallationManager;
   private disposables: vscode.Disposable[] = [];
 
   constructor(private readonly context: vscode.ExtensionContext) {
@@ -190,9 +170,6 @@ export class PromptRegistryExtension {
     this.statusBar = StatusBar.getInstance();
     this.notifications = ExtensionNotifications.getInstance();
     this.registryManager = RegistryManager.getInstance(context);
-
-    // Legacy (to be removed)
-    this.installationManager = InstallationManager.getInstance();
   }
 
   /**
@@ -275,11 +252,6 @@ export class PromptRegistryExtension {
     this.validateCollectionsCommand = new ValidateCollectionsCommand(this.context);
     this.validateApmCommand = new ValidateApmCommand(this.context);
     this.createCollectionCommand = new CreateCollectionCommand();
-
-    // Legacy commands
-    const updateCommand = new UpdateCommand();
-    const statusCommand = new StatusCommand();
-    const validateAccessCommand = new ValidateAccessCommand();
 
     // Register command handlers
     const commands = [
@@ -437,19 +409,12 @@ export class PromptRegistryExtension {
         }
       }),
 
-      // Legacy commands (to be migrated)
-      vscode.commands.registerCommand('promptregistry.selectVersion', () => selectVersionCommand()),
-      vscode.commands.registerCommand('promptregistry.update', () => updateCommand.execute()),
-      vscode.commands.registerCommand('promptregistry.checkUpdates', () => statusCommand.checkUpdates()),
-      vscode.commands.registerCommand('promptregistry.showVersion', () => statusCommand.showVersion()),
-      vscode.commands.registerCommand('promptregistry.uninstall', () => statusCommand.uninstall()),
-      vscode.commands.registerCommand('promptregistry.showHelp', () => statusCommand.showHelp()),
-      vscode.commands.registerCommand('promptregistry.validateAccess', () => validateAccessCommand.execute()),
-      vscode.commands.registerCommand('promptregistry.forceGitHubAuth', () => githubAuthCommand.execute())
+      vscode.commands.registerCommand('promptregistry.forceGitHubAuth', () => githubAuthCommand.execute()),
 
-      // vscode.commands.registerCommand('promptregistry.uninstallAll', () => uninstallCommand.executeUninstallAll()),
-      // vscode.commands.registerCommand('promptregistry.enhancedInstall', () => enhancedInstallCommand.execute()),
-      // vscode.commands.registerCommand('promptregistry.enhancedUninstall', () => refactoredUninstallCommand.execute()),
+      // Marketplace View Command - Open/focus the marketplace view
+      vscode.commands.registerCommand('promptregistry.marketplace', async () => {
+        await vscode.commands.executeCommand('vscode.openView', 'promptregistry.marketplace');
+      })
     ];
 
     // Add to disposables
@@ -1098,16 +1063,6 @@ export class PromptRegistryExtension {
         label: '$(gear) Open Settings',
         description: 'Configure Prompt Registry',
         command: 'promptRegistry.openSettings'
-      },
-      {
-        label: '$(info) Show Version',
-        description: 'Display version information',
-        command: 'promptregistry.showVersion'
-      },
-      {
-        label: '$(question) Show Help',
-        description: 'Get help with Prompt Registry',
-        command: 'promptregistry.showHelp'
       }
     );
 
@@ -1176,45 +1131,6 @@ export class PromptRegistryExtension {
     } catch (error) {
       this.logger.warn('Failed to perform automatic update check', error as Error);
     }
-  } /**
-     * Initialize default sources on first run
-     */
-
-  private async initializeDefaultSources(): Promise<void> {
-    try {
-      // Check if any sources already exist
-      const existingSources = await this.registryManager.listSources();
-      if (existingSources.length > 0) {
-        this.logger.info('Sources already exist, skipping default source initialization');
-        return;
-      }
-
-      // Add default Awesome Copilot source
-      const defaultSource: RegistrySource = {
-        id: 'awesome-copilot-official',
-        name: 'Awesome Copilot (Official)',
-        type: 'awesome-copilot',
-        url: 'https://github.com/github/awesome-copilot',
-        enabled: true,
-        priority: 1,
-        private: false,
-        metadata: {
-          description: 'Official Awesome Copilot collections from GitHub',
-          homepage: 'https://github.com/github/awesome-copilot'
-        }
-      };
-
-      // Add config for awesome-copilot source type
-      (defaultSource as any).config = {
-        branch: 'main',
-        collectionsPath: 'collections'
-      };
-
-      await this.registryManager.addSource(defaultSource);
-      this.logger.info('Default Awesome Copilot source added successfully');
-    } catch (error) {
-      this.logger.warn('Failed to initialize default sources', error as Error);
-    }
   }
 
   /**
@@ -1259,9 +1175,6 @@ export class PromptRegistryExtension {
     if (state === SetupState.NOT_STARTED) {
       await this.setupStateManager!.markStarted();
 
-      // Initialize default sources (Awesome Copilot)
-      await this.initializeDefaultSources();
-
       // Initialize hub (first-run hub selector or migration)
       await this.initializeHub();
 
@@ -1271,14 +1184,6 @@ export class PromptRegistryExtension {
       // Trigger source/hub detection now that setup is complete
       if (this.repositoryActivationService) {
         await this.repositoryActivationService.checkAndPromptActivation();
-      }
-
-      // Show welcome notification
-      const installedScopes = await this.installationManager.getInstalledScopes();
-      if (installedScopes.length === 0) {
-        setTimeout(async () => {
-          await this.notifications.showWelcomeNotification();
-        }, 2000);
       }
 
       this.logger.info('First run completed successfully');
@@ -1455,6 +1360,11 @@ export class PromptRegistryExtension {
           // The catch block below will call markIncomplete()
           this.logger.info('Hub selection cancelled');
           throw new Error('Hub selection cancelled by user');
+        } else {
+          // Show welcome notification with marketplace button
+          setTimeout(async () => {
+            await this.notifications.showWelcomeNotification();
+          }, 2000);
         }
       } else if (hubs.length > 0 && !activeHubResult) {
         // Scenario 2: Migration - hubs exist but no active hub set

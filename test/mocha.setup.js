@@ -91,10 +91,7 @@ const vscode = {
         // Return mock configuration values for testing
         if (section === 'promptregistry') {
           const config = {
-            'repositoryOwner': 'test-owner',
-            'repositoryName': 'test-repo',
-            'githubToken': 'test-token',
-            'usePrivateRepository': false
+            'githubToken': 'test-token'
           };
           return config[key] || defaultValue;
         }
@@ -113,8 +110,7 @@ const vscode = {
           const config = {
             'githubToken': '',
             'autoCheckUpdates': false, // Disable auto updates during tests
-            'installationScope': 'user',
-            'defaultVersion': 'latest'
+            'installationScope': 'user'
           };
           return config[key] || defaultValue;
         }

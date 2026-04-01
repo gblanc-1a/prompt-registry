@@ -696,8 +696,6 @@ this.profileCommands = new ProfileCommands(this.context, this.registryManager);
 - `promptRegistry.scaffoldProject` - Scaffold new collection
 - `promptRegistry.validateCollections` - Validate YAML files
 - `promptRegistry.createCollection` - Create new collection
-- `promptregistry.checkUpdates` - Check for bundle updates
-- `promptregistry.validateAccess` - Test repository access
 
 ---
 

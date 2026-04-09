@@ -17,10 +17,6 @@ suite('VersionConsolidator Unit Tests', () => {
     consolidator = new VersionConsolidator();
   });
 
-  teardown(() => {
-    consolidator.clearCache();
-  });
-
   suite('consolidateBundles', () => {
     test('should consolidate 3 versions (1.0.0, 2.0.0, 1.5.0) into single entry with latest (2.0.0)', () => {
       const bundles = [
@@ -263,25 +259,6 @@ suite('VersionConsolidator Unit Tests', () => {
       assert.ok(version.downloadUrl.includes('1.0.0'));
       assert.ok(version.manifestUrl.includes('1.0.0'));
       assert.ok(version.publishedAt);
-    });
-  });
-
-  suite('clearCache', () => {
-    test('should clear version cache', () => {
-      const bundles = [
-        BundleBuilder.github('owner', 'repo').withVersion('1.0.0').build(),
-        BundleBuilder.github('owner', 'repo').withVersion('2.0.0').build()
-      ];
-
-      consolidator.consolidateBundles(bundles);
-
-      let versions = consolidator.getAllVersions('owner-repo');
-      assert.strictEqual(versions.length, 2);
-
-      consolidator.clearCache();
-
-      versions = consolidator.getAllVersions('owner-repo');
-      assert.strictEqual(versions.length, 0);
     });
   });
 

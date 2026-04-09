@@ -315,6 +315,57 @@ const vscode = {
       this.base = base;
       this.pattern = pattern;
     }
+  },
+  lm: {
+    selectChatModels: async () => []
+  },
+  LanguageModelChatMessage: {
+    User: (content) => ({ role: 'user', content }),
+    Assistant: (content) => ({ role: 'assistant', content })
+  },
+  Range: class Range {
+    constructor(startLine, startChar, endLine, endChar) {
+      this.start = { line: startLine, character: startChar };
+      this.end = { line: endLine ?? startLine, character: endChar ?? startChar };
+    }
+  },
+  Position: class Position {
+    constructor(line, character) {
+      this.line = line;
+      this.character = character;
+    }
+  },
+  Diagnostic: class Diagnostic {
+    constructor(range, message, severity) {
+      this.range = range;
+      this.message = message;
+      this.severity = severity;
+    }
+  },
+  DiagnosticSeverity: {
+    Error: 0,
+    Warning: 1,
+    Information: 2,
+    Hint: 3
+  },
+  CancellationTokenSource: class CancellationTokenSource {
+    constructor() {
+      this._isCancellationRequested = false;
+      this._listeners = [];
+      this.token = {
+        isCancellationRequested: false,
+        onCancellationRequested: (listener) => {
+          this._listeners.push(listener);
+          return { dispose: () => {} };
+        }
+      };
+    }
+    cancel() {
+      this._isCancellationRequested = true;
+      this.token.isCancellationRequested = true;
+      this._listeners.forEach(l => l());
+    }
+    dispose() {}
   }
 };
 

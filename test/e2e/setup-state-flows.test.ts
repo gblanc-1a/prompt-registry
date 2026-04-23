@@ -33,8 +33,8 @@ import {
   RegistryStorage,
 } from '../../src/storage/registry-storage';
 import {
-  promptGitHubAccountSelection,
-} from '../../src/utils/github-account-prompt';
+  Logger,
+} from '../../src/utils/logger';
 import {
   createMockHubData,
 } from '../helpers/setup-state-test-helpers';
@@ -778,11 +778,41 @@ suite('E2E: Setup State Flows', () => {
     });
   });
 
-  suite('14.8: GitHub Account Selection and Setup State Integration', () => {
+  suite('14.8: GitHub Account Selection and Setup State Integration (white-box)', () => {
+    // WHITE-BOX INTEGRATION TEST — not a true E2E test.
+    //
+    // This suite uses prototype binding to exercise initializeHub()'s
+    // error handling without a real Extension Host.  It is kept because
+    // the auth-failure → markIncomplete() path cannot be triggered in a
+    // real Extension Host (vscode.authentication.getSession is not mockable).
+    //
+    // For observable-behaviour Extension Host tests, see:
+    //   test/suite/integration-scenarios.test.ts  → "Setup State Flows"
+    let initializeHub: () => Promise<void>;
+
+    setup(() => {
+      const fakeExt = {
+        hubManager: mockHubManager,
+        setupStateManager,
+        logger: Logger.getInstance(),
+        context: mockContext,
+        notifications: { showWelcomeNotification: sandbox.stub().resolves() },
+        showFirstRunHubSelector: sandbox.stub().callsFake(() => {
+          // Simulate hub being configured during the selector flow
+          simulateHubConfigured();
+        }),
+      };
+
+      // Import the real method from the prototype and bind it to our fake
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { PromptRegistryExtension } = require('../../src/extension');
+      initializeHub = PromptRegistryExtension.prototype.initializeHub.bind(fakeExt);
+    });
+
     /**
      * Verifies that when promptGitHubAccountSelection throws (user dismisses
-     * the picker), callers can route the error to markIncomplete().
-     * This mirrors the catch-block wiring in Extension.initializeHub().
+     * the picker), initializeHub()'s catch block calls markIncomplete().
+     * Exercises the actual code path — not a reimplementation.
      */
     test('account selection failure during first-time setup leads to incomplete state', async () => {
       const getSessionStub = sandbox.stub(vscode.authentication, 'getSession')
@@ -792,14 +822,12 @@ suite('E2E: Setup State Flows', () => {
       const stateBeforeAttempt = await setupStateManager.getState();
       assert.strictEqual(stateBeforeAttempt, SetupState.IN_PROGRESS);
 
-      // Exercise the actual promptGitHubAccountSelection function;
-      // on failure, transition to INCOMPLETE (as initializeHub's catch does)
-      try {
-        await promptGitHubAccountSelection();
-        assert.fail('promptGitHubAccountSelection should have thrown');
-      } catch {
-        await setupStateManager.markIncomplete();
-      }
+      // Exercise the ACTUAL initializeHub code path — its catch block
+      // calls markIncomplete(), which is the wiring we're testing
+      await assert.rejects(
+        () => initializeHub(),
+        /User did not consent/
+      );
 
       const state = await setupStateManager.getState();
       assert.strictEqual(state, SetupState.INCOMPLETE,
@@ -827,11 +855,10 @@ suite('E2E: Setup State Flows', () => {
 
       await setupStateManager.markStarted();
 
-      // Account selection succeeds — no throw
-      await promptGitHubAccountSelection();
+      // Exercise the actual initializeHub — account selection succeeds,
+      // then hub selector runs, then state can be marked complete
+      await initializeHub();
 
-      // Simulate hub configuration completing after account selection
-      simulateHubConfigured();
       await setupStateManager.markComplete();
 
       const state = await setupStateManager.getState();

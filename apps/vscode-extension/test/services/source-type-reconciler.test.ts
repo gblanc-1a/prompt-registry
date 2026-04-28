@@ -249,7 +249,7 @@ suite('SourceTypeReconciler', () => {
         enabled: true,
         priority: 10,
         ...overrides
-      } as HubSource;
+      };
     };
 
     const createRegistrySource = (overrides: Partial<RegistrySource>): RegistrySource => {
@@ -394,7 +394,7 @@ suite('SourceTypeReconciler', () => {
       url: sourceUrl,
       enabled: true,
       priority: 10
-    } as HubSource;
+    };
 
     let registry: ReconcilerRegistryOperations;
     let storage: ReconcilerStorageOperations;

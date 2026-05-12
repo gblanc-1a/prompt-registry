@@ -794,7 +794,7 @@
     "@prompt-registry/collection-scripts": "workspace:^",
     "adm-zip": "^0.5.16",
     "archiver": "^7.0.1",
-    "axios": "^1.6.0",
+    "axios": "^1.15.2",
     "fs-extra": "^11.3.2",
     "glob": "^11.1.0",
     "js-yaml": "^4.1.1",

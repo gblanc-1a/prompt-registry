@@ -41,7 +41,7 @@ suite('RegistryTreeProvider - Hub Profiles', () => {
     // Use shared helper for consistent mock setup
     setupTreeProviderMocks(registryManagerStub, hubManagerStub, sandbox);
 
-    provider = new RegistryTreeProvider(registryManagerStub as any, hubManagerStub as any);
+    provider = new RegistryTreeProvider(registryManagerStub, hubManagerStub);
   });
 
   teardown(() => {
@@ -471,7 +471,7 @@ suite('RegistryTreeProvider - Dual-Scope Display', () => {
     // Use shared helper for consistent mock setup
     setupTreeProviderMocks(registryManagerStub, hubManagerStub, sandbox);
 
-    provider = new RegistryTreeProvider(registryManagerStub as any, hubManagerStub as any);
+    provider = new RegistryTreeProvider(registryManagerStub, hubManagerStub);
   });
 
   teardown(() => {
@@ -905,7 +905,7 @@ suite('RegistryTreeProvider - Files Missing Warning Indicator', () => {
     // Use shared helper for consistent mock setup
     setupTreeProviderMocks(registryManagerStub, hubManagerStub, sandbox);
 
-    provider = new RegistryTreeProvider(registryManagerStub as any, hubManagerStub as any);
+    provider = new RegistryTreeProvider(registryManagerStub, hubManagerStub);
   });
 
   teardown(() => {

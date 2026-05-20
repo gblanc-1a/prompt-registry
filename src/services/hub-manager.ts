@@ -179,7 +179,7 @@ export class HubManager {
             await this.registryManager.removeSource(source.id);
             this.logger.info(`Removed source ${source.id} linked to hub ${hubId}`);
           } catch (error) {
-            this.logger.warn(`Failed to remove source ${source.id}`, error as Error);
+            this.logger.warn(`Failed to remove source ${source.id}`, error);
           }
         }
       }
@@ -192,7 +192,7 @@ export class HubManager {
             await this.registryManager.updateProfile(profile.id, { active: false });
             this.logger.info(`Deactivated profile ${profile.id} linked to hub ${hubId}`);
           } catch (error) {
-            this.logger.warn(`Failed to deactivate profile ${profile.id}`, error as Error);
+            this.logger.warn(`Failed to deactivate profile ${profile.id}`, error);
           }
         }
       }
@@ -716,7 +716,7 @@ export class HubManager {
       try {
         await this.deleteHub(hubId);
       } catch (error) {
-        this.logger.warn(`Failed to delete hub ${hubId} during cleanup`, error as Error);
+        this.logger.warn(`Failed to delete hub ${hubId} during cleanup`, error);
       }
     }));
   }
@@ -834,7 +834,7 @@ export class HubManager {
         }));
       }
     } catch (error) {
-      this.logger.warn(`Failed to check profile activation state for hub ${hubId}`, error as Error);
+      this.logger.warn(`Failed to check profile activation state for hub ${hubId}`, error);
     }
 
     return profiles;

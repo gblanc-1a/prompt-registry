@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/member-ordering -- phase 2: reorganize members when feedback is re-integrated onto main */
 /**
  * Interface for engagement data backends
  * Implementations handle storage/retrieval of ratings and feedback
@@ -163,6 +162,15 @@ export abstract class BaseEngagementBackend implements IEngagementBackend {
   public abstract deleteFeedback(feedbackId: string): Promise<void>;
 
   /**
+   * Ensure backend is initialized before operations
+   */
+  protected ensureInitialized(): void {
+    if (!this._initialized) {
+      throw new Error(`Backend '${this.type}' is not initialized. Call initialize() first.`);
+    }
+  }
+
+  /**
    * Default implementation that aggregates data from individual methods
    * @param resourceType
    * @param resourceId
@@ -182,14 +190,5 @@ export abstract class BaseEngagementBackend implements IEngagementBackend {
       ratings: ratings || undefined,
       recentFeedback: feedback.length > 0 ? feedback : undefined
     };
-  }
-
-  /**
-   * Ensure backend is initialized before operations
-   */
-  protected ensureInitialized(): void {
-    if (!this._initialized) {
-      throw new Error(`Backend '${this.type}' is not initialized. Call initialize() first.`);
-    }
   }
 }

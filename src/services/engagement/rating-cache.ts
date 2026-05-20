@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/member-ordering -- phase 2: reorganize members when feedback is re-integrated onto main */
 /**
  * RatingCache - In-memory cache for bundle ratings
  *
@@ -13,6 +12,7 @@
 
 import * as vscode from 'vscode';
 import {
+  CachedRating,
   RatingScore,
 } from '../../types/engagement';
 import {
@@ -24,26 +24,6 @@ import {
 import {
   RatingService,
 } from './rating-service';
-
-/**
- * Cached rating entry with metadata
- */
-export interface CachedRating {
-  /** Source ID */
-  sourceId: string;
-  /** Bundle ID */
-  bundleId: string;
-  /** Star rating (1-5) */
-  starRating: number;
-  /** Wilson score (0-1) */
-  wilsonScore: number;
-  /** Total vote count */
-  voteCount: number;
-  /** Confidence level */
-  confidence: 'low' | 'medium' | 'high' | 'very_high';
-  /** When this entry was cached */
-  cachedAt: number;
-}
 
 /**
  * Rating display format for UI
@@ -59,11 +39,12 @@ export interface RatingDisplay {
  * RatingCache provides synchronous access to pre-fetched ratings
  */
 export class RatingCache {
-  private static instance: RatingCache;
+  private static instance: RatingCache | undefined;
   private readonly cache: Map<string, CachedRating> = new Map();
   private readonly userRatings: Map<string, RatingScore> = new Map();
   private readonly logger: Logger;
-  private refreshPromise: Promise<void> | null = null;
+  private readonly refreshPromises: Map<string, Promise<void>> = new Map();
+  private readonly hubIndex: Map<string, Set<string>> = new Map();
 
   // Events
   private readonly _onCacheUpdated = new vscode.EventEmitter<void>();
@@ -74,70 +55,12 @@ export class RatingCache {
   }
 
   /**
-   * Get singleton instance
-   */
-  public static getInstance(): RatingCache {
-    if (!RatingCache.instance) {
-      RatingCache.instance = new RatingCache();
-    }
-    return RatingCache.instance;
-  }
-
-  /**
-   * Reset instance (for testing)
-   */
-  public static resetInstance(): void {
-    if (RatingCache.instance) {
-      RatingCache.instance.dispose();
-      RatingCache.instance = undefined as any;
-    }
-  }
-
-  /**
-   * Dispose resources
-   */
-  public dispose(): void {
-    this._onCacheUpdated.dispose();
-    this.cache.clear();
-    this.userRatings.clear();
-  }
-
-  /**
-   * Get rating for a bundle (synchronous)
-   * Returns undefined if not cached
-   * @param sourceId
-   * @param bundleId
-   */
-  public getRating(sourceId: string, bundleId: string): CachedRating | undefined {
-    const key = this.makeKey(sourceId, bundleId);
-    return this.cache.get(key);
-  }
-
-  /**
    * Create composite key from sourceId and bundleId
    * @param sourceId
    * @param bundleId
    */
   private makeKey(sourceId: string, bundleId: string): string {
     return `${sourceId}:${bundleId}`;
-  }
-
-  /**
-   * Get formatted rating display for UI
-   * Returns undefined if not cached or no rating
-   * @param sourceId
-   * @param bundleId
-   */
-  public getRatingDisplay(sourceId: string, bundleId: string): RatingDisplay | undefined {
-    const rating = this.getRating(sourceId, bundleId);
-    if (!rating || rating.voteCount === 0 || rating.starRating === 0) {
-      return undefined;
-    }
-
-    return {
-      text: this.formatRating(rating.starRating, rating.voteCount),
-      tooltip: this.formatTooltip(rating)
-    };
   }
 
   /**
@@ -163,6 +86,110 @@ export class RatingCache {
       `Votes: ${rating.voteCount}`
     ];
     return lines.join('\n');
+  }
+
+  /**
+   * Internal refresh implementation
+   * @param hubId
+   * @param ratingsUrl
+   * @param sourceIdMap
+   */
+  private async doRefresh(hubId: string, ratingsUrl: string, sourceIdMap?: Map<string, string>): Promise<void> {
+    try {
+      const ratingService = RatingService.getInstance();
+      const ratingsData = await ratingService.fetchRatings(ratingsUrl);
+
+      if (!ratingsData || !ratingsData.bundles) {
+        this.logger.debug(`No ratings data available from ${hubId}`);
+        return;
+      }
+
+      // Update cache with new ratings
+      const now = Date.now();
+      const bundles = ratingsData.bundles;
+      const hubKeys = new Set<string>();
+      for (const [bundleId, rating] of Object.entries(bundles)) {
+        // Map the sourceId from ratings.json to the actual extension source ID
+        const actualSourceId = sourceIdMap?.get(rating.sourceId) || rating.sourceId;
+        const key = this.makeKey(actualSourceId, bundleId);
+        this.cache.set(key, {
+          sourceId: actualSourceId,
+          bundleId,
+          starRating: rating.starRating,
+          wilsonScore: rating.wilsonScore,
+          voteCount: rating.totalVotes,
+          confidence: getConfidenceLevel(rating.totalVotes),
+          cachedAt: now
+        });
+        hubKeys.add(key);
+      }
+      this.hubIndex.set(hubId, hubKeys);
+
+      this.logger.debug(`RatingCache refreshed: ${Object.keys(bundles).length} ratings from ${hubId}`);
+      this._onCacheUpdated.fire();
+    } catch (error) {
+      this.logger.warn(`Failed to refresh rating cache from ${hubId}: ${error}`);
+      // Don't clear cache on error - keep stale data
+    }
+  }
+
+  /**
+   * Get singleton instance
+   */
+  public static getInstance(): RatingCache {
+    if (!RatingCache.instance) {
+      RatingCache.instance = new RatingCache();
+    }
+    return RatingCache.instance;
+  }
+
+  /**
+   * Reset instance (for testing)
+   */
+  public static resetInstance(): void {
+    if (RatingCache.instance) {
+      RatingCache.instance.dispose();
+      RatingCache.instance = undefined;
+    }
+  }
+
+  /**
+   * Dispose resources
+   */
+  public dispose(): void {
+    this._onCacheUpdated.dispose();
+    this.cache.clear();
+    this.userRatings.clear();
+    this.hubIndex.clear();
+  }
+
+  /**
+   * Get rating for a bundle (synchronous)
+   * Returns undefined if not cached
+   * @param sourceId
+   * @param bundleId
+   */
+  public getRating(sourceId: string, bundleId: string): CachedRating | undefined {
+    const key = this.makeKey(sourceId, bundleId);
+    return this.cache.get(key);
+  }
+
+  /**
+   * Get formatted rating display for UI
+   * Returns undefined if not cached or no rating
+   * @param sourceId
+   * @param bundleId
+   */
+  public getRatingDisplay(sourceId: string, bundleId: string): RatingDisplay | undefined {
+    const rating = this.getRating(sourceId, bundleId);
+    if (!rating || rating.voteCount === 0 || rating.starRating === 0) {
+      return undefined;
+    }
+
+    return {
+      text: this.formatRating(rating.starRating, rating.voteCount),
+      tooltip: this.formatTooltip(rating)
+    };
   }
 
   /**
@@ -197,58 +224,18 @@ export class RatingCache {
    * @param sourceIdMap Map from ratings.json source_id to actual extension source ID
    */
   public async refreshFromHub(hubId: string, ratingsUrl: string, sourceIdMap?: Map<string, string>): Promise<void> {
-    // Prevent concurrent refreshes
-    if (this.refreshPromise) {
-      return this.refreshPromise;
+    // Prevent concurrent refreshes for the same URL
+    const existing = this.refreshPromises.get(ratingsUrl);
+    if (existing) {
+      return existing;
     }
 
-    this.refreshPromise = this.doRefresh(hubId, ratingsUrl, sourceIdMap);
+    const promise = this.doRefresh(hubId, ratingsUrl, sourceIdMap);
+    this.refreshPromises.set(ratingsUrl, promise);
     try {
-      await this.refreshPromise;
+      await promise;
     } finally {
-      this.refreshPromise = null;
-    }
-  }
-
-  /**
-   * Internal refresh implementation
-   * @param hubId
-   * @param ratingsUrl
-   * @param sourceIdMap
-   */
-  private async doRefresh(hubId: string, ratingsUrl: string, sourceIdMap?: Map<string, string>): Promise<void> {
-    try {
-      const ratingService = RatingService.getInstance();
-      const ratingsData = await ratingService.fetchRatings(ratingsUrl);
-
-      if (!ratingsData || !ratingsData.bundles) {
-        this.logger.debug(`No ratings data available from ${hubId}`);
-        return;
-      }
-
-      // Update cache with new ratings
-      const now = Date.now();
-      const bundles = ratingsData.bundles;
-      for (const [bundleId, rating] of Object.entries(bundles)) {
-        // Map the sourceId from ratings.json to the actual extension source ID
-        const actualSourceId = sourceIdMap?.get(rating.sourceId) || rating.sourceId;
-        const key = this.makeKey(actualSourceId, bundleId);
-        this.cache.set(key, {
-          sourceId: actualSourceId,
-          bundleId,
-          starRating: rating.starRating,
-          wilsonScore: rating.wilsonScore,
-          voteCount: rating.totalVotes,
-          confidence: getConfidenceLevel(rating.totalVotes),
-          cachedAt: now
-        });
-      }
-
-      this.logger.debug(`RatingCache refreshed: ${Object.keys(bundles).length} ratings from ${hubId}`);
-      this._onCacheUpdated.fire();
-    } catch (error) {
-      this.logger.warn(`Failed to refresh rating cache from ${hubId}: ${error}`);
-      // Don't clear cache on error - keep stale data
+      this.refreshPromises.delete(ratingsUrl);
     }
   }
 
@@ -393,18 +380,16 @@ export class RatingCache {
 
   /**
    * Clear ratings for a specific hub (by prefix matching)
-   * @param hubIdPrefix
+   * @param hubId
    */
-  public clearHub(hubIdPrefix: string): void {
-    for (const bundleId of this.cache.keys()) {
-      if (bundleId.startsWith(hubIdPrefix)) {
-        this.cache.delete(bundleId);
-      }
-    }
-    for (const key of this.userRatings.keys()) {
-      if (key.startsWith(hubIdPrefix)) {
+  public clearHub(hubId: string): void {
+    const keys = this.hubIndex.get(hubId);
+    if (keys) {
+      for (const key of keys) {
+        this.cache.delete(key);
         this.userRatings.delete(key);
       }
+      this.hubIndex.delete(hubId);
     }
     this._onCacheUpdated.fire();
   }

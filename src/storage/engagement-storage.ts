@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/member-ordering -- phase 2: reorganize members when feedback is re-integrated onto main */
 /**
  * EngagementStorage - File-based persistence for engagement data
  *
@@ -10,10 +9,10 @@
  */
 
 import * as fs from 'node:fs';
-import * as path from 'node:path';
 import {
-  promisify,
-} from 'node:util';
+  promises as fsp,
+} from 'node:fs';
+import * as path from 'node:path';
 import {
   EngagementResourceType,
   Feedback,
@@ -22,10 +21,6 @@ import {
 import {
   PendingFeedback,
 } from '../types/pending-feedback';
-
-const readFile = promisify(fs.readFile);
-const writeFile = promisify(fs.writeFile);
-const mkdir = promisify(fs.mkdir);
 
 /**
  * Storage paths for engagement data
@@ -65,13 +60,13 @@ interface PendingFeedbackStore {
  * EngagementStorage manages file-based persistence for engagement data
  */
 export class EngagementStorage {
+  private static readonly STORAGE_VERSION = '1.0.0';
+  private static readonly MAX_FEEDBACK_ENTRIES = 1000;
+
   private readonly paths: EngagementStoragePaths;
   private ratingsCache?: RatingsStore;
   private feedbackCache?: FeedbackStore;
   private pendingFeedbackCache?: PendingFeedbackStore;
-
-  private static readonly STORAGE_VERSION = '1.0.0';
-  private static readonly MAX_FEEDBACK_ENTRIES = 1000;
 
   constructor(storagePath: string) {
     if (!storagePath || storagePath.trim() === '') {
@@ -87,12 +82,77 @@ export class EngagementStorage {
     };
   }
 
+  private async loadPendingFeedbackStore(): Promise<PendingFeedbackStore> {
+    if (this.pendingFeedbackCache) {
+      return this.pendingFeedbackCache;
+    }
+    try {
+      const data = await fsp.readFile(this.paths.pendingFeedback, 'utf8');
+      this.pendingFeedbackCache = JSON.parse(data) as PendingFeedbackStore;
+      return this.pendingFeedbackCache;
+    } catch {
+      return { version: EngagementStorage.STORAGE_VERSION, entries: [] };
+    }
+  }
+
+  private async savePendingFeedbackStore(store: PendingFeedbackStore): Promise<void> {
+    await this.initialize();
+    await fsp.writeFile(this.paths.pendingFeedback, JSON.stringify(store, null, 2), 'utf8');
+    this.pendingFeedbackCache = store;
+  }
+
+  private async loadRatingsStore(): Promise<RatingsStore> {
+    if (this.ratingsCache) {
+      return this.ratingsCache;
+    }
+
+    try {
+      const data = await fsp.readFile(this.paths.ratings, 'utf8');
+      this.ratingsCache = JSON.parse(data) as RatingsStore;
+      return this.ratingsCache;
+    } catch {
+      return {
+        version: EngagementStorage.STORAGE_VERSION,
+        ratings: []
+      };
+    }
+  }
+
+  private async saveRatingsStore(store: RatingsStore): Promise<void> {
+    await this.initialize();
+    await fsp.writeFile(this.paths.ratings, JSON.stringify(store, null, 2), 'utf8');
+    this.ratingsCache = store;
+  }
+
+  private async loadFeedbackStore(): Promise<FeedbackStore> {
+    if (this.feedbackCache) {
+      return this.feedbackCache;
+    }
+
+    try {
+      const data = await fsp.readFile(this.paths.feedback, 'utf8');
+      this.feedbackCache = JSON.parse(data) as FeedbackStore;
+      return this.feedbackCache;
+    } catch {
+      return {
+        version: EngagementStorage.STORAGE_VERSION,
+        feedback: []
+      };
+    }
+  }
+
+  private async saveFeedbackStore(store: FeedbackStore): Promise<void> {
+    await this.initialize();
+    await fsp.writeFile(this.paths.feedback, JSON.stringify(store, null, 2), 'utf8');
+    this.feedbackCache = store;
+  }
+
   /**
    * Initialize storage directories
    */
   public async initialize(): Promise<void> {
     if (!fs.existsSync(this.paths.root)) {
-      await mkdir(this.paths.root, { recursive: true });
+      await fsp.mkdir(this.paths.root, { recursive: true });
     }
   }
 
@@ -169,29 +229,6 @@ export class EngagementStorage {
     await this.saveRatingsStore(store);
   }
 
-  private async loadRatingsStore(): Promise<RatingsStore> {
-    if (this.ratingsCache) {
-      return this.ratingsCache;
-    }
-
-    try {
-      const data = await readFile(this.paths.ratings, 'utf8');
-      this.ratingsCache = JSON.parse(data) as RatingsStore;
-      return this.ratingsCache;
-    } catch {
-      return {
-        version: EngagementStorage.STORAGE_VERSION,
-        ratings: []
-      };
-    }
-  }
-
-  private async saveRatingsStore(store: RatingsStore): Promise<void> {
-    await this.initialize();
-    await writeFile(this.paths.ratings, JSON.stringify(store, null, 2), 'utf8');
-    this.ratingsCache = store;
-  }
-
   // ========================================================================
   // Feedback Operations
   // ========================================================================
@@ -256,29 +293,6 @@ export class EngagementStorage {
     await this.saveFeedbackStore(store);
   }
 
-  private async loadFeedbackStore(): Promise<FeedbackStore> {
-    if (this.feedbackCache) {
-      return this.feedbackCache;
-    }
-
-    try {
-      const data = await readFile(this.paths.feedback, 'utf8');
-      this.feedbackCache = JSON.parse(data) as FeedbackStore;
-      return this.feedbackCache;
-    } catch {
-      return {
-        version: EngagementStorage.STORAGE_VERSION,
-        feedback: []
-      };
-    }
-  }
-
-  private async saveFeedbackStore(store: FeedbackStore): Promise<void> {
-    await this.initialize();
-    await writeFile(this.paths.feedback, JSON.stringify(store, null, 2), 'utf8');
-    this.feedbackCache = store;
-  }
-
   // ========================================================================
   // Pending Feedback Operations
   // ========================================================================
@@ -319,25 +333,6 @@ export class EngagementStorage {
     const store = await this.loadPendingFeedbackStore();
     store.entries = store.entries.filter((e) => e.id !== id);
     await this.savePendingFeedbackStore(store);
-  }
-
-  private async loadPendingFeedbackStore(): Promise<PendingFeedbackStore> {
-    if (this.pendingFeedbackCache) {
-      return this.pendingFeedbackCache;
-    }
-    try {
-      const data = await readFile(this.paths.pendingFeedback, 'utf8');
-      this.pendingFeedbackCache = JSON.parse(data) as PendingFeedbackStore;
-      return this.pendingFeedbackCache;
-    } catch {
-      return { version: EngagementStorage.STORAGE_VERSION, entries: [] };
-    }
-  }
-
-  private async savePendingFeedbackStore(store: PendingFeedbackStore): Promise<void> {
-    await this.initialize();
-    await writeFile(this.paths.pendingFeedback, JSON.stringify(store, null, 2), 'utf8');
-    this.pendingFeedbackCache = store;
   }
 
   // ========================================================================

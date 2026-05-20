@@ -3,7 +3,7 @@
  */
 import {
   CachedRating,
-} from '../services/engagement/rating-cache';
+} from './engagement';
 import {
   McpServersManifest,
 } from './mcp';

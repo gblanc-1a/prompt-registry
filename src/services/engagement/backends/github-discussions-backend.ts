@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/member-ordering -- phase 2: reorganize members when feedback is re-integrated onto main */
 /**
  * GitHubDiscussionsBackend - Engagement backend using GitHub Discussions
  *
@@ -61,6 +60,9 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
   // Cache for user's votes
   private readonly userVotes: Map<string, 'up' | 'down'> = new Map();
 
+  // Cached GitHub user identity
+  private cachedUser: { login: string } | null = null;
+
   // Storage path for local backend (can be set before initialize)
   private storagePath = '';
 
@@ -74,138 +76,6 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
   }
 
   /**
-   * Set storage path for local backend (must be called before initialize)
-   * @param path
-   */
-  public setStoragePath(path: string): void {
-    this.storagePath = path;
-  }
-
-  /**
-   * Initialize the backend
-   * @param config
-   */
-  public async initialize(config: BackendConfig): Promise<void> {
-    if (config.type !== 'github-discussions') {
-      throw new Error(`Invalid config type: ${config.type}. Expected 'github-discussions'.`);
-    }
-
-    this.config = config;
-
-    // Parse repository
-    const [owner, repo] = this.config.repository.split('/');
-    if (!owner || !repo) {
-      throw new Error(`Invalid repository format: ${this.config.repository}. Expected 'owner/repo'.`);
-    }
-    this.owner = owner;
-    this.repo = repo;
-
-    // Initialize local backend for feedback storage
-    if (!this.storagePath) {
-      throw new Error('Storage path is required. Call setStoragePath() before initialize().');
-    }
-    await this.localBackend.initialize({
-      type: 'file',
-      storagePath: this.storagePath
-    });
-
-    this._initialized = true;
-    this.logger.info(`GitHubDiscussionsBackend initialized for ${this.config.repository}`);
-  }
-
-  /**
-   * Dispose resources
-   */
-  public dispose(): void {
-    this.localBackend.dispose();
-    this.discussionMappings.clear();
-    this.userVotes.clear();
-    this._initialized = false;
-  }
-
-  /**
-   * Set discussion mapping for a resource
-   * @param resourceId
-   * @param discussionNumber
-   * @param commentId
-   */
-  public setDiscussionMapping(resourceId: string, discussionNumber: number, commentId?: number): void {
-    this.discussionMappings.set(resourceId, {
-      resourceId,
-      discussionNumber,
-      commentId
-    });
-  }
-
-  /**
-   * Get discussion mapping for a resource
-   * @param resourceId - Resource ID in format "sourceId:bundleId"
-   * @returns Discussion mapping or undefined if not found
-   */
-  public getDiscussionMapping(resourceId: string): DiscussionMapping | undefined {
-    return this.discussionMappings.get(resourceId);
-  }
-
-  /**
-   * Get repository owner and name
-   */
-  public getRepository(): { owner: string; repo: string } {
-    this.ensureInitialized();
-    return { owner: this.owner, repo: this.repo };
-  }
-
-  /**
-   * Load collection mappings from collections.yaml URL
-   * Maps bundles (sourceId:bundleId) to GitHub Discussion numbers
-   * @param collectionsUrl
-   */
-  public async loadCollectionsMappings(collectionsUrl: string): Promise<void> {
-    this.ensureInitialized();
-
-    try {
-      this.logger.info(`Loading collections mappings from ${collectionsUrl}`);
-
-      const response = await axios.get(collectionsUrl);
-      /* eslint-disable @typescript-eslint/naming-convention -- matches collections.yaml external shape */
-      const collections = yaml.load(response.data) as {
-        repository: string;
-        collections: {
-          id: string;
-          source_id: string;
-          discussion_number: number;
-          comment_id?: number;
-        }[];
-      };
-      /* eslint-enable @typescript-eslint/naming-convention */
-
-      if (!collections || !collections.collections) {
-        throw new Error('Invalid collections.yaml format: missing collections array');
-      }
-
-      let mappedCount = 0;
-      for (const collection of collections.collections) {
-        const resourceId = `${collection.source_id}:${collection.id}`;
-        this.setDiscussionMapping(
-          resourceId,
-          collection.discussion_number,
-          collection.comment_id
-        );
-        mappedCount++;
-      }
-
-      this.logger.info(`Loaded ${mappedCount} collection mappings`);
-    } catch (error: any) {
-      if (error.response) {
-        throw new Error(`Failed to load collections mappings: HTTP ${error.response.status}`);
-      } else if (error.name === 'YAMLException') {
-        throw new Error(`Failed to parse collections mappings: ${error.message}`);
-      } else {
-        throw new Error(`Failed to load collections mappings: ${error.message}`);
-      }
-    }
-  }
-
-  /**
    * Get GitHub access token via VS Code authentication
    */
   private async getAccessToken(): Promise<string> {
@@ -215,69 +85,6 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
     return session.accessToken;
   }
 
-  // ========================================================================
-  // Rating Operations
-  // ========================================================================
-
-  /**
-   * Submit a rating (vote) via GitHub Discussions reaction
-   * @param rating
-   */
-  public async submitRating(rating: Rating): Promise<void> {
-    this.ensureInitialized();
-
-    // Try exact match first
-    let mapping = this.discussionMappings.get(rating.resourceId);
-
-    // If no exact match, try to find a mapping that ends with the resourceId
-    if (!mapping) {
-      for (const [key, value] of this.discussionMappings.entries()) {
-        if (key.endsWith(`:${rating.resourceId}`)) {
-          this.logger.debug(`Found rating mapping via suffix match: ${key}`);
-          mapping = value;
-          break;
-        }
-      }
-    }
-
-    if (!mapping) {
-      this.logger.warn(`No discussion mapping for resource: ${rating.resourceId}`);
-      // Fall back to local storage
-      await this.localBackend.submitRating(rating);
-      return;
-    }
-
-    try {
-      const token = await this.getAccessToken();
-      const reaction = rating.score >= 3 ? '+1' : '-1';
-
-      // Remove existing reaction first (if any)
-      await this.removeExistingReaction(mapping, token);
-
-      // Add new reaction
-      const url = mapping.commentId
-        ? `https://api.github.com/repos/${this.owner}/${this.repo}/discussions/comments/${mapping.commentId}/reactions`
-        : `https://api.github.com/repos/${this.owner}/${this.repo}/discussions/${mapping.discussionNumber}/reactions`;
-
-      await axios.post(url, { content: reaction }, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github+json',
-          'X-GitHub-Api-Version': '2022-11-28'
-        }
-      });
-
-      // Cache the vote
-      this.userVotes.set(rating.resourceId, rating.score >= 3 ? 'up' : 'down');
-
-      this.logger.info(`Submitted ${reaction} reaction for ${rating.resourceId}`);
-    } catch (error: any) {
-      this.logger.error(`Failed to submit rating to GitHub: ${error.message}`, error);
-      // Fall back to local storage
-      await this.localBackend.submitRating(rating);
-    }
-  }
-
   /**
    * Remove existing reaction before adding new one
    * @param mapping
@@ -285,21 +92,34 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
    */
   private async removeExistingReaction(mapping: DiscussionMapping, token: string): Promise<void> {
     try {
-      const url = mapping.commentId
+      const baseUrl = mapping.commentId
         ? `https://api.github.com/repos/${this.owner}/${this.repo}/discussions/comments/${mapping.commentId}/reactions`
         : `https://api.github.com/repos/${this.owner}/${this.repo}/discussions/${mapping.discussionNumber}/reactions`;
 
-      const response = await axios.get<{ id: number; user: { login: string }; content: string }[]>(url, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github+json',
-          'X-GitHub-Api-Version': '2022-11-28'
+      // Fetch all reactions with pagination (GitHub returns max 100 per page)
+      const allReactions: { id: number; user: { login: string }; content: string }[] = [];
+      let page = 1;
+      while (true) {
+        const response = await axios.get<{ id: number; user: { login: string }; content: string }[]>(
+          `${baseUrl}?per_page=100&page=${page}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28'
+            }
+          }
+        );
+        allReactions.push(...response.data);
+        if (response.data.length < 100) {
+          break;
         }
-      });
+        page++;
+      }
 
       // Find user's existing reactions
       const userInfo = await this.getCurrentUser(token);
-      const userReactions = response.data.filter((r) =>
+      const userReactions = allReactions.filter((r) =>
         r.user.login === userInfo.login && (r.content === '+1' || r.content === '-1')
       );
 
@@ -327,137 +147,17 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
    * @param token
    */
   private async getCurrentUser(token: string): Promise<{ login: string }> {
+    if (this.cachedUser) {
+      return this.cachedUser;
+    }
     const response = await axios.get<{ login: string }>('https://api.github.com/user', {
       headers: {
         Authorization: `Bearer ${token}`,
         Accept: 'application/vnd.github+json'
       }
     });
-    return response.data;
-  }
-
-  /**
-   * Get user's rating for a resource
-   * @param resourceType
-   * @param resourceId
-   */
-  public async getRating(
-    resourceType: EngagementResourceType,
-    resourceId: string
-  ): Promise<Rating | undefined> {
-    this.ensureInitialized();
-
-    // Check cache first
-    const cachedVote = this.userVotes.get(resourceId);
-    if (cachedVote) {
-      return {
-        id: `${resourceId}-vote`,
-        resourceType,
-        resourceId,
-        score: cachedVote === 'up' ? 5 : 1,
-        timestamp: new Date().toISOString()
-      };
-    }
-
-    // Fall back to local backend
-    return this.localBackend.getRating(resourceType, resourceId);
-  }
-
-  /**
-   * Get aggregated rating statistics
-   * Note: This returns cached/computed stats, not live data
-   * @param resourceType
-   * @param resourceId
-   */
-  public async getAggregatedRatings(
-    resourceType: EngagementResourceType,
-    resourceId: string
-  ): Promise<RatingStats | undefined> {
-    this.ensureInitialized();
-    // Aggregated ratings should come from RatingService/RatingCache
-    // which fetches from the pre-computed ratings.json
-    return this.localBackend.getAggregatedRatings(resourceType, resourceId);
-  }
-
-  /**
-   * Delete user's rating (remove reaction)
-   * @param resourceType
-   * @param resourceId
-   */
-  public async deleteRating(
-    resourceType: EngagementResourceType,
-    resourceId: string
-  ): Promise<void> {
-    this.ensureInitialized();
-
-    // Try exact match first
-    let mapping = this.discussionMappings.get(resourceId);
-
-    // If no exact match, try to find a mapping that ends with the resourceId
-    if (!mapping) {
-      for (const [key, value] of this.discussionMappings.entries()) {
-        if (key.endsWith(`:${resourceId}`)) {
-          mapping = value;
-          break;
-        }
-      }
-    }
-
-    if (!mapping) {
-      await this.localBackend.deleteRating(resourceType, resourceId);
-      return;
-    }
-
-    try {
-      const token = await this.getAccessToken();
-      await this.removeExistingReaction(mapping, token);
-      this.userVotes.delete(resourceId);
-      this.logger.info(`Removed rating for ${resourceId}`);
-    } catch (error: any) {
-      this.logger.error(`Failed to delete rating from GitHub: ${error.message}`, error);
-      await this.localBackend.deleteRating(resourceType, resourceId);
-    }
-  }
-
-  // ========================================================================
-  // Feedback Operations (delegated to local backend)
-  // ========================================================================
-
-  public async submitFeedback(feedback: Feedback): Promise<void> {
-    this.ensureInitialized();
-
-    this.logger.debug(`Feedback received for ${feedback.resourceType}/${feedback.resourceId}`);
-
-    // Try exact match first
-    let mapping = this.discussionMappings.get(feedback.resourceId);
-
-    // If no exact match, try to find a mapping that ends with the resourceId
-    // This handles the case where resourceId is just the bundle ID without source prefix
-    if (!mapping) {
-      for (const [key, value] of this.discussionMappings.entries()) {
-        if (key.endsWith(`:${feedback.resourceId}`)) {
-          this.logger.debug(`Found mapping via suffix match: ${key}`);
-          mapping = value;
-          break;
-        }
-      }
-    }
-
-    if (mapping) {
-      // Try to post to GitHub Discussions
-      try {
-        await this.postFeedbackToDiscussion(feedback, mapping);
-        this.logger.debug(`Feedback posted to GitHub Discussion #${mapping.discussionNumber}`);
-      } catch (error: any) {
-        this.logger.warn(`Failed to post feedback to GitHub, storing locally: ${error.message}`);
-      }
-    } else {
-      this.logger.debug('No discussion mapping found, storing locally only');
-    }
-
-    // Always store locally as backup
-    await this.localBackend.submitFeedback(feedback);
-    this.logger.debug('Feedback saved to local file backend');
+    this.cachedUser = response.data;
+    return this.cachedUser;
   }
 
   /**
@@ -621,6 +321,327 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
     }
 
     return parts.join('\n');
+  }
+
+  /**
+   * Set storage path for local backend (must be called before initialize)
+   * @param path
+   */
+  public setStoragePath(path: string): void {
+    this.storagePath = path;
+  }
+
+  /**
+   * Initialize the backend
+   * @param config
+   */
+  public async initialize(config: BackendConfig): Promise<void> {
+    if (config.type !== 'github-discussions') {
+      throw new Error(`Invalid config type: ${config.type}. Expected 'github-discussions'.`);
+    }
+
+    this.config = config;
+
+    // Parse repository
+    const [owner, repo] = this.config.repository.split('/');
+    if (!owner || !repo) {
+      throw new Error(`Invalid repository format: ${this.config.repository}. Expected 'owner/repo'.`);
+    }
+    this.owner = owner;
+    this.repo = repo;
+
+    // Initialize local backend for feedback storage
+    if (!this.storagePath) {
+      throw new Error('Storage path is required. Call setStoragePath() before initialize().');
+    }
+    await this.localBackend.initialize({
+      type: 'file',
+      storagePath: this.storagePath
+    });
+
+    this._initialized = true;
+    this.logger.info(`GitHubDiscussionsBackend initialized for ${this.config.repository}`);
+  }
+
+  /**
+   * Dispose resources
+   */
+  public dispose(): void {
+    this.localBackend.dispose();
+    this.discussionMappings.clear();
+    this.userVotes.clear();
+    this.cachedUser = null;
+    this._initialized = false;
+  }
+
+  /**
+   * Set discussion mapping for a resource
+   * @param resourceId
+   * @param discussionNumber
+   * @param commentId
+   */
+  public setDiscussionMapping(resourceId: string, discussionNumber: number, commentId?: number): void {
+    this.discussionMappings.set(resourceId, {
+      resourceId,
+      discussionNumber,
+      commentId
+    });
+  }
+
+  /**
+   * Get discussion mapping for a resource
+   * @param resourceId - Resource ID in format "sourceId:bundleId"
+   * @returns Discussion mapping or undefined if not found
+   */
+  public getDiscussionMapping(resourceId: string): DiscussionMapping | undefined {
+    return this.discussionMappings.get(resourceId);
+  }
+
+  /**
+   * Get repository owner and name
+   */
+  public getRepository(): { owner: string; repo: string } {
+    this.ensureInitialized();
+    return { owner: this.owner, repo: this.repo };
+  }
+
+  /**
+   * Load collection mappings from collections.yaml URL
+   * Maps bundles (sourceId:bundleId) to GitHub Discussion numbers
+   * @param collectionsUrl
+   */
+  public async loadCollectionsMappings(collectionsUrl: string): Promise<void> {
+    this.ensureInitialized();
+
+    try {
+      this.logger.info(`Loading collections mappings from ${collectionsUrl}`);
+
+      const response = await axios.get(collectionsUrl);
+      /* eslint-disable @typescript-eslint/naming-convention -- matches collections.yaml external shape */
+      const collections = yaml.load(response.data as string) as {
+        repository: string;
+        collections: {
+          id: string;
+          source_id: string;
+          discussion_number: number;
+          comment_id?: number;
+        }[];
+      };
+      /* eslint-enable @typescript-eslint/naming-convention */
+
+      if (!collections || !collections.collections) {
+        throw new Error('Invalid collections.yaml format: missing collections array');
+      }
+
+      let mappedCount = 0;
+      for (const collection of collections.collections) {
+        const resourceId = `${collection.source_id}:${collection.id}`;
+        this.setDiscussionMapping(
+          resourceId,
+          collection.discussion_number,
+          collection.comment_id
+        );
+        mappedCount++;
+      }
+
+      this.logger.info(`Loaded ${mappedCount} collection mappings`);
+    } catch (error: unknown) {
+      const err = error as { response?: { status: number }; name?: string; message?: string };
+      if (err.response) {
+        throw new Error(`Failed to load collections mappings: HTTP ${err.response.status}`);
+      } else if (err.name === 'YAMLException') {
+        throw new Error(`Failed to parse collections mappings: ${err.message ?? String(error)}`);
+      } else {
+        throw new Error(`Failed to load collections mappings: ${err.message ?? String(error)}`);
+      }
+    }
+  }
+
+  // ========================================================================
+  // Rating Operations
+  // ========================================================================
+
+  /**
+   * Submit a rating (vote) via GitHub Discussions reaction
+   * @param rating
+   */
+  public async submitRating(rating: Rating): Promise<void> {
+    this.ensureInitialized();
+
+    // Try exact match first
+    let mapping = this.discussionMappings.get(rating.resourceId);
+
+    // If no exact match, try to find a mapping that ends with the resourceId
+    if (!mapping) {
+      for (const [key, value] of this.discussionMappings.entries()) {
+        if (key.endsWith(`:${rating.resourceId}`)) {
+          this.logger.debug(`Found rating mapping via suffix match: ${key}`);
+          mapping = value;
+          break;
+        }
+      }
+    }
+
+    if (!mapping) {
+      this.logger.warn(`No discussion mapping for resource: ${rating.resourceId}`);
+      // Fall back to local storage
+      await this.localBackend.submitRating(rating);
+      return;
+    }
+
+    try {
+      const token = await this.getAccessToken();
+      const reaction = rating.score >= 3 ? '+1' : '-1';
+
+      // Remove existing reaction first (if any)
+      await this.removeExistingReaction(mapping, token);
+
+      // Add new reaction
+      const url = mapping.commentId
+        ? `https://api.github.com/repos/${this.owner}/${this.repo}/discussions/comments/${mapping.commentId}/reactions`
+        : `https://api.github.com/repos/${this.owner}/${this.repo}/discussions/${mapping.discussionNumber}/reactions`;
+
+      await axios.post(url, { content: reaction }, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'application/vnd.github+json',
+          'X-GitHub-Api-Version': '2022-11-28'
+        }
+      });
+
+      // Cache the vote
+      this.userVotes.set(rating.resourceId, rating.score >= 3 ? 'up' : 'down');
+
+      this.logger.info(`Submitted ${reaction} reaction for ${rating.resourceId}`);
+    } catch (error: unknown) {
+      this.logger.error(`Failed to submit rating to GitHub: ${(error as Error).message}`, error instanceof Error ? error : undefined);
+      // Fall back to local storage
+      await this.localBackend.submitRating(rating);
+    }
+  }
+
+  /**
+   * Get user's rating for a resource
+   * @param resourceType
+   * @param resourceId
+   */
+  public async getRating(
+    resourceType: EngagementResourceType,
+    resourceId: string
+  ): Promise<Rating | undefined> {
+    this.ensureInitialized();
+
+    // Check cache first
+    const cachedVote = this.userVotes.get(resourceId);
+    if (cachedVote) {
+      return {
+        id: `${resourceId}-vote`,
+        resourceType,
+        resourceId,
+        score: cachedVote === 'up' ? 5 : 1,
+        timestamp: new Date().toISOString()
+      };
+    }
+
+    // Fall back to local backend
+    return this.localBackend.getRating(resourceType, resourceId);
+  }
+
+  /**
+   * Get aggregated rating statistics
+   * Note: This returns cached/computed stats, not live data
+   * @param resourceType
+   * @param resourceId
+   */
+  public async getAggregatedRatings(
+    resourceType: EngagementResourceType,
+    resourceId: string
+  ): Promise<RatingStats | undefined> {
+    this.ensureInitialized();
+    // Aggregated ratings should come from RatingService/RatingCache
+    // which fetches from the pre-computed ratings.json
+    return this.localBackend.getAggregatedRatings(resourceType, resourceId);
+  }
+
+  /**
+   * Delete user's rating (remove reaction)
+   * @param resourceType
+   * @param resourceId
+   */
+  public async deleteRating(
+    resourceType: EngagementResourceType,
+    resourceId: string
+  ): Promise<void> {
+    this.ensureInitialized();
+
+    // Try exact match first
+    let mapping = this.discussionMappings.get(resourceId);
+
+    // If no exact match, try to find a mapping that ends with the resourceId
+    if (!mapping) {
+      for (const [key, value] of this.discussionMappings.entries()) {
+        if (key.endsWith(`:${resourceId}`)) {
+          mapping = value;
+          break;
+        }
+      }
+    }
+
+    if (!mapping) {
+      await this.localBackend.deleteRating(resourceType, resourceId);
+      return;
+    }
+
+    try {
+      const token = await this.getAccessToken();
+      await this.removeExistingReaction(mapping, token);
+      this.userVotes.delete(resourceId);
+      this.logger.info(`Removed rating for ${resourceId}`);
+    } catch (error: unknown) {
+      this.logger.error(`Failed to delete rating from GitHub: ${(error as Error).message}`, error instanceof Error ? error : undefined);
+      await this.localBackend.deleteRating(resourceType, resourceId);
+    }
+  }
+
+  // ========================================================================
+  // Feedback Operations (delegated to local backend)
+  // ========================================================================
+
+  public async submitFeedback(feedback: Feedback): Promise<void> {
+    this.ensureInitialized();
+
+    this.logger.debug(`Feedback received for ${feedback.resourceType}/${feedback.resourceId}`);
+
+    // Try exact match first
+    let mapping = this.discussionMappings.get(feedback.resourceId);
+
+    // If no exact match, try to find a mapping that ends with the resourceId
+    // This handles the case where resourceId is just the bundle ID without source prefix
+    if (!mapping) {
+      for (const [key, value] of this.discussionMappings.entries()) {
+        if (key.endsWith(`:${feedback.resourceId}`)) {
+          this.logger.debug(`Found mapping via suffix match: ${key}`);
+          mapping = value;
+          break;
+        }
+      }
+    }
+
+    if (mapping) {
+      // Try to post to GitHub Discussions
+      try {
+        await this.postFeedbackToDiscussion(feedback, mapping);
+        this.logger.debug(`Feedback posted to GitHub Discussion #${mapping.discussionNumber}`);
+      } catch (error: unknown) {
+        this.logger.warn(`Failed to post feedback to GitHub, storing locally: ${(error as Error).message}`);
+      }
+    } else {
+      this.logger.debug('No discussion mapping found, storing locally only');
+    }
+
+    // Always store locally as backup
+    await this.localBackend.submitFeedback(feedback);
+    this.logger.debug('Feedback saved to local file backend');
   }
 
   public async getFeedback(

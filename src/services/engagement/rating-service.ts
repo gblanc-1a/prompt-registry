@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/member-ordering -- phase 2: reorganize members when feedback is re-integrated onto main */
 /**
  * RatingService - Fetches and caches bundle ratings from hub sources
  *
@@ -108,60 +107,6 @@ export class RatingService {
   }
 
   /**
-   * Fetch ratings from a hub's ratings.json URL
-   * @param ratingsUrl URL to the ratings.json file
-   * @param forceRefresh Force refresh even if cached
-   */
-  public async fetchRatings(ratingsUrl: string, forceRefresh = false): Promise<RatingsData | undefined> {
-    // Check cache
-    if (!forceRefresh && this.ratingsCache.has(ratingsUrl)) {
-      const expiry = this.cacheExpiry.get(ratingsUrl) || 0;
-      if (Date.now() < expiry) {
-        return this.ratingsCache.get(ratingsUrl);
-      }
-    }
-
-    try {
-      // Add cache-busting query parameter (handle existing query params)
-      const separator = ratingsUrl.includes('?') ? '&' : '?';
-      const urlWithCacheBust = `${ratingsUrl}${separator}t=${Date.now()}`;
-      const response = await axios.get(urlWithCacheBust, {
-        timeout: 10_000,
-        headers: {
-          Accept: 'application/json'
-        }
-      });
-
-      const rawData = response.data;
-
-      // Handle both formats: bundles (new) and collections (compute-ratings.ts output)
-      let normalizedData: RatingsData;
-
-      if (rawData.bundles && typeof rawData.bundles === 'object') {
-        // Already in bundles format
-        normalizedData = rawData as RatingsData;
-      } else if (rawData.collections && typeof rawData.collections === 'object') {
-        // Convert collections format to bundles format
-        normalizedData = this.convertCollectionsToBundle(rawData as CollectionsRatingsData);
-      } else {
-        this.logger.warn(`Invalid ratings data from ${ratingsUrl}: missing bundles or collections`);
-        return undefined;
-      }
-
-      // Cache the normalized result
-      this.ratingsCache.set(ratingsUrl, normalizedData);
-      this.cacheExpiry.set(ratingsUrl, Date.now() + this.cacheDurationMs);
-
-      this.logger.debug(`Fetched ratings from ${ratingsUrl}: ${Object.keys(normalizedData.bundles).length} bundles`);
-      return normalizedData;
-    } catch (error) {
-      const err = error instanceof Error ? error : undefined;
-      this.logger.debug(`Failed to fetch ratings from ${ratingsUrl}`, err);
-      return undefined;
-    }
-  }
-
-  /**
    * Convert collections format (from compute-ratings.ts) to bundles format
    * @param collectionsData
    */
@@ -188,6 +133,60 @@ export class RatingService {
       generatedAt: collectionsData.generated_at,
       bundles
     };
+  }
+
+  /**
+   * Fetch ratings from a hub's ratings.json URL
+   * @param ratingsUrl URL to the ratings.json file
+   * @param forceRefresh Force refresh even if cached
+   */
+  public async fetchRatings(ratingsUrl: string, forceRefresh = false): Promise<RatingsData | undefined> {
+    // Check cache
+    if (!forceRefresh && this.ratingsCache.has(ratingsUrl)) {
+      const expiry = this.cacheExpiry.get(ratingsUrl) || 0;
+      if (Date.now() < expiry) {
+        return this.ratingsCache.get(ratingsUrl);
+      }
+    }
+
+    try {
+      // Add cache-busting query parameter (handle existing query params)
+      const separator = ratingsUrl.includes('?') ? '&' : '?';
+      const urlWithCacheBust = `${ratingsUrl}${separator}t=${Date.now()}`;
+      const response = await axios.get(urlWithCacheBust, {
+        timeout: 10_000,
+        headers: {
+          Accept: 'application/json'
+        }
+      });
+
+      const rawData = response.data as { bundles?: unknown; collections?: unknown };
+
+      // Handle both formats: bundles (new) and collections (compute-ratings.ts output)
+      let normalizedData: RatingsData;
+
+      if (rawData.bundles && typeof rawData.bundles === 'object') {
+        // Already in bundles format
+        normalizedData = rawData as RatingsData;
+      } else if (rawData.collections && typeof rawData.collections === 'object') {
+        // Convert collections format to bundles format
+        normalizedData = this.convertCollectionsToBundle(rawData as CollectionsRatingsData);
+      } else {
+        this.logger.warn(`Invalid ratings data from ${ratingsUrl}: missing bundles or collections`);
+        return undefined;
+      }
+
+      // Cache the normalized result
+      this.ratingsCache.set(ratingsUrl, normalizedData);
+      this.cacheExpiry.set(ratingsUrl, Date.now() + this.cacheDurationMs);
+
+      this.logger.debug(`Fetched ratings from ${ratingsUrl}: ${Object.keys(normalizedData.bundles).length} bundles`);
+      return normalizedData;
+    } catch (error) {
+      const err = error instanceof Error ? error : undefined;
+      this.logger.debug(`Failed to fetch ratings from ${ratingsUrl}`, err);
+      return undefined;
+    }
   }
 
   /**

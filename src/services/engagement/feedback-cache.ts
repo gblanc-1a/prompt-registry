@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/member-ordering -- phase 2: reorganize members when feedback is re-integrated onto main */
 /**
  * FeedbackCache - In-memory cache for bundle feedbacks
  *
@@ -43,10 +42,11 @@ export interface CachedFeedback {
  * FeedbackCache provides synchronous access to pre-fetched feedbacks
  */
 export class FeedbackCache {
-  private static instance: FeedbackCache;
+  private static instance: FeedbackCache | undefined;
   private readonly cache: Map<string, CachedFeedback[]> = new Map();
   private readonly logger: Logger;
-  private refreshPromise: Promise<void> | null = null;
+  private readonly refreshPromises: Map<string, Promise<void>> = new Map();
+  private readonly hubIndex: Map<string, Set<string>> = new Map();
 
   // Events
   private readonly _onCacheUpdated = new vscode.EventEmitter<void>();
@@ -72,7 +72,51 @@ export class FeedbackCache {
   public static resetInstance(): void {
     if (FeedbackCache.instance) {
       FeedbackCache.instance.dispose();
-      FeedbackCache.instance = undefined as any;
+      FeedbackCache.instance = undefined;
+    }
+  }
+
+  /**
+   * Internal refresh implementation
+   * @param hubId
+   * @param feedbacksUrl
+   */
+  private async doRefresh(hubId: string, feedbacksUrl: string): Promise<void> {
+    try {
+      const feedbackService = FeedbackService.getInstance();
+      const feedbacksData = await feedbackService.fetchFeedbacks(feedbacksUrl);
+
+      if (!feedbacksData || !feedbacksData.bundles) {
+        this.logger.debug(`No feedbacks data available from ${hubId}`);
+        return;
+      }
+
+      // Update cache with new feedbacks
+      const now = Date.now();
+      const bundles = feedbacksData.bundles;
+
+      const hubKeys = new Set<string>();
+      for (const bundleCollection of bundles) {
+        const cachedFeedbacks: CachedFeedback[] = bundleCollection.feedbacks.map((feedback) => ({
+          id: feedback.id,
+          bundleId: bundleCollection.bundleId,
+          rating: feedback.rating,
+          comment: feedback.comment,
+          timestamp: feedback.timestamp,
+          version: feedback.version,
+          cachedAt: now
+        }));
+
+        this.cache.set(bundleCollection.bundleId, cachedFeedbacks);
+        hubKeys.add(bundleCollection.bundleId);
+      }
+      this.hubIndex.set(hubId, hubKeys);
+
+      this.logger.debug(`FeedbackCache refreshed: ${bundles.length} bundles from ${hubId}`);
+      this._onCacheUpdated.fire();
+    } catch (error) {
+      this.logger.warn(`Failed to refresh feedback cache from ${hubId}: ${error}`);
+      // Don't clear cache on error - keep stale data
     }
   }
 
@@ -82,6 +126,7 @@ export class FeedbackCache {
   public dispose(): void {
     this._onCacheUpdated.dispose();
     this.cache.clear();
+    this.hubIndex.clear();
   }
 
   /**
@@ -122,57 +167,18 @@ export class FeedbackCache {
    * @param feedbacksUrl
    */
   public async refreshFromHub(hubId: string, feedbacksUrl: string): Promise<void> {
-    // Prevent concurrent refreshes
-    if (this.refreshPromise) {
-      return this.refreshPromise;
+    // Prevent concurrent refreshes for the same URL
+    const existing = this.refreshPromises.get(feedbacksUrl);
+    if (existing) {
+      return existing;
     }
 
-    this.refreshPromise = this.doRefresh(hubId, feedbacksUrl);
+    const promise = this.doRefresh(hubId, feedbacksUrl);
+    this.refreshPromises.set(feedbacksUrl, promise);
     try {
-      await this.refreshPromise;
+      await promise;
     } finally {
-      this.refreshPromise = null;
-    }
-  }
-
-  /**
-   * Internal refresh implementation
-   * @param hubId
-   * @param feedbacksUrl
-   */
-  private async doRefresh(hubId: string, feedbacksUrl: string): Promise<void> {
-    try {
-      const feedbackService = FeedbackService.getInstance();
-      const feedbacksData = await feedbackService.fetchFeedbacks(feedbacksUrl);
-
-      if (!feedbacksData || !feedbacksData.bundles) {
-        this.logger.debug(`No feedbacks data available from ${hubId}`);
-        return;
-      }
-
-      // Update cache with new feedbacks
-      const now = Date.now();
-      const bundles = feedbacksData.bundles;
-
-      for (const bundleCollection of bundles) {
-        const cachedFeedbacks: CachedFeedback[] = bundleCollection.feedbacks.map((feedback) => ({
-          id: feedback.id,
-          bundleId: bundleCollection.bundleId,
-          rating: feedback.rating,
-          comment: feedback.comment,
-          timestamp: feedback.timestamp,
-          version: feedback.version,
-          cachedAt: now
-        }));
-
-        this.cache.set(bundleCollection.bundleId, cachedFeedbacks);
-      }
-
-      this.logger.debug(`FeedbackCache refreshed: ${bundles.length} bundles from ${hubId}`);
-      this._onCacheUpdated.fire();
-    } catch (error) {
-      this.logger.warn(`Failed to refresh feedback cache from ${hubId}: ${error}`);
-      // Don't clear cache on error - keep stale data
+      this.refreshPromises.delete(feedbacksUrl);
     }
   }
 
@@ -195,13 +201,15 @@ export class FeedbackCache {
 
   /**
    * Clear feedbacks for a specific hub (by prefix matching)
-   * @param hubIdPrefix
+   * @param hubId
    */
-  public clearHub(hubIdPrefix: string): void {
-    for (const bundleId of this.cache.keys()) {
-      if (bundleId.startsWith(hubIdPrefix)) {
-        this.cache.delete(bundleId);
+  public clearHub(hubId: string): void {
+    const keys = this.hubIndex.get(hubId);
+    if (keys) {
+      for (const key of keys) {
+        this.cache.delete(key);
       }
+      this.hubIndex.delete(hubId);
     }
     this._onCacheUpdated.fire();
   }

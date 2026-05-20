@@ -30,7 +30,7 @@ suite('FileBackend', () => {
     await backend.initialize(createConfig(tempDir));
   });
 
-  teardown(async () => {
+  teardown(() => {
     backend.dispose();
     if (tempDir && fs.existsSync(tempDir)) {
       fs.rmSync(tempDir, { recursive: true, force: true });

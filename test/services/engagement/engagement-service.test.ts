@@ -61,7 +61,7 @@ suite('EngagementService', () => {
     await service.initialize();
   });
 
-  teardown(async () => {
+  teardown(() => {
     sandbox.restore();
     EngagementService.resetInstance();
 
@@ -87,11 +87,11 @@ suite('EngagementService', () => {
   });
 
   suite('Initialization', () => {
-    test('should initialize with file backend', async () => {
+    test('should initialize with file backend', () => {
       assert.strictEqual(service.initialized, true);
     });
 
-    test('should create engagement storage directory', async () => {
+    test('should create engagement storage directory', () => {
       const engagementDir = path.join(tempDir, 'engagement');
       assert.ok(fs.existsSync(engagementDir));
     });

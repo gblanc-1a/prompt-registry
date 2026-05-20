@@ -370,7 +370,7 @@ suite('FeedbackCommands', () => {
       (mockEngagementService.getStorage as sinon.SinonStub).returns(mockStorage);
 
       // Fail only entry 2 (by bundleId b2)
-      mockEngagementService.submitFeedback.callsFake(async (_rt: any, resourceId: string) => {
+      mockEngagementService.submitFeedback.callsFake((_rt: any, resourceId: string) => {
         if (resourceId === 'b2') {
           throw new Error('Network error');
         }

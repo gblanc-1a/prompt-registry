@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/member-ordering -- phase 2: reorganize members when feedback is re-integrated onto main */
 /**
  * EngagementService - Unified facade for engagement features
  *
@@ -24,6 +23,9 @@ import {
   ResourceEngagement,
 } from '../../types/engagement';
 import {
+  PendingFeedback,
+} from '../../types/pending-feedback';
+import {
   Logger,
 } from '../../utils/logger';
 import {
@@ -35,12 +37,24 @@ import {
 import {
   IEngagementBackend,
 } from './engagement-backend';
+import {
+  FeedbackCache,
+} from './feedback-cache';
+import {
+  FeedbackService,
+} from './feedback-service';
+import {
+  RatingCache,
+} from './rating-cache';
+import {
+  RatingService,
+} from './rating-service';
 
 /**
  * EngagementService provides a unified interface for ratings and feedback
  */
 export class EngagementService {
-  private static instance: EngagementService;
+  private static instance: EngagementService | undefined;
   private defaultBackend?: IEngagementBackend;
   private readonly hubBackends: Map<string, IEngagementBackend> = new Map();
   private readonly logger: Logger;
@@ -77,8 +91,30 @@ export class EngagementService {
   public static resetInstance(): void {
     if (EngagementService.instance) {
       EngagementService.instance.dispose();
-      EngagementService.instance = undefined as any;
+      EngagementService.instance = undefined;
     }
+  }
+
+  /**
+   * Get backend for a hub (falls back to default)
+   * @param hubId
+   */
+  private getBackend(hubId?: string): IEngagementBackend {
+    this.logger.debug(`getBackend called with hubId: "${hubId || 'none'}"`);
+
+    if (hubId) {
+      const hubBackend = this.hubBackends.get(hubId);
+      if (hubBackend) {
+        this.logger.debug(`Using hub backend for: ${hubId}`);
+        return hubBackend;
+      }
+      this.logger.warn(`No hub backend found for: ${hubId}, falling back to default`);
+    }
+
+    if (!this.defaultBackend) {
+      throw new Error('EngagementService not initialized');
+    }
+    return this.defaultBackend;
   }
 
   /**
@@ -115,6 +151,12 @@ export class EngagementService {
       backend.dispose();
     }
     this.hubBackends.clear();
+
+    // Reset sub-singletons owned by this service
+    RatingCache.resetInstance();
+    FeedbackCache.resetInstance();
+    RatingService.resetInstance();
+    FeedbackService.resetInstance();
   }
 
   /**
@@ -126,9 +168,33 @@ export class EngagementService {
 
   /**
    * Get the local engagement storage (for pending feedback operations)
+   * @deprecated Use savePendingFeedback / getPendingFeedback / markFeedbackSynced instead
    */
   public getStorage(): EngagementStorage | undefined {
     return this.storage;
+  }
+
+  /**
+   * Save a pending feedback entry to local storage
+   * @param entry
+   */
+  public async savePendingFeedback(entry: PendingFeedback): Promise<void> {
+    await this.storage?.savePendingFeedback(entry);
+  }
+
+  /**
+   * Get all unsynced pending feedback entries
+   */
+  public async getUnsyncedFeedback(): Promise<PendingFeedback[]> {
+    return this.storage?.getUnsyncedFeedback() ?? [];
+  }
+
+  /**
+   * Mark a pending feedback entry as synced
+   * @param id
+   */
+  public async markFeedbackSynced(id: string): Promise<void> {
+    await this.storage?.markFeedbackSynced(id);
   }
 
   // ========================================================================
@@ -163,8 +229,8 @@ export class EngagementService {
           try {
             await (backend as GitHubDiscussionsBackend).loadCollectionsMappings(collectionsUrl);
             this.logger.info(`Loaded collections mappings for hub ${hubId} from ${collectionsUrl}`);
-          } catch (error: any) {
-            this.logger.error(`Failed to load collections mappings for hub ${hubId}: ${error.message}`);
+          } catch (error: unknown) {
+            this.logger.error(`Failed to load collections mappings for hub ${hubId}: ${(error as Error).message}`);
             // Continue without mappings - ratings will fall back to local storage
           }
         };
@@ -207,28 +273,6 @@ export class EngagementService {
       this.hubBackends.delete(hubId);
       this.logger.debug(`Unregistered engagement backend for hub: ${hubId}`);
     }
-  }
-
-  /**
-   * Get backend for a hub (falls back to default)
-   * @param hubId
-   */
-  private getBackend(hubId?: string): IEngagementBackend {
-    this.logger.debug(`getBackend called with hubId: "${hubId || 'none'}"`);
-
-    if (hubId) {
-      const hubBackend = this.hubBackends.get(hubId);
-      if (hubBackend) {
-        this.logger.debug(`Using hub backend for: ${hubId}`);
-        return hubBackend;
-      }
-      this.logger.warn(`No hub backend found for: ${hubId}, falling back to default`);
-    }
-
-    if (!this.defaultBackend) {
-      throw new Error('EngagementService not initialized');
-    }
-    return this.defaultBackend;
   }
 
   // ========================================================================

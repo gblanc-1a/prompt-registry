@@ -231,6 +231,30 @@ export interface ResourceEngagement {
 }
 
 // ============================================================================
+// Cache Types
+// ============================================================================
+
+/**
+ * Cached rating entry with metadata
+ */
+export interface CachedRating {
+  /** Source ID */
+  sourceId: string;
+  /** Bundle ID */
+  bundleId: string;
+  /** Star rating (1-5) */
+  starRating: number;
+  /** Wilson score (0-1) */
+  wilsonScore: number;
+  /** Total vote count */
+  voteCount: number;
+  /** Confidence level */
+  confidence: 'low' | 'medium' | 'high' | 'very_high';
+  /** When this entry was cached */
+  cachedAt: number;
+}
+
+// ============================================================================
 // Validation Helpers
 // ============================================================================
 
@@ -279,6 +303,10 @@ export function validateHubEngagementConfig(config: unknown): { valid: boolean; 
 
   if (typeof cfg.enabled !== 'boolean') {
     errors.push('engagement.enabled must be a boolean');
+  }
+
+  if (cfg.enabled === true && !cfg.backend) {
+    errors.push('engagement.backend is required when engagement is enabled');
   }
 
   if (cfg.backend) {

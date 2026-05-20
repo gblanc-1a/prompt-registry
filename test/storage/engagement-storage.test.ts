@@ -55,7 +55,7 @@ suite('EngagementStorage', () => {
     await storage.initialize();
   });
 
-  teardown(async () => {
+  teardown(() => {
     // Clean up temp directory
     if (tempDir && fs.existsSync(tempDir)) {
       fs.rmSync(tempDir, { recursive: true, force: true });

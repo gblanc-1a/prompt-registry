@@ -594,14 +594,30 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    * @param sourceId
    * @param stars
    */
-  private async handleRateBundle(bundleId: string, sourceId: string, stars: number): Promise<void> {
+  /**
+   * Core rating submission logic shared by handleRateBundle and handleBundleDetailRateBundle.
+   * Validates stars, applies an optimistic cache update, submits to the backend, and
+   * rolls back on failure. Callers supply callbacks for the UI-specific messaging.
+   * @param bundleId
+   * @param sourceId
+   * @param stars
+   * @param onOptimisticUpdate - Called after the optimistic update to refresh the UI
+   * @param onSuccess - Called on successful backend submission
+   * @param onRollback - Called on backend failure after the rollback
+   */
+  private async executeRateBundle(
+    bundleId: string,
+    sourceId: string,
+    stars: number,
+    onOptimisticUpdate: (ratingCache: RatingCache) => void,
+    onSuccess: (newRating: RatingScore) => void,
+    onRollback: (ratingCache: RatingCache, newRating: RatingScore, previousUserRating: RatingScore | undefined) => void
+  ): Promise<void> {
     if (!Number.isInteger(stars) || stars < 1 || stars > 5) {
       this.logger.warn(`Invalid star rating ${stars} for bundle ${bundleId}`);
       return;
     }
 
-    // Resolve the hub that owns this source so the rating is routed to the right backend.
-    // Falls back to the default (local file) backend if the source is not hub-provided.
     const sources = await this.registryManager.listSources();
     const source = sources.find((s) => s.id === sourceId);
     const hubId = source?.hubId;
@@ -610,33 +626,50 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     const previousUserRating = ratingCache.getUserRating(sourceId, bundleId);
     const newRating = stars as RatingScore;
 
-    // Optimistic update: update cache + notify webview before the network call so
-    // the user sees their vote reflected immediately.
     ratingCache.applyOptimisticRating(sourceId, bundleId, newRating);
-    this.postRatingUpdate(sourceId, bundleId);
+    onOptimisticUpdate(ratingCache);
 
     try {
       const engagementService = EngagementService.getInstance();
       await engagementService.submitRating('bundle', bundleId, newRating, { hubId });
       this.logger.debug(`Submitted ${stars}-star rating for bundle ${bundleId} (hub: ${hubId ?? 'local'})`);
-
-      // After a successful rating, invite the user to add an optional comment.
-      // The webview opens an in-webview modal (bypassing VS Code native dialogs).
-      if (this._view) {
-        this._view.webview.postMessage({
-          type: 'openFeedbackModal',
-          bundleId: bundleId,
-          sourceId: sourceId,
-          stars: newRating
-        });
-      }
+      onSuccess(newRating);
     } catch (error) {
       this.logger.error(`Failed to submit rating for bundle ${bundleId}`, error as Error);
-      // Roll back the optimistic update and notify the webview so the UI reverts.
       ratingCache.rollbackOptimisticRating(sourceId, bundleId, newRating, previousUserRating);
-      this.postRatingUpdate(sourceId, bundleId);
+      onRollback(ratingCache, newRating, previousUserRating);
       vscode.window.showErrorMessage(`Failed to submit rating: ${(error as Error).message}`);
     }
+  }
+
+  /**
+   * Handle a rate-bundle message from the webview.
+   * Applies an optimistic cache update so the webview tile refreshes immediately,
+   * submits the rating via EngagementService, and rolls back on failure.
+   * @param bundleId
+   * @param sourceId
+   * @param stars
+   */
+  private async handleRateBundle(bundleId: string, sourceId: string, stars: number): Promise<void> {
+    await this.executeRateBundle(
+      bundleId, sourceId, stars,
+      () => {
+        this.postRatingUpdate(sourceId, bundleId);
+      },
+      (newRating) => {
+        if (this._view) {
+          this._view.webview.postMessage({
+            type: 'openFeedbackModal',
+            bundleId: bundleId,
+            sourceId: sourceId,
+            stars: newRating
+          });
+        }
+      },
+      () => {
+        this.postRatingUpdate(sourceId, bundleId);
+      }
+    );
   }
 
   /**
@@ -714,39 +747,25 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     sourceId: string,
     stars: number
   ): Promise<void> {
-    if (!Number.isInteger(stars) || stars < 1 || stars > 5) {
-      this.logger.warn(`Invalid star rating ${stars} for bundle ${bundleId}`);
-      return;
-    }
-
-    const sources = await this.registryManager.listSources();
-    const source = sources.find((s) => s.id === sourceId);
-    const hubId = source?.hubId;
-
-    const ratingCache = RatingCache.getInstance();
-    const previousUserRating = ratingCache.getUserRating(sourceId, bundleId);
-    const newRating = stars as RatingScore;
-
-    ratingCache.applyOptimisticRating(sourceId, bundleId, newRating);
-    panel.webview.postMessage({
-      type: 'ratingUpdated',
-      bundleRating: ratingCache.getRating(sourceId, bundleId)
-    });
-
-    try {
-      const engagementService = EngagementService.getInstance();
-      await engagementService.submitRating('bundle', bundleId, newRating, { hubId });
-      panel.webview.postMessage({ type: 'ratingSubmitted', stars: newRating });
-    } catch (error) {
-      this.logger.error(`Failed to submit rating for bundle ${bundleId}`, error as Error);
-      ratingCache.rollbackOptimisticRating(sourceId, bundleId, newRating, previousUserRating);
-      panel.webview.postMessage({
-        type: 'ratingUpdated',
-        bundleRating: ratingCache.getRating(sourceId, bundleId)
-      });
-      panel.webview.postMessage({ type: 'ratingFailed', error: (error as Error).message });
-      vscode.window.showErrorMessage(`Failed to submit rating: ${(error as Error).message}`);
-    }
+    await this.executeRateBundle(
+      bundleId, sourceId, stars,
+      (ratingCache) => {
+        panel.webview.postMessage({
+          type: 'ratingUpdated',
+          bundleRating: ratingCache.getRating(sourceId, bundleId)
+        });
+      },
+      (newRating) => {
+        panel.webview.postMessage({ type: 'ratingSubmitted', stars: newRating });
+      },
+      (ratingCache, _newRating, _prev) => {
+        panel.webview.postMessage({
+          type: 'ratingUpdated',
+          bundleRating: ratingCache.getRating(sourceId, bundleId)
+        });
+        panel.webview.postMessage({ type: 'ratingFailed', error: 'Failed to submit rating' });
+      }
+    );
   }
 
   /**
@@ -1557,28 +1576,31 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
               const newStatus = await this.registryManager.autoUpdateService?.isAutoUpdateEnabled(installed.bundleId) || false;
               panel.webview.postMessage({ type: 'autoUpdateStatusChanged', enabled: newStatus });
             }
-          } else if (message.type === 'rateBundle' && typeof message.stars === 'number') {
-            await this.handleBundleDetailRateBundle(panel, bundle.id, bundle.sourceId, message.stars);
-          } else if (message.type === 'submitFeedback' && typeof message.stars === 'number') {
-            await this.handleBundleDetailSubmitFeedback(panel, bundle.id, bundle.sourceId, message.stars, message.comment ?? '');
           } else {
-            switch (message.type) {
-              case 'reportIssue': {
-                await vscode.commands.executeCommand('promptRegistry.reportIssue', this.buildFeedbackItem(bundle, source));
+            const engagementMsg = message as { type: string; stars?: number; comment?: string };
+            if (engagementMsg.type === 'rateBundle' && typeof engagementMsg.stars === 'number') {
+              await this.handleBundleDetailRateBundle(panel, bundle.id, bundle.sourceId, engagementMsg.stars);
+            } else if (engagementMsg.type === 'submitFeedback' && typeof engagementMsg.stars === 'number') {
+              await this.handleBundleDetailSubmitFeedback(panel, bundle.id, bundle.sourceId, engagementMsg.stars, engagementMsg.comment ?? '');
+            } else {
+              switch (engagementMsg.type) {
+                case 'reportIssue': {
+                  await vscode.commands.executeCommand('promptRegistry.reportIssue', this.buildFeedbackItem(bundle, source));
 
-                break;
-              }
-              case 'requestFeature': {
-                await vscode.commands.executeCommand('promptRegistry.requestFeature', this.buildFeedbackItem(bundle, source));
+                  break;
+                }
+                case 'requestFeature': {
+                  await vscode.commands.executeCommand('promptRegistry.requestFeature', this.buildFeedbackItem(bundle, source));
 
-                break;
-              }
-              case 'retryFeedback': {
-                await vscode.commands.executeCommand('promptRegistry.retryFeedback', this.buildFeedbackItem(bundle, source));
+                  break;
+                }
+                case 'retryFeedback': {
+                  await vscode.commands.executeCommand('promptRegistry.retryFeedback', this.buildFeedbackItem(bundle, source));
 
-                break;
-              }
+                  break;
+                }
  // No default
+              }
             }
           }
         },

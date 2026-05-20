@@ -48,7 +48,7 @@ suite('GitHubDiscussionsBackend', () => {
     sandbox.stub(vscode.authentication, 'getSession').resolves(mockSession as any);
   });
 
-  teardown(async () => {
+  teardown(() => {
     sandbox.restore();
     nock.cleanAll();
     if (backend.initialized) {

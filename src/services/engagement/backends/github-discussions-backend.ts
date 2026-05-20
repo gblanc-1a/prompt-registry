@@ -367,9 +367,26 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
       this.logger.info(`Loading collections mappings from ${collectionsUrl}`);
 
       const token = await this.getAccessToken();
-      const response = await axios.get(collectionsUrl, {
-        headers: { Authorization: `token ${token}` }
-      });
+      const headers: Record<string, string> = { Authorization: `token ${token}` };
+
+      let response;
+      try {
+        response = await axios.get(collectionsUrl, { headers });
+      } catch (primaryError) {
+        // Fallback for internal/private repos: convert raw URL to API contents endpoint
+        const apiUrl = this.convertRawUrlToApi(collectionsUrl);
+        if (apiUrl) {
+          this.logger.debug(`Primary fetch failed for collections, trying API contents endpoint`);
+          response = await axios.get(apiUrl, {
+            headers: {
+              Authorization: `token ${token}`,
+              Accept: 'application/vnd.github.v3.raw'
+            }
+          });
+        } else {
+          throw primaryError;
+        }
+      }
       /* eslint-disable @typescript-eslint/naming-convention -- matches collections.yaml external shape */
       const collections = yaml.load(response.data as string) as {
         repository: string;
@@ -614,5 +631,20 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
   public async deleteFeedback(feedbackId: string): Promise<void> {
     this.ensureInitialized();
     await this.localBackend.deleteFeedback(feedbackId);
+  }
+
+  /**
+   * Convert a raw.githubusercontent.com URL to the equivalent GitHub API contents URL.
+   * Returns undefined if the URL isn't a raw GitHub URL.
+   */
+  private convertRawUrlToApi(url: string): string | undefined {
+    const match = url.match(
+      /^https:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+?)(?:\?.*)?$/
+    );
+    if (!match) {
+      return undefined;
+    }
+    const [, owner, repo, ref, path] = match;
+    return `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${ref}`;
   }
 }

@@ -154,14 +154,40 @@ export class RatingService {
       // Add cache-busting query parameter (handle existing query params)
       const separator = ratingsUrl.includes('?') ? '&' : '?';
       const urlWithCacheBust = `${ratingsUrl}${separator}t=${Date.now()}`;
-      const headers: Record<string, string> = { Accept: 'application/json' };
+      const headers: Record<string, string> = {};
       if (accessToken) {
         headers.Authorization = `token ${accessToken}`;
       }
-      const response = await axios.get(urlWithCacheBust, {
-        timeout: 10_000,
-        headers
-      });
+
+      // For GitHub API content URLs, use the raw media type to get JSON directly
+      if (ratingsUrl.includes('api.github.com')) {
+        headers.Accept = 'application/vnd.github.v3.raw';
+      } else {
+        headers.Accept = 'application/json';
+      }
+
+      let response;
+      try {
+        response = await axios.get(urlWithCacheBust, { timeout: 10_000, headers });
+      } catch (primaryError) {
+        // Fallback: convert raw.githubusercontent.com URL to API contents endpoint
+        // This handles internal/private repos where raw URLs return 404
+        const apiUrl = this.convertRawUrlToApi(ratingsUrl);
+        if (apiUrl && accessToken) {
+          this.logger.debug(`Primary fetch failed for ${ratingsUrl}, trying API contents endpoint`);
+          const apiHeaders: Record<string, string> = {
+            Authorization: `token ${accessToken}`,
+            Accept: 'application/vnd.github.v3.raw'
+          };
+          const apiSeparator = apiUrl.includes('?') ? '&' : '?';
+          response = await axios.get(`${apiUrl}${apiSeparator}t=${Date.now()}`, {
+            timeout: 10_000,
+            headers: apiHeaders
+          });
+        } else {
+          throw primaryError;
+        }
+      }
 
       const rawData = response.data as { bundles?: unknown; collections?: unknown };
 
@@ -288,5 +314,22 @@ export class RatingService {
     }
     const expiry = this.cacheExpiry.get(ratingsUrl) || 0;
     return Date.now() < expiry;
+  }
+
+  /**
+   * Convert a raw.githubusercontent.com URL to the equivalent GitHub API contents URL.
+   * Returns undefined if the URL isn't a raw GitHub URL.
+   * Example: https://raw.githubusercontent.com/owner/repo/branch/path/file.json
+   *       → https://api.github.com/repos/owner/repo/contents/path/file.json?ref=branch
+   */
+  private convertRawUrlToApi(url: string): string | undefined {
+    const match = url.match(
+      /^https:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+?)(?:\?.*)?$/
+    );
+    if (!match) {
+      return undefined;
+    }
+    const [, owner, repo, ref, path] = match;
+    return `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${ref}`;
   }
 }

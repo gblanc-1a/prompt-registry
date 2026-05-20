@@ -754,6 +754,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
           type: 'ratingUpdated',
           bundleRating: ratingCache.getRating(sourceId, bundleId)
         });
+        this.postRatingUpdate(sourceId, bundleId);
       },
       (newRating) => {
         panel.webview.postMessage({ type: 'ratingSubmitted', stars: newRating });
@@ -764,6 +765,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
           bundleRating: ratingCache.getRating(sourceId, bundleId)
         });
         panel.webview.postMessage({ type: 'ratingFailed', error: 'Failed to submit rating' });
+        this.postRatingUpdate(sourceId, bundleId);
       }
     );
   }

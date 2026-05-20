@@ -27,20 +27,20 @@ suite('EngagementService', () => {
       get: sandbox.stub(),
       update: sandbox.stub(),
       keys: () => []
-    } as any,
+    },
     globalState: {
       get: sandbox.stub(),
       update: sandbox.stub(),
       keys: () => [],
       setKeysForSync: sandbox.stub()
-    } as any,
+    },
     extensionUri: vscode.Uri.file('/mock/extension'),
     extensionPath: '/mock/extension',
     asAbsolutePath: (p: string) => path.join('/mock/extension', p),
     storagePath: storagePath,
     globalStoragePath: storagePath,
     logPath: path.join(storagePath, 'logs'),
-    extensionMode: 3 as any, // ExtensionMode.Test
+    extensionMode: 3, // ExtensionMode.Test
     extension: {} as any,
     environmentVariableCollection: {} as any,
     secrets: {} as any,

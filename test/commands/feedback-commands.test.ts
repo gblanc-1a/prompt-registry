@@ -64,7 +64,7 @@ suite('FeedbackCommands', () => {
       })
     } as unknown as sinon.SinonStubbedInstance<EngagementService>;
 
-    commands = new FeedbackCommands(mockEngagementService as unknown as EngagementService);
+    commands = new FeedbackCommands(mockEngagementService);
   });
 
   teardown(() => {
@@ -234,7 +234,7 @@ suite('FeedbackCommands', () => {
 
       const registerCommandStub = sandbox.stub(vscode.commands, 'registerCommand').returns({
         dispose: () => {}
-      } as vscode.Disposable);
+      });
 
       commands.registerCommands(mockContext);
 
@@ -406,7 +406,7 @@ suite('FeedbackCommands', () => {
       assert.strictEqual(result1.success, true);
 
       // Set service and call again
-      commandsWithoutService.setEngagementService(mockEngagementService as unknown as EngagementService);
+      commandsWithoutService.setEngagementService(mockEngagementService);
       showQuickPickStub.onThirdCall().resolves({
         label: '⭐⭐⭐☆☆',
         description: '3 stars - Good'

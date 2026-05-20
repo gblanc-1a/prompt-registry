@@ -1359,7 +1359,7 @@ suite('RegistryTreeProvider - Rating Suffix on Descriptions', () => {
       downloadUrl: 'https://example.com/download'
     });
 
-    const provider = new RegistryTreeProvider(registryManagerStub as any, hubManagerStub as any);
+    const provider = new RegistryTreeProvider(registryManagerStub, hubManagerStub);
 
     const installedRoot = new RegistryTreeItem(
       'Installed Bundles',

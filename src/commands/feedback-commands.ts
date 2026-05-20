@@ -246,7 +246,7 @@ export class FeedbackCommands {
         vscode.window.showInformationMessage('Please navigate to the Issues tab to report your feedback.');
       }
     } catch (error) {
-      this.logger.warn('Could not open issue tracker', error as Error);
+      this.logger.warn('Could not open issue tracker', error);
       vscode.window.showWarningMessage('Could not open issue tracker. Please visit the repository manually.');
     }
   }
@@ -316,7 +316,7 @@ export class FeedbackCommands {
       const url = `${issueUrl}?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`;
       await vscode.env.openExternal(vscode.Uri.parse(url));
     } catch (error) {
-      this.logger.warn('Could not open issue tracker', error as Error);
+      this.logger.warn('Could not open issue tracker', error);
       vscode.window.showWarningMessage('Could not open issue tracker. Please visit the repository manually.');
     }
   }

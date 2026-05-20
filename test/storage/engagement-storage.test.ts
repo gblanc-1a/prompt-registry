@@ -264,7 +264,7 @@ suite('EngagementStorage', () => {
         sourceId: 'test-source',
         hubId: 'test-hub',
         resourceType: 'bundle',
-        rating: 4 as RatingScore,
+        rating: 4,
         comment: 'Great bundle!',
         timestamp: new Date().toISOString(),
         synced: false
@@ -280,12 +280,12 @@ suite('EngagementStorage', () => {
     test('should retrieve only unsynced pending feedback', async () => {
       const synced: PendingFeedback = {
         id: 'pf-synced', bundleId: 'b1', sourceId: 's1', hubId: 'h1',
-        resourceType: 'bundle', rating: 5 as RatingScore,
+        resourceType: 'bundle', rating: 5,
         timestamp: new Date().toISOString(), synced: true
       };
       const unsynced: PendingFeedback = {
         id: 'pf-unsynced', bundleId: 'b2', sourceId: 's2', hubId: 'h2',
-        resourceType: 'bundle', rating: 3 as RatingScore,
+        resourceType: 'bundle', rating: 3,
         timestamp: new Date().toISOString(), synced: false
       };
 
@@ -299,7 +299,7 @@ suite('EngagementStorage', () => {
     test('should update synced status', async () => {
       const pending: PendingFeedback = {
         id: 'pf-1', bundleId: 'b1', sourceId: 's1', hubId: 'h1',
-        resourceType: 'bundle', rating: 4 as RatingScore,
+        resourceType: 'bundle', rating: 4,
         timestamp: new Date().toISOString(), synced: false
       };
 
@@ -312,7 +312,7 @@ suite('EngagementStorage', () => {
     test('should delete pending feedback by id', async () => {
       const pending: PendingFeedback = {
         id: 'pf-1', bundleId: 'b1', sourceId: 's1', hubId: 'h1',
-        resourceType: 'bundle', rating: 4 as RatingScore,
+        resourceType: 'bundle', rating: 4,
         timestamp: new Date().toISOString(), synced: false
       };
 
@@ -325,12 +325,12 @@ suite('EngagementStorage', () => {
     test('should update existing entry when saving with same id', async () => {
       const pending: PendingFeedback = {
         id: 'pf-1', bundleId: 'b1', sourceId: 's1', hubId: 'h1',
-        resourceType: 'bundle', rating: 3 as RatingScore,
+        resourceType: 'bundle', rating: 3,
         timestamp: new Date().toISOString(), synced: false
       };
 
       await storage.savePendingFeedback(pending);
-      await storage.savePendingFeedback({ ...pending, rating: 5 as RatingScore });
+      await storage.savePendingFeedback({ ...pending, rating: 5 });
       const result = await storage.getPendingFeedback();
       assert.strictEqual(result.length, 1);
       assert.strictEqual(result[0].rating, 5);

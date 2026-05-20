@@ -28,11 +28,11 @@ suite('FeedbackCache', () => {
 
     // Stub logger
     loggerStub = sinon.createStubInstance(Logger);
-    sinon.stub(Logger, 'getInstance').returns(loggerStub as any);
+    sinon.stub(Logger, 'getInstance').returns(loggerStub);
 
     // Stub FeedbackService
     feedbackServiceStub = sinon.createStubInstance(FeedbackService);
-    sinon.stub(FeedbackService, 'getInstance').returns(feedbackServiceStub as any);
+    sinon.stub(FeedbackService, 'getInstance').returns(feedbackServiceStub);
 
     feedbackCache = FeedbackCache.getInstance();
   });

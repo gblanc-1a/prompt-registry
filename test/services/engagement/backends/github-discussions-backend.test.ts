@@ -45,7 +45,7 @@ suite('GitHubDiscussionsBackend', () => {
     backend = new GitHubDiscussionsBackend(tempDir);
 
     // Mock VS Code authentication
-    sandbox.stub(vscode.authentication, 'getSession').resolves(mockSession as any);
+    sandbox.stub(vscode.authentication, 'getSession').resolves(mockSession);
   });
 
   teardown(() => {

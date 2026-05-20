@@ -65,7 +65,7 @@ suite('FileBackend', () => {
         const newBackend = new FileBackend();
 
         await assert.rejects(
-          async () => newBackend.initialize({ type: 'file' } as FileBackendConfig),
+          async () => newBackend.initialize({ type: 'file' }),
           /storagePath is required/
         );
       });

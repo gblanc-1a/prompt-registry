@@ -555,7 +555,7 @@ export class HubManager {
     try {
       await this.registerHubEngagement(hubId, config.engagement);
     } catch (error) {
-      this.logger.warn(`Failed to register engagement for imported hub ${hubId}`, error as Error);
+      this.logger.warn(`Failed to register engagement for imported hub ${hubId}`, error);
     }
 
     this._onHubImported.fire(hubId);
@@ -581,7 +581,7 @@ export class HubManager {
       const engagementService = EngagementService.getInstance();
       await engagementService.registerHubBackend(hubId, engagement);
     } catch (error) {
-      this.logger.warn(`Failed to register engagement backend for hub ${hubId}`, error as Error);
+      this.logger.warn(`Failed to register engagement backend for hub ${hubId}`, error);
       return;
     }
 
@@ -591,7 +591,7 @@ export class HubManager {
       try {
         await RatingCache.getInstance().refreshFromHub(hubId, ratingsUrl);
       } catch (error) {
-        this.logger.debug(`Failed to warm rating cache for hub ${hubId}`, error as Error);
+        this.logger.debug(`Failed to warm rating cache for hub ${hubId}`, error);
       }
     }
 
@@ -600,7 +600,7 @@ export class HubManager {
       try {
         await FeedbackCache.getInstance().refreshFromHub(hubId, feedbackUrl);
       } catch (error) {
-        this.logger.debug(`Failed to warm feedback cache for hub ${hubId}`, error as Error);
+        this.logger.debug(`Failed to warm feedback cache for hub ${hubId}`, error);
       }
     }
   }
@@ -616,7 +616,7 @@ export class HubManager {
         const { config } = await this.loadHub(hub.id);
         await this.registerHubEngagement(hub.id, config.engagement);
       } catch (error) {
-        this.logger.warn(`Failed to initialize engagement for hub ${hub.id}`, error as Error);
+        this.logger.warn(`Failed to initialize engagement for hub ${hub.id}`, error);
       }
     }
   }

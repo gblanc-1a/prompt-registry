@@ -247,11 +247,11 @@ export class PromptRegistryExtension {
         try {
           await this.feedbackCommands.drainUnsyncedFeedback();
         } catch (error) {
-          this.logger.debug('Drain unsynced feedback failed (non-fatal)', error as Error);
+          this.logger.debug('Drain unsynced feedback failed (non-fatal)', error);
         }
       }
     } catch (error) {
-      this.logger.warn('Failed to initialize engagement system (non-fatal)', error as Error);
+      this.logger.warn('Failed to initialize engagement system (non-fatal)', error);
     }
   }
 

@@ -817,8 +817,8 @@ suite('MarketplaceViewProvider - bundleRating hydration', () => {
 
     marketplaceProvider = new MarketplaceViewProvider(
       mockContext,
-      mockRegistryManager as any,
-      mockSetupStateManager as any
+      mockRegistryManager,
+      mockSetupStateManager
     );
 
     const mockWebview = {
@@ -945,8 +945,8 @@ suite('MarketplaceViewProvider - rateBundle message handling', () => {
 
     marketplaceProvider = new MarketplaceViewProvider(
       mockContext,
-      mockRegistryManager as any,
-      mockSetupStateManager as any
+      mockRegistryManager,
+      mockSetupStateManager
     );
 
     // Attach a mock webview so postRatingUpdate can push 'updateRating' messages.
@@ -1213,8 +1213,8 @@ suite('MarketplaceViewProvider - submitFeedback message handling', () => {
 
     marketplaceProvider = new MarketplaceViewProvider(
       mockContext,
-      mockRegistryManager as any,
-      mockSetupStateManager as any
+      mockRegistryManager,
+      mockSetupStateManager
     );
 
     const mockWebview = {
@@ -1334,8 +1334,8 @@ suite('MarketplaceViewProvider - bundle-details feedback wiring', () => {
 
     marketplaceProvider = new MarketplaceViewProvider(
       mockContext,
-      mockRegistryManager as any,
-      mockSetupStateManager as any
+      mockRegistryManager,
+      mockSetupStateManager
     );
 
     postedPanelMessages = [];
@@ -1476,7 +1476,7 @@ suite('MarketplaceViewProvider - bundle-details feedback wiring', () => {
         submitRating: sandbox.stub().rejects(new Error('boom'))
       } as unknown as EngagementService;
       sandbox.stub(EngagementService, 'getInstance').returns(failingService);
-      sandbox.stub(vscode.window, 'showErrorMessage').resolves(undefined as any);
+      sandbox.stub(vscode.window, 'showErrorMessage').resolves(undefined);
 
       await (marketplaceProvider as any).handleBundleDetailRateBundle(
         panel,
@@ -1540,7 +1540,7 @@ suite('MarketplaceViewProvider - bundle-details feedback wiring', () => {
 
     test('posts feedbackFailed when the feedback command throws', async () => {
       sandbox.stub(vscode.commands, 'executeCommand').rejects(new Error('nope'));
-      sandbox.stub(vscode.window, 'showErrorMessage').resolves(undefined as any);
+      sandbox.stub(vscode.window, 'showErrorMessage').resolves(undefined);
 
       await (marketplaceProvider as any).handleBundleDetailSubmitFeedback(
         panel,

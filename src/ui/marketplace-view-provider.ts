@@ -655,16 +655,17 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
       bundleId, sourceId, stars,
       () => {
         this.postRatingUpdate(sourceId, bundleId);
-      },
-      (newRating) => {
         if (this._view) {
           this._view.webview.postMessage({
             type: 'openFeedbackModal',
             bundleId: bundleId,
             sourceId: sourceId,
-            stars: newRating
+            stars: stars as RatingScore
           });
         }
+      },
+      () => {
+        // Rating already confirmed optimistically — nothing extra needed
       },
       () => {
         this.postRatingUpdate(sourceId, bundleId);
@@ -754,10 +755,11 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
           type: 'ratingUpdated',
           bundleRating: ratingCache.getRating(sourceId, bundleId)
         });
+        panel.webview.postMessage({ type: 'ratingSubmitted', stars: stars as RatingScore });
         this.postRatingUpdate(sourceId, bundleId);
       },
-      (newRating) => {
-        panel.webview.postMessage({ type: 'ratingSubmitted', stars: newRating });
+      () => {
+        // Rating already confirmed optimistically — nothing extra needed
       },
       (ratingCache, _newRating, _prev) => {
         panel.webview.postMessage({

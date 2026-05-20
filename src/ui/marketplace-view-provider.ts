@@ -128,7 +128,9 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
       // Auto-update preference changes
       this.registryManager.onAutoUpdatePreferenceChanged(() => this.loadBundles()),
       // Repository bundle changes (lockfile changes, workspace folder changes)
-      this.registryManager.onRepositoryBundlesChanged(() => this.loadBundles())
+      this.registryManager.onRepositoryBundlesChanged(() => this.loadBundles()),
+      // Rating cache updates (fires after hub engagement data is fetched)
+      RatingCache.getInstance().onCacheUpdated(() => this.loadBundles())
     );
   }
 

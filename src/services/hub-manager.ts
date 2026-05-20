@@ -586,10 +586,19 @@ export class HubManager {
     }
 
     // Warm caches from static URLs (non-fatal — cache misses just fall back to backend calls)
+    // Get token for authenticated fetches (private/internal repos)
+    let accessToken: string | undefined;
+    try {
+      const session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: false });
+      accessToken = session?.accessToken;
+    } catch {
+      this.logger.debug(`No GitHub session available for cache warm-up`);
+    }
+
     const ratingsUrl = engagement.ratings?.ratingsUrl;
     if (ratingsUrl) {
       try {
-        await RatingCache.getInstance().refreshFromHub(hubId, ratingsUrl);
+        await RatingCache.getInstance().refreshFromHub(hubId, ratingsUrl, undefined, accessToken);
       } catch (error) {
         this.logger.debug(`Failed to warm rating cache for hub ${hubId}`, error);
       }
@@ -598,7 +607,7 @@ export class HubManager {
     const feedbackUrl = engagement.feedback?.feedbackUrl;
     if (feedbackUrl) {
       try {
-        await FeedbackCache.getInstance().refreshFromHub(hubId, feedbackUrl);
+        await FeedbackCache.getInstance().refreshFromHub(hubId, feedbackUrl, accessToken);
       } catch (error) {
         this.logger.debug(`Failed to warm feedback cache for hub ${hubId}`, error);
       }

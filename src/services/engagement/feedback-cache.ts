@@ -81,10 +81,10 @@ export class FeedbackCache {
    * @param hubId
    * @param feedbacksUrl
    */
-  private async doRefresh(hubId: string, feedbacksUrl: string): Promise<void> {
+  private async doRefresh(hubId: string, feedbacksUrl: string, accessToken?: string): Promise<void> {
     try {
       const feedbackService = FeedbackService.getInstance();
-      const feedbacksData = await feedbackService.fetchFeedbacks(feedbacksUrl);
+      const feedbacksData = await feedbackService.fetchFeedbacks(feedbacksUrl, accessToken);
 
       if (!feedbacksData || !feedbacksData.bundles) {
         this.logger.debug(`No feedbacks data available from ${hubId}`);
@@ -166,14 +166,14 @@ export class FeedbackCache {
    * @param hubId
    * @param feedbacksUrl
    */
-  public async refreshFromHub(hubId: string, feedbacksUrl: string): Promise<void> {
+  public async refreshFromHub(hubId: string, feedbacksUrl: string, accessToken?: string): Promise<void> {
     // Prevent concurrent refreshes for the same URL
     const existing = this.refreshPromises.get(feedbacksUrl);
     if (existing) {
       return existing;
     }
 
-    const promise = this.doRefresh(hubId, feedbacksUrl);
+    const promise = this.doRefresh(hubId, feedbacksUrl, accessToken);
     this.refreshPromises.set(feedbacksUrl, promise);
     try {
       await promise;

@@ -139,8 +139,9 @@ export class RatingService {
    * Fetch ratings from a hub's ratings.json URL
    * @param ratingsUrl URL to the ratings.json file
    * @param forceRefresh Force refresh even if cached
+   * @param accessToken Optional GitHub token for authenticated requests (private repos)
    */
-  public async fetchRatings(ratingsUrl: string, forceRefresh = false): Promise<RatingsData | undefined> {
+  public async fetchRatings(ratingsUrl: string, forceRefresh = false, accessToken?: string): Promise<RatingsData | undefined> {
     // Check cache
     if (!forceRefresh && this.ratingsCache.has(ratingsUrl)) {
       const expiry = this.cacheExpiry.get(ratingsUrl) || 0;
@@ -153,11 +154,13 @@ export class RatingService {
       // Add cache-busting query parameter (handle existing query params)
       const separator = ratingsUrl.includes('?') ? '&' : '?';
       const urlWithCacheBust = `${ratingsUrl}${separator}t=${Date.now()}`;
+      const headers: Record<string, string> = { Accept: 'application/json' };
+      if (accessToken) {
+        headers.Authorization = `token ${accessToken}`;
+      }
       const response = await axios.get(urlWithCacheBust, {
         timeout: 10_000,
-        headers: {
-          Accept: 'application/json'
-        }
+        headers
       });
 
       const rawData = response.data as { bundles?: unknown; collections?: unknown };
@@ -194,8 +197,8 @@ export class RatingService {
    * @param ratingsUrl URL to the ratings.json file
    * @param bundleId Bundle identifier
    */
-  public async getBundleRating(ratingsUrl: string, bundleId: string): Promise<BundleRating | undefined> {
-    const ratings = await this.fetchRatings(ratingsUrl);
+  public async getBundleRating(ratingsUrl: string, bundleId: string, accessToken?: string): Promise<BundleRating | undefined> {
+    const ratings = await this.fetchRatings(ratingsUrl, false, accessToken);
     return ratings?.bundles[bundleId];
   }
 

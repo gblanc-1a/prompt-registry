@@ -75,7 +75,7 @@ export class FeedbackService {
    * Fetch feedbacks from a URL with caching
    * @param feedbacksUrl
    */
-  public async fetchFeedbacks(feedbacksUrl: string): Promise<FeedbacksData | null> {
+  public async fetchFeedbacks(feedbacksUrl: string, accessToken?: string): Promise<FeedbacksData | null> {
     // Check cache first
     const cached = this.feedbacksCache.get(feedbacksUrl);
     const expiry = this.cacheExpiry.get(feedbacksUrl);
@@ -87,11 +87,13 @@ export class FeedbackService {
 
     try {
       this.logger.debug(`Fetching feedbacks from ${feedbacksUrl}`);
+      const headers: Record<string, string> = { Accept: 'application/json' };
+      if (accessToken) {
+        headers.Authorization = `token ${accessToken}`;
+      }
       const response = await axios.get<FeedbacksData>(feedbacksUrl, {
         timeout: 10_000,
-        headers: {
-          Accept: 'application/json'
-        }
+        headers
       });
 
       const data = response.data;

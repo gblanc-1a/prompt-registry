@@ -94,10 +94,10 @@ export class RatingCache {
    * @param ratingsUrl
    * @param sourceIdMap
    */
-  private async doRefresh(hubId: string, ratingsUrl: string, sourceIdMap?: Map<string, string>): Promise<void> {
+  private async doRefresh(hubId: string, ratingsUrl: string, sourceIdMap?: Map<string, string>, accessToken?: string): Promise<void> {
     try {
       const ratingService = RatingService.getInstance();
-      const ratingsData = await ratingService.fetchRatings(ratingsUrl);
+      const ratingsData = await ratingService.fetchRatings(ratingsUrl, false, accessToken);
 
       if (!ratingsData || !ratingsData.bundles) {
         this.logger.debug(`No ratings data available from ${hubId}`);
@@ -223,14 +223,14 @@ export class RatingCache {
    * @param ratingsUrl URL to ratings.json
    * @param sourceIdMap Map from ratings.json source_id to actual extension source ID
    */
-  public async refreshFromHub(hubId: string, ratingsUrl: string, sourceIdMap?: Map<string, string>): Promise<void> {
+  public async refreshFromHub(hubId: string, ratingsUrl: string, sourceIdMap?: Map<string, string>, accessToken?: string): Promise<void> {
     // Prevent concurrent refreshes for the same URL
     const existing = this.refreshPromises.get(ratingsUrl);
     if (existing) {
       return existing;
     }
 
-    const promise = this.doRefresh(hubId, ratingsUrl, sourceIdMap);
+    const promise = this.doRefresh(hubId, ratingsUrl, sourceIdMap, accessToken);
     this.refreshPromises.set(ratingsUrl, promise);
     try {
       await promise;

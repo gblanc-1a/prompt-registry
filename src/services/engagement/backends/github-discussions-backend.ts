@@ -416,7 +416,10 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
     try {
       this.logger.info(`Loading collections mappings from ${collectionsUrl}`);
 
-      const response = await axios.get(collectionsUrl);
+      const token = await this.getAccessToken();
+      const response = await axios.get(collectionsUrl, {
+        headers: { Authorization: `token ${token}` }
+      });
       /* eslint-disable @typescript-eslint/naming-convention -- matches collections.yaml external shape */
       const collections = yaml.load(response.data as string) as {
         repository: string;

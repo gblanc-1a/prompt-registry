@@ -60,9 +60,6 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
   // Cache for user's votes
   private readonly userVotes: Map<string, 'up' | 'down'> = new Map();
 
-  // Cached GitHub user identity
-  private cachedUser: { login: string } | null = null;
-
   // Storage path for local backend (can be set before initialize)
   private storagePath = '';
 
@@ -86,78 +83,32 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
   }
 
   /**
-   * Remove existing reaction before adding new one
-   * @param mapping
+   * Remove existing thumbs-up/thumbs-down reaction on a discussion via GraphQL.
+   * GitHub Discussions reactions are only accessible via GraphQL, not REST.
+   * @param discussionNodeId
    * @param token
    */
-  private async removeExistingReaction(mapping: DiscussionMapping, token: string): Promise<void> {
+  private async removeExistingReaction(discussionNodeId: string, token: string): Promise<void> {
     try {
-      const baseUrl = mapping.commentId
-        ? `https://api.github.com/repos/${this.owner}/${this.repo}/discussions/comments/${mapping.commentId}/reactions`
-        : `https://api.github.com/repos/${this.owner}/${this.repo}/discussions/${mapping.discussionNumber}/reactions`;
-
-      // Fetch all reactions with pagination (GitHub returns max 100 per page)
-      const allReactions: { id: number; user: { login: string }; content: string }[] = [];
-      let page = 1;
-      while (true) {
-        const response = await axios.get<{ id: number; user: { login: string }; content: string }[]>(
-          `${baseUrl}?per_page=100&page=${page}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              Accept: 'application/vnd.github+json',
-              'X-GitHub-Api-Version': '2022-11-28'
+      // Try removing both THUMBS_UP and THUMBS_DOWN (only one the user has will succeed)
+      for (const content of ['THUMBS_UP', 'THUMBS_DOWN'] as const) {
+        const mutation = `
+          mutation RemoveReaction($subjectId: ID!, $content: ReactionContent!) {
+            removeReaction(input: { subjectId: $subjectId, content: $content }) {
+              reaction { content }
             }
           }
-        );
-        allReactions.push(...response.data);
-        if (response.data.length < 100) {
-          break;
-        }
-        page++;
-      }
-
-      // Find user's existing reactions
-      const userInfo = await this.getCurrentUser(token);
-      const userReactions = allReactions.filter((r) =>
-        r.user.login === userInfo.login && (r.content === '+1' || r.content === '-1')
-      );
-
-      // Delete existing reactions
-      for (const reaction of userReactions) {
-        await axios.delete(
-          `https://api.github.com/repos/${this.owner}/${this.repo}/reactions/${reaction.id}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              Accept: 'application/vnd.github+json',
-              'X-GitHub-Api-Version': '2022-11-28'
-            }
-          }
+        `;
+        await axios.post(
+          'https://api.github.com/graphql',
+          { query: mutation, variables: { subjectId: discussionNodeId, content } },
+          { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
         );
       }
     } catch {
       // Ignore errors - reaction may not exist
       this.logger.debug('No existing reaction to remove');
     }
-  }
-
-  /**
-   * Get current GitHub user info
-   * @param token
-   */
-  private async getCurrentUser(token: string): Promise<{ login: string }> {
-    if (this.cachedUser) {
-      return this.cachedUser;
-    }
-    const response = await axios.get<{ login: string }>('https://api.github.com/user', {
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: 'application/vnd.github+json'
-      }
-    });
-    this.cachedUser = response.data;
-    return this.cachedUser;
   }
 
   /**
@@ -370,7 +321,6 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
     this.localBackend.dispose();
     this.discussionMappings.clear();
     this.userVotes.clear();
-    this.cachedUser = null;
     this._initialized = false;
   }
 
@@ -494,28 +444,32 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
 
     try {
       const token = await this.getAccessToken();
-      const reaction = rating.score >= 3 ? '+1' : '-1';
+      const reactionContent = rating.score >= 3 ? 'THUMBS_UP' : 'THUMBS_DOWN';
+
+      // Get the discussion node ID for GraphQL mutations
+      const discussionNodeId = await this.getDiscussionNodeId(mapping.discussionNumber, token);
 
       // Remove existing reaction first (if any)
-      await this.removeExistingReaction(mapping, token);
+      await this.removeExistingReaction(discussionNodeId, token);
 
-      // Add new reaction
-      const url = mapping.commentId
-        ? `https://api.github.com/repos/${this.owner}/${this.repo}/discussions/comments/${mapping.commentId}/reactions`
-        : `https://api.github.com/repos/${this.owner}/${this.repo}/discussions/${mapping.discussionNumber}/reactions`;
-
-      await axios.post(url, { content: reaction }, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github+json',
-          'X-GitHub-Api-Version': '2022-11-28'
+      // Add new reaction via GraphQL
+      const mutation = `
+        mutation AddReaction($subjectId: ID!, $content: ReactionContent!) {
+          addReaction(input: { subjectId: $subjectId, content: $content }) {
+            reaction { content }
+          }
         }
-      });
+      `;
+      await axios.post(
+        'https://api.github.com/graphql',
+        { query: mutation, variables: { subjectId: discussionNodeId, content: reactionContent } },
+        { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+      );
 
       // Cache the vote
       this.userVotes.set(rating.resourceId, rating.score >= 3 ? 'up' : 'down');
 
-      this.logger.info(`Submitted ${reaction} reaction for ${rating.resourceId}`);
+      this.logger.info(`Submitted ${reactionContent} reaction for ${rating.resourceId}`);
     } catch (error: unknown) {
       this.logger.error(`Failed to submit rating to GitHub: ${(error as Error).message}`, error instanceof Error ? error : undefined);
       // Fall back to local storage
@@ -597,7 +551,8 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
 
     try {
       const token = await this.getAccessToken();
-      await this.removeExistingReaction(mapping, token);
+      const discussionNodeId = await this.getDiscussionNodeId(mapping.discussionNumber, token);
+      await this.removeExistingReaction(discussionNodeId, token);
       this.userVotes.delete(resourceId);
       this.logger.info(`Removed rating for ${resourceId}`);
     } catch (error: unknown) {

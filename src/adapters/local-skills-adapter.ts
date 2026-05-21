@@ -25,12 +25,14 @@ import {
 } from '../types/registry';
 import {
   ParsedSkillFile,
-  SkillFrontmatter,
   SkillItem,
 } from '../types/skills';
 import {
   Logger,
 } from '../utils/logger';
+import {
+  parseSkillMd,
+} from './helpers/skill-parser';
 import {
   RepositoryAdapter,
 } from './repository-adapter';
@@ -211,7 +213,8 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
         return null;
       }
 
-      const parsedSkillMd = await this.parseSkillMd(skillMdPath);
+      const raw = await readFile(skillMdPath, 'utf8');
+      const parsedSkillMd = parseSkillMd(raw);
 
       const entries = await readdir(skillPath);
       const files = entries.filter((entry) => {
@@ -245,48 +248,6 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
     }
   }
 
-  /**
-   * Parse SKILL.md file
-   * @param skillMdPath
-   */
-  private async parseSkillMd(skillMdPath: string): Promise<ParsedSkillFile> {
-    this.logger.debug(`[LocalSkillsAdapter] Parsing SKILL.md: ${skillMdPath}`);
-
-    try {
-      const raw = await readFile(skillMdPath, 'utf8');
-
-      const frontmatterMatch = raw.match(/^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/);
-
-      if (!frontmatterMatch) {
-        this.logger.warn(`[LocalSkillsAdapter] SKILL.md missing valid frontmatter`);
-        return {
-          frontmatter: { name: '', description: '' },
-          content: raw,
-          raw
-        };
-      }
-
-      const frontmatterYaml = frontmatterMatch[1];
-      const markdownContent = frontmatterMatch[2];
-
-      let frontmatter: SkillFrontmatter;
-      try {
-        frontmatter = yaml.load(frontmatterYaml) as SkillFrontmatter;
-      } catch (yamlError) {
-        this.logger.warn(`[LocalSkillsAdapter] Failed to parse YAML frontmatter: ${yamlError}`);
-        frontmatter = { name: '', description: '' };
-      }
-
-      return {
-        frontmatter,
-        content: markdownContent,
-        raw
-      };
-    } catch (error) {
-      this.logger.error(`[LocalSkillsAdapter] Failed to parse SKILL.md: ${error}`);
-      throw error;
-    }
-  }
 
   /**
    * Create Bundle from SkillItem

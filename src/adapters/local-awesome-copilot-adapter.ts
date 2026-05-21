@@ -52,6 +52,12 @@ import {
   Logger,
 } from '../utils/logger';
 import {
+  CollectionItem,
+  CollectionManifest,
+  calculateBreakdown,
+  parseCollectionYaml,
+} from './helpers/collection-parser';
+import {
   RepositoryAdapter,
 } from './repository-adapter';
 
@@ -60,33 +66,6 @@ const readdir = promisify(fs.readdir);
 const readFile = promisify(fs.readFile);
 const stat = promisify(fs.stat);
 const access = promisify(fs.access);
-
-/**
- * Awesome Copilot Collection Schema
- */
-interface CollectionManifest {
-  id: string;
-  name: string;
-  description: string;
-  version?: string;
-  author?: string;
-  tags?: string[];
-  items: CollectionItem[];
-  display?: {
-    ordering?: string;
-    // eslint-disable-next-line @typescript-eslint/naming-convention -- matches external API response shape
-    show_badge?: boolean;
-  };
-  mcp?: {
-    items?: Record<string, any>;
-  };
-  mcpServers?: Record<string, any>;
-}
-
-interface CollectionItem {
-  path: string;
-  kind: 'prompt' | 'instruction' | 'chat-mode' | 'agent' | 'skill';
-}
 
 /**
  * LocalAwesomeCopilotAdapter Configuration
@@ -209,13 +188,13 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
       const collectionFilePath = path.join(collectionsPath, collectionFile);
 
       const yamlContent = await readFile(collectionFilePath, 'utf8');
-      const collection = yaml.load(yamlContent) as CollectionManifest;
+      const collection = parseCollectionYaml(yamlContent);
 
       // Extract MCP servers from either 'mcp.items' or 'mcpServers' field
       const mcpServers = collection.mcpServers || collection.mcp?.items;
 
       // Count items by kind (including MCP servers)
-      const breakdown = this.calculateBreakdown(collection.items, mcpServers);
+      const breakdown = calculateBreakdown(collection.items, mcpServers);
 
       // Get file stats for timestamp
       const stats = await stat(collectionFilePath);
@@ -402,49 +381,6 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
   }
 
   /**
-   * Calculate content breakdown from items
-   * @param items
-   * @param mcpServers
-   */
-  private calculateBreakdown(items: CollectionItem[], mcpServers?: Record<string, any>): Record<string, number> {
-    const breakdown = {
-      prompts: 0,
-      instructions: 0,
-      chatmodes: 0,
-      agents: 0,
-      skills: 0,
-      mcpServers: mcpServers ? Object.keys(mcpServers).length : 0
-    };
-
-    for (const item of items) {
-      switch (item.kind) {
-        case 'prompt': {
-          breakdown.prompts++;
-          break;
-        }
-        case 'instruction': {
-          breakdown.instructions++;
-          break;
-        }
-        case 'chat-mode': {
-          breakdown.chatmodes++;
-          break;
-        }
-        case 'agent': {
-          breakdown.agents++;
-          break;
-        }
-        case 'skill': {
-          breakdown.skills++;
-          break;
-        }
-      }
-    }
-
-    return breakdown;
-  }
-
-  /**
    * Infer environments from tags
    * @param tags
    */
@@ -562,7 +498,7 @@ export class LocalAwesomeCopilotAdapter extends RepositoryAdapter {
       this.logger.debug(`Reading collection from: ${collectionFilePath}`);
 
       const yamlContent = await readFile(collectionFilePath, 'utf8');
-      const collection = yaml.load(yamlContent) as CollectionManifest;
+      const collection = parseCollectionYaml(yamlContent);
       this.logger.debug(`Collection loaded: ${collection.name}, items: ${collection.items.length}`);
 
       // Create zip archive

@@ -748,6 +748,92 @@ collections:
     });
   });
 
+  suite('fetchViewerRatings()', () => {
+    test('should return ratings parsed from viewer comments across discussions', async () => {
+      await backend.initialize(mockConfig);
+      backend.setDiscussionMapping('otter:otter-bundle', 9);
+      backend.setDiscussionMapping('otter:fox-bundle', 10);
+
+      // Mock: GraphQL search for viewer's discussions
+      nock('https://api.github.com')
+        .post('/graphql')
+        .reply(200, {
+          data: {
+            search: {
+              nodes: [
+                { number: 9 },
+                { number: 10 },
+                { number: 99 }
+              ]
+            }
+          }
+        });
+
+      // Mock: fetch comments for discussion #9
+      nock('https://api.github.com')
+        .post('/graphql')
+        .reply(200, {
+          data: {
+            repository: {
+              discussion: {
+                comments: {
+                  nodes: [
+                    { id: 'DC_1', author: { login: 'testuser' }, body: 'Rating: ⭐⭐⭐' },
+                    { id: 'DC_other', author: { login: 'otheruser' }, body: 'Rating: ⭐⭐⭐⭐⭐' }
+                  ]
+                }
+              }
+            }
+          }
+        });
+
+      // Mock: fetch comments for discussion #10
+      nock('https://api.github.com')
+        .post('/graphql')
+        .reply(200, {
+          data: {
+            repository: {
+              discussion: {
+                comments: {
+                  nodes: [
+                    { id: 'DC_2', author: { login: 'testuser' }, body: 'Rating: ⭐⭐⭐⭐⭐' }
+                  ]
+                }
+              }
+            }
+          }
+        });
+
+      const results = await backend.fetchViewerRatings();
+
+      assert.strictEqual(results.length, 2);
+      assert.deepStrictEqual(results[0], { resourceId: 'otter:otter-bundle', score: 3 });
+      assert.deepStrictEqual(results[1], { resourceId: 'otter:fox-bundle', score: 5 });
+    });
+
+    test('should return empty array when search finds no discussions', async () => {
+      await backend.initialize(mockConfig);
+
+      nock('https://api.github.com')
+        .post('/graphql')
+        .reply(200, { data: { search: { nodes: [] } } });
+
+      const results = await backend.fetchViewerRatings();
+      assert.deepStrictEqual(results, []);
+    });
+
+    test('should return empty array on API error', async () => {
+      await backend.initialize(mockConfig);
+
+      nock('https://api.github.com')
+        .post('/graphql')
+        .reply(500, { message: 'Internal Server Error' });
+
+      const results = await backend.fetchViewerRatings();
+      assert.deepStrictEqual(results, []);
+    });
+  });
+
   suite('Error Handling', () => {
     test('should throw when not initialized', async () => {
       await assert.rejects(

@@ -21,11 +21,15 @@ import {
   Feedback,
   GitHubDiscussionsBackendConfig,
   Rating,
+  RatingScore,
   RatingStats,
 } from '../../../types/engagement';
 import {
   Logger,
 } from '../../../utils/logger';
+import {
+  parseRatingFromComment,
+} from '../../../utils/rating-parser';
 import {
   BaseEngagementBackend,
 } from '../engagement-backend';
@@ -708,6 +712,117 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
     } catch (error: unknown) {
       this.logger.error(`Failed to delete rating from GitHub: ${(error as Error).message}`, error instanceof Error ? error : undefined);
       await this.localBackend.deleteRating(resourceType, resourceId);
+    }
+  }
+
+  /**
+   * Fetch the viewer's own ratings from discussion comments.
+   * Searches for discussions the viewer has commented on, parses Rating: lines.
+   * Returns resourceId + score pairs ready for hydrateUserRatings.
+   * Non-fatal: returns empty array on any error.
+   */
+  public async fetchViewerRatings(): Promise<Array<{ resourceId: string; score: RatingScore }>> {
+    this.ensureInitialized();
+
+    try {
+      const token = await this.getAccessToken();
+      const session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: false });
+      const viewerLogin = session?.account.label;
+      if (!viewerLogin) {
+        return [];
+      }
+
+      // Step 1: Find discussions the viewer commented on
+      const searchQuery = `
+        query SearchViewerDiscussions($query: String!) {
+          search(query: $query, type: DISCUSSION, first: 50) {
+            nodes {
+              ... on Discussion { number }
+            }
+          }
+        }
+      `;
+
+      const searchResponse = await axios.post<{
+        data: { search: { nodes: Array<{ number?: number }> } };
+      }>(
+        'https://api.github.com/graphql',
+        {
+          query: searchQuery,
+          variables: { query: `repo:${this.owner}/${this.repo} commenter:${viewerLogin}` }
+        },
+        { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+      );
+
+      const discussions = searchResponse.data?.data?.search?.nodes?.filter((n) => n.number) || [];
+      if (discussions.length === 0) {
+        return [];
+      }
+
+      // Build reverse map: discussionNumber → resourceId
+      const numberToResourceId = new Map<number, string>();
+      for (const [resourceId, mapping] of this.discussionMappings.entries()) {
+        numberToResourceId.set(mapping.discussionNumber, resourceId);
+      }
+
+      // Step 2: For each matched discussion, fetch comments and find viewer's rating
+      const results: Array<{ resourceId: string; score: RatingScore }> = [];
+
+      for (const disc of discussions) {
+        const resourceId = numberToResourceId.get(disc.number!);
+        if (!resourceId) {
+          continue;
+        }
+
+        const commentsQuery = `
+          query GetDiscussionComments($owner: String!, $repo: String!, $number: Int!) {
+            repository(owner: $owner, name: $repo) {
+              discussion(number: $number) {
+                comments(first: 100) {
+                  nodes {
+                    id
+                    author { login }
+                    body
+                  }
+                }
+              }
+            }
+          }
+        `;
+
+        const commentsResponse = await axios.post<{
+          data: {
+            repository: {
+              discussion: {
+                comments: { nodes: Array<{ id: string; author: { login: string }; body: string }> };
+              };
+            };
+          };
+        }>(
+          'https://api.github.com/graphql',
+          { query: commentsQuery, variables: { owner: this.owner, repo: this.repo, number: disc.number } },
+          { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+        );
+
+        const comments = commentsResponse.data?.data?.repository?.discussion?.comments?.nodes || [];
+        const viewerComment = comments.find(
+          (c) => c.author?.login === viewerLogin && c.body.match(/^Rating:\s*⭐/m)
+        );
+
+        if (viewerComment) {
+          const score = parseRatingFromComment(viewerComment.body);
+          if (score) {
+            results.push({ resourceId, score });
+            this.commentNodeIds.set(String(disc.number), viewerComment.id);
+          }
+        }
+      }
+
+      this.logger.debug(`fetchViewerRatings: found ${results.length} ratings from remote`);
+      return results;
+    } catch (error) {
+      this.logger.debug(`fetchViewerRatings failed: ${(error as Error).message}`);
+      return [];
     }
   }
 

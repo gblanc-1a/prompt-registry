@@ -9,6 +9,9 @@ import {
 } from '@octokit/rest';
 import * as vscode from 'vscode';
 import {
+  CONCURRENCY_CONSTANTS,
+} from '../utils/constants';
+import {
   GitHubAuthError,
   GitHubClientError,
   GitHubNotFoundError,
@@ -262,6 +265,94 @@ export class GitHubClient {
       };
     } catch (error: any) {
       this.handleApiError(error);
+    }
+  }
+
+  public async downloadAsset(url: string): Promise<Buffer> {
+    await this.ensureAuthenticated();
+
+    // If it's a GitHub API asset URL, use octokit
+    const assetIdMatch = url.match(/\/releases\/assets\/(\d+)$/);
+    if (assetIdMatch) {
+      const response = await this.octokit.repos.getReleaseAsset({
+        owner: this.owner,
+        repo: this.repo,
+        asset_id: Number(assetIdMatch[1]),
+        headers: { accept: 'application/octet-stream' },
+      });
+      return Buffer.from(response.data as any);
+    }
+
+    // For other URLs (e.g., browser_download_url), use direct fetch
+    return this.fetchBuffer(url);
+  }
+
+  public async downloadAssetsParallel(
+    urls: string[],
+    concurrency?: number
+  ): Promise<Map<string, Buffer>> {
+    const limit = concurrency ?? CONCURRENCY_CONSTANTS.MANIFEST_DOWNLOAD_CONCURRENCY;
+    const results = new Map<string, Buffer>();
+
+    for (let i = 0; i < urls.length; i += limit) {
+      const batch = urls.slice(i, i + limit);
+      const batchResults = await Promise.allSettled(
+        batch.map(async (url) => {
+          const buffer = await this.downloadAsset(url);
+          return { url, buffer };
+        })
+      );
+
+      for (const result of batchResults) {
+        if (result.status === 'fulfilled') {
+          results.set(result.value.url, result.value.buffer);
+        }
+      }
+    }
+
+    return results;
+  }
+
+  public async downloadRawContent(url: string): Promise<Buffer> {
+    await this.ensureAuthenticated();
+    return this.fetchBuffer(url);
+  }
+
+  private async fetchBuffer(url: string): Promise<Buffer> {
+    const https = await import('node:https');
+    const headers: Record<string, string> = {
+      'User-Agent': 'Prompt-Registry-VSCode-Extension',
+    };
+    if (this.authToken && this.isGitHubDomain(url)) {
+      headers.Authorization = `token ${this.authToken}`;
+    }
+
+    return new Promise((resolve, reject) => {
+      https.get(url, { headers }, (res) => {
+        if (res.statusCode === 301 || res.statusCode === 302) {
+          const redirectUrl = res.headers.location;
+          if (redirectUrl) {
+            this.fetchBuffer(redirectUrl).then(resolve).catch(reject);
+            return;
+          }
+        }
+        if (res.statusCode && res.statusCode >= 400) {
+          reject(new GitHubClientError(`Download failed: ${res.statusCode}`, res.statusCode));
+          return;
+        }
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => resolve(Buffer.concat(chunks)));
+      }).on('error', (err) => reject(new GitHubClientError(`Download failed: ${err.message}`)));
+    });
+  }
+
+  private isGitHubDomain(url: string): boolean {
+    try {
+      const parsed = new URL(url);
+      return parsed.hostname.includes('github.com') || parsed.hostname.includes('githubusercontent.com');
+    } catch {
+      return false;
     }
   }
 

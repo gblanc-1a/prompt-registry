@@ -853,8 +853,18 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
     if (mapping) {
       // Try to post to GitHub Discussions
       try {
-        await this.postFeedbackToDiscussion(feedback, mapping);
-        this.logger.debug(`Feedback posted to GitHub Discussion #${mapping.discussionNumber}`);
+        const token = await this.getAccessToken();
+        const commentBody = this.formatFeedbackComment(feedback);
+        const existing = await this.findViewerComment(mapping.discussionNumber, token);
+
+        if (existing) {
+          await this.updateDiscussionComment(existing.nodeId, commentBody, token);
+          this.logger.debug(`Updated existing comment with feedback on discussion #${mapping.discussionNumber}`);
+        } else {
+          const discussionNodeId = await this.getDiscussionNodeId(mapping.discussionNumber, token);
+          await this.addDiscussionComment(discussionNodeId, commentBody, token);
+          this.logger.debug(`Posted feedback comment on discussion #${mapping.discussionNumber}`);
+        }
       } catch (error: unknown) {
         this.logger.warn(`Failed to post feedback to GitHub, storing locally: ${(error as Error).message}`);
       }

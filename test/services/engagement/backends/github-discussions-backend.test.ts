@@ -442,6 +442,21 @@ suite('GitHubDiscussionsBackend', () => {
 
       let capturedBody = '';
 
+      // Mock GraphQL API for finding existing comment (none found)
+      nock('https://api.github.com')
+        .post('/graphql')
+        .reply(200, {
+          data: {
+            repository: {
+              discussion: {
+                comments: {
+                  nodes: []
+                }
+              }
+            }
+          }
+        });
+
       // Mock GraphQL API for getting discussion node ID
       nock('https://api.github.com')
         .post('/graphql')
@@ -491,6 +506,21 @@ suite('GitHubDiscussionsBackend', () => {
     test('should handle feedback without rating', async () => {
       await backend.initialize(mockConfig);
       backend.setDiscussionMapping('source-1:bundle-1', 42);
+
+      // Mock GraphQL API for finding existing comment (none found)
+      nock('https://api.github.com')
+        .post('/graphql')
+        .reply(200, {
+          data: {
+            repository: {
+              discussion: {
+                comments: {
+                  nodes: []
+                }
+              }
+            }
+          }
+        });
 
       // Mock GraphQL API for getting discussion node ID
       nock('https://api.github.com')

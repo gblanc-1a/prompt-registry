@@ -60,6 +60,9 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
   // Cache for user's votes
   private readonly userVotes: Map<string, 'up' | 'down'> = new Map();
 
+  // Cache for comment node IDs (discussionNumber -> commentNodeId)
+  private readonly commentNodeIds: Map<string, string> = new Map();
+
   // Storage path for local backend (can be set before initialize)
   private storagePath = '';
 
@@ -321,6 +324,7 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
     this.localBackend.dispose();
     this.discussionMappings.clear();
     this.userVotes.clear();
+    this.commentNodeIds.clear();
     this._initialized = false;
   }
 
@@ -432,6 +436,131 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
   // ========================================================================
 
   /**
+   * Find viewer's existing rating comment on a discussion
+   * @param discussionNumber
+   * @param token
+   */
+  private async findViewerComment(
+    discussionNumber: number,
+    token: string
+  ): Promise<{ nodeId: string; body: string } | undefined> {
+    // Check in-memory cache first
+    const cachedId = this.commentNodeIds.get(String(discussionNumber));
+    if (cachedId) {
+      return { nodeId: cachedId, body: '' };
+    }
+
+    const query = `
+      query GetDiscussionComments($owner: String!, $repo: String!, $number: Int!) {
+        repository(owner: $owner, name: $repo) {
+          discussion(number: $number) {
+            comments(first: 100) {
+              nodes {
+                id
+                author { login }
+                body
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const response = await axios.post<{
+      data: {
+        repository: {
+          discussion: {
+            comments: {
+              nodes: Array<{ id: string; author: { login: string }; body: string }>;
+            };
+          };
+        };
+      };
+    }>(
+      'https://api.github.com/graphql',
+      { query, variables: { owner: this.owner, repo: this.repo, number: discussionNumber } },
+      { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+    );
+
+    const session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: false });
+    const viewerLogin = session?.account.label;
+    if (!viewerLogin) {
+      return undefined;
+    }
+
+    const comments = response.data?.data?.repository?.discussion?.comments?.nodes || [];
+    const viewerComment = comments.find(
+      (c) => c.author?.login === viewerLogin && c.body.match(/^Rating:\s*⭐/m)
+    );
+
+    if (viewerComment) {
+      this.commentNodeIds.set(String(discussionNumber), viewerComment.id);
+      return { nodeId: viewerComment.id, body: viewerComment.body };
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Update an existing discussion comment
+   * @param commentNodeId
+   * @param body
+   * @param token
+   */
+  private async updateDiscussionComment(commentNodeId: string, body: string, token: string): Promise<void> {
+    const mutation = `
+      mutation UpdateDiscussionComment($commentId: ID!, $body: String!) {
+        updateDiscussionComment(input: { commentId: $commentId, body: $body }) {
+          comment { id body }
+        }
+      }
+    `;
+
+    await axios.post(
+      'https://api.github.com/graphql',
+      { query: mutation, variables: { commentId: commentNodeId, body } },
+      { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+    );
+  }
+
+  /**
+   * Format rating as a comment body
+   * @param score
+   */
+  private formatRatingComment(score: number): string {
+    const stars = '⭐'.repeat(score);
+    return `Rating: ${stars}`;
+  }
+
+  /**
+   * Post or edit a rating comment on a discussion
+   * @param mapping
+   * @param rating
+   * @param token
+   */
+  private async postOrEditRatingComment(
+    mapping: DiscussionMapping,
+    rating: Rating,
+    token: string
+  ): Promise<void> {
+    try {
+      const commentBody = this.formatRatingComment(rating.score);
+      const existing = await this.findViewerComment(mapping.discussionNumber, token);
+
+      if (existing) {
+        await this.updateDiscussionComment(existing.nodeId, commentBody, token);
+        this.logger.debug(`Updated rating comment on discussion #${mapping.discussionNumber}`);
+      } else {
+        const discussionNodeId = await this.getDiscussionNodeId(mapping.discussionNumber, token);
+        await this.addDiscussionComment(discussionNodeId, commentBody, token);
+        this.logger.debug(`Posted rating comment on discussion #${mapping.discussionNumber}`);
+      }
+    } catch (error) {
+      this.logger.warn(`Failed to post/edit rating comment: ${(error as Error).message}`);
+    }
+  }
+
+  /**
    * Submit a rating (vote) via GitHub Discussions reaction
    * @param rating
    */
@@ -483,8 +612,12 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
         { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
       );
 
-      // Cache the vote
+      // Cache the vote in memory and persist locally for cross-session hydration
       this.userVotes.set(rating.resourceId, rating.score >= 3 ? 'up' : 'down');
+      await this.localBackend.submitRating(rating);
+
+      // Post or edit a comment with exact star count (non-fatal)
+      await this.postOrEditRatingComment(mapping, rating, token);
 
       this.logger.info(`Submitted ${reactionContent} reaction for ${rating.resourceId}`);
     } catch (error: unknown) {

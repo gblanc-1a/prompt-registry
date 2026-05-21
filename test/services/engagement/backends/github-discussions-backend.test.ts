@@ -124,14 +124,27 @@ suite('GitHubDiscussionsBackend', () => {
       await backend.initialize(mockConfig);
       backend.setDiscussionMapping('bundle-1', 42);
 
-      // Mock GitHub API calls
+      // Mock GraphQL: getDiscussionNodeId
       nock('https://api.github.com')
-        .get('/repos/test-owner/test-repo/discussions/42/reactions')
-        .reply(200, []);
+        .post('/graphql')
+        .reply(200, {
+          data: { repository: { discussion: { id: 'D_kwDOTest42' } } }
+        });
 
+      // Mock GraphQL: removeExistingReaction (2 calls: THUMBS_UP + THUMBS_DOWN)
       nock('https://api.github.com')
-        .post('/repos/test-owner/test-repo/discussions/42/reactions')
-        .reply(201, { id: 1, content: '+1' });
+        .post('/graphql')
+        .times(2)
+        .reply(200, {
+          data: { removeReaction: { reaction: null } }
+        });
+
+      // Mock GraphQL: addReaction
+      nock('https://api.github.com')
+        .post('/graphql')
+        .reply(200, {
+          data: { addReaction: { reaction: { content: 'THUMBS_UP' } } }
+        });
 
       const rating: Rating = {
         id: 'rating-1',
@@ -143,10 +156,47 @@ suite('GitHubDiscussionsBackend', () => {
 
       await backend.submitRating(rating);
 
-      // Verify vote is cached
+      // Verify vote is cached in memory
       const retrieved = await backend.getRating('bundle', 'bundle-1');
       assert.ok(retrieved);
       assert.strictEqual(retrieved.score, 5);
+    });
+
+    test('should persist rating to local storage on successful GitHub submit', async () => {
+      await backend.initialize(mockConfig);
+      backend.setDiscussionMapping('bundle-1', 42);
+
+      // Mock all 4 GraphQL calls in sequence (nock matches in order for same endpoint)
+      nock('https://api.github.com')
+        .post('/graphql').reply(200, { data: { repository: { discussion: { id: 'D_kwDOTest42' } } } })
+        .post('/graphql').reply(200, { data: { removeReaction: { reaction: null } } })
+        .post('/graphql').reply(200, { data: { removeReaction: { reaction: null } } })
+        .post('/graphql').reply(200, { data: { addReaction: { reaction: { content: 'THUMBS_UP' } } } });
+
+      const rating: Rating = {
+        id: 'rating-1',
+        resourceType: 'bundle',
+        resourceId: 'bundle-1',
+        score: 4,
+        sourceId: 'otter',
+        timestamp: new Date().toISOString()
+      };
+
+      await backend.submitRating(rating);
+
+      // Verify the GitHub path succeeded (not the error fallback)
+      assert.ok(nock.isDone(), 'All GraphQL mocks must have been consumed (success path, not error fallback)');
+
+      // Create a fresh backend reading from the same temp dir to verify persistence
+      const freshBackend = new GitHubDiscussionsBackend(tempDir);
+      await freshBackend.initialize(mockConfig);
+
+      const persisted = await freshBackend.getRating('bundle', 'bundle-1');
+      assert.ok(persisted, 'Rating must be persisted to local storage after successful GitHub submit');
+      assert.strictEqual(persisted.score, 4);
+      assert.strictEqual(persisted.sourceId, 'otter');
+
+      freshBackend.dispose();
     });
 
     test('should handle GitHub API errors gracefully', async () => {
@@ -185,6 +235,45 @@ suite('GitHubDiscussionsBackend', () => {
       await backend.deleteRating('bundle', 'test-bundle');
       const retrieved = await backend.getRating('bundle', 'test-bundle');
       assert.strictEqual(retrieved, undefined);
+    });
+
+    test('should post a rating comment to the discussion on successful submit', async () => {
+      await backend.initialize(mockConfig);
+      backend.setDiscussionMapping('bundle-1', 42);
+
+      let capturedCommentBody = '';
+
+      nock('https://api.github.com')
+        // getDiscussionNodeId
+        .post('/graphql').reply(200, { data: { repository: { discussion: { id: 'D_kwDOTest42' } } } })
+        // removeExistingReaction x2
+        .post('/graphql').reply(200, { data: { removeReaction: { reaction: null } } })
+        .post('/graphql').reply(200, { data: { removeReaction: { reaction: null } } })
+        // addReaction
+        .post('/graphql').reply(200, { data: { addReaction: { reaction: { content: 'THUMBS_UP' } } } })
+        // findViewerComment (no existing)
+        .post('/graphql').reply(200, { data: { repository: { discussion: { comments: { nodes: [] } } } } })
+        // getDiscussionNodeId (for addDiscussionComment)
+        .post('/graphql').reply(200, { data: { repository: { discussion: { id: 'D_kwDOTest42' } } } })
+        // addDiscussionComment
+        .post('/graphql', (body: any) => {
+          capturedCommentBody = body.variables?.body || '';
+          return true;
+        }).reply(200, { data: { addDiscussionComment: { comment: { id: 'DC_new', body: '' } } } });
+
+      const rating: Rating = {
+        id: 'rating-1',
+        resourceType: 'bundle',
+        resourceId: 'bundle-1',
+        score: 4,
+        timestamp: new Date().toISOString()
+      };
+
+      await backend.submitRating(rating);
+
+      assert.ok(nock.isDone(), 'All mocks consumed (comment was posted)');
+      assert.ok(capturedCommentBody.includes('⭐⭐⭐⭐'), 'Comment body should contain 4 stars');
+      assert.ok(capturedCommentBody.startsWith('Rating:'), 'Comment should start with Rating:');
     });
   });
 

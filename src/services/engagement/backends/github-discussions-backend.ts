@@ -335,9 +335,12 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
     }
 
     const comments = response.data?.data?.repository?.discussion?.comments?.nodes || [];
-    const viewerComment = comments.find(
+    const viewerComments = comments.filter(
       (c) => c.author?.login === viewerLogin && c.body.match(/^Rating:\s*⭐/m)
     );
+
+    // Use the last (most recent) comment — GraphQL returns chronologically
+    const viewerComment = viewerComments.length > 0 ? viewerComments[viewerComments.length - 1] : undefined;
 
     if (viewerComment) {
       this.commentNodeIds.set(String(discussionNumber), viewerComment.id);

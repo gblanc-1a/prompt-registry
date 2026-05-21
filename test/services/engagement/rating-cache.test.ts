@@ -137,15 +137,36 @@ suite('RatingCache', () => {
   });
 
   suite('clearHub()', () => {
-    test('should remove ratings matching hub prefix', () => {
-      cache.setRating(createMockRating('hub1', 'bundle-1'));
-      cache.setRating(createMockRating('hub1', 'bundle-2'));
-      cache.setRating(createMockRating('hub2', 'bundle-1'));
+    test('should remove ratings for a hub that were loaded via refreshFromHub', async () => {
+      const ratingService = RatingService.getInstance();
+      sandbox.stub(ratingService, 'fetchRatings')
+        .onFirstCall().resolves({
+          version: '1.0.0',
+          generatedAt: new Date().toISOString(),
+          bundles: {
+            'bundle-1': { sourceId: 'hub1', bundleId: 'bundle-1', upvotes: 5, downvotes: 0, wilsonScore: 0.7, starRating: 4, totalVotes: 5, lastUpdated: new Date().toISOString() },
+            'bundle-2': { sourceId: 'hub1', bundleId: 'bundle-2', upvotes: 3, downvotes: 1, wilsonScore: 0.6, starRating: 3.5, totalVotes: 4, lastUpdated: new Date().toISOString() }
+          }
+        })
+        .onSecondCall().resolves({
+          version: '1.0.0',
+          generatedAt: new Date().toISOString(),
+          bundles: {
+            'bundle-1': { sourceId: 'hub2', bundleId: 'bundle-1', upvotes: 10, downvotes: 2, wilsonScore: 0.75, starRating: 4.2, totalVotes: 12, lastUpdated: new Date().toISOString() }
+          }
+        });
+
+      await cache.refreshFromHub('hub1', 'https://hub1/ratings.json');
+      await cache.refreshFromHub('hub2', 'https://hub2/ratings.json');
+
+      assert.strictEqual(cache.size, 3);
 
       cache.clearHub('hub1');
 
       assert.strictEqual(cache.size, 1);
       assert.strictEqual(cache.hasRating('hub2', 'bundle-1'), true);
+      assert.strictEqual(cache.hasRating('hub1', 'bundle-1'), false);
+      assert.strictEqual(cache.hasRating('hub1', 'bundle-2'), false);
     });
   });
 
@@ -528,6 +549,106 @@ suite('RatingCache', () => {
       assert.strictEqual(cache.getRating('src-1', 'new-bundle'), undefined);
       assert.strictEqual(cache.hasRating('src-1', 'new-bundle'), false);
       assert.strictEqual(cache.getUserRating('src-1', 'new-bundle'), undefined);
+    });
+  });
+
+  suite('hydrateUserRatings()', () => {
+    test('should populate userRatings from resolved local data', () => {
+      cache.hydrateUserRatings([
+        { sourceId: 'adapter-abc123', bundleId: 'otter', score: 3 },
+        { sourceId: 'adapter-abc123', bundleId: 'fox', score: 5 }
+      ]);
+
+      assert.strictEqual(cache.getUserRating('adapter-abc123', 'otter'), 3);
+      assert.strictEqual(cache.getUserRating('adapter-abc123', 'fox'), 5);
+    });
+
+    test('should not overwrite in-session optimistic ratings', () => {
+      // User rated 5 in this session
+      cache.applyOptimisticRating('adapter-abc123', 'otter', 5);
+
+      // Hydration tries to set 3 (from local storage, older rating)
+      cache.hydrateUserRatings([
+        { sourceId: 'adapter-abc123', bundleId: 'otter', score: 3 }
+      ]);
+
+      // In-session rating wins
+      assert.strictEqual(cache.getUserRating('adapter-abc123', 'otter'), 5);
+    });
+
+    test('should skip invalid scores', () => {
+      cache.hydrateUserRatings([
+        { sourceId: 'src-1', bundleId: 'b1', score: 0 as any },
+        { sourceId: 'src-1', bundleId: 'b2', score: 6 as any },
+        { sourceId: 'src-1', bundleId: 'b3', score: 4 }
+      ]);
+
+      assert.strictEqual(cache.getUserRating('src-1', 'b1'), undefined);
+      assert.strictEqual(cache.getUserRating('src-1', 'b2'), undefined);
+      assert.strictEqual(cache.getUserRating('src-1', 'b3'), 4);
+    });
+
+    test('should handle empty array', () => {
+      cache.hydrateUserRatings([]);
+      // Should not throw, no ratings added
+      assert.strictEqual(cache.getUserRating('any', 'bundle'), undefined);
+    });
+
+    test('overwrites existing entries when overwrite flag is true', () => {
+      cache.hydrateUserRatings([
+        { sourceId: 'adapter-abc123', bundleId: 'otter', score: 3 }
+      ]);
+      assert.strictEqual(cache.getUserRating('adapter-abc123', 'otter'), 3);
+
+      cache.hydrateUserRatings([
+        { sourceId: 'adapter-abc123', bundleId: 'otter', score: 5 }
+      ], { overwrite: true });
+      assert.strictEqual(cache.getUserRating('adapter-abc123', 'otter'), 5);
+    });
+
+    test('overwrite does not replace in-session optimistic ratings', () => {
+      cache.applyOptimisticRating('adapter-abc123', 'otter', 4);
+
+      cache.hydrateUserRatings([
+        { sourceId: 'adapter-abc123', bundleId: 'otter', score: 3 }
+      ], { overwrite: true });
+
+      assert.strictEqual(cache.getUserRating('adapter-abc123', 'otter'), 4);
+    });
+  });
+
+  suite('getConfigSourceId()', () => {
+    test('should return config source ID when reverse map is populated', async () => {
+      // Populate reverse map via refreshFromHub with sourceIdMap
+      const mockRatingsData: RatingsData = {
+        version: '1.0.0',
+        generatedAt: new Date().toISOString(),
+        bundles: {
+          'otter': {
+            sourceId: 'otter-config',
+            bundleId: 'otter',
+            upvotes: 5,
+            downvotes: 0,
+            wilsonScore: 0.7,
+            starRating: 3,
+            totalVotes: 5,
+            lastUpdated: new Date().toISOString()
+          }
+        }
+      };
+
+      const ratingService = RatingService.getInstance();
+      sandbox.stub(ratingService, 'fetchRatings').resolves(mockRatingsData);
+
+      const sourceIdMap = new Map([['otter-config', 'awesome-copilot-bd06bc6ce82c']]);
+      await cache.refreshFromHub('local', 'https://example.com/ratings.json', sourceIdMap);
+
+      // Reverse lookup: adapter hash → config ID
+      assert.strictEqual(cache.getConfigSourceId('awesome-copilot-bd06bc6ce82c'), 'otter-config');
+    });
+
+    test('should return adapterSourceId itself when no mapping exists', () => {
+      assert.strictEqual(cache.getConfigSourceId('unknown-source'), 'unknown-source');
     });
   });
 });

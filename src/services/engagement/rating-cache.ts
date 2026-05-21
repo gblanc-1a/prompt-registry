@@ -14,7 +14,9 @@ import * as vscode from 'vscode';
 import {
   CachedRating,
   RatingScore,
+  isValidRatingScore,
 } from '../../types/engagement';
+export { CachedRating } from '../../types/engagement';
 import {
   Logger,
 } from '../../utils/logger';
@@ -42,9 +44,12 @@ export class RatingCache {
   private static instance: RatingCache | undefined;
   private readonly cache: Map<string, CachedRating> = new Map();
   private readonly userRatings: Map<string, RatingScore> = new Map();
+  private readonly optimisticKeys: Set<string> = new Set();
   private readonly logger: Logger;
   private readonly refreshPromises: Map<string, Promise<void>> = new Map();
   private readonly hubIndex: Map<string, Set<string>> = new Map();
+  /** Reverse map: adapterSourceId → configSourceId (stable, human-readable) */
+  private reverseSourceIdMap: Map<string, string> = new Map();
 
   // Events
   private readonly _onCacheUpdated = new vscode.EventEmitter<void>();
@@ -96,6 +101,13 @@ export class RatingCache {
    */
   private async doRefresh(hubId: string, ratingsUrl: string, sourceIdMap?: Map<string, string>, accessToken?: string): Promise<void> {
     try {
+      // Store reverse map for later use (adapterSourceId → configSourceId)
+      if (sourceIdMap) {
+        for (const [configId, adapterId] of sourceIdMap.entries()) {
+          this.reverseSourceIdMap.set(adapterId, configId);
+        }
+      }
+
       const ratingService = RatingService.getInstance();
       const ratingsData = await ratingService.fetchRatings(ratingsUrl, false, accessToken);
 
@@ -134,6 +146,43 @@ export class RatingCache {
   }
 
   /**
+   * Hydrate userRatings from pre-resolved local rating data.
+   * Called by the orchestration layer (hub-manager) after refresh.
+   * Does not overwrite in-session optimistic ratings.
+   * @param ratings Array of user ratings to hydrate
+   * @param options Optional configuration: overwrite will replace existing entries except optimistic ones
+   */
+  public hydrateUserRatings(
+    ratings: Array<{ sourceId: string; bundleId: string; score: RatingScore }>,
+    options?: { overwrite?: boolean }
+  ): void {
+    for (const { sourceId, bundleId, score } of ratings) {
+      if (!isValidRatingScore(score)) {
+        continue;
+      }
+      const key = this.makeKey(sourceId, bundleId);
+      if (options?.overwrite) {
+        if (!this.optimisticKeys.has(key)) {
+          this.userRatings.set(key, score);
+        }
+      } else {
+        if (!this.userRatings.has(key)) {
+          this.userRatings.set(key, score);
+        }
+      }
+    }
+  }
+
+  /**
+   * Get the stable config source ID for an adapter source ID.
+   * Used when persisting ratings so they survive source hash changes.
+   * Returns the adapterSourceId itself if no mapping exists.
+   */
+  public getConfigSourceId(adapterSourceId: string): string {
+    return this.reverseSourceIdMap.get(adapterSourceId) || adapterSourceId;
+  }
+
+  /**
    * Get singleton instance
    */
   public static getInstance(): RatingCache {
@@ -160,7 +209,9 @@ export class RatingCache {
     this._onCacheUpdated.dispose();
     this.cache.clear();
     this.userRatings.clear();
+    this.optimisticKeys.clear();
     this.hubIndex.clear();
+    this.reverseSourceIdMap.clear();
   }
 
   /**
@@ -309,6 +360,7 @@ export class RatingCache {
     }
 
     this.userRatings.set(key, userRating);
+    this.optimisticKeys.add(key);
     this._onCacheUpdated.fire();
   }
 
@@ -375,6 +427,7 @@ export class RatingCache {
   public clear(): void {
     this.cache.clear();
     this.userRatings.clear();
+    this.optimisticKeys.clear();
     this._onCacheUpdated.fire();
   }
 

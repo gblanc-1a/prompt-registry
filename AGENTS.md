@@ -96,14 +96,18 @@ This is a VS Code extension (Prompt Registry) that provides a marketplace and re
 
 ```
 src/
-├── adapters/     → Source-specific implementations (GitHub, Local, etc.)
-├── commands/     → VS Code command handlers
-├── services/     → Core business logic (RegistryManager, BundleInstaller, etc.)
-├── storage/      → Persistent state management
-├── types/        → TypeScript type definitions
-├── ui/           → UI providers (Marketplace WebView, Tree View)
-├── utils/        → Shared utilities
-└── extension.ts  → Entry point
+├── adapters/       → Source-specific implementations (GitHub, Local, etc.)
+├── commands/       → VS Code command handlers
+├── config/         → Default hub configurations
+├── integrations/   → External tool integrations (Copilot)
+├── migrations/     → Data migration scripts
+├── notifications/  → User notification services
+├── services/       → Core business logic (RegistryManager, BundleInstaller, etc.)
+├── storage/        → Persistent state management
+├── types/          → TypeScript type definitions
+├── ui/             → UI providers (Marketplace WebView, Tree View)
+├── utils/          → Shared utilities
+└── extension.ts    → Entry point
 ```
 
 ### Key Components
@@ -130,7 +134,10 @@ src/
 | `src/migrations/` | Migration scripts (one file per migration) |
 | `src/commands/*` | Command handlers wiring UI to services |
 | `src/services/engagement/*` | Rating/feedback backend, cache, services |
+| `src/services/engagement/engagement-hydrator.ts` | Hydrates bundles with engagement data |
 | `src/services/hub-manager.ts` | Hub orchestration incl. engagement hydration |
+| `src/services/hub-sync-scheduler.ts` | Periodic hub sync scheduling |
+| `src/services/scope-service-factory.ts` | Creates scope services by type |
 
 ---
 

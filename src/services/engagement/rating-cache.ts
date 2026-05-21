@@ -186,6 +186,30 @@ export class RatingCache {
   }
 
   /**
+   * Re-apply all hydrated user votes into the aggregate cache.
+   * Called after hydration on cold start so the displayed aggregate
+   * reflects the user's current vote even when ratings.json is stale.
+   * The user's vote is already counted in the remote aggregate, so this
+   * performs a swap (not an addition).
+   */
+  public reapplyHydratedVotes(): void {
+    for (const [key, score] of this.userRatings.entries()) {
+      if (this.optimisticKeys.has(key)) {
+        continue;
+      }
+      const entry = this.cache.get(key);
+      if (!entry) {
+        continue;
+      }
+      // The remote aggregate already includes the user's old vote.
+      // Approximate old contribution as starRating (exact when voteCount == 1,
+      // reasonable average-based estimate for multiple voters).
+      this.injectUserVote(key, score, entry.starRating);
+    }
+    this._onCacheUpdated.fire();
+  }
+
+  /**
    * Get the stable config source ID for an adapter source ID.
    * Used when persisting ratings so they survive source hash changes.
    * Returns the adapterSourceId itself if no mapping exists.
@@ -328,7 +352,7 @@ export class RatingCache {
    * If previousUserRating is undefined, this is a new vote (voteCount increments).
    * If defined, the previous vote is swapped for the new one (voteCount unchanged).
    */
-  private injectUserVote(key: string, userRating: RatingScore, previousUserRating: RatingScore | undefined): void {
+  private injectUserVote(key: string, userRating: RatingScore, previousUserRating: number | undefined): void {
     const existing = this.cache.get(key);
     if (!existing) {
       return;

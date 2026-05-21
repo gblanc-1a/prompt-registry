@@ -638,6 +638,7 @@ export class HubManager {
           }));
         if (resolved.length > 0) {
           RatingCache.getInstance().hydrateUserRatings(resolved);
+          RatingCache.getInstance().reapplyHydratedVotes();
         }
       }
     } catch (error) {

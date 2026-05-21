@@ -308,6 +308,53 @@ suite('RatingCache', () => {
       assert.strictEqual(afterRefresh.voteCount, 2, 'Vote count must include the user\'s optimistic vote');
     });
 
+    test('should preserve hydrated user rating after refresh on cold start (cross-restart)', async () => {
+      // Scenario: extension restarts. optimisticKeys is empty.
+      // 1. refreshFromHub loads stale ratings.json (5★, 1 vote)
+      // 2. hydrateUserRatings sets userRating = 3 (from local storage)
+      // 3. Aggregate should reflect the user's vote, not show stale 5★
+
+      const staleRatingsData: RatingsData = {
+        version: '1.0.0',
+        generatedAt: '2026-05-20T21:00:00Z',
+        bundles: {
+          'otter': {
+            sourceId: 'otter-src',
+            bundleId: 'otter',
+            upvotes: 1,
+            downvotes: 0,
+            wilsonScore: 1,
+            starRating: 5,
+            totalVotes: 1,
+            lastUpdated: '2026-05-20T21:00:00Z'
+          }
+        }
+      };
+
+      const ratingService = RatingService.getInstance();
+      sandbox.stub(ratingService, 'fetchRatings').resolves(staleRatingsData);
+
+      const sourceIdMap = new Map([['otter-src', 'adapter-hash']]);
+
+      // Step 1: refresh loads stale aggregate
+      await cache.refreshFromHub('hub1', 'https://hub/ratings.json', sourceIdMap);
+
+      // Step 2: local hydration sets user rating (simulates cold start — NOT via applyOptimisticRating)
+      cache.hydrateUserRatings([
+        { sourceId: 'adapter-hash', bundleId: 'otter', score: 3 }
+      ]);
+
+      // Step 3: call reapplyHydratedVotes to fix the aggregate
+      cache.reapplyHydratedVotes();
+
+      // The user is the only voter. ratings.json had their OLD vote (5★).
+      // After swap: (5*1 - 5 + 3) / 1 = 3. voteCount stays 1.
+      const afterReapply = cache.getRating('adapter-hash', 'otter');
+      assert.ok(afterReapply);
+      assert.strictEqual(afterReapply.starRating, 3, 'Aggregate must swap old vote for new');
+      assert.strictEqual(afterReapply.voteCount, 1, 'voteCount unchanged (swap, not add)');
+    });
+
     test('should fire onCacheUpdated event after refresh', async () => {
       const mockRatingsData: RatingsData = {
         version: '1.0.0',

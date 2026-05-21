@@ -263,6 +263,14 @@ export class EngagementService {
   }
 
   /**
+   * Get the typed backend for a hub.
+   * Returns undefined if hub not registered.
+   */
+  public getHubBackend(hubId: string): IEngagementBackend | undefined {
+    return this.hubBackends.get(hubId);
+  }
+
+  /**
    * Unregister a hub's backend
    * @param hubId
    */
@@ -295,6 +303,7 @@ export class EngagementService {
     options?: {
       version?: string;
       hubId?: string;
+      sourceId?: string;
     }
   ): Promise<Rating> {
     const rating: Rating = {
@@ -303,7 +312,8 @@ export class EngagementService {
       resourceType,
       resourceId,
       score,
-      version: options?.version
+      version: options?.version,
+      sourceId: options?.sourceId
     };
 
     const backend = this.getBackend(options?.hubId);

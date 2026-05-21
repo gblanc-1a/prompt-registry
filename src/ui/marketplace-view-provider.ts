@@ -633,7 +633,9 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
 
     try {
       const engagementService = EngagementService.getInstance();
-      await engagementService.submitRating('bundle', bundleId, newRating, { hubId });
+      // Persist the stable config sourceId (not the hash-based adapter ID) so ratings survive config changes
+      const configSourceId = ratingCache.getConfigSourceId(sourceId);
+      await engagementService.submitRating('bundle', bundleId, newRating, { hubId, sourceId: configSourceId });
       this.logger.debug(`Submitted ${stars}-star rating for bundle ${bundleId} (hub: ${hubId ?? 'local'})`);
       onSuccess(newRating);
     } catch (error) {
@@ -716,8 +718,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
 
   /**
    * Build a FeedbackableItem for the bundle-details panel so the provider can
-   * delegate to the existing promptRegistry.reportIssue / requestFeature /
-   * retryFeedback commands.
+   * delegate to the existing promptRegistry.reportIssue / requestFeature commands.
    * @param bundle
    * @param source
    */
@@ -1293,6 +1294,9 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
     const hubIdForJs = this.escapeJs(source?.hubId ?? '');
     const sourceUrlForJs = this.escapeJs(source?.url ?? '');
 
+    // User's existing rating for this bundle (0 = not rated)
+    const userRating = RatingCache.getInstance().getUserRating(bundle.sourceId, bundle.id) ?? 0;
+
     // Replace all placeholders
     html = html
       .replace('{{cspSource}}', cspSource)
@@ -1315,6 +1319,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
       .replace('{{mcpServersSection}}', mcpServersSection)
       .replace('{{promptsSection}}', promptsSection)
       .replace('{{autoUpdateEnabled}}', String(autoUpdateEnabled))
+      .replace('{{userRating}}', String(userRating))
       .replace('{{bundleId}}', this.escapeJs(bundleId))
       .replace('{{sourceId}}', sourceIdForJs)
       .replace('{{hubId}}', hubIdForJs)
@@ -1600,11 +1605,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
 
                   break;
                 }
-                case 'retryFeedback': {
-                  await vscode.commands.executeCommand('promptRegistry.retryFeedback', this.buildFeedbackItem(bundle, source));
 
-                  break;
-                }
  // No default
               }
             }

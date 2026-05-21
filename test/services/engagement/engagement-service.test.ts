@@ -24,12 +24,12 @@ suite('EngagementService', () => {
     globalStorageUri: vscode.Uri.file(storagePath),
     subscriptions: [],
     workspaceState: {
-      get: sandbox.stub(),
+      get: sandbox.stub() as any,
       update: sandbox.stub(),
       keys: () => []
     },
     globalState: {
-      get: sandbox.stub(),
+      get: sandbox.stub() as any,
       update: sandbox.stub(),
       keys: () => [],
       setKeysForSync: sandbox.stub()

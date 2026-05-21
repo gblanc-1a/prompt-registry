@@ -13,6 +13,9 @@
   // inline feedback form is submitted. null means "no rating pending yet".
   var pendingStars = null;
 
+  // User's existing rating (loaded from cache on panel open)
+  var initialUserRating = window.bundleDetailsData ? window.bundleDetailsData.userRating : 0;
+
   /**
    * Update the toggle UI to reflect current state
    */
@@ -106,6 +109,15 @@
     });
   };
 
+  // Pre-fill stars if the user has already rated this bundle in this session
+  if (initialUserRating > 0) {
+    updateStarsFilled(initialUserRating);
+    var label = document.querySelector('#detailStars .star-label');
+    if (label) {
+      label.textContent = 'Your rating';
+    }
+  }
+
   // Listen for status updates from extension
   window.addEventListener('message', (event) => {
     var message = event.data;
@@ -124,6 +136,10 @@
       case 'ratingSubmitted': {
         updateStarsFilled(message.stars);
         pendingStars = message.stars;
+        var lbl = document.querySelector('#detailStars .star-label');
+        if (lbl) {
+          lbl.textContent = 'Your rating';
+        }
         showFeedbackForm();
 
         break;
@@ -140,9 +156,7 @@
 
         break;
       }
-    // No default
     }
-    // feedbackFailed: keep form open so the user can edit and retry.
   });
 
   // Event delegation for all click handlers (CSP compliant)
@@ -210,11 +224,7 @@
           vscode.postMessage({ type: 'requestFeature' });
           break;
         }
-        case 'retryFeedback': {
-          e.stopPropagation();
-          vscode.postMessage({ type: 'retryFeedback' });
-          break;
-        }
+
       }
     }
   });

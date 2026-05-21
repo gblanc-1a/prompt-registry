@@ -426,12 +426,6 @@
         "title": "Request Feature",
         "category": "Prompt Registry",
         "icon": "$(lightbulb)"
-      },
-      {
-        "command": "promptRegistry.retryFeedback",
-        "title": "Retry Feedback Submission",
-        "category": "Prompt Registry",
-        "icon": "$(sync)"
       }
     ],
     "viewsContainers": {
@@ -643,11 +637,6 @@
           "command": "promptRegistry.requestFeature",
           "when": "view == promptRegistryExplorer && viewItem =~ /^installed_bundle/",
           "group": "engagement@3"
-        },
-        {
-          "command": "promptRegistry.retryFeedback",
-          "when": "view == promptRegistryExplorer && viewItem =~ /^installed_bundle/",
-          "group": "engagement@4"
         },
         {
           "command": "promptRegistry.moveToRepositoryCommit",

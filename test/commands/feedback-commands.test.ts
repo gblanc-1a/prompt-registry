@@ -238,11 +238,10 @@ suite('FeedbackCommands', () => {
 
       commands.registerCommands(mockContext);
 
-      assert.strictEqual(registerCommandStub.callCount, 4);
+      assert.strictEqual(registerCommandStub.callCount, 3);
       assert.ok(registerCommandStub.calledWith('promptRegistry.feedback'));
       assert.ok(registerCommandStub.calledWith('promptRegistry.reportIssue'));
       assert.ok(registerCommandStub.calledWith('promptRegistry.requestFeature'));
-      assert.ok(registerCommandStub.calledWith('promptRegistry.retryFeedback'));
     });
   });
 
@@ -370,7 +369,7 @@ suite('FeedbackCommands', () => {
       (mockEngagementService.getStorage as sinon.SinonStub).returns(mockStorage);
 
       // Fail only entry 2 (by bundleId b2)
-      mockEngagementService.submitFeedback.callsFake((_rt: any, resourceId: string) => {
+      mockEngagementService.submitFeedback.callsFake(async (_rt: any, resourceId: string) => {
         if (resourceId === 'b2') {
           throw new Error('Network error');
         }

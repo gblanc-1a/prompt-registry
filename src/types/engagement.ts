@@ -39,6 +39,8 @@ export interface Rating {
   timestamp: string;
   /** Resource version at time of rating */
   version?: string;
+  /** Source identifier (adapter sourceId) for resolving cache keys across sessions */
+  sourceId?: string;
 }
 
 /**

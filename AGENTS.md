@@ -113,6 +113,7 @@ src/
 - **Installation flow**: adapters produce bundle metadata/URLs → `BundleInstaller` downloads/extracts/validates → scope services sync to target directories
 - **Scope services**: `UserScopeService` (user/workspace) and `RepositoryScopeService` (repository) handle scope-specific file placement
 - **Lockfile management**: `LockfileManager` manages `prompt-registry.lock.json` for repository-scoped bundles
+- **Engagement**: Rating/feedback via GitHub Discussions. See `docs/contributor-guide/architecture/engagement.md`
 
 ### Key Files
 
@@ -128,6 +129,8 @@ src/
 | `src/services/migration-registry.ts` | globalState-based migration tracker |
 | `src/migrations/` | Migration scripts (one file per migration) |
 | `src/commands/*` | Command handlers wiring UI to services |
+| `src/services/engagement/*` | Rating/feedback backend, cache, services |
+| `src/services/hub-manager.ts` | Hub orchestration incl. engagement hydration |
 
 ---
 

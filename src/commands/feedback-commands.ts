@@ -449,10 +449,6 @@ export class FeedbackCommands {
       vscode.commands.registerCommand(
         'promptRegistry.requestFeature',
         (item: unknown) => this.requestFeature(this.normalizeFeedbackItem(item))
-      ),
-      vscode.commands.registerCommand(
-        'promptRegistry.retryFeedback',
-        (item: unknown) => this.retryFeedback(this.normalizeFeedbackItem(item))
       )
     );
 
@@ -601,45 +597,4 @@ export class FeedbackCommands {
     return successCount;
   }
 
-  /**
-   * Retry submitting unsynced feedback for a bundle
-   * @param item
-   */
-  public async retryFeedback(item: FeedbackableItem): Promise<void> {
-    const storage = this.engagementService?.getStorage?.();
-    if (!storage) {
-      return;
-    }
-
-    const unsynced = await storage.getUnsyncedFeedback();
-    const pending = unsynced.filter((f) => f.bundleId === item.resourceId);
-
-    if (pending.length === 0) {
-      vscode.window.showInformationMessage('No pending feedback to retry.');
-      return;
-    }
-
-    for (const entry of pending) {
-      try {
-        if (this.engagementService) {
-          await this.engagementService.submitFeedback(
-            entry.resourceType,
-            entry.bundleId,
-            entry.comment || `Rated ${entry.rating} stars`,
-            { rating: entry.rating, hubId: entry.hubId || undefined }
-          );
-          await storage.markFeedbackSynced(entry.id);
-        }
-      } catch (error) {
-        this.logger.warn(`Retry failed for ${entry.id}: ${error}`);
-      }
-    }
-
-    const stillUnsynced = (await storage.getUnsyncedFeedback()).filter((f) => f.bundleId === item.resourceId);
-    if (stillUnsynced.length === 0) {
-      vscode.window.showInformationMessage('Feedback submitted successfully!');
-    } else {
-      vscode.window.showWarningMessage(`${stillUnsynced.length} feedback(s) still pending. Please try again later.`);
-    }
-  }
 }

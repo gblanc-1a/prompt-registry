@@ -46,7 +46,6 @@
     <div class="issue-links">
         <button class="btn btn-link" id="reportIssueBtn" data-action="reportIssue">Report Issue</button>
         <button class="btn btn-link" id="requestFeatureBtn" data-action="requestFeature">Request Feature</button>
-        <button class="btn btn-link" id="retryFeedbackBtn" data-action="retryFeedback">Retry Sending Feedback</button>
     </div>
 
     <div class="section">
@@ -95,7 +94,8 @@
             bundleId: '{{bundleId}}',
             sourceId: '{{sourceId}}',
             hubId: '{{hubId}}',
-            sourceUrl: '{{sourceUrl}}'
+            sourceUrl: '{{sourceUrl}}',
+            userRating: {{userRating}}
         };
     </script>
     <script nonce="{{nonce}}" src="{{scriptUri}}"></script>

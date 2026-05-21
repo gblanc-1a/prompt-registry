@@ -159,7 +159,7 @@ export const VALID_CONTEXT_PATTERNS_FOR_MENUS = [
   /^installed_bundle_auto_enabled/,
   /^installed_bundle_updatable_auto_disabled/,
   /^installed_bundle_updatable_auto_enabled/,
-  // Engagement commands (feedback, reportIssue, requestFeature, retryFeedback) use
+  // Engagement commands (feedback, reportIssue, requestFeature) use
   // the broadest installed_bundle prefix to match every scope/autoupdate permutation.
   /^installed_bundle/,
   // Scope-specific patterns for scope-related menu options

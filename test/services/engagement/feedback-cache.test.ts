@@ -241,16 +241,36 @@ suite('FeedbackCache', () => {
   });
 
   suite('clearHub()', () => {
-    test('should clear feedbacks for specific hub by prefix', () => {
-      feedbackCache.setFeedbacks('hub1/bundle-1', []);
-      feedbackCache.setFeedbacks('hub1/bundle-2', []);
-      feedbackCache.setFeedbacks('hub2/bundle-1', []);
+    test('should clear feedbacks loaded via refreshFromHub', async () => {
+      const hub1Data: FeedbacksData = {
+        version: '1.0.0',
+        generated: new Date().toISOString(),
+        bundles: [
+          { bundleId: 'bundle-1', feedbacks: [{ id: 'f1', rating: 4, comment: 'good', timestamp: new Date().toISOString() }] },
+          { bundleId: 'bundle-2', feedbacks: [{ id: 'f2', rating: 5, comment: 'great', timestamp: new Date().toISOString() }] }
+        ]
+      };
+      const hub2Data: FeedbacksData = {
+        version: '1.0.0',
+        generated: new Date().toISOString(),
+        bundles: [
+          { bundleId: 'bundle-3', feedbacks: [{ id: 'f3', rating: 3, comment: 'ok', timestamp: new Date().toISOString() }] }
+        ]
+      };
 
-      feedbackCache.clearHub('hub1/');
+      feedbackServiceStub.fetchFeedbacks.onFirstCall().resolves(hub1Data);
+      feedbackServiceStub.fetchFeedbacks.onSecondCall().resolves(hub2Data);
 
-      assert.strictEqual(feedbackCache.hasFeedbacks('hub1/bundle-1'), false);
-      assert.strictEqual(feedbackCache.hasFeedbacks('hub1/bundle-2'), false);
-      assert.strictEqual(feedbackCache.hasFeedbacks('hub2/bundle-1'), true);
+      await feedbackCache.refreshFromHub('hub1', 'https://hub1/feedbacks.json');
+      await feedbackCache.refreshFromHub('hub2', 'https://hub2/feedbacks.json');
+
+      assert.strictEqual(feedbackCache.size, 3);
+
+      feedbackCache.clearHub('hub1');
+
+      assert.strictEqual(feedbackCache.hasFeedbacks('bundle-1'), false);
+      assert.strictEqual(feedbackCache.hasFeedbacks('bundle-2'), false);
+      assert.strictEqual(feedbackCache.hasFeedbacks('bundle-3'), true);
     });
   });
 

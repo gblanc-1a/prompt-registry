@@ -984,7 +984,7 @@ suite('MarketplaceViewProvider - rateBundle message handling', () => {
     assert.strictEqual(resourceType, 'bundle');
     assert.strictEqual(resourceId, 'rated-bundle');
     assert.strictEqual(score, 4);
-    assert.deepStrictEqual(options, { hubId: 'test-hub' });
+    assert.deepStrictEqual(options, { hubId: 'test-hub', sourceId: 'source-with-ratings' });
   });
 
   test('accepts the boundary values 1 and 5', async () => {
@@ -1051,7 +1051,7 @@ suite('MarketplaceViewProvider - rateBundle message handling', () => {
 
     assert.strictEqual(submitRatingStub.callCount, 1);
     const options = submitRatingStub.firstCall.args[3];
-    assert.deepStrictEqual(options, { hubId: undefined });
+    assert.deepStrictEqual(options, { hubId: undefined, sourceId: 'local-source' });
   });
 
   test('applies the optimistic rating BEFORE submitting and posts an updateRating message', async () => {
@@ -1141,7 +1141,7 @@ suite('MarketplaceViewProvider - rateBundle message handling', () => {
     assert.strictEqual(openModalMsgs[0].stars, 4);
   });
 
-  test('does NOT post openFeedbackModal when rating submit fails', async () => {
+  test('still posts openFeedbackModal even when rating submit fails (optimistic UX)', async () => {
     submitRatingStub.rejects(new Error('network down'));
 
     await (marketplaceProvider as any).handleMessage({
@@ -1152,7 +1152,7 @@ suite('MarketplaceViewProvider - rateBundle message handling', () => {
     });
 
     const openModalMsgs = postedMessages.filter((m) => m.type === 'openFeedbackModal');
-    assert.strictEqual(openModalMsgs.length, 0, 'no openFeedbackModal on failure');
+    assert.strictEqual(openModalMsgs.length, 1, 'openFeedbackModal fires optimistically before submit');
   });
 });
 
@@ -1487,11 +1487,11 @@ suite('MarketplaceViewProvider - bundle-details feedback wiring', () => {
 
       const failed = postedPanelMessages.find((m) => m.type === 'ratingFailed');
       assert.ok(failed, 'expected ratingFailed message on failure');
-      assert.strictEqual(failed.error, 'boom');
+      assert.strictEqual(failed.error, 'Failed to submit rating');
 
-      // no ratingSubmitted on failure
+      // ratingSubmitted fires optimistically (before submit), then ratingFailed on rollback
       const submitted = postedPanelMessages.find((m) => m.type === 'ratingSubmitted');
-      assert.strictEqual(submitted, undefined);
+      assert.ok(submitted, 'ratingSubmitted fires optimistically before failure is known');
     });
 
     test('ignores invalid star values', async () => {

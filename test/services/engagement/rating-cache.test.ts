@@ -617,6 +617,35 @@ suite('RatingCache', () => {
     });
   });
 
+  suite('remote hydration overwrites local', () => {
+    test('hydrateUserRatings with overwrite replaces local-only entries', () => {
+      // Simulate local hydration (score 3 from local storage)
+      cache.hydrateUserRatings([
+        { sourceId: 'adapter-hash', bundleId: 'otter', score: 3 }
+      ]);
+      assert.strictEqual(cache.getUserRating('adapter-hash', 'otter'), 3);
+
+      // Simulate remote hydration arriving with updated score (user rated 5 on other machine)
+      cache.hydrateUserRatings([
+        { sourceId: 'adapter-hash', bundleId: 'otter', score: 5 }
+      ], { overwrite: true });
+
+      assert.strictEqual(cache.getUserRating('adapter-hash', 'otter'), 5);
+    });
+
+    test('remote hydration adds ratings not in local storage', () => {
+      // Local has nothing
+      assert.strictEqual(cache.getUserRating('adapter-hash', 'fox'), undefined);
+
+      // Remote hydration brings a rating
+      cache.hydrateUserRatings([
+        { sourceId: 'adapter-hash', bundleId: 'fox', score: 4 }
+      ], { overwrite: true });
+
+      assert.strictEqual(cache.getUserRating('adapter-hash', 'fox'), 4);
+    });
+  });
+
   suite('getConfigSourceId()', () => {
     test('should return config source ID when reverse map is populated', async () => {
       // Populate reverse map via refreshFromHub with sourceIdMap

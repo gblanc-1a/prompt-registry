@@ -13,10 +13,9 @@
 import * as vscode from 'vscode';
 import {
   CachedRating,
-  RatingScore,
   isValidRatingScore,
+  RatingScore,
 } from '../../types/engagement';
-export { CachedRating } from '../../types/engagement';
 import {
   Logger,
 } from '../../utils/logger';
@@ -26,6 +25,8 @@ import {
 import {
   RatingService,
 } from './rating-service';
+
+export { CachedRating } from '../../types/engagement';
 
 /**
  * Rating display format for UI
@@ -49,7 +50,7 @@ export class RatingCache {
   private readonly refreshPromises: Map<string, Promise<void>> = new Map();
   private readonly hubIndex: Map<string, Set<string>> = new Map();
   /** Reverse map: adapterSourceId → configSourceId (stable, human-readable) */
-  private reverseSourceIdMap: Map<string, string> = new Map();
+  private readonly reverseSourceIdMap: Map<string, string> = new Map();
 
   // Events
   private readonly _onCacheUpdated = new vscode.EventEmitter<void>();
@@ -98,6 +99,7 @@ export class RatingCache {
    * @param hubId
    * @param ratingsUrl
    * @param sourceIdMap
+   * @param accessToken
    */
   private async doRefresh(hubId: string, ratingsUrl: string, sourceIdMap?: Map<string, string>, accessToken?: string): Promise<void> {
     try {
@@ -151,9 +153,10 @@ export class RatingCache {
    * Does not overwrite in-session optimistic ratings.
    * @param ratings Array of user ratings to hydrate
    * @param options Optional configuration: overwrite will replace existing entries except optimistic ones
+   * @param options.overwrite
    */
   public hydrateUserRatings(
-    ratings: Array<{ sourceId: string; bundleId: string; score: RatingScore }>,
+    ratings: { sourceId: string; bundleId: string; score: RatingScore }[],
     options?: { overwrite?: boolean }
   ): void {
     for (const { sourceId, bundleId, score } of ratings) {
@@ -177,6 +180,7 @@ export class RatingCache {
    * Get the stable config source ID for an adapter source ID.
    * Used when persisting ratings so they survive source hash changes.
    * Returns the adapterSourceId itself if no mapping exists.
+   * @param adapterSourceId
    */
   public getConfigSourceId(adapterSourceId: string): string {
     return this.reverseSourceIdMap.get(adapterSourceId) || adapterSourceId;
@@ -273,6 +277,7 @@ export class RatingCache {
    * @param hubId Hub identifier
    * @param ratingsUrl URL to ratings.json
    * @param sourceIdMap Map from ratings.json source_id to actual extension source ID
+   * @param accessToken
    */
   public async refreshFromHub(hubId: string, ratingsUrl: string, sourceIdMap?: Map<string, string>, accessToken?: string): Promise<void> {
     // Prevent concurrent refreshes for the same URL

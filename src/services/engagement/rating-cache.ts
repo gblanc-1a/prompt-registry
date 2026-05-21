@@ -51,6 +51,7 @@ export class RatingCache {
   private readonly hubIndex: Map<string, Set<string>> = new Map();
   /** Reverse map: adapterSourceId → configSourceId (stable, human-readable) */
   private readonly reverseSourceIdMap: Map<string, string> = new Map();
+  private hydratedVotesApplied = false;
 
   // Events
   private readonly _onCacheUpdated = new vscode.EventEmitter<void>();
@@ -193,6 +194,9 @@ export class RatingCache {
    * performs a swap (not an addition).
    */
   public reapplyHydratedVotes(): void {
+    if (this.hydratedVotesApplied) {
+      return;
+    }
     for (const [key, score] of this.userRatings.entries()) {
       if (this.optimisticKeys.has(key)) {
         continue;
@@ -201,11 +205,9 @@ export class RatingCache {
       if (!entry) {
         continue;
       }
-      // The remote aggregate already includes the user's old vote.
-      // Approximate old contribution as starRating (exact when voteCount == 1,
-      // reasonable average-based estimate for multiple voters).
       this.injectUserVote(key, score, entry.starRating);
     }
+    this.hydratedVotesApplied = true;
     this._onCacheUpdated.fire();
   }
 
@@ -249,6 +251,7 @@ export class RatingCache {
     this.optimisticKeys.clear();
     this.hubIndex.clear();
     this.reverseSourceIdMap.clear();
+    this.hydratedVotesApplied = false;
   }
 
   /**
@@ -477,6 +480,7 @@ export class RatingCache {
     this.cache.clear();
     this.userRatings.clear();
     this.optimisticKeys.clear();
+    this.hydratedVotesApplied = false;
     this._onCacheUpdated.fire();
   }
 

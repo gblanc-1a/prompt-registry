@@ -127,11 +127,13 @@ export class EngagementService {
       storagePath
     };
 
-    this.defaultBackend = new FileBackend();
-    await this.defaultBackend.initialize(config);
-
     this.storage = new EngagementStorage(storagePath);
     await this.storage.initialize();
+
+    const fileBackend = new FileBackend();
+    fileBackend.setSharedStorage(this.storage);
+    await fileBackend.initialize(config);
+    this.defaultBackend = fileBackend;
 
     this.logger.info('EngagementService initialized with file backend');
   }
@@ -168,10 +170,24 @@ export class EngagementService {
 
   /**
    * Get the local engagement storage (for pending feedback operations)
-   * @deprecated Use savePendingFeedback / getPendingFeedback / markFeedbackSynced instead
+   * @deprecated Use getAllRatings / saveRatings / savePendingFeedback / getPendingFeedback / markFeedbackSynced instead
    */
   public getStorage(): EngagementStorage | undefined {
     return this.storage;
+  }
+
+  /**
+   * Get all persisted ratings from local storage
+   */
+  public async getAllRatings(): Promise<Rating[]> {
+    return this.storage?.getAllRatings() ?? [];
+  }
+
+  /**
+   * Save multiple ratings to local storage in a single write
+   */
+  public async saveRatings(ratings: Rating[]): Promise<void> {
+    await this.storage?.saveRatings(ratings);
   }
 
   /**

@@ -6,7 +6,6 @@
 import {
   exec,
 } from 'node:child_process';
-import * as crypto from 'node:crypto';
 import * as fs from 'node:fs';
 import * as http from 'node:http';
 import * as https from 'node:https';
@@ -48,14 +47,11 @@ import {
   generateHubSourceId,
 } from '../utils/source-id-utils';
 import {
+  EngagementHydrator,
+} from './engagement/engagement-hydrator';
+import {
   EngagementService,
 } from './engagement/engagement-service';
-import {
-  FeedbackCache,
-} from './engagement/feedback-cache';
-import {
-  RatingCache,
-} from './engagement/rating-cache';
 import {
   SchemaValidator,
   ValidationResult,
@@ -570,6 +566,7 @@ export class HubManager {
    * Idempotent: safe to call more than once per hub.
    * @param hubId Hub identifier
    * @param engagement Engagement configuration (from HubConfig.engagement)
+   * @param hubSources Hub source configurations for building sourceId mappings
    */
   public async registerHubEngagement(
     hubId: string,
@@ -587,117 +584,9 @@ export class HubManager {
       return;
     }
 
-    // Build sourceIdMap: maps config source id (e.g. "otter") to generated adapter source id
-    // (e.g. "awesome-copilot-bd06bc6ce82c"). This allows the rating cache to store entries
-    // using the adapter's sourceId so lookups from the marketplace match.
-    let sourceIdMap: Map<string, string> | undefined;
-    if (hubSources && hubSources.length > 0) {
-      sourceIdMap = new Map();
-      for (const src of hubSources) {
-        if (!src.enabled) {
-          continue;
-        }
-        const adapterSourceId = generateHubSourceId(src.type, src.url, {
-          branch: src.config?.branch,
-          collectionsPath: src.config?.collectionsPath
-        });
-        sourceIdMap.set(src.id, adapterSourceId);
-      }
-    }
-
-    // Warm caches from static URLs (non-fatal — cache misses just fall back to backend calls)
-    // Get token for authenticated fetches (private/internal repos)
-    let accessToken: string | undefined;
-    try {
-      const session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: false });
-      accessToken = session?.accessToken;
-    } catch {
-      this.logger.debug(`No GitHub session available for cache warm-up`);
-    }
-
-    const ratingsUrl = engagement.ratings?.ratingsUrl;
-    if (ratingsUrl) {
-      try {
-        await RatingCache.getInstance().refreshFromHub(hubId, ratingsUrl, sourceIdMap, accessToken);
-      } catch (error) {
-        this.logger.debug(`Failed to warm rating cache for hub ${hubId}`, error);
-      }
-    }
-
-    // Hydrate user's own ratings from local storage so getUserRating works across sessions
-    try {
-      const storage = EngagementService.getInstance().getStorage();
-      if (storage && sourceIdMap) {
-        const localRatings = await storage.getAllRatings();
-        const resolved = localRatings
-          .filter((r) => r.resourceType === 'bundle' && r.sourceId && r.score)
-          .map((r) => ({
-            sourceId: sourceIdMap.get(r.sourceId!) || r.sourceId!,
-            bundleId: r.resourceId,
-            score: r.score
-          }));
-        if (resolved.length > 0) {
-          RatingCache.getInstance().hydrateUserRatings(resolved);
-          RatingCache.getInstance().reapplyHydratedVotes();
-        }
-      }
-    } catch (error) {
-      this.logger.debug(`Failed to hydrate user ratings from storage: ${error}`);
-    }
-
-    // Remote hydration: fetch viewer's rating comments from discussions (authoritative, cross-machine)
-    if (engagement.backend.type === 'github-discussions') {
-      try {
-        const backend = EngagementService.getInstance().getHubBackend(hubId);
-        if (backend && 'fetchViewerRatings' in backend) {
-          const remoteRatings = await (backend as any).fetchViewerRatings();
-          if (remoteRatings.length > 0 && sourceIdMap) {
-            const resolved = remoteRatings.map((r: { resourceId: string; score: any }) => {
-              // resourceId from fetchViewerRatings is the mapping key (e.g. "otter:otter-bundle")
-              // Extract bundleId from the "sourceId:bundleId" format
-              const parts = r.resourceId.split(':');
-              const configSourceId = parts[0];
-              const bundleId = parts.slice(1).join(':');
-              return {
-                sourceId: sourceIdMap.get(configSourceId) || configSourceId,
-                bundleId,
-                score: r.score
-              };
-            });
-            RatingCache.getInstance().hydrateUserRatings(resolved, { overwrite: true });
-
-            // Persist remote ratings locally for next startup's instant hydration
-            const storage = EngagementService.getInstance().getStorage();
-            if (storage) {
-              for (const r of remoteRatings) {
-                const parts = r.resourceId.split(':');
-                const configSourceId = parts[0];
-                const bundleId = parts.slice(1).join(':');
-                await storage.saveRating({
-                  id: crypto.randomUUID(),
-                  resourceType: 'bundle',
-                  resourceId: bundleId,
-                  score: r.score,
-                  sourceId: configSourceId,
-                  timestamp: new Date().toISOString()
-                });
-              }
-            }
-          }
-        }
-      } catch (error) {
-        this.logger.debug(`Failed to hydrate user ratings from remote: ${error}`);
-      }
-    }
-
-    const feedbackUrl = engagement.feedback?.feedbackUrl;
-    if (feedbackUrl) {
-      try {
-        await FeedbackCache.getInstance().refreshFromHub(hubId, feedbackUrl, accessToken);
-      } catch (error) {
-        this.logger.debug(`Failed to warm feedback cache for hub ${hubId}`, error);
-      }
-    }
+    const hydrator = new EngagementHydrator();
+    const sourceIdMap = hydrator.buildSourceIdMap(hubSources);
+    await hydrator.hydrate(hubId, engagement, sourceIdMap);
   }
 
   /**

@@ -30,6 +30,14 @@ export class FileBackend extends BaseEngagementBackend {
   private storage?: EngagementStorage;
 
   /**
+   * Set a shared EngagementStorage instance to avoid duplicate instances.
+   * Must be called before initialize() if sharing is desired.
+   */
+  public setSharedStorage(storage: EngagementStorage): void {
+    this.storage = storage;
+  }
+
+  /**
    * Initialize the file backend
    * @param config File backend configuration
    */
@@ -38,15 +46,17 @@ export class FileBackend extends BaseEngagementBackend {
       throw new Error(`Invalid config type '${config.type}' for FileBackend`);
     }
 
-    const fileConfig = config;
-    const storagePath = fileConfig.storagePath;
+    if (!this.storage) {
+      const fileConfig = config;
+      const storagePath = fileConfig.storagePath;
 
-    if (!storagePath) {
-      throw new Error('storagePath is required for FileBackend');
+      if (!storagePath) {
+        throw new Error('storagePath is required for FileBackend');
+      }
+
+      this.storage = new EngagementStorage(storagePath);
+      await this.storage.initialize();
     }
-
-    this.storage = new EngagementStorage(storagePath);
-    await this.storage.initialize();
     this._initialized = true;
   }
 

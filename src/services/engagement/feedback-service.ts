@@ -44,7 +44,7 @@ export interface FeedbacksData {
  * Service for fetching and caching bundle feedbacks
  */
 export class FeedbackService {
-  private static instance: FeedbackService;
+  private static instance: FeedbackService | undefined;
   private readonly logger = Logger.getInstance();
   private readonly feedbacksCache: Map<string, FeedbacksData> = new Map();
   private readonly cacheExpiry: Map<string, number> = new Map();
@@ -68,7 +68,7 @@ export class FeedbackService {
    * Reset instance (for testing)
    */
   public static resetInstance(): void {
-    FeedbackService.instance = undefined as unknown as FeedbackService;
+    FeedbackService.instance = undefined;
   }
 
   /**

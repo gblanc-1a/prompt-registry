@@ -355,6 +355,47 @@ suite('RatingCache', () => {
       assert.strictEqual(afterReapply.voteCount, 1, 'voteCount unchanged (swap, not add)');
     });
 
+    test('reapplyHydratedVotes is idempotent (second call is a no-op)', async () => {
+      const staleRatingsData: RatingsData = {
+        version: '1.0.0',
+        generatedAt: new Date().toISOString(),
+        bundles: {
+          'otter': {
+            sourceId: 'otter-src',
+            bundleId: 'otter',
+            upvotes: 1,
+            downvotes: 0,
+            wilsonScore: 1,
+            starRating: 5,
+            totalVotes: 1,
+            lastUpdated: '2026-05-20T21:00:00Z'
+          }
+        }
+      };
+
+      const ratingService = RatingService.getInstance();
+      sandbox.stub(ratingService, 'fetchRatings').resolves(staleRatingsData);
+
+      const sourceIdMap = new Map([['otter-src', 'adapter-hash']]);
+      await cache.refreshFromHub('hub1', 'https://hub/ratings.json', sourceIdMap);
+
+      cache.hydrateUserRatings([
+        { sourceId: 'adapter-hash', bundleId: 'otter', score: 3 }
+      ]);
+
+      cache.reapplyHydratedVotes();
+      const afterFirst = cache.getRating('adapter-hash', 'otter');
+
+      // Second call should be a no-op
+      cache.reapplyHydratedVotes();
+      const afterSecond = cache.getRating('adapter-hash', 'otter');
+
+      assert.ok(afterFirst);
+      assert.ok(afterSecond);
+      assert.strictEqual(afterSecond.starRating, afterFirst.starRating, 'Second call must not shift aggregate');
+      assert.strictEqual(afterSecond.voteCount, afterFirst.voteCount, 'Second call must not change voteCount');
+    });
+
     test('should fire onCacheUpdated event after refresh', async () => {
       const mockRatingsData: RatingsData = {
         version: '1.0.0',

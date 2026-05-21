@@ -24,6 +24,7 @@ import {
   RatingScore,
   RatingStats,
 } from '../../../types/engagement';
+import { convertRawUrlToApi } from '../../../utils/github-url-utils';
 import {
   Logger,
 } from '../../../utils/logger';
@@ -69,6 +70,19 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
 
   // Storage path for local backend (can be set before initialize)
   private storagePath = '';
+
+  private resolveMapping(resourceId: string): DiscussionMapping | undefined {
+    const exact = this.discussionMappings.get(resourceId);
+    if (exact) {
+      return exact;
+    }
+    for (const [key, value] of this.discussionMappings.entries()) {
+      if (key.endsWith(`:${resourceId}`)) {
+        return value;
+      }
+    }
+    return undefined;
+  }
 
   constructor(storagePath?: string) {
     super();
@@ -410,22 +424,6 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
   }
 
   /**
-   * Convert a raw.githubusercontent.com URL to the equivalent GitHub API contents URL.
-   * Returns undefined if the URL isn't a raw GitHub URL.
-   * @param url
-   */
-  private convertRawUrlToApi(url: string): string | undefined {
-    const match = url.match(
-      /^https:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+?)(?:\?.*)?$/
-    );
-    if (!match) {
-      return undefined;
-    }
-    const [, owner, repo, ref, path] = match;
-    return `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${ref}`;
-  }
-
-  /**
    * Set storage path for local backend (must be called before initialize)
    * @param path
    */
@@ -526,7 +524,7 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
         response = await axios.get(collectionsUrl, { headers });
       } catch (primaryError) {
         // Fallback for internal/private repos: convert raw URL to API contents endpoint
-        const apiUrl = this.convertRawUrlToApi(collectionsUrl);
+        const apiUrl = convertRawUrlToApi(collectionsUrl);
         if (apiUrl) {
           this.logger.debug(`Primary fetch failed for collections, trying API contents endpoint`);
           response = await axios.get(apiUrl, {
@@ -590,23 +588,9 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
   public async submitRating(rating: Rating): Promise<void> {
     this.ensureInitialized();
 
-    // Try exact match first
-    let mapping = this.discussionMappings.get(rating.resourceId);
-
-    // If no exact match, try to find a mapping that ends with the resourceId
-    if (!mapping) {
-      for (const [key, value] of this.discussionMappings.entries()) {
-        if (key.endsWith(`:${rating.resourceId}`)) {
-          this.logger.debug(`Found rating mapping via suffix match: ${key}`);
-          mapping = value;
-          break;
-        }
-      }
-    }
-
+    const mapping = this.resolveMapping(rating.resourceId);
     if (!mapping) {
       this.logger.warn(`No discussion mapping for resource: ${rating.resourceId}`);
-      // Fall back to local storage
       await this.localBackend.submitRating(rating);
       return;
     }
@@ -704,19 +688,7 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
   ): Promise<void> {
     this.ensureInitialized();
 
-    // Try exact match first
-    let mapping = this.discussionMappings.get(resourceId);
-
-    // If no exact match, try to find a mapping that ends with the resourceId
-    if (!mapping) {
-      for (const [key, value] of this.discussionMappings.entries()) {
-        if (key.endsWith(`:${resourceId}`)) {
-          mapping = value;
-          break;
-        }
-      }
-    }
-
+    const mapping = this.resolveMapping(resourceId);
     if (!mapping) {
       await this.localBackend.deleteRating(resourceType, resourceId);
       return;
@@ -824,9 +796,11 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
         );
 
         const comments = commentsResponse.data?.data?.repository?.discussion?.comments?.nodes || [];
-        const viewerComment = comments.find(
+        const viewerComments = comments.filter(
           (c) => c.author?.login === viewerLogin && c.body.match(/^Rating:\s*⭐/m)
         );
+        // Use last (most recent) comment — consistent with findViewerComment
+        const viewerComment = viewerComments.length > 0 ? viewerComments[viewerComments.length - 1] : undefined;
 
         if (viewerComment) {
           const score = parseRatingFromComment(viewerComment.body);
@@ -854,20 +828,7 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
 
     this.logger.debug(`Feedback received for ${feedback.resourceType}/${feedback.resourceId}`);
 
-    // Try exact match first
-    let mapping = this.discussionMappings.get(feedback.resourceId);
-
-    // If no exact match, try to find a mapping that ends with the resourceId
-    // This handles the case where resourceId is just the bundle ID without source prefix
-    if (!mapping) {
-      for (const [key, value] of this.discussionMappings.entries()) {
-        if (key.endsWith(`:${feedback.resourceId}`)) {
-          this.logger.debug(`Found mapping via suffix match: ${key}`);
-          mapping = value;
-          break;
-        }
-      }
-    }
+    const mapping = this.resolveMapping(feedback.resourceId);
 
     if (mapping) {
       // Try to post to GitHub Discussions

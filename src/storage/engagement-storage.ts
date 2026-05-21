@@ -206,6 +206,27 @@ export class EngagementStorage {
   }
 
   /**
+   * Save multiple ratings in a single write (avoids N disk writes).
+   */
+  public async saveRatings(ratings: Rating[]): Promise<void> {
+    if (ratings.length === 0) {
+      return;
+    }
+    const store = await this.loadRatingsStore();
+    for (const rating of ratings) {
+      const existingIndex = store.ratings.findIndex(
+        (r) => r.resourceType === rating.resourceType && r.resourceId === rating.resourceId
+      );
+      if (existingIndex === -1) {
+        store.ratings.push(rating);
+      } else {
+        store.ratings[existingIndex] = rating;
+      }
+    }
+    await this.saveRatingsStore(store);
+  }
+
+  /**
    * Get all ratings
    */
   public async getAllRatings(): Promise<Rating[]> {

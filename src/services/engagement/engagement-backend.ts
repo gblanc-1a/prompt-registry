@@ -8,6 +8,7 @@ import {
   EngagementResourceType,
   Feedback,
   Rating,
+  RatingScore,
   RatingStats,
   ResourceEngagement,
 } from '../../types/engagement';
@@ -122,6 +123,14 @@ export interface IEngagementBackend {
     resourceType: EngagementResourceType,
     resourceId: string
   ): Promise<ResourceEngagement>;
+}
+
+export interface IViewerRatingsBackend extends IEngagementBackend {
+  fetchViewerRatings(): Promise<{ resourceId: string; score: RatingScore }[]>;
+}
+
+export function isViewerRatingsBackend(backend: IEngagementBackend): backend is IViewerRatingsBackend {
+  return 'fetchViewerRatings' in backend;
 }
 
 /**

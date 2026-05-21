@@ -96,6 +96,7 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
   private readonly logger: Logger;
   private sourceSyncDebounceTimer?: NodeJS.Timeout;
+  private ratingCacheDebounceTimer?: NodeJS.Timeout;
   private isLoadingBundles = false;
   private disposables: vscode.Disposable[] = [];
 
@@ -129,8 +130,13 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
       this.registryManager.onAutoUpdatePreferenceChanged(() => this.loadBundles()),
       // Repository bundle changes (lockfile changes, workspace folder changes)
       this.registryManager.onRepositoryBundlesChanged(() => this.loadBundles()),
-      // Rating cache updates (fires after hub engagement data is fetched)
-      RatingCache.getInstance().onCacheUpdated(() => this.loadBundles())
+      // Rating cache updates — debounced since multiple hubs fire in quick succession
+      RatingCache.getInstance().onCacheUpdated(() => {
+        if (this.ratingCacheDebounceTimer) {
+          clearTimeout(this.ratingCacheDebounceTimer);
+        }
+        this.ratingCacheDebounceTimer = setTimeout(() => this.loadBundles(), 500);
+      })
     );
   }
 
@@ -1514,9 +1520,12 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
    * Dispose of resources
    */
   public dispose(): void {
-    // Clear debounce timer
+    // Clear debounce timers
     if (this.sourceSyncDebounceTimer) {
       clearTimeout(this.sourceSyncDebounceTimer);
+    }
+    if (this.ratingCacheDebounceTimer) {
+      clearTimeout(this.ratingCacheDebounceTimer);
     }
 
     // Dispose all event listeners

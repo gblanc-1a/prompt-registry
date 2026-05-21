@@ -9,6 +9,7 @@ import axios from 'axios';
 import {
   RatingStats,
 } from '../../types/engagement';
+import { convertRawUrlToApi } from '../../utils/github-url-utils';
 import {
   Logger,
 } from '../../utils/logger';
@@ -79,7 +80,7 @@ export interface CollectionsRatingsData {
  * Service for fetching and caching bundle ratings
  */
 export class RatingService {
-  private static instance: RatingService;
+  private static instance: RatingService | undefined;
   private readonly logger = Logger.getInstance();
   private readonly ratingsCache: Map<string, RatingsData> = new Map();
   private readonly cacheExpiry: Map<string, number> = new Map();
@@ -103,7 +104,7 @@ export class RatingService {
    * Reset instance (for testing)
    */
   public static resetInstance(): void {
-    RatingService.instance = undefined as unknown as RatingService;
+    RatingService.instance = undefined;
   }
 
   /**
@@ -172,7 +173,7 @@ export class RatingService {
       } catch (primaryError) {
         // Fallback: convert raw.githubusercontent.com URL to API contents endpoint
         // This handles internal/private repos where raw URLs return 404
-        const apiUrl = this.convertRawUrlToApi(ratingsUrl);
+        const apiUrl = convertRawUrlToApi(ratingsUrl);
         if (apiUrl && accessToken) {
           this.logger.debug(`Primary fetch failed for ${ratingsUrl}, trying API contents endpoint`);
           const apiHeaders: Record<string, string> = {
@@ -316,20 +317,4 @@ export class RatingService {
     return Date.now() < expiry;
   }
 
-  /**
-   * Convert a raw.githubusercontent.com URL to the equivalent GitHub API contents URL.
-   * Returns undefined if the URL isn't a raw GitHub URL.
-   * Example: https://raw.githubusercontent.com/owner/repo/branch/path/file.json
-   *       → https://api.github.com/repos/owner/repo/contents/path/file.json?ref=branch
-   */
-  private convertRawUrlToApi(url: string): string | undefined {
-    const match = url.match(
-      /^https:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+?)(?:\?.*)?$/
-    );
-    if (!match) {
-      return undefined;
-    }
-    const [, owner, repo, ref, path] = match;
-    return `https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${ref}`;
-  }
 }

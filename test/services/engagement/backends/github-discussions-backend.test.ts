@@ -275,6 +275,52 @@ suite('GitHubDiscussionsBackend', () => {
       assert.ok(capturedCommentBody.includes('⭐⭐⭐⭐'), 'Comment body should contain 4 stars');
       assert.ok(capturedCommentBody.startsWith('Rating:'), 'Comment should start with Rating:');
     });
+
+    test('should edit existing comment when re-rating', async () => {
+      await backend.initialize(mockConfig);
+      backend.setDiscussionMapping('bundle-1', 42);
+
+      let capturedUpdateBody = '';
+
+      nock('https://api.github.com')
+        // getDiscussionNodeId
+        .post('/graphql').reply(200, { data: { repository: { discussion: { id: 'D_kwDOTest42' } } } })
+        // removeExistingReaction x2
+        .post('/graphql').reply(200, { data: { removeReaction: { reaction: null } } })
+        .post('/graphql').reply(200, { data: { removeReaction: { reaction: null } } })
+        // addReaction
+        .post('/graphql').reply(200, { data: { addReaction: { reaction: { content: 'THUMBS_UP' } } } })
+        // findViewerComment (found existing rating comment by testuser)
+        .post('/graphql').reply(200, {
+          data: {
+            repository: {
+              discussion: {
+                comments: {
+                  nodes: [{ id: 'DC_existing', author: { login: 'testuser' }, body: 'Rating: ⭐⭐⭐' }]
+                }
+              }
+            }
+          }
+        })
+        // updateDiscussionComment (edit in place)
+        .post('/graphql', (body: any) => {
+          capturedUpdateBody = body.variables?.body || '';
+          return true;
+        }).reply(200, { data: { updateDiscussionComment: { comment: { id: 'DC_existing', body: '' } } } });
+
+      const rating: Rating = {
+        id: 'rating-2',
+        resourceType: 'bundle',
+        resourceId: 'bundle-1',
+        score: 5,
+        timestamp: new Date().toISOString()
+      };
+
+      await backend.submitRating(rating);
+
+      assert.ok(nock.isDone(), 'All mocks consumed (comment was edited, not new one created)');
+      assert.ok(capturedUpdateBody.includes('⭐⭐⭐⭐⭐'), 'Updated body should contain 5 stars');
+    });
   });
 
   suite('Feedback Operations', () => {

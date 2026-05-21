@@ -139,6 +139,15 @@ export class RatingCache {
       }
       this.hubIndex.set(hubId, hubKeys);
 
+      // Re-apply in-session optimistic ratings on top of the fresh remote data.
+      // ratings.json may not yet include the user's latest vote (compute hasn't re-run).
+      for (const key of this.optimisticKeys) {
+        const userScore = this.userRatings.get(key);
+        if (userScore !== undefined && this.cache.has(key)) {
+          this.injectUserVote(key, userScore, undefined);
+        }
+      }
+
       this.logger.debug(`RatingCache refreshed: ${Object.keys(bundles).length} ratings from ${hubId}`);
       this._onCacheUpdated.fire();
     } catch (error) {
@@ -315,6 +324,38 @@ export class RatingCache {
   }
 
   /**
+   * Inject a user's vote into an existing aggregate entry.
+   * If previousUserRating is undefined, this is a new vote (voteCount increments).
+   * If defined, the previous vote is swapped for the new one (voteCount unchanged).
+   */
+  private injectUserVote(key: string, userRating: RatingScore, previousUserRating: RatingScore | undefined): void {
+    const existing = this.cache.get(key);
+    if (!existing) {
+      return;
+    }
+
+    if (previousUserRating === undefined) {
+      const newVoteCount = existing.voteCount + 1;
+      const newStarRating = (existing.starRating * existing.voteCount + userRating) / newVoteCount;
+      this.cache.set(key, {
+        ...existing,
+        starRating: Math.round(newStarRating * 10) / 10,
+        voteCount: newVoteCount,
+        cachedAt: Date.now()
+      });
+    } else {
+      const totalScore = existing.starRating * existing.voteCount;
+      const newTotal = totalScore - previousUserRating + userRating;
+      const newStarRating = newTotal / existing.voteCount;
+      this.cache.set(key, {
+        ...existing,
+        starRating: Math.round(newStarRating * 10) / 10,
+        cachedAt: Date.now()
+      });
+    }
+  }
+
+  /**
    * Apply an optimistic rating update after the user submits a new rating.
    * If the user had previously rated this bundle, the previous vote is replaced
    * (aggregate voteCount stays the same; only starRating shifts).
@@ -330,29 +371,8 @@ export class RatingCache {
     const previousUserRating = this.userRatings.get(key);
 
     if (existing) {
-      if (previousUserRating === undefined) {
-        // First vote from this user on an already-rated bundle.
-        const newVoteCount = existing.voteCount + 1;
-        const newStarRating = (existing.starRating * existing.voteCount + userRating) / newVoteCount;
-        this.cache.set(key, {
-          ...existing,
-          starRating: Math.round(newStarRating * 10) / 10,
-          voteCount: newVoteCount,
-          cachedAt: Date.now()
-        });
-      } else {
-        // Re-rating: swap the user's previous vote for the new one, voteCount stays the same.
-        const totalScore = existing.starRating * existing.voteCount;
-        const newTotal = totalScore - previousUserRating + userRating;
-        const newStarRating = newTotal / existing.voteCount;
-        this.cache.set(key, {
-          ...existing,
-          starRating: Math.round(newStarRating * 10) / 10,
-          cachedAt: Date.now()
-        });
-      }
+      this.injectUserVote(key, userRating, previousUserRating);
     } else {
-      // First-ever rating for this bundle.
       this.cache.set(key, {
         sourceId,
         bundleId,

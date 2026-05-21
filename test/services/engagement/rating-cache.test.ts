@@ -252,6 +252,62 @@ suite('RatingCache', () => {
       assert.strictEqual(cache.size, 0);
     });
 
+    test('should preserve in-session optimistic rating after refresh overwrites aggregate', async () => {
+      // Scenario: user rates bundle 3 stars (optimistic), then on next startup
+      // refreshFromHub loads stale ratings.json (computed before the user rated).
+      // The aggregate should re-incorporate the user's vote, not revert to stale data.
+
+      // Step 1: Remote has bundle with star_rating 5 (1 vote from someone else... or stale)
+      const staleRatingsData: RatingsData = {
+        version: '1.0.0',
+        generatedAt: new Date().toISOString(),
+        bundles: {
+          'otter': {
+            sourceId: 'otter-src',
+            bundleId: 'otter',
+            upvotes: 1,
+            downvotes: 0,
+            wilsonScore: 1,
+            starRating: 5,
+            totalVotes: 1,
+            lastUpdated: new Date().toISOString()
+          }
+        }
+      };
+
+      const ratingService = RatingService.getInstance();
+      const fetchStub = sandbox.stub(ratingService, 'fetchRatings');
+
+      // Step 2: Initial load from remote
+      const sourceIdMap = new Map([['otter-src', 'adapter-hash']]);
+      fetchStub.resolves(staleRatingsData);
+      await cache.refreshFromHub('hub1', 'https://hub/ratings.json', sourceIdMap);
+
+      const afterLoad = cache.getRating('adapter-hash', 'otter');
+      assert.ok(afterLoad);
+      assert.strictEqual(afterLoad.starRating, 5);
+
+      // Step 3: User rates 3 stars (optimistic update in-session)
+      cache.applyOptimisticRating('adapter-hash', 'otter', 3);
+
+      const afterOptimistic = cache.getRating('adapter-hash', 'otter');
+      assert.ok(afterOptimistic);
+      // (5 * 1 + 3) / 2 = 4.0
+      assert.strictEqual(afterOptimistic.starRating, 4);
+      assert.strictEqual(afterOptimistic.voteCount, 2);
+
+      // Step 4: refreshFromHub runs again (e.g. extension restart, but ratings.json is still stale)
+      // The remote still shows star_rating: 5 with 1 vote (hasn't been recomputed yet)
+      await cache.refreshFromHub('hub1', 'https://hub/ratings.json', sourceIdMap);
+
+      // BUG: Without the fix, this reverts to 5 stars / 1 vote (stale remote data)
+      // EXPECTED: The user's optimistic 3-star vote is re-applied on top of the fresh remote data
+      const afterRefresh = cache.getRating('adapter-hash', 'otter');
+      assert.ok(afterRefresh);
+      assert.strictEqual(afterRefresh.starRating, 4, 'Optimistic rating must be preserved after refresh');
+      assert.strictEqual(afterRefresh.voteCount, 2, 'Vote count must include the user\'s optimistic vote');
+    });
+
     test('should fire onCacheUpdated event after refresh', async () => {
       const mockRatingsData: RatingsData = {
         version: '1.0.0',

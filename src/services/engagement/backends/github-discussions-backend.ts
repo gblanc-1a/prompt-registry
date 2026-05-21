@@ -96,6 +96,50 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
   }
 
   /**
+   * Fetch all comments on a discussion via GraphQL
+   * @param discussionNumber
+   * @param token
+   */
+  private async fetchDiscussionComments(
+    discussionNumber: number,
+    token: string
+  ): Promise<{ id: string; author: { login: string }; body: string }[]> {
+    const query = `
+      query GetDiscussionComments($owner: String!, $repo: String!, $number: Int!) {
+        repository(owner: $owner, name: $repo) {
+          discussion(number: $number) {
+            comments(first: 100) {
+              nodes {
+                id
+                author { login }
+                body
+              }
+            }
+          }
+        }
+      }
+    `;
+
+    const response = await axios.post<{
+      data: {
+        repository: {
+          discussion: {
+            comments: {
+              nodes: { id: string; author: { login: string }; body: string }[];
+            };
+          };
+        };
+      };
+    }>(
+      'https://api.github.com/graphql',
+      { query, variables: { owner: this.owner, repo: this.repo, number: discussionNumber } },
+      { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+    );
+
+    return response.data?.data?.repository?.discussion?.comments?.nodes || [];
+  }
+
+  /**
    * Get GitHub access token via VS Code authentication
    */
   private async getAccessToken(): Promise<string> {
@@ -312,45 +356,13 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
       return { nodeId: cachedId, body: '' };
     }
 
-    const query = `
-      query GetDiscussionComments($owner: String!, $repo: String!, $number: Int!) {
-        repository(owner: $owner, name: $repo) {
-          discussion(number: $number) {
-            comments(first: 100) {
-              nodes {
-                id
-                author { login }
-                body
-              }
-            }
-          }
-        }
-      }
-    `;
-
-    const response = await axios.post<{
-      data: {
-        repository: {
-          discussion: {
-            comments: {
-              nodes: { id: string; author: { login: string }; body: string }[];
-            };
-          };
-        };
-      };
-    }>(
-      'https://api.github.com/graphql',
-      { query, variables: { owner: this.owner, repo: this.repo, number: discussionNumber } },
-      { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
-    );
-
     const session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: false });
     const viewerLogin = session?.account.label;
     if (!viewerLogin) {
       return undefined;
     }
 
-    const comments = response.data?.data?.repository?.discussion?.comments?.nodes || [];
+    const comments = await this.fetchDiscussionComments(discussionNumber, token);
     const viewerComments = comments.filter(
       (c) => c.author?.login === viewerLogin && c.body.match(/^Rating:\s*⭐/m)
     );
@@ -767,37 +779,7 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
           continue;
         }
 
-        const commentsQuery = `
-          query GetDiscussionComments($owner: String!, $repo: String!, $number: Int!) {
-            repository(owner: $owner, name: $repo) {
-              discussion(number: $number) {
-                comments(first: 100) {
-                  nodes {
-                    id
-                    author { login }
-                    body
-                  }
-                }
-              }
-            }
-          }
-        `;
-
-        const commentsResponse = await axios.post<{
-          data: {
-            repository: {
-              discussion: {
-                comments: { nodes: { id: string; author: { login: string }; body: string }[] };
-              };
-            };
-          };
-        }>(
-          'https://api.github.com/graphql',
-          { query: commentsQuery, variables: { owner: this.owner, repo: this.repo, number: disc.number } },
-          { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
-        );
-
-        const comments = commentsResponse.data?.data?.repository?.discussion?.comments?.nodes || [];
+        const comments = await this.fetchDiscussionComments(disc.number!, token);
         const viewerComments = comments.filter(
           (c) => c.author?.login === viewerLogin && c.body.match(/^Rating:\s*⭐/m)
         );

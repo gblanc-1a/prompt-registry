@@ -53,6 +53,12 @@ import {
   EngagementService,
 } from './engagement/engagement-service';
 import {
+  FeedbackCache,
+} from './engagement/feedback-cache';
+import {
+  RatingCache,
+} from './engagement/rating-cache';
+import {
   SchemaValidator,
   ValidationResult,
 } from './schema-validator';
@@ -584,7 +590,11 @@ export class HubManager {
       return;
     }
 
-    const hydrator = new EngagementHydrator();
+    const hydrator = new EngagementHydrator(
+      EngagementService.getInstance(),
+      RatingCache.getInstance(),
+      FeedbackCache.getInstance()
+    );
     const sourceIdMap = hydrator.buildSourceIdMap(hubSources);
     await hydrator.hydrate(hubId, engagement, sourceIdMap);
   }

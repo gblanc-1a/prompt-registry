@@ -135,6 +135,46 @@ sequenceDiagram
 
 ---
 
+## Where Ratings Live (and Who Wins)
+
+A user's rating passes through several places before showing up in the UI. When debugging "why does my rating show X?", check them in this order:
+
+| # | Where | File / Class | What it holds | Lifetime |
+|---|-------|-------------|---------------|----------|
+| 1 | In-memory cache | `src/services/engagement/rating-cache.ts` | What the UI displays right now | Current session |
+| 2 | Local JSON | `globalStorage/engagement/ratings.json` via `src/storage/engagement-storage.ts` | Saved copy so ratings survive restarts | Until user clears data |
+| 3 | GitHub Discussion comment | Posted by `GitHubDiscussionsBackend.postOrEditRatingComment()` | The user's star emoji comment | Permanent |
+| 4 | Static hub file | `ratings.json` fetched via `RatingService.fetchRatings()` | Community averages, rebuilt by CI | Until next `compute-ratings` run |
+
+**Priority when they disagree (highest → lowest):**
+
+```
+User just clicked a star  >  Fetched from GitHub  >  Restored from local file  >  Community average
+```
+
+```mermaid
+flowchart LR
+    A[ratings.json from hub] -->|RatingCache.refreshFromHub| B[What the UI shows]
+    C[Local ratings.json] -->|RatingCache.hydrateUserRatings| B
+    D[GitHub Discussion comments] -->|fetchViewerRatings, overwrite: true| B
+    E[User clicks star] -->|RatingCache.applyOptimisticRating| B
+    E -->|rollbackOptimisticRating on failure| B
+```
+
+**How conflicts are handled:**
+
+1. **User clicks a star** — `RatingCache.applyOptimisticRating()` updates the UI instantly. If `GitHubDiscussionsBackend.submitRating()` fails, `rollbackOptimisticRating()` reverts the display.
+
+2. **On startup** — `EngagementHydrator.hydrate()` runs the following sequence:
+   - Fetches `ratings.json` (community averages)
+   - Restores user's own ratings from `EngagementStorage` (fast, local)
+   - Fetches the user's comments from GitHub via `fetchViewerRatings()` (slower, but authoritative — overwrites local)
+   - In-session clicks are never overwritten (tracked via `optimisticKeys` set in `RatingCache`)
+
+3. **Stale community averages** — `ratings.json` only updates when CI runs `compute-ratings`. The user's own vote is re-injected on top of stale averages (see `RatingCache.doRefresh()` loop over `optimisticKeys`) so their star count always looks correct.
+
+---
+
 ## Source ID Mapping
 
 ### Problem

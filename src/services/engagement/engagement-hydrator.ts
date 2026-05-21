@@ -41,6 +41,19 @@ import {
  */
 export class EngagementHydrator {
   private readonly logger = Logger.getInstance();
+  private readonly engagementService: EngagementService;
+  private readonly ratingCache: RatingCache;
+  private readonly feedbackCache: FeedbackCache;
+
+  constructor(
+    engagementService: EngagementService,
+    ratingCache: RatingCache,
+    feedbackCache: FeedbackCache
+  ) {
+    this.engagementService = engagementService;
+    this.ratingCache = ratingCache;
+    this.feedbackCache = feedbackCache;
+  }
 
   private async fetchRemoteViewerRatings(
     hubId: string,
@@ -51,7 +64,7 @@ export class EngagementHydrator {
       return [];
     }
     try {
-      const backend = EngagementService.getInstance().getHubBackend(hubId);
+      const backend = this.engagementService.getHubBackend(hubId);
       if (backend && isViewerRatingsBackend(backend)) {
         return await backend.fetchViewerRatings();
       }
@@ -64,7 +77,7 @@ export class EngagementHydrator {
   private async hydrateFromLocalStorage(sourceIdMap: Map<string, string> | undefined): Promise<void> {
     try {
       if (sourceIdMap) {
-        const localRatings = await EngagementService.getInstance().getAllRatings();
+        const localRatings = await this.engagementService.getAllRatings();
         const resolved = localRatings
           .filter((r) => r.resourceType === 'bundle' && r.sourceId && r.score)
           .map((r) => ({
@@ -73,8 +86,8 @@ export class EngagementHydrator {
             score: r.score
           }));
         if (resolved.length > 0) {
-          RatingCache.getInstance().hydrateUserRatings(resolved);
-          RatingCache.getInstance().reapplyHydratedVotes();
+          this.ratingCache.hydrateUserRatings(resolved);
+          this.ratingCache.reapplyHydratedVotes();
         }
       }
     } catch (error) {
@@ -92,7 +105,7 @@ export class EngagementHydrator {
       return { configSourceId, bundleId, score: r.score };
     });
 
-    RatingCache.getInstance().hydrateUserRatings(
+    this.ratingCache.hydrateUserRatings(
       parsed.map((p) => ({
         sourceId: sourceIdMap.get(p.configSourceId) || p.configSourceId,
         bundleId: p.bundleId,
@@ -102,7 +115,7 @@ export class EngagementHydrator {
     );
 
     // Persist remote ratings locally for next startup's instant hydration
-    await EngagementService.getInstance().saveRatings(parsed.map((p) => ({
+    await this.engagementService.saveRatings(parsed.map((p) => ({
       id: crypto.randomUUID(),
       resourceType: 'bundle' as const,
       resourceId: p.bundleId,
@@ -165,11 +178,11 @@ export class EngagementHydrator {
     // Run independent network operations in parallel
     const remoteRatings = (await Promise.all([
       ratingsUrl
-        ? RatingCache.getInstance().refreshFromHub(hubId, ratingsUrl, sourceIdMap, accessToken)
+        ? this.ratingCache.refreshFromHub(hubId, ratingsUrl, sourceIdMap, accessToken)
           .catch((error) => this.logger.debug(`Failed to warm rating cache for hub ${hubId}`, error))
         : Promise.resolve(),
       feedbackUrl
-        ? FeedbackCache.getInstance().refreshFromHub(hubId, feedbackUrl, accessToken)
+        ? this.feedbackCache.refreshFromHub(hubId, feedbackUrl, accessToken)
           .catch((error) => this.logger.debug(`Failed to warm feedback cache for hub ${hubId}`, error))
         : Promise.resolve(),
       this.fetchRemoteViewerRatings(hubId, engagement.backend.type, sourceIdMap)

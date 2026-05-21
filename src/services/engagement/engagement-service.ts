@@ -252,7 +252,11 @@ export class EngagementService {
           }
         };
 
-        // Load in background with 5 second timeout
+        // Load in background with 5 second timeout.
+        // If loadMappings() wins the race, mappings are available immediately.
+        // If the timeout wins, loadMappings() may still complete later and populate
+        // discussionMappings — this is benign (late-arriving mappings are usable for
+        // subsequent rating submissions within the same session).
         const timeoutPromise = new Promise<void>((resolve) => {
           setTimeout(() => {
             this.logger.warn(`Collections mapping load timed out for hub ${hubId}, continuing without mappings`);

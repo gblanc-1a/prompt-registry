@@ -262,7 +262,7 @@ suite('RatingCache', () => {
         version: '1.0.0',
         generatedAt: new Date().toISOString(),
         bundles: {
-          'otter': {
+          otter: {
             sourceId: 'otter-src',
             bundleId: 'otter',
             upvotes: 1,
@@ -318,7 +318,7 @@ suite('RatingCache', () => {
         version: '1.0.0',
         generatedAt: '2026-05-20T21:00:00Z',
         bundles: {
-          'otter': {
+          otter: {
             sourceId: 'otter-src',
             bundleId: 'otter',
             upvotes: 1,
@@ -360,7 +360,7 @@ suite('RatingCache', () => {
         version: '1.0.0',
         generatedAt: new Date().toISOString(),
         bundles: {
-          'otter': {
+          otter: {
             sourceId: 'otter-src',
             bundleId: 'otter',
             upvotes: 1,
@@ -797,7 +797,7 @@ suite('RatingCache', () => {
         version: '1.0.0',
         generatedAt: new Date().toISOString(),
         bundles: {
-          'otter': {
+          otter: {
             sourceId: 'otter-config',
             bundleId: 'otter',
             upvotes: 5,

@@ -9,7 +9,9 @@ import axios from 'axios';
 import {
   RatingStats,
 } from '../../types/engagement';
-import { convertRawUrlToApi } from '../../utils/github-url-utils';
+import {
+  convertRawUrlToApi,
+} from '../../utils/github-url-utils';
 import {
   Logger,
 } from '../../utils/logger';
@@ -161,11 +163,7 @@ export class RatingService {
       }
 
       // For GitHub API content URLs, use the raw media type to get JSON directly
-      if (ratingsUrl.includes('api.github.com')) {
-        headers.Accept = 'application/vnd.github.v3.raw';
-      } else {
-        headers.Accept = 'application/json';
-      }
+      headers.Accept = ratingsUrl.includes('api.github.com') ? 'application/vnd.github.v3.raw' : 'application/json';
 
       let response;
       try {
@@ -223,6 +221,7 @@ export class RatingService {
    * Get rating for a specific bundle
    * @param ratingsUrl URL to the ratings.json file
    * @param bundleId Bundle identifier
+   * @param accessToken
    */
   public async getBundleRating(ratingsUrl: string, bundleId: string, accessToken?: string): Promise<BundleRating | undefined> {
     const ratings = await this.fetchRatings(ratingsUrl, false, accessToken);
@@ -316,5 +315,4 @@ export class RatingService {
     const expiry = this.cacheExpiry.get(ratingsUrl) || 0;
     return Date.now() < expiry;
   }
-
 }

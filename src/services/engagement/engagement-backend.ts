@@ -129,6 +129,10 @@ export interface IViewerRatingsBackend extends IEngagementBackend {
   fetchViewerRatings(): Promise<{ resourceId: string; score: RatingScore }[]>;
 }
 
+/**
+ * Type guard to check if a backend supports fetching viewer ratings
+ * @param backend
+ */
 export function isViewerRatingsBackend(backend: IEngagementBackend): backend is IViewerRatingsBackend {
   return 'fetchViewerRatings' in backend;
 }

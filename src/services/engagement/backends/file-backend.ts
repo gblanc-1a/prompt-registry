@@ -32,6 +32,7 @@ export class FileBackend extends BaseEngagementBackend {
   /**
    * Set a shared EngagementStorage instance to avoid duplicate instances.
    * Must be called before initialize() if sharing is desired.
+   * @param storage
    */
   public setSharedStorage(storage: EngagementStorage): void {
     this.storage = storage;

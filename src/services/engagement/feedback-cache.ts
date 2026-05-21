@@ -80,6 +80,7 @@ export class FeedbackCache {
    * Internal refresh implementation
    * @param hubId
    * @param feedbacksUrl
+   * @param accessToken
    */
   private async doRefresh(hubId: string, feedbacksUrl: string, accessToken?: string): Promise<void> {
     try {
@@ -165,6 +166,7 @@ export class FeedbackCache {
    * This is async but updates the cache for synchronous access
    * @param hubId
    * @param feedbacksUrl
+   * @param accessToken
    */
   public async refreshFromHub(hubId: string, feedbacksUrl: string, accessToken?: string): Promise<void> {
     // Prevent concurrent refreshes for the same URL

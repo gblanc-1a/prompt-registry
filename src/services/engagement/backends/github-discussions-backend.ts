@@ -24,7 +24,9 @@ import {
   RatingScore,
   RatingStats,
 } from '../../../types/engagement';
-import { convertRawUrlToApi } from '../../../utils/github-url-utils';
+import {
+  convertRawUrlToApi,
+} from '../../../utils/github-url-utils';
 import {
   Logger,
 } from '../../../utils/logger';
@@ -71,6 +73,15 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
   // Storage path for local backend (can be set before initialize)
   private storagePath = '';
 
+  constructor(storagePath?: string) {
+    super();
+    this.logger = Logger.getInstance();
+    this.localBackend = new FileBackend();
+    if (storagePath) {
+      this.storagePath = storagePath;
+    }
+  }
+
   private resolveMapping(resourceId: string): DiscussionMapping | undefined {
     const exact = this.discussionMappings.get(resourceId);
     if (exact) {
@@ -82,15 +93,6 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
       }
     }
     return undefined;
-  }
-
-  constructor(storagePath?: string) {
-    super();
-    this.logger = Logger.getInstance();
-    this.localBackend = new FileBackend();
-    if (storagePath) {
-      this.storagePath = storagePath;
-    }
   }
 
   /**
@@ -354,7 +356,7 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
     );
 
     // Use the last (most recent) comment — GraphQL returns chronologically
-    const viewerComment = viewerComments.length > 0 ? viewerComments[viewerComments.length - 1] : undefined;
+    const viewerComment = viewerComments.length > 0 ? viewerComments.at(-1) : undefined;
 
     if (viewerComment) {
       this.commentNodeIds.set(String(discussionNumber), viewerComment.id);
@@ -800,7 +802,7 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
           (c) => c.author?.login === viewerLogin && c.body.match(/^Rating:\s*⭐/m)
         );
         // Use last (most recent) comment — consistent with findViewerComment
-        const viewerComment = viewerComments.length > 0 ? viewerComments[viewerComments.length - 1] : undefined;
+        const viewerComment = viewerComments.length > 0 ? viewerComments.at(-1) : undefined;
 
         if (viewerComment) {
           const score = parseRatingFromComment(viewerComment.body);

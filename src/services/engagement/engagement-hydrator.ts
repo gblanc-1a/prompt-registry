@@ -42,74 +42,6 @@ import {
 export class EngagementHydrator {
   private readonly logger = Logger.getInstance();
 
-  /**
-   * Build a sourceIdMap from hub sources.
-   * Maps config source id (e.g. "otter") to generated adapter source id.
-   */
-  public buildSourceIdMap(hubSources?: HubSource[]): Map<string, string> | undefined {
-    if (!hubSources || hubSources.length === 0) {
-      return undefined;
-    }
-    const sourceIdMap = new Map<string, string>();
-    for (const src of hubSources) {
-      if (!src.enabled) {
-        continue;
-      }
-      const adapterSourceId = generateHubSourceId(src.type, src.url, {
-        branch: src.config?.branch,
-        collectionsPath: src.config?.collectionsPath
-      });
-      sourceIdMap.set(src.id, adapterSourceId);
-    }
-    return sourceIdMap;
-  }
-
-  /**
-   * Run the full hydration workflow for a hub:
-   * 1. Warm caches from static URLs
-   * 2. Fetch remote viewer ratings
-   * 3. Hydrate user ratings from local storage
-   * 4. Apply remote ratings (authoritative overwrite)
-   */
-  public async hydrate(
-    hubId: string,
-    engagement: HubEngagementConfig,
-    sourceIdMap: Map<string, string> | undefined
-  ): Promise<void> {
-    // Get token for authenticated fetches (private/internal repos)
-    let accessToken: string | undefined;
-    try {
-      const session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: false });
-      accessToken = session?.accessToken;
-    } catch {
-      this.logger.debug(`No GitHub session available for cache warm-up`);
-    }
-
-    const ratingsUrl = engagement.ratings?.ratingsUrl;
-    const feedbackUrl = engagement.feedback?.feedbackUrl;
-
-    // Run independent network operations in parallel
-    const [,, remoteRatings] = await Promise.all([
-      ratingsUrl
-        ? RatingCache.getInstance().refreshFromHub(hubId, ratingsUrl, sourceIdMap, accessToken)
-          .catch((error) => this.logger.debug(`Failed to warm rating cache for hub ${hubId}`, error))
-        : Promise.resolve(),
-      feedbackUrl
-        ? FeedbackCache.getInstance().refreshFromHub(hubId, feedbackUrl, accessToken)
-          .catch((error) => this.logger.debug(`Failed to warm feedback cache for hub ${hubId}`, error))
-        : Promise.resolve(),
-      this.fetchRemoteViewerRatings(hubId, engagement.backend.type, sourceIdMap)
-    ]);
-
-    // Hydrate user's own ratings from local storage so getUserRating works across sessions
-    await this.hydrateFromLocalStorage(sourceIdMap);
-
-    // Apply remote ratings (overwrite local — remote is authoritative)
-    if (remoteRatings.length > 0 && sourceIdMap) {
-      await this.applyRemoteRatings(remoteRatings, sourceIdMap);
-    }
-  }
-
   private async fetchRemoteViewerRatings(
     hubId: string,
     backendType: string,
@@ -178,5 +110,77 @@ export class EngagementHydrator {
       sourceId: p.configSourceId,
       timestamp: now
     })));
+  }
+
+  /**
+   * Build a sourceIdMap from hub sources.
+   * Maps config source id (e.g. "otter") to generated adapter source id.
+   * @param hubSources
+   */
+  public buildSourceIdMap(hubSources?: HubSource[]): Map<string, string> | undefined {
+    if (!hubSources || hubSources.length === 0) {
+      return undefined;
+    }
+    const sourceIdMap = new Map<string, string>();
+    for (const src of hubSources) {
+      if (!src.enabled) {
+        continue;
+      }
+      const adapterSourceId = generateHubSourceId(src.type, src.url, {
+        branch: src.config?.branch,
+        collectionsPath: src.config?.collectionsPath
+      });
+      sourceIdMap.set(src.id, adapterSourceId);
+    }
+    return sourceIdMap;
+  }
+
+  /**
+   * Run the full hydration workflow for a hub:
+   * 1. Warm caches from static URLs
+   * 2. Fetch remote viewer ratings
+   * 3. Hydrate user ratings from local storage
+   * 4. Apply remote ratings (authoritative overwrite)
+   * @param hubId
+   * @param engagement
+   * @param sourceIdMap
+   */
+  public async hydrate(
+    hubId: string,
+    engagement: HubEngagementConfig,
+    sourceIdMap: Map<string, string> | undefined
+  ): Promise<void> {
+    // Get token for authenticated fetches (private/internal repos)
+    let accessToken: string | undefined;
+    try {
+      const session = await vscode.authentication.getSession('github', ['repo'], { createIfNone: false });
+      accessToken = session?.accessToken;
+    } catch {
+      this.logger.debug(`No GitHub session available for cache warm-up`);
+    }
+
+    const ratingsUrl = engagement.ratings?.ratingsUrl;
+    const feedbackUrl = engagement.feedback?.feedbackUrl;
+
+    // Run independent network operations in parallel
+    const remoteRatings = (await Promise.all([
+      ratingsUrl
+        ? RatingCache.getInstance().refreshFromHub(hubId, ratingsUrl, sourceIdMap, accessToken)
+          .catch((error) => this.logger.debug(`Failed to warm rating cache for hub ${hubId}`, error))
+        : Promise.resolve(),
+      feedbackUrl
+        ? FeedbackCache.getInstance().refreshFromHub(hubId, feedbackUrl, accessToken)
+          .catch((error) => this.logger.debug(`Failed to warm feedback cache for hub ${hubId}`, error))
+        : Promise.resolve(),
+      this.fetchRemoteViewerRatings(hubId, engagement.backend.type, sourceIdMap)
+    ]))[2];
+
+    // Hydrate user's own ratings from local storage so getUserRating works across sessions
+    await this.hydrateFromLocalStorage(sourceIdMap);
+
+    // Apply remote ratings (overwrite local — remote is authoritative)
+    if (remoteRatings.length > 0 && sourceIdMap) {
+      await this.applyRemoteRatings(remoteRatings, sourceIdMap);
+    }
   }
 }

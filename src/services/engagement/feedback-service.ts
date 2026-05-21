@@ -74,6 +74,7 @@ export class FeedbackService {
   /**
    * Fetch feedbacks from a URL with caching
    * @param feedbacksUrl
+   * @param accessToken
    */
   public async fetchFeedbacks(feedbacksUrl: string, accessToken?: string): Promise<FeedbacksData | null> {
     // Check cache first

@@ -185,6 +185,7 @@ export class EngagementService {
 
   /**
    * Save multiple ratings to local storage in a single write
+   * @param ratings
    */
   public async saveRatings(ratings: Rating[]): Promise<void> {
     await this.storage?.saveRatings(ratings);
@@ -281,6 +282,7 @@ export class EngagementService {
   /**
    * Get the typed backend for a hub.
    * Returns undefined if hub not registered.
+   * @param hubId
    */
   public getHubBackend(hubId: string): IEngagementBackend | undefined {
     return this.hubBackends.get(hubId);
@@ -311,6 +313,7 @@ export class EngagementService {
    * @param options
    * @param options.version
    * @param options.hubId
+   * @param options.sourceId
    */
   public async submitRating(
     resourceType: EngagementResourceType,

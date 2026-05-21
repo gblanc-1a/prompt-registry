@@ -49,6 +49,47 @@ readonly onBundleInstalled = this._onBundleInstalled.event;
 4. Emit events for state changes
 5. Create test file in `test/services/`
 
+## Linting Rules
+
+### Method Ordering (@typescript-eslint/member-ordering)
+
+ESLint enforces this order for class members:
+1. **Static properties** and methods
+2. **Constructor**
+3. **Private methods**
+4. **Public methods**
+5. **Public properties**
+6. **Events/getters**
+
+Private methods must appear BEFORE the first public method. If you have both private and public methods, arrange as:
+```typescript
+export class Example {
+  private field: string;
+  
+  private privateMethod() { }  // All private first
+  private anotherPrivate() { }
+  
+  public publicMethod() { }    // Then public
+  public anotherPublic() { }
+}
+```
+
+### JSDoc Requirements (@typescript-eslint/jsdoc)
+
+- Every function/method needs `/** */` comment
+- Document all parameters: `@param name Description`
+- For object parameters with nested properties, document each property:
+  ```typescript
+  /**
+   * Function description
+   * @param options Object with settings
+   * @param options.status HTTP status code
+   * @param options.data The response data
+   */
+  function example(options: { status: number; data: unknown }) { }
+  ```
+- Provide full description (not empty comments like `/** */`)
+
 ## Checklist
 
 - [ ] Single responsibility
@@ -56,3 +97,5 @@ readonly onBundleInstalled = this._onBundleInstalled.event;
 - [ ] Proper error handling with clear messages
 - [ ] Events for state changes
 - [ ] Corresponding test file exists
+- [ ] Method ordering correct (private before public)
+- [ ] All functions have JSDoc with @param documentation

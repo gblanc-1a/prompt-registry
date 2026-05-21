@@ -1,5 +1,7 @@
 import * as assert from 'node:assert';
-import { parseRatingFromComment } from '../../src/utils/rating-parser';
+import {
+  parseRatingFromComment,
+} from '../../src/utils/rating-parser';
 
 suite('parseRatingFromComment', () => {
   test('parses 1 star', () => {

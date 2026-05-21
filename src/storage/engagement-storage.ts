@@ -207,6 +207,7 @@ export class EngagementStorage {
 
   /**
    * Save multiple ratings in a single write (avoids N disk writes).
+   * @param ratings
    */
   public async saveRatings(ratings: Rating[]): Promise<void> {
     if (ratings.length === 0) {

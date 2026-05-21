@@ -596,5 +596,4 @@ export class FeedbackCommands {
     }
     return successCount;
   }
-
 }

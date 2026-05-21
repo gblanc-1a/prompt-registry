@@ -6,8 +6,8 @@
 import * as assert from 'node:assert';
 import nock from 'nock';
 import {
-  FeedbackService,
   FeedbacksData,
+  FeedbackService,
 } from '../../../src/services/engagement/feedback-service';
 
 suite('FeedbackService', () => {

@@ -96,6 +96,41 @@ export class RatingCache {
   }
 
   /**
+   * Inject a user's vote into an existing aggregate entry.
+   * If previousUserRating is undefined, this is a new vote (voteCount increments).
+   * If defined, the previous vote is swapped for the new one (voteCount unchanged).
+   * @param key
+   * @param userRating
+   * @param previousUserRating
+   */
+  private injectUserVote(key: string, userRating: RatingScore, previousUserRating: number | undefined): void {
+    const existing = this.cache.get(key);
+    if (!existing) {
+      return;
+    }
+
+    if (previousUserRating === undefined) {
+      const newVoteCount = existing.voteCount + 1;
+      const newStarRating = (existing.starRating * existing.voteCount + userRating) / newVoteCount;
+      this.cache.set(key, {
+        ...existing,
+        starRating: Math.round(newStarRating * 10) / 10,
+        voteCount: newVoteCount,
+        cachedAt: Date.now()
+      });
+    } else {
+      const totalScore = existing.starRating * existing.voteCount;
+      const newTotal = totalScore - previousUserRating + userRating;
+      const newStarRating = newTotal / existing.voteCount;
+      this.cache.set(key, {
+        ...existing,
+        starRating: Math.round(newStarRating * 10) / 10,
+        cachedAt: Date.now()
+      });
+    }
+  }
+
+  /**
    * Internal refresh implementation
    * @param hubId
    * @param ratingsUrl
@@ -348,38 +383,6 @@ export class RatingCache {
    */
   public getUserRating(sourceId: string, bundleId: string): RatingScore | undefined {
     return this.userRatings.get(this.makeKey(sourceId, bundleId));
-  }
-
-  /**
-   * Inject a user's vote into an existing aggregate entry.
-   * If previousUserRating is undefined, this is a new vote (voteCount increments).
-   * If defined, the previous vote is swapped for the new one (voteCount unchanged).
-   */
-  private injectUserVote(key: string, userRating: RatingScore, previousUserRating: number | undefined): void {
-    const existing = this.cache.get(key);
-    if (!existing) {
-      return;
-    }
-
-    if (previousUserRating === undefined) {
-      const newVoteCount = existing.voteCount + 1;
-      const newStarRating = (existing.starRating * existing.voteCount + userRating) / newVoteCount;
-      this.cache.set(key, {
-        ...existing,
-        starRating: Math.round(newStarRating * 10) / 10,
-        voteCount: newVoteCount,
-        cachedAt: Date.now()
-      });
-    } else {
-      const totalScore = existing.starRating * existing.voteCount;
-      const newTotal = totalScore - previousUserRating + userRating;
-      const newStarRating = newTotal / existing.voteCount;
-      this.cache.set(key, {
-        ...existing,
-        starRating: Math.round(newStarRating * 10) / 10,
-        cachedAt: Date.now()
-      });
-    }
   }
 
   /**

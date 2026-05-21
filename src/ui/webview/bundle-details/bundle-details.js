@@ -224,7 +224,6 @@
           vscode.postMessage({ type: 'requestFeature' });
           break;
         }
-
       }
     }
   });

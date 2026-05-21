@@ -8,6 +8,7 @@
  *
  * Example: https://raw.githubusercontent.com/owner/repo/branch/path/file.json
  *       → https://api.github.com/repos/owner/repo/contents/path/file.json?ref=branch
+ * @param url
  */
 export function convertRawUrlToApi(url: string): string | undefined {
   const match = url.match(

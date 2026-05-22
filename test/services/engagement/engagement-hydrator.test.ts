@@ -20,6 +20,9 @@ import {
   Rating,
 } from '../../../src/types/engagement';
 import {
+  GitHubDiscussionsBackend,
+} from '../../../src/services/engagement/backends/github-discussions-backend';
+import {
   HubSource,
 } from '../../../src/types/hub';
 
@@ -231,6 +234,17 @@ suite('EngagementHydrator', () => {
         .find((c) => c.args[1]?.overwrite === true);
       assert.strictEqual(overwriteCall, undefined);
       assert.strictEqual(mockEngagementService.saveRatings.callCount, 0);
+    });
+  });
+
+  suite('lazy discussion creation contract', () => {
+    test('GitHubDiscussionsBackend no longer exposes loadCollectionsMappings', () => {
+      const backend = new GitHubDiscussionsBackend('/tmp/engagement-hydrator-test');
+      assert.strictEqual(
+        (backend as unknown as { loadCollectionsMappings?: unknown }).loadCollectionsMappings,
+        undefined,
+        'loadCollectionsMappings should be removed; mappings populate lazily on first vote'
+      );
     });
   });
 });

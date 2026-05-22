@@ -936,6 +936,24 @@ suite('MarketplaceViewProvider - rateBundle message handling', () => {
       onAutoUpdatePreferenceChanged: sandbox.stub().returns({ dispose: () => {} }),
       onRepositoryBundlesChanged: sandbox.stub().returns({ dispose: () => {} }),
       listSources: listSourcesStub,
+      searchBundles: sandbox.stub().resolves([
+        {
+          id: 'rated-bundle',
+          name: 'Rated Bundle',
+          version: '1.0.0',
+          description: '',
+          author: 'Test',
+          sourceId: 'source-with-ratings',
+          environments: ['vscode'],
+          tags: [],
+          lastUpdated: '2024-01-01',
+          size: '1MB',
+          dependencies: [],
+          license: 'MIT',
+          manifestUrl: 'https://example.com/manifest.yml',
+          downloadUrl: 'https://example.com/bundle.zip'
+        }
+      ]),
       autoUpdateService: null
     } as unknown as sinon.SinonStubbedInstance<RegistryManager>;
 
@@ -984,7 +1002,11 @@ suite('MarketplaceViewProvider - rateBundle message handling', () => {
     assert.strictEqual(resourceType, 'bundle');
     assert.strictEqual(resourceId, 'rated-bundle');
     assert.strictEqual(score, 4);
-    assert.deepStrictEqual(options, { hubId: 'test-hub', sourceId: 'source-with-ratings' });
+    assert.deepStrictEqual(options, {
+      hubId: 'test-hub',
+      sourceId: 'source-with-ratings',
+      displayName: 'Rated Bundle'
+    });
   });
 
   test('accepts the boundary values 1 and 5', async () => {
@@ -1051,7 +1073,8 @@ suite('MarketplaceViewProvider - rateBundle message handling', () => {
 
     assert.strictEqual(submitRatingStub.callCount, 1);
     const options = submitRatingStub.firstCall.args[3];
-    assert.deepStrictEqual(options, { hubId: undefined, sourceId: 'local-source' });
+    assert.strictEqual(options.hubId, undefined);
+    assert.strictEqual(options.sourceId, 'local-source');
   });
 
   test('applies the optimistic rating BEFORE submitting and posts an updateRating message', async () => {
@@ -1204,6 +1227,24 @@ suite('MarketplaceViewProvider - submitFeedback message handling', () => {
       onAutoUpdatePreferenceChanged: sandbox.stub().returns({ dispose: () => {} }),
       onRepositoryBundlesChanged: sandbox.stub().returns({ dispose: () => {} }),
       listSources: listSourcesStub,
+      searchBundles: sandbox.stub().resolves([
+        {
+          id: 'rated-bundle',
+          name: 'Rated Bundle',
+          version: '1.0.0',
+          description: '',
+          author: 'Test',
+          sourceId: 'source-with-ratings',
+          environments: ['vscode'],
+          tags: [],
+          lastUpdated: '2024-01-01',
+          size: '1MB',
+          dependencies: [],
+          license: 'MIT',
+          manifestUrl: 'https://example.com/manifest.yml',
+          downloadUrl: 'https://example.com/bundle.zip'
+        }
+      ]),
       autoUpdateService: null
     } as unknown as sinon.SinonStubbedInstance<RegistryManager>;
 
@@ -1325,6 +1366,24 @@ suite('MarketplaceViewProvider - bundle-details feedback wiring', () => {
       onAutoUpdatePreferenceChanged: sandbox.stub().returns({ dispose: () => {} }),
       onRepositoryBundlesChanged: sandbox.stub().returns({ dispose: () => {} }),
       listSources: listSourcesStub,
+      searchBundles: sandbox.stub().resolves([
+        {
+          id: 'rated-bundle',
+          name: 'Rated Bundle',
+          version: '1.0.0',
+          description: '',
+          author: 'Test',
+          sourceId: 'source-with-ratings',
+          environments: ['vscode'],
+          tags: [],
+          lastUpdated: '2024-01-01',
+          size: '1MB',
+          dependencies: [],
+          license: 'MIT',
+          manifestUrl: 'https://example.com/manifest.yml',
+          downloadUrl: 'https://example.com/bundle.zip'
+        }
+      ]),
       autoUpdateService: null
     } as unknown as sinon.SinonStubbedInstance<RegistryManager>;
 

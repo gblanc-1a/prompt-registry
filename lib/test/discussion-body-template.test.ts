@@ -1,5 +1,10 @@
-import { strict as assert } from 'assert';
-import { METADATA_MARKER, parseBundleMetadata } from '../src/discussion-body-template';
+import {
+  strict as assert,
+} from 'node:assert';
+import {
+  METADATA_MARKER,
+  parseBundleMetadata,
+} from '../src/discussion-body-template';
 
 describe('lib/discussion-body-template', () => {
   describe('parseBundleMetadata', () => {

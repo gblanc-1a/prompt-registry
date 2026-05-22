@@ -24,10 +24,8 @@ export interface BundleMetadata {
 
 /**
  * Extract the bundle metadata block from a rating discussion body.
- *
  * Returns undefined when the marker is absent, the YAML fence is missing,
  * the YAML is malformed, or the required fields are not non-empty strings.
- *
  * @param body Raw markdown body of the discussion.
  */
 export function parseBundleMetadata(body: string): BundleMetadata | undefined {
@@ -50,7 +48,6 @@ export function parseBundleMetadata(body: string): BundleMetadata | undefined {
     return undefined;
   }
   const obj = parsed as Record<string, unknown>;
-  /* eslint-disable @typescript-eslint/naming-convention -- snake_case matches YAML wire format */
   const sourceId = obj.source_id;
   const bundleId = obj.bundle_id;
   if (
@@ -62,5 +59,4 @@ export function parseBundleMetadata(body: string): BundleMetadata | undefined {
     return undefined;
   }
   return { source_id: sourceId, bundle_id: bundleId };
-  /* eslint-enable @typescript-eslint/naming-convention */
 }

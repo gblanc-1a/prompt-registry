@@ -7,6 +7,9 @@ import * as assert from 'node:assert';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import {
+  GitHubDiscussionsBackend,
+} from '../../../src/services/engagement/backends/github-discussions-backend';
+import {
   EngagementHydrator,
 } from '../../../src/services/engagement/engagement-hydrator';
 import {
@@ -19,9 +22,6 @@ import {
   HubEngagementConfig,
   Rating,
 } from '../../../src/types/engagement';
-import {
-  GitHubDiscussionsBackend,
-} from '../../../src/services/engagement/backends/github-discussions-backend';
 import {
   HubSource,
 } from '../../../src/types/hub';

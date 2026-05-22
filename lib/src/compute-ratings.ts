@@ -2,61 +2,32 @@
 /**
  * Rating Computation for GitHub Actions
  *
- * Fetches reaction counts from GitHub Discussions and computes ratings
- * using Wilson score algorithm. Outputs ratings.json for static hosting.
+ * Lists discussions in a configured GitHub repo + category, parses each
+ * discussion body's metadata block (`source_id`, `bundle_id`), groups
+ * discussions by that key, and aggregates star-rating comments into
+ * `ratings.json`.
+ *
+ * Reaction-based voting and per-resource (per-comment) voting are no longer
+ * collected. Legacy fields in the output schema (`up`, `down`, `resources`)
+ * are zeroed/empty for backward compatibility with consumers.
  */
 
 import * as fs from 'node:fs';
 import axios from 'axios';
-import * as yaml from 'js-yaml';
+import {
+  parseBundleMetadata,
+} from './discussion-body-template';
 
 // ============================================================================
 // Types
 // ============================================================================
 
-/* eslint-disable @typescript-eslint/naming-convention -- snake_case fields mirror collections.yaml and GitHub API response structures */
-/**
- * Resource mapping in collections.yaml
- */
-export interface ResourceMapping {
-  id: string;
-  comment_id?: number;
-}
+/* eslint-disable @typescript-eslint/naming-convention -- snake_case fields mirror output schema and GitHub API response structures */
 
 /**
- * Collection mapping in collections.yaml
- */
-export interface CollectionMapping {
-  id: string;
-  source_id?: string;
-  discussion_number: number;
-  resources?: ResourceMapping[];
-}
-
-/**
- * Collections configuration file structure
- */
-export interface CollectionsConfig {
-  repository: string;
-  collections: CollectionMapping[];
-}
-
-/**
- * Reaction counts from GitHub API
- */
-interface ReactionCounts {
-  '+1': number;
-  '-1': number;
-  laugh?: number;
-  hooray?: number;
-  confused?: number;
-  heart?: number;
-  rocket?: number;
-  eyes?: number;
-}
-
-/**
- * Resource rating in output
+ * Resource rating in output. Retained for schema compatibility; this rewrite
+ * does not collect per-resource (per-comment) voting, so the `resources` map
+ * on `CollectionRating` is always empty.
  */
 export interface ResourceRating {
   up: number;
@@ -68,11 +39,17 @@ export interface ResourceRating {
 }
 
 /**
- * Collection rating in output
+ * Collection rating in output.
+ *
+ * `up`/`down` are kept at 0 because reaction-based voting is no longer
+ * collected. `discussion_number` is optional and, when multiple discussions
+ * map to the same `(source_id, bundle_id)` key, holds the lowest discussion
+ * number in the group. `resources` is always `{}` because per-resource voting
+ * is not collected by this rewrite.
  */
 export interface CollectionRating {
   source_id?: string;
-  discussion_number: number;
+  discussion_number?: number;
   up: number;
   down: number;
   wilson_score: number;
@@ -284,23 +261,6 @@ function calculateRatingMetrics(upvotes: number, downvotes: number): RatingMetri
   };
 }
 
-/**
- * Aggregate resource scores into collection score
- * @param resources
- */
-function aggregateResourceScores(resources: { score: number; voteCount: number }[]): number {
-  if (resources.length === 0) {
-    return 0;
-  }
-
-  const totalVotes = resources.reduce((sum, r) => sum + r.voteCount, 0);
-  if (totalVotes === 0) {
-    return 0;
-  }
-
-  return resources.reduce((sum, r) => sum + r.score * r.voteCount, 0) / totalVotes;
-}
-
 // ============================================================================
 // GitHub API Functions
 // ============================================================================
@@ -328,178 +288,6 @@ function updateRateLimit(headers: Record<string, string>): void {
  */
 function getRateLimitStatus(): { remaining: number; resetAt: number } {
   return { remaining: rateLimitState.remaining, resetAt: rateLimitState.resetAt };
-}
-
-/**
- * Fetch all reactions with pagination support
- * GitHub API returns max 100 items per page
- * @param url
- * @param token
- */
-async function fetchAllReactions(
-    url: string,
-    token: string
-): Promise<{ content: string }[]> {
-  const allReactions: { content: string }[] = [];
-  let page = 1;
-  const perPage = 100;
-
-  while (true) {
-    const response = await axios.get<{ content: string }[]>(
-      `${url}?per_page=${perPage}&page=${page}`,
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: 'application/vnd.github+json',
-          'X-GitHub-Api-Version': '2022-11-28'
-        }
-      }
-    );
-
-    // Update rate limit tracking
-    updateRateLimit(response.headers as Record<string, string>);
-
-    const reactions = response.data;
-    allReactions.push(...reactions);
-
-    // If we got fewer than perPage results, we've reached the end
-    if (reactions.length < perPage) {
-      break;
-    }
-
-    page++;
-
-    // Safety limit to prevent infinite loops
-    if (page > 100) {
-      console.warn(`Pagination limit reached for ${url}`);
-      break;
-    }
-  }
-
-  return allReactions;
-}
-
-interface GraphQLDiscussionReactionsResponse {
-  data: {
-    repository: {
-      discussion: {
-        reactions: {
-          nodes: { content: string }[];
-          pageInfo: { hasNextPage: boolean; endCursor: string | null };
-        };
-      } | null;
-    };
-  };
-}
-
-/**
- * Fetch discussion reactions using GraphQL (more reliable than REST)
- * @param owner
- * @param repo
- * @param discussionNumber
- * @param token
- */
-async function fetchDiscussionReactions(
-    owner: string,
-    repo: string,
-    discussionNumber: number,
-    token: string
-): Promise<ReactionCounts> {
-  const query = `
-        query($owner: String!, $repo: String!, $number: Int!) {
-            repository(owner: $owner, name: $repo) {
-                discussion(number: $number) {
-                    reactions(first: 100) {
-                        nodes {
-                            content
-                        }
-                        pageInfo {
-                            hasNextPage
-                            endCursor
-                        }
-                    }
-                }
-            }
-        }
-    `;
-
-  try {
-    const response = await axios.post(
-      'https://api.github.com/graphql',
-      {
-        query,
-        variables: { owner, repo, number: discussionNumber }
-      },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
-
-    updateRateLimit(response.headers as Record<string, string>);
-
-    const responseData = response.data as GraphQLDiscussionReactionsResponse;
-    const discussion = responseData.data?.repository?.discussion;
-    if (!discussion) {
-      console.warn(`Discussion #${discussionNumber} not found, using zero counts`);
-      return { '+1': 0, '-1': 0 };
-    }
-
-    // Count reactions by type
-    const counts: ReactionCounts = { '+1': 0, '-1': 0 };
-    const reactions = discussion.reactions?.nodes || [];
-
-    for (const reaction of reactions) {
-      const content = reaction.content;
-      if (content === 'THUMBS_UP') {
-        counts['+1']++;
-      } else if (content === 'THUMBS_DOWN') {
-        counts['-1']++;
-      }
-    }
-
-    return counts;
-  } catch (error: unknown) {
-    console.warn(`Error fetching discussion #${discussionNumber}: ${(error as Error).message}`);
-    return { '+1': 0, '-1': 0 };
-  }
-}
-
-/**
- * Fetch reactions for a comment (resource-level voting, with pagination)
- * @param owner
- * @param repo
- * @param commentId
- * @param token
- */
-async function fetchCommentReactions(
-    owner: string,
-    repo: string,
-    commentId: number,
-    token: string
-): Promise<ReactionCounts> {
-  const url = `https://api.github.com/repos/${owner}/${repo}/discussions/comments/${commentId}/reactions`;
-
-  try {
-    const reactions = await fetchAllReactions(url, token);
-
-    const counts: ReactionCounts = { '+1': 0, '-1': 0 };
-    for (const reaction of reactions) {
-      const content = reaction.content as keyof ReactionCounts;
-      counts[content] = (counts[content] || 0) + 1;
-    }
-
-    return counts;
-  } catch (error: unknown) {
-    const err = error as { response?: { status: number }; message?: string };
-    if (err.response?.status === 404) {
-      console.warn(`Comment #${commentId} not found, using zero counts`);
-      return { '+1': 0, '-1': 0 };
-    }
-    throw new Error(`GitHub API error: ${err.response?.status ?? 'unknown'} ${err.message ?? String(error)}`);
-  }
 }
 
 /**
@@ -618,7 +406,8 @@ async function fetchDiscussionComments(
 // ============================================================================
 
 /**
- * Compute ratings for a single resource
+ * Compute ratings for a single resource. Retained as an exported helper for
+ * tests and external math callers; not used by the new aggregation flow.
  * @param up
  * @param down
  */
@@ -635,238 +424,197 @@ export function computeResourceRating(up: number, down: number): ResourceRating 
 }
 
 /**
- * Compute ratings for a collection including all resources
- *
- * Rating sources (in priority order):
- * 1. Star ratings from feedback comments (new system: "**Feedback** (N ⭐...)")
- * 2. Thumbs up/down reactions on the discussion (legacy fallback)
- * @param collection
- * @param owner
- * @param repo
- * @param token
+ * Discussion node returned by listDiscussionsInCategory.
  */
-async function computeCollectionRating(
-    collection: CollectionMapping,
-    owner: string,
-    repo: string,
-    token: string
-): Promise<CollectionRating> {
-  console.log(`  Processing collection: ${collection.id}`);
+export interface DiscussionNode {
+  number: number;
+  title: string;
+  body: string;
+}
 
-  // Fetch discussion comments to extract star ratings
-  const comments = await fetchDiscussionComments(
-    owner, repo, collection.discussion_number, token
-  );
+/**
+ * Inputs for the rewritten computeRatings entrypoint.
+ */
+export interface ComputeRatingsInput {
+  /** Repository in `owner/repo` form. */
+  repo: string;
+  /** Discussion category name to scan (e.g., "Bundle Ratings"). */
+  category: string;
+  /** Path to write ratings.json. */
+  outputPath: string;
+  /** GitHub token. */
+  token: string;
+}
 
-  // Deduplicate ratings by user (keep only most recent rating per user)
-  // This follows industry standard practice (Amazon, App Store, etc.)
-  const starRatings = deduplicateRatingsByUser(comments);
-
-  // Also fetch discussion-level reactions as fallback/supplement
-  const discussionReactions = await fetchDiscussionReactions(
-    owner, repo, collection.discussion_number, token
-  );
-
-  const collectionUp = discussionReactions['+1'];
-  const collectionDown = discussionReactions['-1'];
-
-  // Compute rating based on star ratings only (5-star system)
-  let starRating: number;
-  let ratingCount: number;
-  let confidence: string;
-  let wilsonScore: number;
-  let bayesianScore: number;
-
-  if (starRatings.length > 0) {
-    // Use star ratings from comments (5-star system)
-    const avgResult = computeAverageStarRating(starRatings);
-    starRating = avgResult.average;
-    ratingCount = avgResult.count;
-    confidence = avgResult.confidence;
-    // Convert star rating to normalized score (0-1 scale)
-    wilsonScore = (starRating - 1) / 4; // Maps 1-5 to 0-1
-    bayesianScore = starRating;
-    console.log(`    Found ${starRatings.length} star ratings, average: ${starRating}`);
-  } else {
-    // No ratings yet - use neutral defaults
-    starRating = 0;
-    ratingCount = 0;
-    confidence = 'low';
-    wilsonScore = 0;
-    bayesianScore = 0;
-    console.log(`    No star ratings found`);
-  }
-
-  // Process resources (still using reactions for now)
-  const resources: Record<string, ResourceRating> = {};
-  const resourceScores: { score: number; voteCount: number }[] = [];
-
-  if (collection.resources && collection.resources.length > 0) {
-    for (const resource of collection.resources) {
-      if (resource.comment_id) {
-        const reactions = await fetchCommentReactions(
-          owner, repo, resource.comment_id, token
-        );
-        const rating = computeResourceRating(reactions['+1'], reactions['-1']);
-        resources[resource.id] = rating;
-        resourceScores.push({
-          score: rating.wilson_score,
-          voteCount: rating.up + rating.down
-        });
+/**
+ * Resolve discussion category id, then list every discussion in it via
+ * paginated GraphQL.
+ * @param owner Repo owner.
+ * @param repo Repo name.
+ * @param categoryName Discussion category name.
+ * @param token GitHub token.
+ */
+export async function listDiscussionsInCategory(
+  owner: string,
+  repo: string,
+  categoryName: string,
+  token: string
+): Promise<DiscussionNode[]> {
+  // Step 1: resolve category id.
+  const catQuery = `
+    query($owner: String!, $repo: String!) {
+      repository(owner: $owner, name: $repo) {
+        discussionCategories(first: 50) { nodes { id name } }
       }
     }
-  }
-
-  // Compute aggregated score from resources (if any)
-  let aggregatedScore = wilsonScore;
-  if (resourceScores.length > 0) {
-    const resourceAggregated = aggregateResourceScores(resourceScores);
-    // Blend collection-level and resource-level scores (70/30 split)
-    aggregatedScore = 0.7 * wilsonScore + 0.3 * resourceAggregated;
-  }
-
-  return {
-    source_id: collection.source_id,
-    discussion_number: collection.discussion_number,
-    up: collectionUp,
-    down: collectionDown,
-    wilson_score: Math.round(wilsonScore * 1000) / 1000,
-    bayesian_score: Math.round(bayesianScore * 1000) / 1000,
-    aggregated_score: Math.round(aggregatedScore * 1000) / 1000,
-    star_rating: starRating,
-    rating_count: ratingCount,
-    confidence,
-    resources
+  `;
+  const catResp = await axios.post(
+    'https://api.github.com/graphql',
+    { query: catQuery, variables: { owner, repo } },
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  updateRateLimit(catResp.headers as Record<string, string>);
+  const catData = catResp.data as {
+    data?: { repository?: { discussionCategories?: { nodes: { id: string; name: string }[] } } };
+    errors?: { message: string }[];
   };
-}
-
-// ============================================================================
-// Main Script
-// ============================================================================
-
-/**
- * Parse command line arguments
- * @param args
- */
-export function parseArgs(args: string[]): { configPath: string; outputPath: string } {
-  let configPath = 'collections.yaml';
-  let outputPath = 'ratings.json';
-
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-
-    // Handle --config=value format
-    if (arg.startsWith('--config=')) {
-      configPath = arg.substring('--config='.length);
-    } else if (arg === '--config' && args[i + 1]) {
-      // Handle --config value format
-      configPath = args[i + 1];
-      i++;
-    } else if (arg.startsWith('--output=')) {
-      // Handle --output=value format
-      outputPath = arg.substring('--output='.length);
-    } else if (arg === '--output' && args[i + 1]) {
-      // Handle --output value format
-      outputPath = args[i + 1];
-      i++;
-    }
+  if (catData.errors?.length) {
+    throw new Error(`category resolution: ${catData.errors.map((e) => e.message).join('; ')}`);
+  }
+  const cats = catData.data?.repository?.discussionCategories?.nodes ?? [];
+  const cat = cats.find((c) => c.name === categoryName);
+  if (!cat) {
+    throw new Error(`Category "${categoryName}" not found in ${owner}/${repo}`);
   }
 
-  return { configPath, outputPath };
-}
-
-/**
- * Main entry point
- * @param configPath
- * @param outputPath
- * @param token
- */
-export async function computeRatings(configPath: string, outputPath: string, token: string): Promise<void> {
-  // Load collections config
-  if (!fs.existsSync(configPath)) {
-    throw new Error(`Config file not found: ${configPath}`);
-  }
-
-  const configContent = fs.readFileSync(configPath, 'utf8');
-  const config = yaml.load(configContent) as CollectionsConfig;
-
-  if (!config.repository || !config.collections) {
-    throw new Error('Invalid config file. Must have "repository" and "collections" fields.');
-  }
-
-  const [owner, repo] = config.repository.split('/');
-  if (!owner || !repo) {
-    throw new Error('Invalid repository format. Expected "owner/repo".');
-  }
-
-  console.log(`Computing ratings for ${config.repository}`);
-  console.log(`Processing ${config.collections.length} collections...`);
-
-  // Determine concurrency based on rate limit
-  const rateLimit = getRateLimitStatus();
-  let concurrency = 10; // Default
-
-  if (rateLimit.remaining < 1000) {
-    concurrency = 3;
-    console.log(`Low rate limit (${rateLimit.remaining} remaining), using concurrency: ${concurrency}`);
-  } else if (rateLimit.remaining < 2000) {
-    concurrency = 5;
-    console.log(`Medium rate limit (${rateLimit.remaining} remaining), using concurrency: ${concurrency}`);
-  } else {
-    console.log(`Good rate limit (${rateLimit.remaining} remaining), using concurrency: ${concurrency}`);
-  }
-
-  // Process collections concurrently in batches
-  const collections: Record<string, CollectionRating> = {};
-  const batches: CollectionMapping[][] = [];
-
-  for (let i = 0; i < config.collections.length; i += concurrency) {
-    batches.push(config.collections.slice(i, i + concurrency));
-  }
-
-  for (const batch of batches) {
-    const promises = batch.map(async (collection) => {
-      try {
-        return {
-          id: collection.id,
-          rating: await computeCollectionRating(collection, owner, repo, token)
+  // Step 2: paginate discussions in category.
+  const out: DiscussionNode[] = [];
+  let cursor: string | null = null;
+  for (;;) {
+    const query = `
+      query($owner: String!, $repo: String!, $catId: ID!, $after: String) {
+        repository(owner: $owner, name: $repo) {
+          discussions(first: 100, categoryId: $catId, after: $after) {
+            pageInfo { endCursor hasNextPage }
+            nodes { number title body }
+          }
+        }
+      }
+    `;
+    const resp = await axios.post(
+      'https://api.github.com/graphql',
+      { query, variables: { owner, repo, catId: cat.id, after: cursor } },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    updateRateLimit(resp.headers as Record<string, string>);
+    const data = resp.data as {
+      data?: {
+        repository?: {
+          discussions?: {
+            pageInfo: { endCursor: string | null; hasNextPage: boolean };
+            nodes: DiscussionNode[];
+          };
         };
-      } catch (error) {
-        console.error(`  Error processing ${collection.id}:`, error);
-        return null;
-      }
-    });
-
-    const results = await Promise.all(promises);
-
-    for (const result of results) {
-      if (result) {
-        collections[result.id] = result.rating;
-      }
+      };
+      errors?: { message: string }[];
+    };
+    if (data.errors?.length) {
+      throw new Error(`listDiscussionsInCategory: ${data.errors.map((e) => e.message).join('; ')}`);
     }
-
-    // Log rate limit status after each batch
-    const currentLimit = getRateLimitStatus();
-    if (currentLimit.remaining < 100) {
-      console.warn(`⚠️  Rate limit low: ${currentLimit.remaining} requests remaining`);
+    const page = data.data?.repository?.discussions;
+    out.push(...(page?.nodes ?? []));
+    if (!page?.pageInfo.hasNextPage) {
+      break;
     }
+    cursor = page.pageInfo.endCursor;
+  }
+  return out;
+}
+
+/**
+ * Compute ratings.json from discussions in the configured repo + category.
+ *
+ * Aggregates by (source_id, bundle_id) parsed from each discussion body's
+ * metadata block. Discussions sharing the same key (race or post-rename)
+ * have their star comments unioned. Reaction-based voting and per-resource
+ * voting are not collected; legacy fields in the output are zeroed.
+ * @param input Repo, category, output path, token.
+ */
+export async function computeRatings(input: ComputeRatingsInput): Promise<void> {
+  const [owner, repo] = input.repo.split('/');
+  if (!owner || !repo) {
+    throw new Error('Invalid repo format. Expected "owner/repo".');
   }
 
-  // Generate output
+  console.log(`Computing ratings from ${input.repo} category "${input.category}"`);
+
+  const discussions = await listDiscussionsInCategory(owner, repo, input.category, input.token);
+  console.log(`Found ${discussions.length} discussions in category`);
+
+  const grouped = new Map<string, DiscussionNode[]>();
+  let skipped = 0;
+  for (const d of discussions) {
+    const meta = parseBundleMetadata(d.body);
+    if (!meta) {
+      skipped++;
+      continue;
+    }
+    const key = `${meta.source_id}:${meta.bundle_id}`;
+    const list = grouped.get(key) ?? [];
+    list.push(d);
+    grouped.set(key, list);
+  }
+  if (skipped > 0) {
+    console.warn(`Skipped ${skipped} discussions without metadata block`);
+  }
+
+  const collections: Record<string, CollectionRating> = {};
+
+  for (const [key, ds] of grouped) {
+    // Fetch comments for every discussion in the group, in series to keep
+    // rate-limit pressure predictable. Could parallelize later if needed.
+    const allComments: DiscussionComment[] = [];
+    for (const d of ds) {
+      const cs = await fetchDiscussionComments(owner, repo, d.number, input.token);
+      allComments.push(...cs);
+    }
+    const starRatings = deduplicateRatingsByUser(allComments);
+    if (starRatings.length === 0) {
+      continue;
+    }
+    const avg = computeAverageStarRating(starRatings);
+    const wilson = (avg.average - 1) / 4;
+    const sourceId = key.split(':')[0];
+    const minDiscussionNumber = ds.reduce((m, d) => Math.min(m, d.number), Number.POSITIVE_INFINITY);
+
+    collections[key] = {
+      source_id: sourceId,
+      discussion_number: Number.isFinite(minDiscussionNumber) ? minDiscussionNumber : undefined,
+      up: 0,
+      down: 0,
+      wilson_score: Math.round(wilson * 1000) / 1000,
+      bayesian_score: Math.round(avg.average * 1000) / 1000,
+      aggregated_score: Math.round(avg.average * 1000) / 1000,
+      star_rating: avg.average,
+      rating_count: avg.count,
+      confidence: avg.confidence,
+      resources: {}
+    };
+  }
+
   const output: RatingsOutput = {
+
     generated_at: new Date().toISOString(),
-    repository: config.repository,
+
+    repository: input.repo,
     collections
   };
 
-  // Write output
-  fs.writeFileSync(outputPath, JSON.stringify(output, null, 2));
-  console.log(`\nRatings written to: ${outputPath}`);
+  fs.writeFileSync(input.outputPath, JSON.stringify(output, null, 2));
+  console.log(`Wrote ${Object.keys(collections).length} ratings to ${input.outputPath}`);
 
-  // Summary
-  const totalCollections = Object.keys(collections).length;
-  const totalResources = Object.values(collections).reduce(
-    (sum, c) => sum + Object.keys(c.resources).length, 0
-  );
-  console.log(`Summary: ${totalCollections} collections, ${totalResources} resources`);
+  const currentLimit = getRateLimitStatus();
+  if (currentLimit.remaining < 100) {
+    console.warn(`⚠️  Rate limit low: ${currentLimit.remaining} requests remaining`);
+  }
 }

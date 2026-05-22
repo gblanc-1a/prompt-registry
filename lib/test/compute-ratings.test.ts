@@ -4,11 +4,16 @@
  */
 
 import * as assert from 'node:assert';
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
+import nock from 'nock';
 import {
   computeAverageStarRating,
+  computeRatings,
   computeResourceRating,
   deduplicateRatingsByUser,
-  parseArgs,
+  listDiscussionsInCategory,
   parseStarRatingFromComment,
 } from '../src/compute-ratings';
 
@@ -80,41 +85,6 @@ describe('compute-ratings', () => {
 
       assert.ok(rating.star_rating >= 1, 'Star rating should be at least 1');
       assert.ok(rating.star_rating <= 5, 'Star rating should be at most 5');
-    });
-  });
-
-  describe('parseArgs()', () => {
-    it('should parse config and output paths', () => {
-      const result = parseArgs([]);
-
-      assert.strictEqual(result.configPath, 'collections.yaml');
-      assert.strictEqual(result.outputPath, 'ratings.json');
-    });
-
-    it('should parse --config flag', () => {
-      const result = parseArgs(['--config', 'custom.yaml']);
-
-      assert.strictEqual(result.configPath, 'custom.yaml');
-    });
-
-    it('should parse --output flag', () => {
-      const result = parseArgs(['--output', 'custom.json']);
-
-      assert.strictEqual(result.outputPath, 'custom.json');
-    });
-
-    it('should parse both flags', () => {
-      const result = parseArgs(['--config', 'custom.yaml', '--output', 'custom.json']);
-
-      assert.strictEqual(result.configPath, 'custom.yaml');
-      assert.strictEqual(result.outputPath, 'custom.json');
-    });
-
-    it('should handle missing flags', () => {
-      const result = parseArgs([]);
-
-      assert.strictEqual(result.configPath, 'collections.yaml');
-      assert.strictEqual(result.outputPath, 'ratings.json');
     });
   });
 
@@ -428,5 +398,132 @@ describe('compute-ratings', () => {
       assert.strictEqual(ratings.length, 1);
       assert.strictEqual(ratings[0], 5); // Should keep the later one
     });
+  });
+});
+
+describe('listDiscussionsInCategory', () => {
+  afterEach(() => nock.cleanAll());
+
+  it('paginates and returns all discussion nodes', async () => {
+    nock('https://api.github.com')
+      .post('/graphql')
+      .reply(200, {
+        data: {
+          repository: {
+            discussionCategories: { nodes: [{ id: 'C1', name: 'Bundle Ratings' }] }
+          }
+        }
+      })
+      .post('/graphql')
+      .reply(200, {
+        data: {
+          repository: {
+            discussions: {
+              pageInfo: { endCursor: 'X', hasNextPage: true },
+              nodes: [{ number: 1, title: 't1', body: 'b1' }]
+            }
+          }
+        }
+      })
+      .post('/graphql')
+      .reply(200, {
+        data: {
+          repository: {
+            discussions: {
+              pageInfo: { endCursor: null, hasNextPage: false },
+              nodes: [{ number: 2, title: 't2', body: 'b2' }]
+            }
+          }
+        }
+      });
+
+    const out = await listDiscussionsInCategory('o', 'r', 'Bundle Ratings', 'tok');
+    assert.strictEqual(out.length, 2);
+    assert.strictEqual(out[0].number, 1);
+    assert.strictEqual(out[1].number, 2);
+  });
+
+  it('throws when the category is not found', async () => {
+    nock('https://api.github.com')
+      .post('/graphql')
+      .reply(200, {
+        data: { repository: { discussionCategories: { nodes: [{ id: 'C1', name: 'Other' }] } } }
+      });
+    await assert.rejects(() => listDiscussionsInCategory('o', 'r', 'Bundle Ratings', 'tok'));
+  });
+});
+
+describe('computeRatings (aggregation by body metadata)', () => {
+  let outPath: string;
+
+  beforeEach(() => {
+    outPath = path.join(os.tmpdir(), `ratings-${Date.now()}-${Math.random().toString(16).slice(2)}.json`);
+  });
+
+  afterEach(() => {
+    nock.cleanAll();
+    if (fs.existsSync(outPath)) {
+      fs.unlinkSync(outPath);
+    }
+  });
+
+  it('groups two discussions sharing the same (source_id, bundle_id)', async () => {
+    const body = `<!-- prompt-registry:metadata -->\n\`\`\`yaml\nbundle_id: bx\nsource_id: sa\n\`\`\``;
+    nock('https://api.github.com')
+      .post('/graphql')
+      .reply(200, { data: { repository: { discussionCategories: { nodes: [{ id: 'C1', name: 'Bundle Ratings' }] } } } })
+      .post('/graphql')
+      .reply(200, {
+        data: {
+          repository: {
+            discussions: {
+              pageInfo: { endCursor: null, hasNextPage: false },
+              nodes: [
+                { number: 10, title: 't', body },
+                { number: 11, title: 't', body }
+              ]
+            }
+          }
+        }
+      })
+      .post('/graphql')
+      .reply(200, {
+        data: { repository: { discussion: { comments: { nodes: [
+          { body: 'Rating: ⭐⭐⭐⭐', author: { login: 'alice' }, createdAt: '2024-01-01T00:00:00Z' }
+        ], pageInfo: { hasNextPage: false, endCursor: null } } } } }
+      })
+      .post('/graphql')
+      .reply(200, {
+        data: { repository: { discussion: { comments: { nodes: [
+          { body: 'Rating: ⭐⭐⭐⭐⭐', author: { login: 'bob' }, createdAt: '2024-01-02T00:00:00Z' }
+        ], pageInfo: { hasNextPage: false, endCursor: null } } } } }
+      });
+
+    await computeRatings({ repo: 'o/r', category: 'Bundle Ratings', outputPath: outPath, token: 'tok' });
+    const out = JSON.parse(fs.readFileSync(outPath, 'utf8'));
+    assert.ok(out.collections['sa:bx'], 'bundle key present');
+    assert.strictEqual(out.collections['sa:bx'].rating_count, 2);
+    assert.strictEqual(out.collections['sa:bx'].discussion_number, 10);
+  });
+
+  it('skips discussions without metadata', async () => {
+    nock('https://api.github.com')
+      .post('/graphql')
+      .reply(200, { data: { repository: { discussionCategories: { nodes: [{ id: 'C1', name: 'Bundle Ratings' }] } } } })
+      .post('/graphql')
+      .reply(200, {
+        data: {
+          repository: {
+            discussions: {
+              pageInfo: { endCursor: null, hasNextPage: false },
+              nodes: [{ number: 1, title: 't', body: 'no marker' }]
+            }
+          }
+        }
+      });
+
+    await computeRatings({ repo: 'o/r', category: 'Bundle Ratings', outputPath: outPath, token: 'tok' });
+    const out = JSON.parse(fs.readFileSync(outPath, 'utf8'));
+    assert.deepStrictEqual(out.collections, {});
   });
 });

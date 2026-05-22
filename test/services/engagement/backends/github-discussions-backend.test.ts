@@ -504,9 +504,7 @@ suite('GitHubDiscussionsBackend', () => {
       assert.strictEqual(stored.synced, false, 'Rating must be marked unsynced after auth failure');
     });
 
-    test('post-ensure: cache-hit path persists with synced=true (post errors are swallowed)', async () => {
-      // postOrEditRatingComment swallows errors internally, so submitRating
-      // marks the rating synced=true after a successful ensureDiscussion.
+    test('comment post fails after ensure: synced=false, mapping kept in cache', async () => {
       await backend.initialize(mockConfig);
 
       asPrivate(backend).categoryId = 'CAT_1';
@@ -515,7 +513,7 @@ suite('GitHubDiscussionsBackend', () => {
         discussionNumber: 99
       });
 
-      // findViewerComment fails — postOrEditRatingComment catches and logs.
+      // findViewerComment fails — submitRating now propagates the error.
       nock('https://api.github.com')
         .post('/graphql')
         .reply(500, { message: 'Internal Server Error' });
@@ -528,15 +526,15 @@ suite('GitHubDiscussionsBackend', () => {
         timestamp: new Date().toISOString()
       };
 
-      await backend.submitRating(rating);
+      await assert.rejects(() => backend.submitRating(rating));
 
       const cached = asPrivate(backend).discussionMappings.get('src:b');
-      assert.ok(cached);
-      assert.strictEqual(cached.discussionNumber, 99, 'Cached mapping should be retained');
+      assert.ok(cached, 'mapping should remain cached after a comment-post failure');
+      assert.strictEqual(cached.discussionNumber, 99);
 
       const stored = await backend.getRating('bundle', 'src:b');
       assert.ok(stored);
-      assert.strictEqual(stored.synced, true, 'submitRating sets synced=true after ensureDiscussion succeeds');
+      assert.strictEqual(stored.synced, false, 'rating must be marked unsynced when comment post fails');
     });
   });
 

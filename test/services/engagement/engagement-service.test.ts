@@ -200,80 +200,39 @@ suite('EngagementService', () => {
   });
 
   suite('registerHubBackend() — github-discussions branch', () => {
-    test('registers backend and loads collections mappings on happy path', async () => {
-      const loadStub = sandbox
-        .stub(GitHubDiscussionsBackend.prototype, 'loadCollectionsMappings')
+    test('registers backend and resolves discussion category on happy path', async () => {
+      const initStub = sandbox
+        .stub(GitHubDiscussionsBackend.prototype, 'initializeCategory')
         .resolves();
 
       await service.registerHubBackend('gh-hub', {
         enabled: true,
         backend: {
           type: 'github-discussions',
-          repository: 'owner/repo',
-          collectionsUrl: 'https://example.com/collections.yaml'
+          repository: 'owner/repo'
         }
       });
 
       const backend = service.getHubBackend('gh-hub');
       assert.ok(backend);
       assert.strictEqual(backend.type, 'github-discussions');
-      assert.ok(loadStub.calledOnceWith('https://example.com/collections.yaml'));
+      assert.strictEqual(initStub.callCount, 1);
     });
 
-    test('registers backend even when loadCollectionsMappings rejects', async () => {
+    test('registers backend even when initializeCategory rejects', async () => {
       sandbox
-        .stub(GitHubDiscussionsBackend.prototype, 'loadCollectionsMappings')
+        .stub(GitHubDiscussionsBackend.prototype, 'initializeCategory')
         .rejects(new Error('Boom'));
 
       await service.registerHubBackend('gh-hub-err', {
         enabled: true,
         backend: {
           type: 'github-discussions',
-          repository: 'owner/repo',
-          collectionsUrl: 'https://example.com/collections.yaml'
+          repository: 'owner/repo'
         }
       });
 
       assert.ok(service.getHubBackend('gh-hub-err'));
-    });
-
-    test('does not block activation when loadCollectionsMappings hangs past the 5s timeout', async () => {
-      // Use fake timers so we can fast-forward the production-side setTimeout(5000).
-      const clock = sandbox.useFakeTimers();
-
-      // Hanging mappings load: never resolves on its own.
-      sandbox
-        .stub(GitHubDiscussionsBackend.prototype, 'loadCollectionsMappings')
-        .returns(new Promise<void>(() => { /* never resolves */ }));
-
-      const registerPromise = service.registerHubBackend('gh-hub-slow', {
-        enabled: true,
-        backend: {
-          type: 'github-discussions',
-          repository: 'owner/repo',
-          collectionsUrl: 'https://example.com/collections.yaml'
-        }
-      });
-
-      // Drive past the 5s timeout. Without it, registerHubBackend would never settle.
-      await clock.tickAsync(5000);
-      await registerPromise;
-
-      assert.ok(service.getHubBackend('gh-hub-slow'));
-    });
-
-    test('happy path without collectionsUrl still registers the backend', async () => {
-      const loadStub = sandbox
-        .stub(GitHubDiscussionsBackend.prototype, 'loadCollectionsMappings')
-        .resolves();
-
-      await service.registerHubBackend('gh-hub-bare', {
-        enabled: true,
-        backend: { type: 'github-discussions', repository: 'owner/repo' }
-      });
-
-      assert.ok(service.getHubBackend('gh-hub-bare'));
-      assert.strictEqual(loadStub.callCount, 0);
     });
   });
 });

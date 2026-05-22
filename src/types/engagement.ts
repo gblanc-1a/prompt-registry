@@ -39,6 +39,8 @@ export interface Rating {
   timestamp: string;
   /** Resource version at time of rating */
   version?: string;
+  /** Display name for the rated bundle, used to seed discussion creation on first vote */
+  displayName?: string;
   /** Source identifier (adapter sourceId) for resolving cache keys across sessions */
   sourceId?: string;
   /** Hub ID — required for activation-time drain to route the retry to the correct backend */
@@ -148,8 +150,6 @@ export interface GitHubDiscussionsBackendConfig extends EngagementBackendConfigB
   repository: string;
   /** Discussion category */
   category?: string;
-  /** URL to collections.yaml mapping bundles to discussion numbers */
-  collectionsUrl?: string;
   /** Minimum account age in days to count votes (anti-abuse) */
   minAccountAgeDays?: number;
   /** List of usernames to exclude from vote counting */

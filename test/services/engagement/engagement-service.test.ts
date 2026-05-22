@@ -256,7 +256,7 @@ suite('EngagementService', () => {
       });
 
       // Drive past the 5s timeout. Without it, registerHubBackend would never settle.
-      await clock.tickAsync(5_000);
+      await clock.tickAsync(5000);
       await registerPromise;
 
       assert.ok(service.getHubBackend('gh-hub-slow'));

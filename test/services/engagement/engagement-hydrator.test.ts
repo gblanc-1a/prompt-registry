@@ -57,8 +57,8 @@ suite('EngagementHydrator', () => {
     sandbox.stub(vscode.authentication, 'getSession').resolves(undefined);
 
     hydrator = new EngagementHydrator(
-      mockEngagementService as unknown as EngagementService,
-      mockRatingCache as unknown as RatingCache
+      mockEngagementService,
+      mockRatingCache
     );
   });
 

@@ -242,33 +242,15 @@ export class EngagementService {
       backend = new GitHubDiscussionsBackend(storagePath);
       await backend.initialize(ghConfig);
 
-      // Load collections mappings if collectionsUrl is provided
-      // Use a timeout to prevent blocking if the URL is slow/unreachable
-      if (ghConfig.collectionsUrl) {
-        const collectionsUrl = ghConfig.collectionsUrl; // Capture for closure
-        const loadMappings = async () => {
-          try {
-            await (backend as GitHubDiscussionsBackend).loadCollectionsMappings(collectionsUrl);
-            this.logger.info(`Loaded collections mappings for hub ${hubId} from ${collectionsUrl}`);
-          } catch (error: unknown) {
-            this.logger.error(`Failed to load collections mappings for hub ${hubId}: ${(error as Error).message}`);
-            // Continue without mappings - ratings will fall back to local storage
-          }
-        };
-
-        // Load in background with 5 second timeout.
-        // If loadMappings() wins the race, mappings are available immediately.
-        // If the timeout wins, loadMappings() may still complete later and populate
-        // discussionMappings — this is benign (late-arriving mappings are usable for
-        // subsequent rating submissions within the same session).
-        const timeoutPromise = new Promise<void>((resolve) => {
-          setTimeout(() => {
-            this.logger.warn(`Collections mapping load timed out for hub ${hubId}, continuing without mappings`);
-            resolve();
-          }, 5000);
-        });
-
-        await Promise.race([loadMappings(), timeoutPromise]);
+      // Resolve discussion category once. Non-fatal: backend can still serve
+      // reads via local fallback if the category cannot be resolved (transient
+      // 5xx, missing category). Voting will fail until next session.
+      try {
+        await (backend as GitHubDiscussionsBackend).initializeCategory();
+      } catch (error: unknown) {
+        this.logger.warn(
+          `Failed to initialize discussion category for hub ${hubId}: ${(error as Error).message}. Voting will fail until next session.`
+        );
       }
     } else {
       // Default to file backend

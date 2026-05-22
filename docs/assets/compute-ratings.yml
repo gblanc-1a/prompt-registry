@@ -1,13 +1,18 @@
 # Compute Ratings Workflow for Hub Repositories
 #
-# This GitHub Action computes ratings from GitHub Discussion reactions
-# and feedback comments. It should be added to your hub repository,
-# NOT to the prompt-registry extension repository.
+# This GitHub Action aggregates star ratings from GitHub Discussion comments.
+# It should be added to your engagement repository (the one referenced by
+# `engagement.repository` in your hub config), NOT to the prompt-registry
+# extension repository.
 #
 # Prerequisites:
-# 1. Enable GitHub Discussions on your repository
-# 2. Create a collections.yaml mapping bundles to discussions
-# 3. Install @prompt-registry/lib package (or use npx)
+# 1. Enable GitHub Discussions on your engagement repository
+# 2. Create a discussion category named "Bundle Ratings" (or whatever you set
+#    in `engagement.category` in your hub config)
+# 3. Install @prompt-registry/collection-scripts (or use npx)
+#
+# Discussions are created lazily by the extension on the first vote per bundle.
+# No admin pre-seeding or static mapping file is required.
 #
 # See: https://github.com/wherka-ama/prompt-registry/blob/main/docs/user-guide/engagement.md
 
@@ -19,10 +24,13 @@ on:
     - cron: '0 2 * * *'
   workflow_dispatch:
     inputs:
-      config_path:
-        description: 'Path to collections.yaml config file'
+      repo:
+        description: 'Engagement repository (owner/repo)'
+        required: true
+      category:
+        description: 'Discussion category name'
         required: false
-        default: 'collections.yaml'
+        default: 'Bundle Ratings'
       output_path:
         description: 'Path for ratings.json output'
         required: false
@@ -35,7 +43,7 @@ permissions:
 jobs:
   compute-ratings:
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -59,7 +67,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           npx --package @prompt-registry/collection-scripts compute-ratings \
-            --config "${{ github.event.inputs.config_path || 'collections.yaml' }}" \
+            --repo "${{ github.event.inputs.repo || github.repository }}" \
+            --category "${{ github.event.inputs.category || 'Bundle Ratings' }}" \
             --output "${{ github.event.inputs.output_path || 'ratings.json' }}"
 
       - name: Check for changes

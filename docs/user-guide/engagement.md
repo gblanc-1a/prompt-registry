@@ -20,7 +20,7 @@ The unified feedback dialog guides you through:
 
 ### Where Does Feedback Go?
 
-- **Hubs with GitHub Discussions**: Feedback is posted as a comment on the bundle's discussion thread, making it visible to the community
+- **Hubs with GitHub Discussions**: Feedback is posted as a comment on the bundle's discussion thread, making it visible to the community. Discussions are created automatically when a user submits the first vote for a bundle. No admin pre-seeding is required.
 - **Other hubs**: Feedback is stored locally and can be aggregated by hub maintainers
 
 ---
@@ -43,9 +43,9 @@ Download the [compute-ratings.yml](../assets/compute-ratings.yml) workflow file 
 
 The workflow:
 - Runs daily at 2:00 AM UTC (configurable via cron)
-- Can be triggered manually with custom config/output paths
-- Fetches reactions from GitHub Discussions
-- Computes ratings using Wilson score algorithm
+- Can be triggered manually with custom repo/category/output inputs
+- Lists discussions in the configured rating category and parses star comments
+- Computes ratings using the Wilson score algorithm
 - Commits updated `ratings.json` to your repository
 
 > **Note**: This workflow should be added to your **hub repository**, not to the prompt-registry extension repository.

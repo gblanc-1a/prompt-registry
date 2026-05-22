@@ -6,7 +6,7 @@ The engagement system enables users to rate and provide feedback on bundles via 
 
 ## Purpose
 
-- **User ratings**: 1-5 star ratings submitted as GitHub Discussion reactions and comments
+- **User ratings**: 1-5 star ratings submitted as GitHub Discussion comments
 - **Feedback**: Written comments attached to ratings
 - **Aggregation**: Pre-computed ratings.json file updated periodically via CLI
 - **Caching**: In-memory cache provides synchronous access for UI components
@@ -40,18 +40,33 @@ In-memory cache providing synchronous access to bundle ratings.
 Backend implementation using GitHub Discussions API.
 
 **Write path (voting):**
-1. Remove existing reaction (👍/👎) via GraphQL
-2. Add new reaction via GraphQL (👍 for 4-5 stars, 👎 for 1-2 stars)
-3. Post or edit rating comment with exact star count (`Rating: ⭐⭐⭐⭐⭐`)
-4. Cache vote locally for cross-session hydration
+1. Lazily resolve or create the bundle's discussion via `ensureDiscussion`
+2. Post or edit a rating comment with the exact star count (`Rating: ⭐⭐⭐⭐⭐`)
+3. Mark the rating `synced=true`; on failure mark `synced=false` and prompt re-auth on 401/403
 
 **Read path (aggregate ratings):**
 - Fetches pre-computed ratings.json from hub (via RatingService)
 - Does NOT compute aggregates from live Discussion data
 
 **Mapping:**
-- `loadCollectionsMappings()`: Loads collections.yaml to map bundles → Discussion numbers
-- Fallback: tries API contents endpoint for internal/private repos
+- `initializeCategory()`: Resolves the configured discussion category id (default `Bundle Ratings`) once at hub registration time. Throws on missing category or auth failure; safe to call repeatedly.
+- `ensureDiscussion(resourceId, displayName)`: Lazy bundle → discussion resolver. Looks up the in-memory cache → searches existing discussions in the category → creates a new discussion (with the YAML metadata block in its body) if none is found.
+- The bundle → discussion map starts empty and populates on the first vote per bundle. There is no static mapping file.
+
+**Discussion body metadata block:**
+
+Each discussion created by `ensureDiscussion` embeds an HTML comment marker
+followed by a fenced YAML block inside its body:
+
+````markdown
+<!-- prompt-registry:metadata -->
+```yaml
+bundle_id: my-bundle
+source_id: awesome-copilot
+```
+````
+
+`compute-ratings` parses these blocks to group discussions by `(source_id, bundle_id)`, so duplicate discussions created during indexing-lag races merge into a single rating entry.
 
 **Comment format:**
 ```
@@ -108,8 +123,8 @@ sequenceDiagram
     
     HM->>ES: registerHubBackend(hubId, config)
     ES->>Backend: initialize(config)
-    Backend->>Backend: loadCollectionsMappings(collectionsUrl)
-    Note over Backend: Maps bundles → Discussion numbers
+    Backend->>Backend: initializeCategory()
+    Note over Backend: Resolves discussion category id;<br/>per-bundle mappings populate lazily on first vote
     
     HM->>RC: refreshFromHub(ratingsUrl)
     Note over RC: Fetch & cache ratings.json
@@ -143,8 +158,8 @@ A user's rating passes through several places before showing up in the UI. When 
 |---|-------|-------------|---------------|----------|
 | 1 | In-memory cache | `src/services/engagement/rating-cache.ts` | What the UI displays right now | Current session |
 | 2 | Local JSON | `globalStorage/engagement/ratings.json` via `src/storage/engagement-storage.ts` | Saved copy so ratings survive restarts | Until user clears data |
-| 3 | GitHub Discussion comment | Posted by `GitHubDiscussionsBackend.postOrEditRatingComment()` | The user's star emoji comment | Permanent |
-| 4 | Static hub file | `ratings.json` fetched via `RatingService.fetchRatings()` | Community averages, rebuilt by CI | Until next `compute-ratings` run |
+| 3 | GitHub Discussion comment | Posted by `GitHubDiscussionsBackend.postOrEditRatingComment()` after `ensureDiscussion` resolves the bundle's discussion | The user's star emoji comment | Permanent |
+| 4 | Static hub file | `ratings.json` fetched via `RatingService.fetchRatings()` | Community averages aggregated from star comments, rebuilt by CI | Until next `compute-ratings` run |
 
 **Priority when they disagree (highest → lowest):**
 
@@ -267,8 +282,8 @@ sequenceDiagram
     Note over UI: Tile updates immediately
     
     VP->>Backend: submitRating()
-    Backend->>GH: removeExistingReaction()
-    Backend->>GH: addReaction(👍 or 👎)
+    Backend->>Backend: ensureDiscussion(resourceId, displayName)
+    Note over Backend: cache → search → create
     Backend->>GH: postOrEditRatingComment(⭐⭐⭐)
     Backend->>Storage: saveRating() [local persist]
     Backend-->>VP: Success
@@ -283,25 +298,37 @@ sequenceDiagram
 
 ---
 
+### Race handling
+
+Two extensions racing on the same unmapped bundle may both create a discussion
+(GraphQL search has indexing lag and provides no atomicity). This is acceptable:
+`compute-ratings` groups discussions by `(source_id, bundle_id)` parsed from the
+body metadata block, so duplicates union into a single rating in the output.
+Maintainers can manually close redundant discussions later — the votes survive
+the merge.
+
+---
+
 ## compute-ratings CLI
 
-Standalone CLI that reads Discussion comments and produces ratings.json.
+Standalone CLI that lists discussions in the rating category and produces ratings.json.
 
 **Location:** `lib/bin/compute-ratings.js`
 
 **Usage:**
 ```bash
 GITHUB_TOKEN=$(gh auth token) node lib/bin/compute-ratings.js \
-  --config path/to/collections.yaml \
+  --repo owner/repo \
+  --category "Bundle Ratings" \
   --output path/to/ratings.json
 ```
 
 **What it does:**
-1. Reads collections.yaml (bundle → Discussion number mappings)
-2. Fetches Discussion comments via GitHub API
-3. Parses `Rating: ⭐⭐⭐⭐⭐` lines from comments
-4. Aggregates star ratings (average, wilson score, vote count)
-5. Writes ratings.json
+1. Lists every discussion in the configured category via paginated GraphQL
+2. Parses each body's metadata block (`<!-- prompt-registry:metadata -->` followed by a fenced `yaml` code block)
+3. Groups discussions by `(source_id, bundle_id)`; merges duplicates
+4. Aggregates star ratings (average, Wilson, count, confidence)
+5. Writes ratings.json (reaction fields `up` / `down` are zeroed; per-resource voting is not collected)
 
 **Not automatic**: Must be run manually or via CI/CD. Extension reads the pre-computed file.
 

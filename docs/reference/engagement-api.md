@@ -240,55 +240,36 @@ Initialize the backend.
 interface GitHubDiscussionsBackendConfig {
   type: 'github-discussions';
   repository: string;        // 'owner/repo'
-  collectionsUrl?: string;   // URL to collections.yaml
+  category?: string;         // Discussion category name (default: "Bundle Ratings")
 }
 ```
 
 ---
 
-### Mapping Management
+### Category Initialization
 
-#### `loadCollectionsMappings(collectionsUrl: string): Promise<void>`
+#### `initializeCategory(): Promise<void>`
 
-Load bundle → Discussion number mappings from collections.yaml.
+Resolve the configured discussion category id once (typically called by
+`EngagementService.registerHubBackend`).
 
-**collections.yaml format:**
-```yaml
-repository: owner/repo
-collections:
-  - id: bundle-1
-    source_id: awesome-copilot
-    discussion_number: 42
-  - id: bundle-2
-    source_id: awesome-copilot
-    discussion_number: 43
-```
+**What it does:**
+1. Issues a GraphQL query for the repository's discussion categories
+2. Looks up the configured category name (default `Bundle Ratings`) and caches its node id for subsequent `createDiscussion` calls
+3. Throws if the category is missing (maintainer setup error) or on auth failure (401/403)
 
-**Fallback:** If direct URL fetch fails (private repo), tries GitHub API contents endpoint.
+**Idempotent:** Safe to call repeatedly. Subsequent calls short-circuit if the category id is already cached.
+
+**Note:** This method does NOT pre-load any bundle → discussion mappings. Mappings start empty and populate lazily via `ensureDiscussion` on the first vote per bundle.
 
 **Example:**
 ```typescript
-await backend.loadCollectionsMappings(
-  'https://raw.githubusercontent.com/owner/repo/main/collections.yaml'
-);
-```
-
----
-
-#### `getDiscussionMapping(resourceId: string): DiscussionMapping | undefined`
-
-Get Discussion number for a bundle.
-
-**Parameters:**
-- `resourceId`: Format `"sourceId:bundleId"` (e.g., `"awesome-copilot:bundle-1"`)
-
-**Returns:**
-```typescript
-interface DiscussionMapping {
-  resourceId: string;
-  discussionNumber: number;
-  commentId?: number;
-}
+await backend.initialize({
+  type: 'github-discussions',
+  repository: 'owner/repo',
+  category: 'Bundle Ratings'
+});
+await backend.initializeCategory();
 ```
 
 ---
@@ -300,10 +281,9 @@ interface DiscussionMapping {
 Submit a rating via GitHub Discussions.
 
 **What it does:**
-1. Removes existing reaction (👍/👎) via GraphQL
-2. Adds new reaction: 👍 for 4-5 stars, 👎 for 1-2 stars
-3. Posts or edits comment with exact star count: `Rating: ⭐⭐⭐⭐⭐`
-4. Falls back to local storage on failure
+1. Lazily resolves or creates the bundle's discussion via `ensureDiscussion(resourceId, displayName)` (cache → search → create)
+2. Posts or edits the viewer's comment with the exact star count: `Rating: ⭐⭐⭐⭐⭐`
+3. Marks the rating `synced=true` and persists locally; on auth failure (401/403) triggers `forceNewSession` re-auth via `handleAuthError`
 
 **Rating format:**
 ```typescript
@@ -420,13 +400,14 @@ function parseRatingFromComment(body: string): RatingScore | undefined {
 
 ## compute-ratings CLI
 
-Standalone CLI that reads Discussion comments and produces ratings.json.
+Standalone CLI that lists discussions in the rating category and produces ratings.json.
 
 ### Usage
 
 ```bash
 GITHUB_TOKEN=$(gh auth token) node lib/bin/compute-ratings.js \
-  --config path/to/collections.yaml \
+  --repo owner/repo \
+  --category "Bundle Ratings" \
   --output path/to/ratings.json
 ```
 
@@ -434,7 +415,8 @@ GITHUB_TOKEN=$(gh auth token) node lib/bin/compute-ratings.js \
 
 | Argument | Description | Default |
 |----------|-------------|---------|
-| `--config` | Path to collections.yaml | `collections.yaml` |
+| `--repo` | Engagement repository in `owner/repo` form | _(required)_ |
+| `--category` | Discussion category name to scan | `Bundle Ratings` |
 | `--output` | Path to output ratings.json | `ratings.json` |
 
 ### Environment Variables

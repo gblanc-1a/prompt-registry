@@ -500,20 +500,16 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
     rating: Rating,
     token: string
   ): Promise<void> {
-    try {
-      const commentBody = this.formatRatingComment(rating.score);
-      const existing = await this.findViewerComment(mapping.discussionNumber, token);
+    const commentBody = this.formatRatingComment(rating.score);
+    const existing = await this.findViewerComment(mapping.discussionNumber, token);
 
-      if (existing) {
-        await this.updateDiscussionComment(existing.nodeId, commentBody, token);
-        this.logger.debug(`Updated rating comment on discussion #${mapping.discussionNumber}`);
-      } else {
-        const discussionNodeId = await this.getDiscussionNodeId(mapping.discussionNumber, token);
-        await this.addDiscussionComment(discussionNodeId, commentBody, token);
-        this.logger.debug(`Posted rating comment on discussion #${mapping.discussionNumber}`);
-      }
-    } catch (error) {
-      this.logger.warn(`Failed to post/edit rating comment: ${(error as Error).message}`);
+    if (existing) {
+      await this.updateDiscussionComment(existing.nodeId, commentBody, token);
+      this.logger.debug(`Updated rating comment on discussion #${mapping.discussionNumber}`);
+    } else {
+      const discussionNodeId = await this.getDiscussionNodeId(mapping.discussionNumber, token);
+      await this.addDiscussionComment(discussionNodeId, commentBody, token);
+      this.logger.debug(`Posted rating comment on discussion #${mapping.discussionNumber}`);
     }
   }
 

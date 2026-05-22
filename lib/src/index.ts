@@ -71,10 +71,3 @@ export {
   generateSkillContent,
   createSkill,
 } from './skills';
-
-// Discussion setup exports
-export {
-  setupDiscussions,
-  parseArgs as parseSetupDiscussionsArgs,
-  printUsage as printSetupDiscussionsUsage,
-} from './setup-discussions';

@@ -70,16 +70,13 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
   // Cache for comment node IDs (discussionNumber -> commentNodeId)
   private readonly commentNodeIds: Map<string, string> = new Map();
 
-  // Storage path for local backend (can be set before initialize)
-  private storagePath = '';
+  private readonly storagePath: string;
 
-  constructor(storagePath?: string) {
+  constructor(storagePath: string) {
     super();
     this.logger = Logger.getInstance();
     this.localBackend = new FileBackend();
-    if (storagePath) {
-      this.storagePath = storagePath;
-    }
+    this.storagePath = storagePath;
   }
 
   private resolveMapping(resourceId: string): DiscussionMapping | undefined {
@@ -156,44 +153,24 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
    * @param token
    */
   private async removeExistingReaction(discussionNodeId: string, token: string): Promise<void> {
-    try {
-      // Try removing both THUMBS_UP and THUMBS_DOWN (only one the user has will succeed)
-      for (const content of ['THUMBS_UP', 'THUMBS_DOWN'] as const) {
-        const mutation = `
-          mutation RemoveReaction($subjectId: ID!, $content: ReactionContent!) {
-            removeReaction(input: { subjectId: $subjectId, content: $content }) {
-              reaction { content }
-            }
+    // Try removing both THUMBS_UP and THUMBS_DOWN. GitHub returns HTTP 200 with a GraphQL
+    // `errors` array for "reaction does not exist" — that path is already silent (no throw).
+    // Any thrown error here is auth or network, which must propagate so the caller can mark
+    // the rating unsynced for drain retry.
+    for (const content of ['THUMBS_UP', 'THUMBS_DOWN'] as const) {
+      const mutation = `
+        mutation RemoveReaction($subjectId: ID!, $content: ReactionContent!) {
+          removeReaction(input: { subjectId: $subjectId, content: $content }) {
+            reaction { content }
           }
-        `;
-        await axios.post(
-          'https://api.github.com/graphql',
-          { query: mutation, variables: { subjectId: discussionNodeId, content } },
-          { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
-        );
-      }
-    } catch {
-      // Ignore errors - reaction may not exist
-      this.logger.debug('No existing reaction to remove');
+        }
+      `;
+      await axios.post(
+        'https://api.github.com/graphql',
+        { query: mutation, variables: { subjectId: discussionNodeId, content } },
+        { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+      );
     }
-  }
-
-  /**
-   * Post feedback as a comment to a GitHub Discussion using GraphQL API
-   * @param feedback
-   * @param mapping
-   */
-  private async postFeedbackToDiscussion(feedback: Feedback, mapping: DiscussionMapping): Promise<void> {
-    const token = await this.getAccessToken();
-
-    // Step 1: Get the Discussion node ID using GraphQL
-    const discussionId = await this.getDiscussionNodeId(mapping.discussionNumber, token);
-
-    // Step 2: Format the comment body
-    const commentBody = this.formatFeedbackComment(feedback);
-
-    // Step 3: Add comment to discussion using GraphQL mutation
-    await this.addDiscussionComment(discussionId, commentBody, token);
   }
 
   /**
@@ -393,11 +370,19 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
       }
     `;
 
-    await axios.post(
+    const response = await axios.post<{
+      data?: { updateDiscussionComment?: { comment?: { id: string } } };
+      errors?: { message: string }[];
+    }>(
       'https://api.github.com/graphql',
       { query: mutation, variables: { commentId: commentNodeId, body } },
       { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
     );
+
+    if (response.data.errors && response.data.errors.length > 0) {
+      const messages = response.data.errors.map((e) => e.message).join('; ');
+      throw new Error(`updateDiscussionComment GraphQL errors: ${messages}`);
+    }
   }
 
   /**
@@ -438,14 +423,6 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
   }
 
   /**
-   * Set storage path for local backend (must be called before initialize)
-   * @param path
-   */
-  public setStoragePath(path: string): void {
-    this.storagePath = path;
-  }
-
-  /**
    * Initialize the backend
    * @param config
    */
@@ -456,7 +433,6 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
 
     this.config = config;
 
-    // Parse repository
     const [owner, repo] = this.config.repository.split('/');
     if (!owner || !repo) {
       throw new Error(`Invalid repository format: ${this.config.repository}. Expected 'owner/repo'.`);
@@ -464,10 +440,6 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
     this.owner = owner;
     this.repo = repo;
 
-    // Initialize local backend for feedback storage
-    if (!this.storagePath) {
-      throw new Error('Storage path is required. Call setStoragePath() before initialize().');
-    }
     await this.localBackend.initialize({
       type: 'file',
       storagePath: this.storagePath
@@ -605,7 +577,8 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
     const mapping = this.resolveMapping(rating.resourceId);
     if (!mapping) {
       this.logger.warn(`No discussion mapping for resource: ${rating.resourceId}`);
-      await this.localBackend.submitRating(rating);
+      // No mapping = nothing to retry against; mark synced so drain skips it.
+      await this.localBackend.submitRating({ ...rating, synced: true });
       return;
     }
 
@@ -613,13 +586,10 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
       const token = await this.getAccessToken();
       const reactionContent = rating.score >= 3 ? 'THUMBS_UP' : 'THUMBS_DOWN';
 
-      // Get the discussion node ID for GraphQL mutations
       const discussionNodeId = await this.getDiscussionNodeId(mapping.discussionNumber, token);
 
-      // Remove existing reaction first (if any)
       await this.removeExistingReaction(discussionNodeId, token);
 
-      // Add new reaction via GraphQL
       const mutation = `
         mutation AddReaction($subjectId: ID!, $content: ReactionContent!) {
           addReaction(input: { subjectId: $subjectId, content: $content }) {
@@ -633,18 +603,21 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
         { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
       );
 
-      // Cache the vote in memory and persist locally for cross-session hydration
       this.userVotes.set(rating.resourceId, rating.score >= 3 ? 'up' : 'down');
-      await this.localBackend.submitRating(rating);
+      await this.localBackend.submitRating({ ...rating, synced: true });
 
       // Post or edit a comment with exact star count (non-fatal)
       await this.postOrEditRatingComment(mapping, rating, token);
 
       this.logger.info(`Submitted ${reactionContent} reaction for ${rating.resourceId}`);
     } catch (error: unknown) {
-      this.logger.error(`Failed to submit rating to GitHub: ${(error as Error).message}`, error instanceof Error ? error : undefined);
-      // Fall back to local storage
-      await this.localBackend.submitRating(rating);
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `Failed to submit rating to GitHub for ${rating.resourceType}/${rating.resourceId}: ${message}. Stored locally; activation drain will retry.`,
+        error instanceof Error ? error : undefined
+      );
+      // Mark unsynced so the activation-time drain retries on the next session.
+      await this.localBackend.submitRating({ ...rating, synced: false });
     }
   }
 
@@ -798,7 +771,11 @@ export class GitHubDiscussionsBackend extends BaseEngagementBackend {
       this.logger.debug(`fetchViewerRatings: found ${results.length} ratings from remote`);
       return results;
     } catch (error) {
-      this.logger.debug(`fetchViewerRatings failed: ${(error as Error).message}`);
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `fetchViewerRatings failed for ${this.owner}/${this.repo}: ${message}`,
+        error instanceof Error ? error : undefined
+      );
       return [];
     }
   }

@@ -10,7 +10,6 @@ import {
   Rating,
   RatingScore,
   RatingStats,
-  ResourceEngagement,
 } from '../../types/engagement';
 
 /**
@@ -108,21 +107,6 @@ export interface IEngagementBackend {
    * @param feedbackId Feedback ID to delete
    */
   deleteFeedback(feedbackId: string): Promise<void>;
-
-  // ========================================================================
-  // Aggregation
-  // ========================================================================
-
-  /**
-   * Get combined engagement data for a resource
-   * @param resourceType Type of resource
-   * @param resourceId Resource identifier
-   * @returns Combined engagement data
-   */
-  getResourceEngagement(
-    resourceType: EngagementResourceType,
-    resourceId: string
-  ): Promise<ResourceEngagement>;
 }
 
 export interface IViewerRatingsBackend extends IEngagementBackend {
@@ -181,27 +165,5 @@ export abstract class BaseEngagementBackend implements IEngagementBackend {
     if (!this._initialized) {
       throw new Error(`Backend '${this.type}' is not initialized. Call initialize() first.`);
     }
-  }
-
-  /**
-   * Default implementation that aggregates data from individual methods
-   * @param resourceType
-   * @param resourceId
-   */
-  public async getResourceEngagement(
-    resourceType: EngagementResourceType,
-    resourceId: string
-  ): Promise<ResourceEngagement> {
-    const [ratings, feedback] = await Promise.all([
-      this.getAggregatedRatings(resourceType, resourceId),
-      this.getFeedback(resourceType, resourceId, 5)
-    ]);
-
-    return {
-      resourceId,
-      resourceType,
-      ratings: ratings || undefined,
-      recentFeedback: feedback.length > 0 ? feedback : undefined
-    };
   }
 }

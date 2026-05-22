@@ -12,8 +12,8 @@ import {
   CreateCollectionCommand,
 } from './commands/create-collection-command';
 import {
-  FeedbackCommands,
-} from './commands/feedback-commands';
+  EngagementCommands,
+} from './commands/engagement-commands';
 import {
   GitHubAuthCommand,
 } from './commands/github-auth-command';
@@ -176,7 +176,7 @@ export class PromptRegistryExtension {
 
   // Engagement (ratings + feedback)
   private engagementService: EngagementService | undefined;
-  private feedbackCommands: FeedbackCommands | undefined;
+  private engagementCommands: EngagementCommands | undefined;
 
   // Repository-level installation services
   private lockfileManager: LockfileManager | undefined;
@@ -233,21 +233,26 @@ export class PromptRegistryExtension {
       this.engagementService = EngagementService.getInstance(this.context);
       await this.engagementService.initialize();
 
-      this.feedbackCommands = new FeedbackCommands();
-      this.feedbackCommands.setEngagementService(this.engagementService);
-      this.feedbackCommands.registerCommands(this.context);
+      this.engagementCommands = new EngagementCommands();
+      this.engagementCommands.setEngagementService(this.engagementService);
+      this.engagementCommands.registerCommands(this.context);
 
       // Register engagement backends and warm caches for all imported hubs
       if (this.hubManager) {
         await this.hubManager.initializeEngagementBackends();
       }
 
-      // Drain any unsynced pending feedback saved during a previous offline session (non-fatal)
-      if (this.feedbackCommands) {
+      // Drain any unsynced pending feedback and ratings saved during previous offline sessions (non-fatal)
+      if (this.engagementCommands) {
         try {
-          await this.feedbackCommands.drainUnsyncedFeedback();
+          await this.engagementCommands.drainUnsyncedFeedback();
         } catch (error) {
           this.logger.debug('Drain unsynced feedback failed (non-fatal)', error);
+        }
+        try {
+          await this.engagementCommands.drainUnsyncedRatings();
+        } catch (error) {
+          this.logger.debug('Drain unsynced ratings failed (non-fatal)', error);
         }
       }
     } catch (error) {

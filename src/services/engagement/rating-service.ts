@@ -7,9 +7,6 @@
 
 import axios from 'axios';
 import {
-  RatingStats,
-} from '../../types/engagement';
-import {
   convertRawUrlToApi,
 } from '../../utils/github-url-utils';
 import {
@@ -226,65 +223,6 @@ export class RatingService {
   public async getBundleRating(ratingsUrl: string, bundleId: string, accessToken?: string): Promise<BundleRating | undefined> {
     const ratings = await this.fetchRatings(ratingsUrl, false, accessToken);
     return ratings?.bundles[bundleId];
-  }
-
-  /**
-   * Get rating stats for a bundle (compatible with RatingStats type)
-   * @param ratingsUrl URL to the ratings.json file
-   * @param bundleId Bundle identifier
-   */
-  public async getRatingStats(ratingsUrl: string, bundleId: string): Promise<RatingStats | undefined> {
-    const rating = await this.getBundleRating(ratingsUrl, bundleId);
-    if (!rating) {
-      return undefined;
-    }
-
-    // Convert BundleRating to RatingStats
-    // Map upvotes to 5-star, downvotes to 1-star for distribution
-    return {
-      resourceId: bundleId,
-      averageRating: rating.starRating,
-      ratingCount: rating.totalVotes,
-      distribution: {
-        1: rating.downvotes,
-        2: 0,
-        3: 0,
-        4: 0,
-        5: rating.upvotes
-      }
-    };
-  }
-
-  /**
-   * Format rating for display in tree view
-   * @param rating Bundle rating data
-   * @returns Formatted string like "★ 4.2" or "👍 42"
-   */
-  public formatRatingForDisplay(rating: BundleRating): string {
-    if (rating.totalVotes === 0) {
-      return '';
-    }
-
-    // Use star rating if we have enough votes for confidence
-    if (rating.totalVotes >= 5) {
-      return `★ ${rating.starRating.toFixed(1)}`;
-    }
-
-    // For fewer votes, just show thumbs up count
-    return `👍 ${rating.upvotes}`;
-  }
-
-  /**
-   * Get formatted rating string for a bundle
-   * @param ratingsUrl URL to the ratings.json file
-   * @param bundleId Bundle identifier
-   */
-  public async getFormattedRating(ratingsUrl: string, bundleId: string): Promise<string> {
-    const rating = await this.getBundleRating(ratingsUrl, bundleId);
-    if (!rating) {
-      return '';
-    }
-    return this.formatRatingForDisplay(rating);
   }
 
   /**

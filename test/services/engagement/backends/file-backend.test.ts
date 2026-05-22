@@ -204,35 +204,6 @@ suite('FileBackend', () => {
     });
   });
 
-  suite('getResourceEngagement()', () => {
-    test('should return combined engagement data', async () => {
-      // Add rating
-      await backend.submitRating(FileBackend.createRating('bundle', 'test-bundle', 4));
-
-      // Add feedback
-      await backend.submitFeedback(
-        FileBackend.createFeedback('bundle', 'test-bundle', 'Great!')
-      );
-
-      const engagement = await backend.getResourceEngagement('bundle', 'test-bundle');
-
-      assert.strictEqual(engagement.resourceId, 'test-bundle');
-      assert.strictEqual(engagement.resourceType, 'bundle');
-      assert.ok(engagement.ratings);
-      assert.strictEqual(engagement.ratings.averageRating, 4);
-      assert.ok(engagement.recentFeedback);
-      assert.strictEqual(engagement.recentFeedback.length, 1);
-    });
-
-    test('should handle resource with no engagement data', async () => {
-      const engagement = await backend.getResourceEngagement('bundle', 'empty-bundle');
-
-      assert.strictEqual(engagement.resourceId, 'empty-bundle');
-      assert.strictEqual(engagement.ratings, undefined);
-      assert.strictEqual(engagement.recentFeedback, undefined);
-    });
-  });
-
   suite('Static Factory Methods', () => {
     suite('createRating()', () => {
       test('should create rating with auto-generated ID and timestamp', () => {

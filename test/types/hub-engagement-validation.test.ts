@@ -39,8 +39,7 @@ suite('Hub Engagement Configuration Validation', () => {
         feedback: {
           enabled: true,
           requireRating: false,
-          maxLength: 2000,
-          feedbackUrl: 'https://example.com/feedbacks.json'
+          maxLength: 2000
         }
       }
     };
@@ -119,38 +118,6 @@ suite('Hub Engagement Configuration Validation', () => {
     assert.ok(result.errors.some((e) => e.includes('ratingsUrl')));
   });
 
-  test('should reject invalid feedbackUrl', () => {
-    const config = {
-      version: '1.0.0',
-      metadata: {
-        name: 'Test Hub',
-        description: 'Test hub description',
-        maintainer: 'test@example.com',
-        updatedAt: '2025-01-29T00:00:00Z'
-      },
-      sources: [
-        {
-          id: 'test-source',
-          type: 'github',
-          enabled: true,
-          priority: 1
-        }
-      ],
-      profiles: [],
-      engagement: {
-        enabled: true,
-        feedback: {
-          enabled: true,
-          feedbackUrl: 'invalid-url'
-        }
-      }
-    };
-
-    const result = validateHubConfig(config);
-    assert.strictEqual(result.valid, false);
-    assert.ok(result.errors.some((e) => e.includes('feedbackUrl')));
-  });
-
   test('should reject non-string ratingsUrl', () => {
     const config = {
       version: '1.0.0',
@@ -181,38 +148,6 @@ suite('Hub Engagement Configuration Validation', () => {
     const result = validateHubConfig(config);
     assert.strictEqual(result.valid, false);
     assert.ok(result.errors.some((e) => e.includes('ratingsUrl') && e.includes('string')));
-  });
-
-  test('should reject non-string feedbackUrl', () => {
-    const config = {
-      version: '1.0.0',
-      metadata: {
-        name: 'Test Hub',
-        description: 'Test hub description',
-        maintainer: 'test@example.com',
-        updatedAt: '2025-01-29T00:00:00Z'
-      },
-      sources: [
-        {
-          id: 'test-source',
-          type: 'github',
-          enabled: true,
-          priority: 1
-        }
-      ],
-      profiles: [],
-      engagement: {
-        enabled: true,
-        feedback: {
-          enabled: true,
-          feedbackUrl: { url: 'test' } as any
-        }
-      }
-    };
-
-    const result = validateHubConfig(config);
-    assert.strictEqual(result.valid, false);
-    assert.ok(result.errors.some((e) => e.includes('feedbackUrl') && e.includes('string')));
   });
 
   test('should accept hub config without engagement section', () => {

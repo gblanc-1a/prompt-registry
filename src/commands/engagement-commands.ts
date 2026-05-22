@@ -1,11 +1,5 @@
 /**
- * FeedbackCommands - VS Code commands for collecting user feedback
- *
- * Provides a unified dialog for users to submit feedback on bundles and profiles.
- * The dialog includes:
- * - Star rating (1-5)
- * - Binary feedback (+1 Works great / -1 Couldn't make it work)
- * - Optional redirect to GitHub issues for bug reports/suggestions
+ * EngagementCommands - VS Code commands for collecting user feedback and ratings.
  */
 
 import * as crypto from 'node:crypto';
@@ -64,9 +58,9 @@ export interface FeedbackResult {
 }
 
 /**
- * Commands for feedback collection
+ * Commands for engagement (feedback + rating drain)
  */
-export class FeedbackCommands {
+export class EngagementCommands {
   private readonly logger = Logger.getInstance();
   private engagementService?: EngagementService;
   private readonly maxCommentLength: number;
@@ -77,17 +71,15 @@ export class FeedbackCommands {
   }
 
   /**
-   * Normalize various input types to FeedbackableItem
-   * Handles TreeView items, direct FeedbackableItem, or bundleId strings
+   * Normalize various input types to FeedbackableItem.
+   * Handles TreeView items, direct FeedbackableItem, InstalledBundle, or bundleId strings.
    * @param item
    */
   private normalizeFeedbackItem(item: unknown): FeedbackableItem {
-    // If it's already a FeedbackableItem
     if (item !== null && typeof item === 'object' && 'resourceId' in item && 'resourceType' in item) {
       return item as FeedbackableItem;
     }
 
-    // If it's a TreeView item with data (InstalledBundle)
     if (item !== null && typeof item === 'object' && 'data' in item) {
       const obj = item as Record<string, unknown>;
       const data = obj.data as Record<string, unknown> | undefined;
@@ -101,7 +93,6 @@ export class FeedbackCommands {
       }
     }
 
-    // If it's a direct InstalledBundle or Bundle object
     if (item !== null && typeof item === 'object' && 'bundleId' in item) {
       const obj = item as Record<string, unknown>;
       return {
@@ -112,7 +103,6 @@ export class FeedbackCommands {
       };
     }
 
-    // If it's just a string (bundleId)
     if (typeof item === 'string') {
       return {
         resourceId: item,
@@ -121,7 +111,6 @@ export class FeedbackCommands {
       };
     }
 
-    // Default fallback - prompt user to select
     return {
       resourceId: 'unknown',
       resourceType: 'bundle',
@@ -131,7 +120,6 @@ export class FeedbackCommands {
 
   /**
    * Resolve a GitHub issues URL from a source repository URL.
-   * Strips .git suffix and extracts the base GitHub repo URL, then appends /issues/new.
    * @param sourceUrl
    */
   private resolveIssueUrl(sourceUrl: string): string {
@@ -158,7 +146,6 @@ export class FeedbackCommands {
       this.logger.debug(`Opening issue tracker for ${item.resourceId}`);
 
       if (item.sourceUrl) {
-        // Extract skill path from original URL (before resolving .git/base URL)
         let skillPath: string | undefined;
         const skillsMatch = item.sourceUrl.match(/\/skills\/([^/]+)/);
         if (skillsMatch) {
@@ -166,27 +153,21 @@ export class FeedbackCommands {
           this.logger.debug(`Extracted skill path: ${skillPath}`);
         }
 
-        // Resolve the GitHub issues URL
         const issueUrl = this.resolveIssueUrl(item.sourceUrl);
 
         this.logger.debug(`Issue URL: ${issueUrl}`);
 
-        // Use correct terminology based on source type
-        // awesome-copilot sources ARE collections, others are bundles
         const isAwesomeCopilot = item.sourceType === 'awesome-copilot';
         const itemType = isAwesomeCopilot ? 'Collection' : 'Bundle';
 
-        // Build issue body
         const title = `[Feedback] ${item.name || item.resourceId}`;
 
-        // Build body parts
         const bodyParts: string[] = [
           '<!-- This is an example issue template. Feel free to modify the content to fit your needs -->',
           `${itemType} Information`,
           `- **${itemType} ID:** ${item.resourceId}`
         ];
 
-        // Add skill path if present
         if (skillPath) {
           bodyParts.push(`- **Skill Path:** ${skillPath}`);
         }
@@ -238,7 +219,6 @@ export class FeedbackCommands {
 
         await vscode.env.openExternal(uri);
       } else {
-        // Fallback: try to open via the existing command
         await vscode.commands.executeCommand('promptregistry.openItemRepository', {
           type: 'bundle',
           data: { bundleId: item.resourceId, sourceId: item.resourceId }
@@ -322,7 +302,9 @@ export class FeedbackCommands {
   }
 
   /**
-   * Save feedback to the engagement service
+   * Save feedback. Submits remotely if possible; always persists locally as a pending entry
+   * so that activation-time drain can re-submit on next session if remote submission fails.
+   * Failures are logged at error level but never surfaced to the user.
    * @param item
    * @param comment
    * @param rating
@@ -335,6 +317,11 @@ export class FeedbackCommands {
     if (!rating) {
       this.logger.debug(`No rating provided for ${item.resourceId}, skipping feedback save`);
       return { success: false, error: 'No rating provided' };
+    }
+
+    if (!this.engagementService) {
+      this.logger.error('Cannot save feedback: EngagementService not available');
+      return { success: false, error: 'EngagementService unavailable' };
     }
 
     const feedback: Feedback = {
@@ -360,44 +347,35 @@ export class FeedbackCommands {
     };
 
     try {
-      if (this.engagementService) {
-        this.logger.debug(`Submitting feedback for ${item.resourceId}, hubId: "${item.hubId || 'none'}"`);
-        await this.engagementService.submitFeedback(
-          item.resourceType,
-          item.resourceId,
-          comment,
-          { version: item.version, rating, hubId: item.hubId || undefined }
-        );
-        pendingEntry.synced = true;
-      }
+      this.logger.debug(`Submitting feedback for ${item.resourceId}, hubId: "${item.hubId || 'none'}"`);
+      await this.engagementService.submitFeedback(
+        item.resourceType,
+        item.resourceId,
+        comment,
+        { version: item.version, rating, hubId: item.hubId || undefined }
+      );
+      pendingEntry.synced = true;
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
-      this.logger.warn(`Failed to submit feedback to remote: ${message}`);
-      vscode.window.showWarningMessage(
-        'Feedback saved locally. Retry from the bundle menu when connectivity is restored.'
+      this.logger.error(
+        `Failed to submit feedback to remote for ${item.resourceType}/${item.resourceId} (hub: ${item.hubId || 'none'}): ${message}. Stored locally; activation drain will retry.`
       );
     }
 
-    // Save pending feedback locally (synced or not)
     try {
-      const storage = this.engagementService?.getStorage?.();
-      if (storage) {
-        await storage.savePendingFeedback(pendingEntry);
-      }
+      await this.engagementService.savePendingFeedback(pendingEntry);
     } catch (storageError) {
       this.logger.error('Failed to save pending feedback locally', storageError as Error);
     }
 
-    // Apply optimistic rating update to cache.
-    // Skip if this feedback came from the webview fast-path (prefilledRating), because
-    // handleRateBundle already applied the optimistic update before opening the feedback modal.
     if (!item.prefilledRating) {
       try {
         const ratingCache = RatingCache.getInstance();
         const cacheSourceId = item.sourceId || item.resourceId;
         ratingCache.applyOptimisticRating(cacheSourceId, item.resourceId, rating);
-      } catch {
-        this.logger.debug('Failed to apply optimistic rating update');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.error(`Failed to apply optimistic rating update for ${item.resourceId}: ${message}`);
       }
     }
 
@@ -409,7 +387,7 @@ export class FeedbackCommands {
   }
 
   /**
-   * Parse rating from description string
+   * Parse rating from QuickPick description string.
    * @param description
    */
   private parseRating(description: string): RatingScore {
@@ -420,7 +398,7 @@ export class FeedbackCommands {
         return num as RatingScore;
       }
     }
-    return 3; // Default to average
+    return 3;
   }
 
   /**
@@ -432,12 +410,11 @@ export class FeedbackCommands {
   }
 
   /**
-   * Register feedback commands with VS Code
+   * Register engagement commands with VS Code.
    * @param context
    */
   public registerCommands(context: vscode.ExtensionContext): void {
     context.subscriptions.push(
-      // Main feedback command
       vscode.commands.registerCommand(
         'promptRegistry.feedback',
         (item: unknown) => this.submitFeedback(this.normalizeFeedbackItem(item))
@@ -452,28 +429,21 @@ export class FeedbackCommands {
       )
     );
 
-    this.logger.debug('FeedbackCommands registered');
+    this.logger.debug('EngagementCommands registered');
   }
 
   /**
-   * Submit feedback for a resource
-   *
-   * Flow:
-   * 1. Star rating (1-5)
-   * 2. Optional quick comment
-   * 3. Action: Report Issue or Skip (just submit rating)
+   * Submit feedback for a resource via QuickPick flow.
    * @param item
    */
   public async submitFeedback(item: FeedbackableItem): Promise<FeedbackResult> {
     const resourceName = item.name || item.resourceId;
 
-    // Fast path: pre-filled from webview interactive stars
     if (item.prefilledRating) {
       const prefilledComment = item.prefilledComment || `Rated ${item.prefilledRating} stars`;
       return this.saveFeedback(item, prefilledComment, item.prefilledRating);
     }
 
-    // Step 1: Star Rating (1-5)
     const ratingOptions: vscode.QuickPickItem[] = [
       { label: '⭐⭐⭐⭐⭐', description: '5 stars - Excellent!' },
       { label: '⭐⭐⭐⭐☆', description: '4 stars - Very good' },
@@ -493,7 +463,6 @@ export class FeedbackCommands {
 
     const rating = this.parseRating(selectedRating.description || '');
 
-    // Step 2: Optional quick comment
     const quickComment = await vscode.window.showInputBox({
       title: `Feedback for "${resourceName}"`,
       prompt: 'Optional short message',
@@ -507,11 +476,9 @@ export class FeedbackCommands {
     });
 
     if (quickComment === undefined) {
-      // User cancelled - still save the rating
       return this.saveFeedback(item, `Rated ${rating} stars`, rating);
     }
 
-    // Step 3: Action options
     const actionOptions: vscode.QuickPickItem[] = [
       { label: '📝 Report issue / suggestion', description: 'Provide detailed feedback by opening an issue in the repository' },
       { label: '⏭️ Skip', description: 'Just submit the star rating' }
@@ -522,13 +489,10 @@ export class FeedbackCommands {
       placeHolder: 'Optional: Report an issue or skip'
     });
 
-    // Prepare comment
     const comment = quickComment.trim() || `Rated ${rating} stars`;
 
-    // Save the feedback first
     const result = await this.saveFeedback(item, comment, rating);
 
-    // If user wants to report an issue, open the repository issues page
     if (selectedAction?.label.includes('Report issue') && result.success) {
       this.logger.info(`Opening issue tracker for ${item.resourceId}`);
       await this.openIssueTracker(item);
@@ -556,18 +520,60 @@ export class FeedbackCommands {
   }
 
   /**
-   * Attempt to resubmit ALL unsynced pending feedback entries across all bundles.
-   * Called once during extension activation so feedback saved offline is eventually delivered.
-   * Non-fatal: individual failures are logged and the entry stays pending for the next activation.
-   * @returns Number of entries successfully synced during this drain pass.
+   * Resubmit all ratings whose remote submission previously failed.
+   * Called once during activation. Failures are non-fatal and re-queued for the next session.
+   * @returns Number of entries successfully synced.
    */
-  public async drainUnsyncedFeedback(): Promise<number> {
-    const storage = this.engagementService?.getStorage?.();
-    if (!storage || !this.engagementService) {
+  public async drainUnsyncedRatings(): Promise<number> {
+    if (!this.engagementService) {
       return 0;
     }
 
-    const unsynced = await storage.getUnsyncedFeedback();
+    const unsynced = await this.engagementService.getUnsyncedRatings();
+    if (unsynced.length === 0) {
+      return 0;
+    }
+
+    this.logger.info(`Draining ${unsynced.length} unsynced rating${unsynced.length === 1 ? '' : 's'}`);
+
+    let successCount = 0;
+    for (const rating of unsynced) {
+      try {
+        await this.engagementService.submitRating(
+          rating.resourceType,
+          rating.resourceId,
+          rating.score,
+          {
+            version: rating.version,
+            hubId: rating.hubId || undefined,
+            sourceId: rating.sourceId
+          }
+        );
+        // submitRating writes a new row; mark the original entry synced so drain doesn't retry it again.
+        await this.engagementService.markRatingSynced(rating.id);
+        successCount++;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.debug(`Drain failed for rating ${rating.id}: ${message}`);
+      }
+    }
+
+    if (successCount > 0) {
+      this.logger.info(`Drained ${successCount} of ${unsynced.length} unsynced ratings`);
+    }
+    return successCount;
+  }
+
+  /**
+   * Resubmit all unsynced pending feedback entries. Called once during activation.
+   * @returns Number of entries successfully synced.
+   */
+  public async drainUnsyncedFeedback(): Promise<number> {
+    if (!this.engagementService) {
+      return 0;
+    }
+
+    const unsynced = await this.engagementService.getUnsyncedFeedback();
     if (unsynced.length === 0) {
       return 0;
     }
@@ -583,11 +589,11 @@ export class FeedbackCommands {
           entry.comment || `Rated ${entry.rating} stars`,
           { rating: entry.rating, hubId: entry.hubId || undefined }
         );
-        await storage.markFeedbackSynced(entry.id);
+        await this.engagementService.markFeedbackSynced(entry.id);
         successCount++;
       } catch (error) {
-        // Leave as unsynced; next activation will try again
-        this.logger.debug(`Drain failed for feedback ${entry.id}: ${error instanceof Error ? error.message : String(error)}`);
+        const message = error instanceof Error ? error.message : String(error);
+        this.logger.debug(`Drain failed for feedback ${entry.id}: ${message}`);
       }
     }
 

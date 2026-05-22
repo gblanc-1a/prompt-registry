@@ -404,8 +404,7 @@ suite('HubSchemaValidator - TDD', () => {
         feedback: {
           enabled: true,
           requireRating: false,
-          maxLength: 2000,
-          feedbackUrl: 'https://example.com/feedbacks.json'
+          maxLength: 2000
         }
       };
 

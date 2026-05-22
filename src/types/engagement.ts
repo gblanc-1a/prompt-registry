@@ -41,6 +41,14 @@ export interface Rating {
   version?: string;
   /** Source identifier (adapter sourceId) for resolving cache keys across sessions */
   sourceId?: string;
+  /** Hub ID — required for activation-time drain to route the retry to the correct backend */
+  hubId?: string;
+  /**
+   * Whether this rating was successfully submitted to the remote backend.
+   * Omitted on existing entries (treated as synced for backward compat).
+   * Explicit `false` means submission failed and a drain pass should retry.
+   */
+  synced?: boolean;
 }
 
 /**
@@ -151,26 +159,12 @@ export interface GitHubDiscussionsBackendConfig extends EngagementBackendConfigB
 }
 
 /**
- * Custom API backend configuration
- */
-export interface ApiBackendConfig extends EngagementBackendConfigBase {
-  type: 'api';
-  /** API base URL */
-  baseUrl: string;
-  /** Authentication header name */
-  authHeader?: string;
-  /** Authentication token (or env var reference) */
-  authToken?: string;
-}
-
-/**
  * Union of all backend configs
  */
 export type BackendConfig =
   | FileBackendConfig
   | GitHubIssuesBackendConfig
-  | GitHubDiscussionsBackendConfig
-  | ApiBackendConfig;
+  | GitHubDiscussionsBackendConfig;
 
 // ============================================================================
 // Hub Engagement Configuration
@@ -198,8 +192,6 @@ export interface FeedbackConfig {
   requireRating?: boolean;
   /** Maximum comment length */
   maxLength?: number;
-  /** URL to static feedbacks.json file (pre-computed feedbacks) */
-  feedbackUrl?: string;
 }
 
 /**
@@ -214,22 +206,6 @@ export interface HubEngagementConfig {
   ratings?: RatingConfig;
   /** Feedback settings */
   feedback?: FeedbackConfig;
-}
-
-// ============================================================================
-// Aggregated Engagement Data
-// ============================================================================
-
-/**
- * Combined engagement data for a resource
- */
-export interface ResourceEngagement {
-  resourceId: string;
-  resourceType: EngagementResourceType;
-  /** Rating statistics */
-  ratings?: RatingStats;
-  /** Recent feedback entries */
-  recentFeedback?: Feedback[];
 }
 
 // ============================================================================
@@ -363,17 +339,6 @@ export function validateHubEngagementConfig(config: unknown): { valid: boolean; 
       }
       if (feedback.maxLength !== undefined && typeof feedback.maxLength !== 'number') {
         errors.push('engagement.feedback.maxLength must be a number');
-      }
-      if (feedback.feedbackUrl !== undefined) {
-        if (typeof feedback.feedbackUrl === 'string') {
-          try {
-            new URL(feedback.feedbackUrl);
-          } catch {
-            errors.push('engagement.feedback.feedbackUrl must be a valid URL');
-          }
-        } else {
-          errors.push('engagement.feedback.feedbackUrl must be a string');
-        }
       }
     } else {
       errors.push('engagement.feedback must be an object');

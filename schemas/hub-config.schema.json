@@ -363,11 +363,6 @@
               "description": "Maximum feedback comment length",
               "minimum": 100,
               "maximum": 10000
-            },
-            "feedbackUrl": {
-              "type": "string",
-              "description": "URL to pre-computed feedbacks.json file (static hosting)",
-              "format": "uri"
             }
           }
         }

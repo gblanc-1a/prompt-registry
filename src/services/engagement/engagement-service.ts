@@ -19,8 +19,6 @@ import {
   HubEngagementConfig,
   Rating,
   RatingScore,
-  RatingStats,
-  ResourceEngagement,
 } from '../../types/engagement';
 import {
   PendingFeedback,
@@ -37,12 +35,6 @@ import {
 import {
   IEngagementBackend,
 } from './engagement-backend';
-import {
-  FeedbackCache,
-} from './feedback-cache';
-import {
-  FeedbackService,
-} from './feedback-service';
 import {
   RatingCache,
 } from './rating-cache';
@@ -117,6 +109,13 @@ export class EngagementService {
     return this.defaultBackend;
   }
 
+  private requireStorage(): EngagementStorage {
+    if (!this.storage) {
+      throw new Error('EngagementService not initialized — call initialize() first');
+    }
+    return this.storage;
+  }
+
   /**
    * Initialize the service with default file backend
    */
@@ -156,9 +155,7 @@ export class EngagementService {
 
     // Reset sub-singletons owned by this service
     RatingCache.resetInstance();
-    FeedbackCache.resetInstance();
     RatingService.resetInstance();
-    FeedbackService.resetInstance();
   }
 
   /**
@@ -169,18 +166,10 @@ export class EngagementService {
   }
 
   /**
-   * Get the local engagement storage (for pending feedback operations)
-   * @deprecated Use getAllRatings / saveRatings / savePendingFeedback / getPendingFeedback / markFeedbackSynced instead
-   */
-  public getStorage(): EngagementStorage | undefined {
-    return this.storage;
-  }
-
-  /**
    * Get all persisted ratings from local storage
    */
   public async getAllRatings(): Promise<Rating[]> {
-    return this.storage?.getAllRatings() ?? [];
+    return this.requireStorage().getAllRatings();
   }
 
   /**
@@ -188,7 +177,7 @@ export class EngagementService {
    * @param ratings
    */
   public async saveRatings(ratings: Rating[]): Promise<void> {
-    await this.storage?.saveRatings(ratings);
+    await this.requireStorage().saveRatings(ratings);
   }
 
   /**
@@ -196,14 +185,14 @@ export class EngagementService {
    * @param entry
    */
   public async savePendingFeedback(entry: PendingFeedback): Promise<void> {
-    await this.storage?.savePendingFeedback(entry);
+    await this.requireStorage().savePendingFeedback(entry);
   }
 
   /**
    * Get all unsynced pending feedback entries
    */
   public async getUnsyncedFeedback(): Promise<PendingFeedback[]> {
-    return this.storage?.getUnsyncedFeedback() ?? [];
+    return this.requireStorage().getUnsyncedFeedback();
   }
 
   /**
@@ -211,7 +200,22 @@ export class EngagementService {
    * @param id
    */
   public async markFeedbackSynced(id: string): Promise<void> {
-    await this.storage?.markFeedbackSynced(id);
+    await this.requireStorage().markFeedbackSynced(id);
+  }
+
+  /**
+   * Get ratings whose remote submission failed and that should be retried on next drain.
+   */
+  public async getUnsyncedRatings(): Promise<Rating[]> {
+    return this.requireStorage().getUnsyncedRatings();
+  }
+
+  /**
+   * Mark a rating as successfully submitted to the remote backend.
+   * @param id
+   */
+  public async markRatingSynced(id: string): Promise<void> {
+    await this.requireStorage().markRatingSynced(id);
   }
 
   // ========================================================================
@@ -292,19 +296,6 @@ export class EngagementService {
     return this.hubBackends.get(hubId);
   }
 
-  /**
-   * Unregister a hub's backend
-   * @param hubId
-   */
-  public unregisterHubBackend(hubId: string): void {
-    const backend = this.hubBackends.get(hubId);
-    if (backend) {
-      backend.dispose();
-      this.hubBackends.delete(hubId);
-      this.logger.debug(`Unregistered engagement backend for hub: ${hubId}`);
-    }
-  }
-
   // ========================================================================
   // Rating Operations
   // ========================================================================
@@ -336,7 +327,8 @@ export class EngagementService {
       resourceId,
       score,
       version: options?.version,
-      sourceId: options?.sourceId
+      sourceId: options?.sourceId,
+      hubId: options?.hubId
     };
 
     const backend = this.getBackend(options?.hubId);
@@ -346,52 +338,6 @@ export class EngagementService {
     this.logger.info(`Rating submitted: ${score} stars for ${resourceType}/${resourceId}`);
 
     return rating;
-  }
-
-  /**
-   * Get user's rating for a resource
-   * @param resourceType
-   * @param resourceId
-   * @param hubId
-   */
-  public async getRating(
-    resourceType: EngagementResourceType,
-    resourceId: string,
-    hubId?: string
-  ): Promise<Rating | undefined> {
-    const backend = this.getBackend(hubId);
-    return backend.getRating(resourceType, resourceId);
-  }
-
-  /**
-   * Get aggregated rating statistics
-   * @param resourceType
-   * @param resourceId
-   * @param hubId
-   */
-  public async getAggregatedRatings(
-    resourceType: EngagementResourceType,
-    resourceId: string,
-    hubId?: string
-  ): Promise<RatingStats | undefined> {
-    const backend = this.getBackend(hubId);
-    return backend.getAggregatedRatings(resourceType, resourceId);
-  }
-
-  /**
-   * Delete user's rating
-   * @param resourceType
-   * @param resourceId
-   * @param hubId
-   */
-  public async deleteRating(
-    resourceType: EngagementResourceType,
-    resourceId: string,
-    hubId?: string
-  ): Promise<void> {
-    const backend = this.getBackend(hubId);
-    await backend.deleteRating(resourceType, resourceId);
-    this.logger.debug(`Rating deleted for ${resourceType}/${resourceId}`);
   }
 
   // ========================================================================
@@ -435,52 +381,5 @@ export class EngagementService {
     this.logger.info(`Feedback submitted for ${resourceType}/${resourceId}`);
 
     return feedback;
-  }
-
-  /**
-   * Get feedback for a resource
-   * @param resourceType
-   * @param resourceId
-   * @param limit
-   * @param hubId
-   */
-  public async getFeedback(
-    resourceType: EngagementResourceType,
-    resourceId: string,
-    limit?: number,
-    hubId?: string
-  ): Promise<Feedback[]> {
-    const backend = this.getBackend(hubId);
-    return backend.getFeedback(resourceType, resourceId, limit);
-  }
-
-  /**
-   * Delete feedback
-   * @param feedbackId
-   * @param hubId
-   */
-  public async deleteFeedback(feedbackId: string, hubId?: string): Promise<void> {
-    const backend = this.getBackend(hubId);
-    await backend.deleteFeedback(feedbackId);
-    this.logger.debug(`Feedback deleted: ${feedbackId}`);
-  }
-
-  // ========================================================================
-  // Aggregation
-  // ========================================================================
-
-  /**
-   * Get combined engagement data for a resource
-   * @param resourceType
-   * @param resourceId
-   * @param hubId
-   */
-  public async getResourceEngagement(
-    resourceType: EngagementResourceType,
-    resourceId: string,
-    hubId?: string
-  ): Promise<ResourceEngagement> {
-    const backend = this.getBackend(hubId);
-    return backend.getResourceEngagement(resourceType, resourceId);
   }
 }

@@ -165,7 +165,11 @@ export const VALID_CONTEXT_PATTERNS_FOR_MENUS = [
   // Repository scope patterns
   /^installed_bundle.*_repository_commit$/, // "Switch to Local Only"
   /^installed_bundle.*_repository_local_only$/, // "Switch to Commit"
-  /^installed_bundle.*_repository_(commit|local_only)$/ // "Move to User" (matches both)
+  /^installed_bundle.*_repository_(commit|local_only)$/, // "Move to User" (matches both)
+  // Base pattern matches feedback/repo/etc. menu items that target any installed bundle.
+  // Mirrors package.json: `viewItem =~ /^installed_bundle/`. Subsumes the more specific
+  // patterns above; those are kept for documentation of which scope-suffixes are valid.
+  /^installed_bundle/
 ] as const;
 
 /**

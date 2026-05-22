@@ -366,4 +366,116 @@ suite('EngagementStorage', () => {
       assert.strictEqual(feedback.length, 0);
     });
   });
+
+  // ========================================================================
+  // Load Resilience: ENOENT vs corruption
+  // ========================================================================
+
+  suite('Load Error Handling', () => {
+    test('returns empty store when ratings file does not exist (ENOENT)', async () => {
+      // Fresh storage, no file written yet → load should return empty without throwing.
+      const ratings = await storage.getAllRatings();
+      assert.deepStrictEqual(ratings, []);
+    });
+
+    test('throws on corrupted ratings.json instead of silently returning empty', async () => {
+      // Persist real data first so the file exists.
+      await storage.saveRating(createRating('r1', 'bundle-1', 5));
+
+      // Bypass the in-memory cache so the next read hits disk.
+      storage.clearCache();
+
+      // Corrupt the file. A previous bug returned `{ ratings: [] }` here, which the next
+      // saveRating would have overwritten — destroying the user's persisted ratings.
+      const ratingsPath = storage.getPaths().ratings;
+      fs.writeFileSync(ratingsPath, '{ this is not valid json', 'utf8');
+
+      await assert.rejects(() => storage.getAllRatings(), /JSON|Unexpected/i);
+    });
+
+    test('throws on corrupted feedback.json instead of silently returning empty', async () => {
+      await storage.saveFeedback(createFeedback('f1', 'bundle-1'));
+      storage.clearCache();
+
+      fs.writeFileSync(storage.getPaths().feedback, 'not json at all', 'utf8');
+
+      await assert.rejects(() => storage.getAllFeedback(), /JSON|Unexpected/i);
+    });
+
+    test('throws on corrupted pending-feedback.json instead of silently returning empty', async () => {
+      const pending: PendingFeedback = {
+        id: 'p1', bundleId: 'b1', sourceId: 's1', hubId: 'h1',
+        resourceType: 'bundle', rating: 4,
+        timestamp: new Date().toISOString(), synced: false
+      };
+      await storage.savePendingFeedback(pending);
+      storage.clearCache();
+
+      fs.writeFileSync(storage.getPaths().pendingFeedback, 'broken', 'utf8');
+
+      await assert.rejects(() => storage.getUnsyncedFeedback(), /JSON|Unexpected/i);
+    });
+  });
+
+  // ========================================================================
+  // Pending feedback deduplication contract
+  // ========================================================================
+
+  suite('Pending feedback deduplication key', () => {
+    test('two entries with the same bundleId+resourceType but different sourceId are deduplicated', async () => {
+      // The current (and intended) contract is dedup by (bundleId, resourceType) only —
+      // sourceId is metadata, not part of the key. This pins that behavior.
+      const a: PendingFeedback = {
+        id: 'p-a', bundleId: 'shared-bundle', sourceId: 'src-1', hubId: 'h1',
+        resourceType: 'bundle', rating: 4,
+        timestamp: new Date().toISOString(), synced: false
+      };
+      const b: PendingFeedback = {
+        id: 'p-b', bundleId: 'shared-bundle', sourceId: 'src-2', hubId: 'h2',
+        resourceType: 'bundle', rating: 5,
+        timestamp: new Date().toISOString(), synced: false
+      };
+
+      await storage.savePendingFeedback(a);
+      await storage.savePendingFeedback(b);
+
+      const all = await storage.getPendingFeedback();
+      assert.strictEqual(all.length, 1);
+      // The second save replaces the first.
+      assert.strictEqual(all[0].id, 'p-b');
+      assert.strictEqual(all[0].rating, 5);
+      assert.strictEqual(all[0].sourceId, 'src-2');
+    });
+  });
+
+  // ========================================================================
+  // Unsynced ratings (drain-on-activation support)
+  // ========================================================================
+
+  suite('Unsynced rating tracking', () => {
+    test('getUnsyncedRatings returns only ratings with explicit synced=false', async () => {
+      await storage.saveRating({ ...createRating('r-synced-explicit', 'b1', 5), synced: true });
+      await storage.saveRating(createRating('r-no-flag', 'b2', 4)); // no synced field
+      await storage.saveRating({ ...createRating('r-pending', 'b3', 3), synced: false });
+
+      const unsynced = await storage.getUnsyncedRatings();
+      assert.strictEqual(unsynced.length, 1);
+      assert.strictEqual(unsynced[0].id, 'r-pending');
+    });
+
+    test('markRatingSynced flips the flag and persists', async () => {
+      await storage.saveRating({ ...createRating('r-pending', 'b1', 3), synced: false });
+
+      await storage.markRatingSynced('r-pending');
+
+      const remaining = await storage.getUnsyncedRatings();
+      assert.strictEqual(remaining.length, 0);
+    });
+
+    test('markRatingSynced is a no-op for an unknown id', async () => {
+      await storage.markRatingSynced('does-not-exist');
+      const all = await storage.getAllRatings();
+      assert.strictEqual(all.length, 0);
+    });
+  });
 });

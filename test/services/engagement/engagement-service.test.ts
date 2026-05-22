@@ -10,6 +10,9 @@ import * as path from 'node:path';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import {
+  GitHubDiscussionsBackend,
+} from '../../../src/services/engagement/backends/github-discussions-backend';
+import {
   EngagementService,
 } from '../../../src/services/engagement/engagement-service';
 
@@ -19,7 +22,6 @@ suite('EngagementService', () => {
   let tempDir: string;
   let mockContext: vscode.ExtensionContext;
 
-  // ===== Test Utilities =====
   const createMockContext = (storagePath: string): vscode.ExtensionContext => ({
     globalStorageUri: vscode.Uri.file(storagePath),
     subscriptions: [],
@@ -54,7 +56,6 @@ suite('EngagementService', () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'engagement-service-test-'));
     mockContext = createMockContext(tempDir);
 
-    // Reset singleton
     EngagementService.resetInstance();
 
     service = EngagementService.getInstance(mockContext);
@@ -118,37 +119,14 @@ suite('EngagementService', () => {
       assert.strictEqual(firedRating.score, 4);
     });
 
-    test('should retrieve submitted rating', async () => {
+    test('should persist submitted rating in storage', async () => {
       await service.submitRating('bundle', 'test-bundle', 5, { version: '1.0.0' });
 
-      const rating = await service.getRating('bundle', 'test-bundle');
-
-      assert.ok(rating);
-      assert.strictEqual(rating.score, 5);
-      assert.strictEqual(rating.version, '1.0.0');
-    });
-
-    test('should return undefined for non-existent rating', async () => {
-      const rating = await service.getRating('bundle', 'non-existent');
-      assert.strictEqual(rating, undefined);
-    });
-
-    test('should get aggregated ratings', async () => {
-      await service.submitRating('bundle', 'test-bundle', 4);
-
-      const stats = await service.getAggregatedRatings('bundle', 'test-bundle');
-
-      assert.ok(stats);
-      assert.strictEqual(stats.averageRating, 4);
-      assert.strictEqual(stats.ratingCount, 1);
-    });
-
-    test('should delete rating', async () => {
-      await service.submitRating('bundle', 'test-bundle', 5);
-      await service.deleteRating('bundle', 'test-bundle');
-
-      const rating = await service.getRating('bundle', 'test-bundle');
-      assert.strictEqual(rating, undefined);
+      const all = await service.getAllRatings();
+      const persisted = all.find((r) => r.resourceId === 'test-bundle');
+      assert.ok(persisted);
+      assert.strictEqual(persisted.score, 5);
+      assert.strictEqual(persisted.version, '1.0.0');
     });
   });
 
@@ -187,52 +165,6 @@ suite('EngagementService', () => {
       assert.ok(firedFeedback);
       assert.strictEqual(firedFeedback.comment, 'Nice!');
     });
-
-    test('should retrieve feedback for resource', async () => {
-      await service.submitFeedback('bundle', 'test-bundle', 'First');
-      await service.submitFeedback('bundle', 'test-bundle', 'Second');
-
-      const feedback = await service.getFeedback('bundle', 'test-bundle');
-
-      assert.strictEqual(feedback.length, 2);
-    });
-
-    test('should limit feedback results', async () => {
-      for (let i = 0; i < 10; i++) {
-        await service.submitFeedback('bundle', 'test-bundle', `Comment ${i}`);
-      }
-
-      const feedback = await service.getFeedback('bundle', 'test-bundle', 3);
-      assert.strictEqual(feedback.length, 3);
-    });
-
-    test('should delete feedback', async () => {
-      const feedback = await service.submitFeedback('bundle', 'test-bundle', 'Test');
-      await service.deleteFeedback(feedback.id);
-
-      const retrieved = await service.getFeedback('bundle', 'test-bundle');
-      assert.strictEqual(retrieved.length, 0);
-    });
-  });
-
-  suite('Resource Engagement', () => {
-    test('should return combined engagement data', async () => {
-      await service.submitRating('bundle', 'test-bundle', 4);
-      await service.submitFeedback('bundle', 'test-bundle', 'Great!');
-
-      const engagement = await service.getResourceEngagement('bundle', 'test-bundle');
-
-      assert.strictEqual(engagement.resourceId, 'test-bundle');
-      assert.ok(engagement.ratings);
-      assert.ok(engagement.recentFeedback);
-    });
-
-    test('should handle resource with no engagement', async () => {
-      const engagement = await service.getResourceEngagement('bundle', 'empty-bundle');
-
-      assert.strictEqual(engagement.resourceId, 'empty-bundle');
-      assert.strictEqual(engagement.ratings, undefined);
-    });
   });
 
   suite('Hub Backend Management', () => {
@@ -242,12 +174,7 @@ suite('EngagementService', () => {
         backend: { type: 'file', storagePath: tempDir }
       });
 
-      // Should be able to use hub-specific backend
-      await service.submitRating('bundle', 'hub-bundle', 5, { hubId: 'test-hub' });
-      const rating = await service.getRating('bundle', 'hub-bundle', 'test-hub');
-
-      assert.ok(rating);
-      assert.strictEqual(rating.score, 5);
+      assert.ok(service.getHubBackend('test-hub'));
     });
 
     test('should skip registration when engagement disabled', async () => {
@@ -256,26 +183,97 @@ suite('EngagementService', () => {
         backend: { type: 'file', storagePath: tempDir }
       });
 
-      // Should fall back to default backend
-      await service.submitRating('bundle', 'test-bundle', 5, { hubId: 'disabled-hub' });
-      const rating = await service.getRating('bundle', 'test-bundle');
-
-      assert.ok(rating);
+      assert.strictEqual(service.getHubBackend('disabled-hub'), undefined);
     });
 
-    test('should unregister hub backend', async () => {
-      await service.registerHubBackend('test-hub', {
+    test('falls back to file backend with warning when type is unknown', async () => {
+      await service.registerHubBackend('unknown-hub', {
         enabled: true,
-        backend: { type: 'file', storagePath: tempDir }
+        // Cast through unknown to bypass the closed union; the runtime path is what matters here.
+        backend: { type: 'github-issues', repository: 'owner/repo' } as any
       });
 
-      service.unregisterHubBackend('test-hub');
+      const backend = service.getHubBackend('unknown-hub');
+      assert.ok(backend);
+      assert.strictEqual(backend.type, 'file');
+    });
+  });
 
-      // Should fall back to default backend after unregister
-      await service.submitRating('bundle', 'test-bundle', 5, { hubId: 'test-hub' });
-      const rating = await service.getRating('bundle', 'test-bundle');
+  suite('registerHubBackend() — github-discussions branch', () => {
+    test('registers backend and loads collections mappings on happy path', async () => {
+      const loadStub = sandbox
+        .stub(GitHubDiscussionsBackend.prototype, 'loadCollectionsMappings')
+        .resolves();
 
-      assert.ok(rating);
+      await service.registerHubBackend('gh-hub', {
+        enabled: true,
+        backend: {
+          type: 'github-discussions',
+          repository: 'owner/repo',
+          collectionsUrl: 'https://example.com/collections.yaml'
+        }
+      });
+
+      const backend = service.getHubBackend('gh-hub');
+      assert.ok(backend);
+      assert.strictEqual(backend.type, 'github-discussions');
+      assert.ok(loadStub.calledOnceWith('https://example.com/collections.yaml'));
+    });
+
+    test('registers backend even when loadCollectionsMappings rejects', async () => {
+      sandbox
+        .stub(GitHubDiscussionsBackend.prototype, 'loadCollectionsMappings')
+        .rejects(new Error('Boom'));
+
+      await service.registerHubBackend('gh-hub-err', {
+        enabled: true,
+        backend: {
+          type: 'github-discussions',
+          repository: 'owner/repo',
+          collectionsUrl: 'https://example.com/collections.yaml'
+        }
+      });
+
+      assert.ok(service.getHubBackend('gh-hub-err'));
+    });
+
+    test('does not block activation when loadCollectionsMappings hangs past the 5s timeout', async () => {
+      // Use fake timers so we can fast-forward the production-side setTimeout(5000).
+      const clock = sandbox.useFakeTimers();
+
+      // Hanging mappings load: never resolves on its own.
+      sandbox
+        .stub(GitHubDiscussionsBackend.prototype, 'loadCollectionsMappings')
+        .returns(new Promise<void>(() => { /* never resolves */ }));
+
+      const registerPromise = service.registerHubBackend('gh-hub-slow', {
+        enabled: true,
+        backend: {
+          type: 'github-discussions',
+          repository: 'owner/repo',
+          collectionsUrl: 'https://example.com/collections.yaml'
+        }
+      });
+
+      // Drive past the 5s timeout. Without it, registerHubBackend would never settle.
+      await clock.tickAsync(5_000);
+      await registerPromise;
+
+      assert.ok(service.getHubBackend('gh-hub-slow'));
+    });
+
+    test('happy path without collectionsUrl still registers the backend', async () => {
+      const loadStub = sandbox
+        .stub(GitHubDiscussionsBackend.prototype, 'loadCollectionsMappings')
+        .resolves();
+
+      await service.registerHubBackend('gh-hub-bare', {
+        enabled: true,
+        backend: { type: 'github-discussions', repository: 'owner/repo' }
+      });
+
+      assert.ok(service.getHubBackend('gh-hub-bare'));
+      assert.strictEqual(loadStub.callCount, 0);
     });
   });
 });

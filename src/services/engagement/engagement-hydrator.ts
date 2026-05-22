@@ -27,32 +27,26 @@ import {
   EngagementService,
 } from './engagement-service';
 import {
-  FeedbackCache,
-} from './feedback-cache';
-import {
   RatingCache,
 } from './rating-cache';
 
 /**
  * Orchestrates engagement hydration for a hub:
  * - Builds sourceIdMap from hub sources
- * - Warms rating and feedback caches from static URLs
+ * - Warms the rating cache from a static URL
  * - Hydrates user ratings from local storage and remote backend
  */
 export class EngagementHydrator {
   private readonly logger = Logger.getInstance();
   private readonly engagementService: EngagementService;
   private readonly ratingCache: RatingCache;
-  private readonly feedbackCache: FeedbackCache;
 
   constructor(
     engagementService: EngagementService,
-    ratingCache: RatingCache,
-    feedbackCache: FeedbackCache
+    ratingCache: RatingCache
   ) {
     this.engagementService = engagementService;
     this.ratingCache = ratingCache;
-    this.feedbackCache = feedbackCache;
   }
 
   private async fetchRemoteViewerRatings(
@@ -173,20 +167,14 @@ export class EngagementHydrator {
     }
 
     const ratingsUrl = engagement.ratings?.ratingsUrl;
-    const feedbackUrl = engagement.feedback?.feedbackUrl;
 
-    // Run independent network operations in parallel
     const remoteRatings = (await Promise.all([
       ratingsUrl
         ? this.ratingCache.refreshFromHub(hubId, ratingsUrl, sourceIdMap, accessToken)
           .catch((error) => this.logger.debug(`Failed to warm rating cache for hub ${hubId}`, error))
         : Promise.resolve(),
-      feedbackUrl
-        ? this.feedbackCache.refreshFromHub(hubId, feedbackUrl, accessToken)
-          .catch((error) => this.logger.debug(`Failed to warm feedback cache for hub ${hubId}`, error))
-        : Promise.resolve(),
       this.fetchRemoteViewerRatings(hubId, engagement.backend.type, sourceIdMap)
-    ]))[2];
+    ]))[1];
 
     // Hydrate user's own ratings from local storage so getUserRating works across sessions
     await this.hydrateFromLocalStorage(sourceIdMap);

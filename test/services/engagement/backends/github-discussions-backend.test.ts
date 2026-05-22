@@ -566,27 +566,6 @@ suite('GitHubDiscussionsBackend', () => {
     });
   });
 
-  suite('getResourceEngagement()', () => {
-    test('should aggregate engagement data', async () => {
-      await backend.initialize(mockConfig);
-
-      await backend.submitFeedback({
-        id: 'feedback-1',
-        resourceType: 'bundle',
-        resourceId: 'test-bundle',
-        comment: 'Nice!',
-        timestamp: new Date().toISOString()
-      });
-
-      const engagement = await backend.getResourceEngagement('bundle', 'test-bundle');
-
-      assert.strictEqual(engagement.resourceId, 'test-bundle');
-      assert.strictEqual(engagement.resourceType, 'bundle');
-      assert.ok(engagement.recentFeedback);
-      assert.strictEqual(engagement.recentFeedback.length, 1);
-    });
-  });
-
   suite('loadCollectionsMappings()', () => {
     test('should load mappings from collections.yaml URL', async () => {
       await backend.initialize(mockConfig);

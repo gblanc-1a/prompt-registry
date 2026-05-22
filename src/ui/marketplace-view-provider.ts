@@ -8,7 +8,7 @@ import * as fs from 'node:fs';
 import * as vscode from 'vscode';
 import {
   FeedbackableItem,
-} from '../commands/feedback-commands';
+} from '../commands/engagement-commands';
 import {
   EngagementService,
 } from '../services/engagement/engagement-service';

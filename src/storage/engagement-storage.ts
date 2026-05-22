@@ -4,8 +4,9 @@
  * Storage structure:
  * globalStorage/
  * └── engagement/
- *     ├── ratings.json        # User ratings
- *     └── feedback.json       # User feedback
+ *     ├── ratings.json          # User ratings (incl. unsynced flag for drain retry)
+ *     ├── feedback.json         # User feedback
+ *     └── pending-feedback.json # Unsynced feedback queued for drain retry
  */
 
 import * as fs from 'node:fs';
@@ -21,6 +22,9 @@ import {
 import {
   PendingFeedback,
 } from '../types/pending-feedback';
+import {
+  Logger,
+} from '../utils/logger';
 
 /**
  * Storage paths for engagement data
@@ -64,6 +68,7 @@ export class EngagementStorage {
   private static readonly MAX_FEEDBACK_ENTRIES = 1000;
 
   private readonly paths: EngagementStoragePaths;
+  private readonly logger = Logger.getInstance();
   private ratingsCache?: RatingsStore;
   private feedbackCache?: FeedbackStore;
   private pendingFeedbackCache?: PendingFeedbackStore;
@@ -82,17 +87,37 @@ export class EngagementStorage {
     };
   }
 
+  /**
+   * Read and parse a JSON store file. Returns `defaultValue` only if the file does not yet exist (ENOENT).
+   * Re-throws every other error so a corrupt or unreadable file does not silently turn into an empty
+   * store that the next write would overwrite — which would destroy a user's persisted data.
+   * @param filePath
+   * @param defaultValue
+   */
+  private async loadJsonOrDefault<T>(filePath: string, defaultValue: T): Promise<T> {
+    try {
+      const data = await fsp.readFile(filePath, 'utf8');
+      return JSON.parse(data) as T;
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException)?.code;
+      if (code === 'ENOENT') {
+        return defaultValue;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Failed to load ${filePath}: ${message}`);
+      throw error;
+    }
+  }
+
   private async loadPendingFeedbackStore(): Promise<PendingFeedbackStore> {
     if (this.pendingFeedbackCache) {
       return this.pendingFeedbackCache;
     }
-    try {
-      const data = await fsp.readFile(this.paths.pendingFeedback, 'utf8');
-      this.pendingFeedbackCache = JSON.parse(data) as PendingFeedbackStore;
-      return this.pendingFeedbackCache;
-    } catch {
-      return { version: EngagementStorage.STORAGE_VERSION, entries: [] };
-    }
+    this.pendingFeedbackCache = await this.loadJsonOrDefault<PendingFeedbackStore>(
+      this.paths.pendingFeedback,
+      { version: EngagementStorage.STORAGE_VERSION, entries: [] }
+    );
+    return this.pendingFeedbackCache;
   }
 
   private async savePendingFeedbackStore(store: PendingFeedbackStore): Promise<void> {
@@ -105,17 +130,11 @@ export class EngagementStorage {
     if (this.ratingsCache) {
       return this.ratingsCache;
     }
-
-    try {
-      const data = await fsp.readFile(this.paths.ratings, 'utf8');
-      this.ratingsCache = JSON.parse(data) as RatingsStore;
-      return this.ratingsCache;
-    } catch {
-      return {
-        version: EngagementStorage.STORAGE_VERSION,
-        ratings: []
-      };
-    }
+    this.ratingsCache = await this.loadJsonOrDefault<RatingsStore>(
+      this.paths.ratings,
+      { version: EngagementStorage.STORAGE_VERSION, ratings: [] }
+    );
+    return this.ratingsCache;
   }
 
   private async saveRatingsStore(store: RatingsStore): Promise<void> {
@@ -128,17 +147,11 @@ export class EngagementStorage {
     if (this.feedbackCache) {
       return this.feedbackCache;
     }
-
-    try {
-      const data = await fsp.readFile(this.paths.feedback, 'utf8');
-      this.feedbackCache = JSON.parse(data) as FeedbackStore;
-      return this.feedbackCache;
-    } catch {
-      return {
-        version: EngagementStorage.STORAGE_VERSION,
-        feedback: []
-      };
-    }
+    this.feedbackCache = await this.loadJsonOrDefault<FeedbackStore>(
+      this.paths.feedback,
+      { version: EngagementStorage.STORAGE_VERSION, feedback: [] }
+    );
+    return this.feedbackCache;
   }
 
   private async saveFeedbackStore(store: FeedbackStore): Promise<void> {
@@ -249,6 +262,29 @@ export class EngagementStorage {
       (r) => !(r.resourceType === resourceType && r.resourceId === resourceId)
     );
     await this.saveRatingsStore(store);
+  }
+
+  /**
+   * Return ratings whose remote submission failed and that should be retried.
+   * Entries with `synced === false` are pending; older entries (no `synced` field)
+   * are treated as already-delivered for backward compatibility.
+   */
+  public async getUnsyncedRatings(): Promise<Rating[]> {
+    const store = await this.loadRatingsStore();
+    return store.ratings.filter((r) => r.synced === false);
+  }
+
+  /**
+   * Mark a rating as successfully submitted to the remote backend.
+   * @param id
+   */
+  public async markRatingSynced(id: string): Promise<void> {
+    const store = await this.loadRatingsStore();
+    const entry = store.ratings.find((r) => r.id === id);
+    if (entry) {
+      entry.synced = true;
+      await this.saveRatingsStore(store);
+    }
   }
 
   // ========================================================================

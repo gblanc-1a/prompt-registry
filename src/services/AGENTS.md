@@ -36,7 +36,6 @@ Services contain business logic, separated from UI and commands.
 | `EngagementHydrator` | Hydrates bundles with engagement data |
 | `EngagementService` | Engagement orchestration |
 | `RatingService` / `RatingCache` | Rating logic and optimistic cache |
-| `FeedbackService` / `FeedbackCache` | Feedback submission and cache |
 
 ## Patterns
 

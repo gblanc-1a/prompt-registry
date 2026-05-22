@@ -252,6 +252,30 @@ suite('RatingCache', () => {
       assert.strictEqual(cache.size, 0);
     });
 
+    test('deduplicates concurrent refreshes for the same URL', async () => {
+      // Two simultaneous calls with the same URL must trigger fetchRatings only once.
+      const ratingService = RatingService.getInstance();
+      const fetchStub = sandbox.stub(ratingService, 'fetchRatings');
+
+      let resolveFetch: (value: undefined) => void;
+      fetchStub.returns(new Promise<undefined>((resolve) => {
+        resolveFetch = resolve;
+      }));
+
+      const url = 'https://example.com/ratings.json';
+      const first = cache.refreshFromHub('test-hub', url);
+      const second = cache.refreshFromHub('test-hub', url);
+
+      // Both calls should be in-flight against the SAME pending promise.
+      assert.strictEqual(fetchStub.callCount, 1);
+
+      resolveFetch!(undefined);
+      await Promise.all([first, second]);
+
+      // After completion the in-flight map clears; still one fetch total.
+      assert.strictEqual(fetchStub.callCount, 1);
+    });
+
     test('should preserve in-session optimistic rating after refresh overwrites aggregate', async () => {
       // Scenario: user rates bundle 3 stars (optimistic), then on next startup
       // refreshFromHub loads stale ratings.json (computed before the user rated).

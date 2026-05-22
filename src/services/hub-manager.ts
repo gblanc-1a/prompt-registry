@@ -53,9 +53,6 @@ import {
   EngagementService,
 } from './engagement/engagement-service';
 import {
-  FeedbackCache,
-} from './engagement/feedback-cache';
-import {
   RatingCache,
 } from './engagement/rating-cache';
 import {
@@ -592,8 +589,7 @@ export class HubManager {
 
     const hydrator = new EngagementHydrator(
       EngagementService.getInstance(),
-      RatingCache.getInstance(),
-      FeedbackCache.getInstance()
+      RatingCache.getInstance()
     );
     const sourceIdMap = hydrator.buildSourceIdMap(hubSources);
     await hydrator.hydrate(hubId, engagement, sourceIdMap);

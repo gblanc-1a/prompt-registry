@@ -4,6 +4,15 @@
  */
 
 import {
+  GitHubClient,
+  GitHubRelease,
+} from '../services/github-client';
+import {
+  GitHubAuthError,
+  GitHubClientError,
+  GitHubNotFoundError,
+} from '../services/github-client-errors';
+import {
   Bundle,
   RegistrySource,
   SourceMetadata,
@@ -15,15 +24,6 @@ import {
 import {
   Logger,
 } from '../utils/logger';
-import {
-  GitHubClient,
-  GitHubRelease,
-} from '../services/github-client';
-import {
-  GitHubAuthError,
-  GitHubClientError,
-  GitHubNotFoundError,
-} from '../services/github-client-errors';
 import {
   hasValidBundleAssets,
   mapReleaseToBundle,
@@ -45,93 +45,6 @@ export class GitHubAdapter extends RepositoryAdapter {
     super(source);
     this.logger = Logger.getInstance();
     this.client = client ?? new GitHubClient({ sourceUrl: source.url, explicitToken: source.token });
-  }
-
-  public async fetchBundles(): Promise<Bundle[]> {
-    try {
-      const releases = await this.client.listReleases();
-      const validReleases = releases.filter(hasValidBundleAssets);
-
-      const concurrency = CONCURRENCY_CONSTANTS.MANIFEST_DOWNLOAD_CONCURRENCY;
-      const bundles: Bundle[] = [];
-
-      for (let i = 0; i < validReleases.length; i += concurrency) {
-        const batch = validReleases.slice(i, i + concurrency);
-        const batchResults = await Promise.allSettled(
-          batch.map((release) => this.processSingleRelease(release))
-        );
-        for (const result of batchResults) {
-          if (result.status === 'fulfilled' && result.value) {
-            bundles.push(result.value);
-          }
-        }
-      }
-
-      return bundles;
-    } catch (error) {
-      throw new Error(`Failed to fetch bundles from GitHub: ${this.wrapErrorMessage(error)}`);
-    }
-  }
-
-  public async downloadBundle(bundle: Bundle): Promise<Buffer> {
-    try {
-      return await this.client.downloadAsset(bundle.downloadUrl);
-    } catch (error) {
-      throw new Error(`Failed to download bundle: ${this.wrapErrorMessage(error)}`);
-    }
-  }
-
-  public async fetchMetadata(): Promise<SourceMetadata> {
-    try {
-      const repoData = await this.client.getRepository();
-      const releases = await this.client.listReleases();
-
-      return {
-        name: repoData.name,
-        description: repoData.description || '',
-        bundleCount: releases.length,
-        lastUpdated: repoData.updatedAt,
-        version: '1.0.0',
-      };
-    } catch (error) {
-      throw new Error(`Failed to fetch GitHub metadata: ${this.wrapErrorMessage(error)}`);
-    }
-  }
-
-  public async validate(): Promise<ValidationResult> {
-    try {
-      await this.client.getRepository();
-      const releases = await this.client.listReleases();
-
-      return {
-        valid: true,
-        errors: [],
-        warnings: releases.length === 0 ? ['No releases found in repository'] : [],
-        bundlesFound: releases.length,
-      };
-    } catch (error) {
-      return {
-        valid: false,
-        errors: [`GitHub validation failed: ${this.wrapErrorMessage(error)}`],
-        warnings: [],
-        bundlesFound: 0,
-      };
-    }
-  }
-
-  public getManifestUrl(bundleId: string, version?: string): string {
-    const tag = version ? `v${version}` : 'latest';
-    return `https://github.com/${this.client.owner}/${this.client.repo}/releases/download/${tag}/deployment-manifest.json`;
-  }
-
-  public getDownloadUrl(bundleId: string, version?: string): string {
-    const tag = version ? `v${version}` : 'latest';
-    return `https://github.com/${this.client.owner}/${this.client.repo}/releases/download/${tag}/bundle.zip`;
-  }
-
-  public clearManifestCache(): void {
-    this.manifestCache.clear();
-    this.logger.debug('[GitHubAdapter] Manifest cache cleared');
   }
 
   private async processSingleRelease(release: GitHubRelease): Promise<Bundle | null> {
@@ -197,5 +110,92 @@ export class GitHubAdapter extends RepositoryAdapter {
       return error.message;
     }
     return String(error);
+  }
+
+  public async fetchBundles(): Promise<Bundle[]> {
+    try {
+      const releases = await this.client.listReleases();
+      const validReleases = releases.filter((release) => hasValidBundleAssets(release));
+
+      const concurrency = CONCURRENCY_CONSTANTS.MANIFEST_DOWNLOAD_CONCURRENCY;
+      const bundles: Bundle[] = [];
+
+      for (let i = 0; i < validReleases.length; i += concurrency) {
+        const batch = validReleases.slice(i, i + concurrency);
+        const batchResults = await Promise.allSettled(
+          batch.map((release) => this.processSingleRelease(release))
+        );
+        for (const result of batchResults) {
+          if (result.status === 'fulfilled' && result.value) {
+            bundles.push(result.value);
+          }
+        }
+      }
+
+      return bundles;
+    } catch (error) {
+      throw new Error(`Failed to fetch bundles from GitHub: ${this.wrapErrorMessage(error)}`);
+    }
+  }
+
+  public async downloadBundle(bundle: Bundle): Promise<Buffer> {
+    try {
+      return await this.client.downloadAsset(bundle.downloadUrl);
+    } catch (error) {
+      throw new Error(`Failed to download bundle: ${this.wrapErrorMessage(error)}`);
+    }
+  }
+
+  public async fetchMetadata(): Promise<SourceMetadata> {
+    try {
+      const repoData = await this.client.getRepository();
+      const releases = await this.client.listReleases();
+
+      return {
+        name: repoData.name,
+        description: repoData.description || '',
+        bundleCount: releases.length,
+        lastUpdated: repoData.updatedAt,
+        version: '1.0.0'
+      };
+    } catch (error) {
+      throw new Error(`Failed to fetch GitHub metadata: ${this.wrapErrorMessage(error)}`);
+    }
+  }
+
+  public async validate(): Promise<ValidationResult> {
+    try {
+      await this.client.getRepository();
+      const releases = await this.client.listReleases();
+
+      return {
+        valid: true,
+        errors: [],
+        warnings: releases.length === 0 ? ['No releases found in repository'] : [],
+        bundlesFound: releases.length
+      };
+    } catch (error) {
+      return {
+        valid: false,
+        errors: [`GitHub validation failed: ${this.wrapErrorMessage(error)}`],
+        warnings: [],
+        bundlesFound: 0
+      };
+    }
+  }
+
+  public getManifestUrl(bundleId: string, version?: string): string {
+    const tag = version ? `v${version}` : 'latest';
+    return `https://github.com/${this.client.owner}/${this.client.repo}/releases/download/${tag}/deployment-manifest.json`;
+  }
+
+  public getDownloadUrl(bundleId: string, version?: string): string {
+    const tag = version ? `v${version}` : 'latest';
+    return `https://github.com/${this.client.owner}/${this.client.repo}/releases/download/${tag}/bundle.zip`;
+  }
+
+  public clearManifestCache(): void {
+    this.manifestCache.clear();
+    this.logger.debug('[GitHubAdapter] Manifest cache cleared');
   }
 }

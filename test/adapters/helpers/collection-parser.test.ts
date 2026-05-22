@@ -1,5 +1,10 @@
 import * as assert from 'node:assert';
-import { calculateBreakdown, inferEnvironments, mapCollectionToBundle, parseCollectionYaml } from '../../../src/adapters/helpers/collection-parser';
+import {
+  calculateBreakdown,
+  inferEnvironments,
+  mapCollectionToBundle,
+  parseCollectionYaml,
+} from '../../../src/adapters/helpers/collection-parser';
 
 suite('collection-parser', () => {
   suite('parseCollectionYaml()', () => {
@@ -17,11 +22,11 @@ suite('collection-parser', () => {
   });
 
   suite('inferEnvironments()', () => {
-    test('returns vscode for generic tags', () => {
-      assert.deepStrictEqual(inferEnvironments(['python']), ['vscode']);
+    test('passes tags through as environments', () => {
+      assert.deepStrictEqual(inferEnvironments(['python', 'azure']), ['python', 'azure']);
     });
-    test('returns claude-code when tag present', () => {
-      assert.ok(inferEnvironments(['claude-code']).includes('claude-code'));
+    test('returns vscode when no tags', () => {
+      assert.deepStrictEqual(inferEnvironments([]), ['vscode']);
     });
   });
 

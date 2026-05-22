@@ -1,14 +1,18 @@
 import type {
-  Bundle,
-} from '../../types/registry';
-import type {
   GitHubRelease,
 } from '../../services/github-client';
+import type {
+  Bundle,
+} from '../../types/registry';
 import {
   formatByteSize,
   generateGitHubBundleId,
 } from '../../utils/bundle-name-utils';
 
+/**
+ * Extracts description from the first paragraph of a release body.
+ * @param body - Release body markdown text
+ */
 export function extractDescription(body: string): string {
   if (!body) {
     return '';
@@ -26,6 +30,10 @@ export function extractDescription(body: string): string {
   return descLines.join(' ').substring(0, 200);
 }
 
+/**
+ * Parses environment/platform declarations from release body text.
+ * @param body - Release body markdown text
+ */
 export function extractEnvironments(body: string): string[] {
   const envRegex = /(?:environments?|platforms?):\s*([^\n]+)/i;
   const match = body?.match(envRegex);
@@ -38,6 +46,10 @@ export function extractEnvironments(body: string): string[] {
   return ['vscode'];
 }
 
+/**
+ * Parses tag declarations from release body text.
+ * @param body - Release body markdown text
+ */
 export function extractTags(body: string): string[] {
   const tagRegex = /(?:tags?):\s*([^\n]+)/i;
   const match = body?.match(tagRegex);
@@ -47,6 +59,10 @@ export function extractTags(body: string): string[] {
   return [];
 }
 
+/**
+ * Checks if a release has both a manifest and a bundle archive asset.
+ * @param release - GitHub release object
+ */
 export function hasValidBundleAssets(release: GitHubRelease): boolean {
   const hasManifest = release.assets.some((a) =>
     a.name === 'deployment-manifest.yml'
@@ -60,9 +76,18 @@ export function hasValidBundleAssets(release: GitHubRelease): boolean {
   return hasManifest && hasBundle;
 }
 
+/**
+ * Maps a GitHub release and its parsed manifest to a Bundle.
+ * @param release - GitHub release object
+ * @param manifest - Parsed deployment manifest (or null)
+ * @param owner - Repository owner
+ * @param repo - Repository name
+ * @param sourceId - Registry source identifier
+ * @param sourceUrl - Source repository URL
+ */
 export function mapReleaseToBundle(
   release: GitHubRelease,
-  manifest: any | null,
+  manifest: any,
   owner: string,
   repo: string,
   sourceId: string,
@@ -93,7 +118,7 @@ export function mapReleaseToBundle(
     license: manifest?.license || 'Unknown',
     manifestUrl: manifestAsset.url,
     downloadUrl: bundleAsset.url,
-    repository: sourceUrl,
+    repository: sourceUrl
   };
   if (manifest?.prompts && Array.isArray(manifest.prompts)) {
     (bundle as any).prompts = manifest.prompts;

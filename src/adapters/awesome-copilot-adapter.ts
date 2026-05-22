@@ -23,26 +23,25 @@
 import archiver from 'archiver';
 import * as yaml from 'js-yaml';
 import {
+  GitHubClient,
+} from '../services/github-client';
+import {
   Bundle,
   RegistrySource,
   SourceMetadata,
   ValidationResult,
 } from '../types/registry';
 import {
-  GitHubClient,
-  GitHubContentItem,
-} from '../services/github-client';
-import {
-  calculateBreakdown,
-  CollectionItem,
-  CollectionManifest,
-  inferEnvironments,
-  mapCollectionToBundle,
-  parseCollectionYaml,
-} from './helpers/collection-parser';
-import {
   Logger,
 } from '../utils/logger';
+import {
+  calculateBreakdown,
+  CollectionManifest,
+  mapCollectionToBundle,
+  mapKindToType,
+  parseCollectionYaml,
+  titleCase,
+} from './helpers/collection-parser';
 import {
   RepositoryAdapter,
 } from './repository-adapter';
@@ -103,14 +102,10 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
       collectionsPath: userConfig.collectionsPath || 'collections'
     };
 
-    if (client) {
-      this.client = client;
-    } else {
-      this.client = new GitHubClient({
-        sourceUrl: source.url,
-        explicitToken: source.token,
-      });
-    }
+    this.client = client ?? new GitHubClient({
+      sourceUrl: source.url,
+      explicitToken: source.token
+    });
 
     this.logger.info(`AwesomeCopilotAdapter initialized for: ${source.url}`);
   }
@@ -127,12 +122,13 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
 
   /**
    * Parse a collection file into a Bundle
+   * @param collectionFile
    */
   private async parseCollection(collectionFile: string): Promise<Bundle | null> {
     try {
       const filePath = `${this.config.collectionsPath}/${collectionFile}`;
       const buffer = await this.client.getFileContent(filePath, this.config.branch);
-      const yamlContent = buffer.toString('utf-8');
+      const yamlContent = buffer.toString('utf8');
       const collection = parseCollectionYaml(yamlContent);
 
       // Extract MCP servers from either 'mcp.items' or 'mcpServers' field
@@ -166,6 +162,8 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
 
   /**
    * Create a zip archive containing collection files
+   * @param collection
+   * @param _collectionFile
    */
   private async createBundleArchive(collection: CollectionManifest, _collectionFile: string): Promise<Buffer> {
     this.logger.debug(`Creating archive for collection: ${collection.name}`);
@@ -247,6 +245,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
 
   /**
    * Create deployment manifest from collection
+   * @param collection
    */
   private createDeploymentManifest(collection: CollectionManifest): any {
     const prompts = collection.items.map((item) => {
@@ -260,7 +259,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
         const skillName = skillMatch ? skillMatch[1] : 'unknown-skill';
         return {
           id: skillName,
-          name: this.titleCase(skillName.replace(/-/g, ' ')),
+          name: titleCase(skillName.replace(/-/g, ' ')),
           description: `Skill from ${collection.name}`,
           file: itemPath, // Preserve full path for skills
           type: 'skill' as const,
@@ -274,10 +273,10 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
 
       return {
         id,
-        name: this.titleCase(id.replace(/-/g, ' ')),
+        name: titleCase(id.replace(/-/g, ' ')),
         description: `From ${collection.name}`,
         file: `prompts/${filename}`,
-        type: this.mapKindToType(itemKind),
+        type: mapKindToType(itemKind),
         tags: collection.tags || []
       };
     });
@@ -300,34 +299,11 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
   }
 
   /**
-   * Map collection kind to Prompt Registry type
-   */
-  private mapKindToType(kind: string): 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill' {
-    const kindMap: Record<string, 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill'> = {
-      prompt: 'prompt',
-      instruction: 'instructions',
-      'chat-mode': 'chatmode',
-      agent: 'agent',
-      skill: 'skill'
-    };
-    return kindMap[kind] || 'prompt';
-  }
-
-  /**
    * Build raw GitHub content URL
+   * @param path
    */
   private buildRawUrl(path: string): string {
     return `https://raw.githubusercontent.com/${this.client.owner}/${this.client.repo}/${this.config.branch}/${path}`;
-  }
-
-  /**
-   * Convert kebab-case to Title Case
-   */
-  private titleCase(str: string): string {
-    return str
-      .split(' ')
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(' ');
   }
 
   /**
@@ -405,7 +381,7 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
       // Parse collection
       const filePath = `${this.config.collectionsPath}/${collectionFile}`;
       const buffer = await this.client.getFileContent(filePath, this.config.branch);
-      const yamlContent = buffer.toString('utf-8');
+      const yamlContent = buffer.toString('utf8');
       const collection = parseCollectionYaml(yamlContent);
       this.logger.debug(`Collection loaded: ${collection.name}, items: ${collection.items.length}`);
 
@@ -508,6 +484,6 @@ export class AwesomeCopilotAdapter extends RepositoryAdapter {
    */
   public async forceAuthentication(): Promise<void> {
     this.logger.info('[AwesomeCopilotAdapter] Forcing re-authentication...');
-    await this.client.authenticate();
+    await this.client.forceReauthenticate();
   }
 }

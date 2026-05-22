@@ -29,17 +29,17 @@ suite('GitHubAdapter', () => {
     url: 'https://github.com/test-owner/test-repo',
     enabled: true,
     priority: 1,
-    token: 'test-token',
+    token: 'test-token'
   };
 
-  function createMockClient(): sinon.SinonStubbedInstance<GitHubClient> {
+  const createMockClient = (): sinon.SinonStubbedInstance<GitHubClient> => {
     const mockClient = sinon.createStubInstance(GitHubClient);
     Object.defineProperty(mockClient, 'owner', { value: 'test-owner' });
     Object.defineProperty(mockClient, 'repo', { value: 'test-repo' });
     return mockClient;
-  }
+  };
 
-  function makeRelease(overrides: Partial<GitHubRelease> = {}): GitHubRelease {
+  const makeRelease = (overrides: Partial<GitHubRelease> = {}): GitHubRelease => {
     return {
       tag_name: 'v1.0.0',
       name: 'Release 1.0.0',
@@ -50,30 +50,30 @@ suite('GitHubAdapter', () => {
           name: 'deployment-manifest.json',
           url: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/123',
           browser_download_url: 'https://github.com/.../deployment-manifest.json',
-          size: 1024,
+          size: 1024
         },
         {
           name: 'bundle.zip',
           url: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/124',
           browser_download_url: 'https://github.com/.../bundle.zip',
-          size: 2048,
-        },
+          size: 2048
+        }
       ],
-      ...overrides,
+      ...overrides
     };
-  }
+  };
 
   suite('Constructor and Validation', () => {
     test('should accept valid GitHub URL', () => {
       const mockClient = createMockClient();
-      const adapter = new GitHubAdapter(mockSource, mockClient as any);
+      const adapter = new GitHubAdapter(mockSource, mockClient);
       assert.strictEqual(adapter.type, 'github');
     });
 
     test('should accept GitHub SSH URL', () => {
       const source = { ...mockSource, url: 'git@github.com:test-owner/test-repo.git' };
       const mockClient = createMockClient();
-      const adapter = new GitHubAdapter(source, mockClient as any);
+      const adapter = new GitHubAdapter(source, mockClient);
       assert.ok(adapter);
     });
 
@@ -89,11 +89,11 @@ suite('GitHubAdapter', () => {
       mockClient.getRepository.resolves({
         name: 'test-repo',
         description: 'Test repository',
-        updatedAt: '2025-01-01T00:00:00Z',
+        updatedAt: '2025-01-01T00:00:00Z'
       });
       mockClient.listReleases.resolves([makeRelease(), makeRelease({ tag_name: 'v1.1.0' })]);
 
-      const adapter = new GitHubAdapter(mockSource, mockClient as any);
+      const adapter = new GitHubAdapter(mockSource, mockClient);
       const metadata = await adapter.fetchMetadata();
 
       assert.strictEqual(metadata.name, 'test-repo');
@@ -105,7 +105,7 @@ suite('GitHubAdapter', () => {
       const mockClient = createMockClient();
       mockClient.getRepository.rejects(new GitHubNotFoundError('test-owner', 'test-repo'));
 
-      const adapter = new GitHubAdapter(mockSource, mockClient as any);
+      const adapter = new GitHubAdapter(mockSource, mockClient);
       await assert.rejects(
         () => adapter.fetchMetadata(),
         /Failed to fetch GitHub metadata/
@@ -122,10 +122,10 @@ suite('GitHubAdapter', () => {
         name: 'Test Bundle Name',
         version: '1.0.0',
         description: 'Test bundle description',
-        author: 'Test Author',
+        author: 'Test Author'
       })));
 
-      const adapter = new GitHubAdapter(mockSource, mockClient as any);
+      const adapter = new GitHubAdapter(mockSource, mockClient);
       const bundles = await adapter.fetchBundles();
 
       assert.strictEqual(bundles.length, 1);
@@ -144,15 +144,15 @@ suite('GitHubAdapter', () => {
             name: 'deployment-manifest.yml',
             url: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/123',
             browser_download_url: 'https://github.com/.../deployment-manifest.yml',
-            size: 1024,
+            size: 1024
           },
           {
             name: 'bundle.zip',
             url: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/124',
             browser_download_url: 'https://github.com/.../bundle.zip',
-            size: 2048,
-          },
-        ],
+            size: 2048
+          }
+        ]
       })]);
 
       const manifestContent = `
@@ -168,7 +168,7 @@ tags:
 `;
       mockClient.downloadAsset.resolves(Buffer.from(manifestContent));
 
-      const adapter = new GitHubAdapter(mockSource, mockClient as any);
+      const adapter = new GitHubAdapter(mockSource, mockClient);
       const bundles = await adapter.fetchBundles();
 
       assert.strictEqual(bundles.length, 1);
@@ -185,7 +185,7 @@ tags:
       mockClient.listReleases.resolves([makeRelease({ name: 'Fallback Release Name' })]);
       mockClient.downloadAsset.rejects(new Error('Download failed'));
 
-      const adapter = new GitHubAdapter(mockSource, mockClient as any);
+      const adapter = new GitHubAdapter(mockSource, mockClient);
       const bundles = await adapter.fetchBundles();
 
       assert.strictEqual(bundles.length, 1);
@@ -204,12 +204,12 @@ tags:
             name: 'bundle.zip',
             url: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/124',
             browser_download_url: 'https://github.com/.../bundle.zip',
-            size: 2048,
-          },
-        ],
+            size: 2048
+          }
+        ]
       }]);
 
-      const adapter = new GitHubAdapter(mockSource, mockClient as any);
+      const adapter = new GitHubAdapter(mockSource, mockClient);
       const bundles = await adapter.fetchBundles();
 
       assert.strictEqual(bundles.length, 0);
@@ -219,7 +219,7 @@ tags:
       const mockClient = createMockClient();
       mockClient.listReleases.resolves([]);
 
-      const adapter = new GitHubAdapter(mockSource, mockClient as any);
+      const adapter = new GitHubAdapter(mockSource, mockClient);
       const bundles = await adapter.fetchBundles();
 
       assert.strictEqual(bundles.length, 0);
@@ -232,7 +232,7 @@ tags:
       mockClient.getRepository.resolves({ name: 'test-repo', description: '', updatedAt: '' });
       mockClient.listReleases.resolves([]);
 
-      const adapter = new GitHubAdapter(mockSource, mockClient as any);
+      const adapter = new GitHubAdapter(mockSource, mockClient);
       const result = await adapter.validate();
 
       assert.strictEqual(result.valid, true);
@@ -243,7 +243,7 @@ tags:
       const mockClient = createMockClient();
       mockClient.getRepository.rejects(new GitHubNotFoundError('test-owner', 'test-repo'));
 
-      const adapter = new GitHubAdapter(mockSource, mockClient as any);
+      const adapter = new GitHubAdapter(mockSource, mockClient);
       const result = await adapter.validate();
 
       assert.strictEqual(result.valid, false);
@@ -254,7 +254,7 @@ tags:
       const mockClient = createMockClient();
       mockClient.getRepository.rejects(new GitHubAuthError('Bad credentials', 401));
 
-      const adapter = new GitHubAdapter(mockSource, mockClient as any);
+      const adapter = new GitHubAdapter(mockSource, mockClient);
       const result = await adapter.validate();
 
       assert.strictEqual(result.valid, false);
@@ -266,7 +266,7 @@ tags:
       mockClient.getRepository.resolves({ name: 'test-repo', description: '', updatedAt: '' });
       mockClient.listReleases.resolves([]);
 
-      const adapter = new GitHubAdapter(mockSource, mockClient as any);
+      const adapter = new GitHubAdapter(mockSource, mockClient);
       const result = await adapter.validate();
 
       assert.strictEqual(result.valid, true);
@@ -277,7 +277,7 @@ tags:
   suite('URL Generation', () => {
     test('should generate correct manifest URL', () => {
       const mockClient = createMockClient();
-      const adapter = new GitHubAdapter(mockSource, mockClient as any);
+      const adapter = new GitHubAdapter(mockSource, mockClient);
       const url = adapter.getManifestUrl('bundle-id', '1.0.0');
 
       assert.ok(url.includes('test-owner/test-repo'));
@@ -287,7 +287,7 @@ tags:
 
     test('should generate correct download URL', () => {
       const mockClient = createMockClient();
-      const adapter = new GitHubAdapter(mockSource, mockClient as any);
+      const adapter = new GitHubAdapter(mockSource, mockClient);
       const url = adapter.getDownloadUrl('bundle-id', '1.0.0');
 
       assert.ok(url.includes('test-owner/test-repo'));
@@ -297,7 +297,7 @@ tags:
 
     test('should use latest tag when version not specified', () => {
       const mockClient = createMockClient();
-      const adapter = new GitHubAdapter(mockSource, mockClient as any);
+      const adapter = new GitHubAdapter(mockSource, mockClient);
       const url = adapter.getManifestUrl('bundle-id');
 
       assert.ok(url.includes('latest'));
@@ -310,7 +310,7 @@ tags:
       const bundleContent = Buffer.from('test bundle content');
       mockClient.downloadAsset.resolves(bundleContent);
 
-      const adapter = new GitHubAdapter(mockSource, mockClient as any);
+      const adapter = new GitHubAdapter(mockSource, mockClient);
       const result = await adapter.downloadBundle({
         id: 'test-bundle',
         name: 'Test Bundle',
@@ -325,7 +325,7 @@ tags:
         dependencies: [],
         license: 'MIT',
         downloadUrl: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/124',
-        manifestUrl: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/123',
+        manifestUrl: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/123'
       });
 
       assert.ok(Buffer.isBuffer(result));
@@ -336,7 +336,7 @@ tags:
       const mockClient = createMockClient();
       mockClient.downloadAsset.rejects(new GitHubClientError('Download failed: 404', 404));
 
-      const adapter = new GitHubAdapter(mockSource, mockClient as any);
+      const adapter = new GitHubAdapter(mockSource, mockClient);
       await assert.rejects(
         () => adapter.downloadBundle({
           id: 'test-bundle',
@@ -352,7 +352,7 @@ tags:
           dependencies: [],
           license: 'MIT',
           downloadUrl: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/124',
-          manifestUrl: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/123',
+          manifestUrl: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/123'
         }),
         /Failed to download bundle/
       );
@@ -364,7 +364,7 @@ tags:
       const mockClient = createMockClient();
       mockClient.getRepository.rejects(new GitHubAuthError('Bad credentials', 401));
 
-      const adapter = new GitHubAdapter(mockSource, mockClient as any);
+      const adapter = new GitHubAdapter(mockSource, mockClient);
 
       try {
         await adapter.fetchMetadata();
@@ -380,7 +380,7 @@ tags:
       const mockClient = createMockClient();
       mockClient.getRepository.rejects(new GitHubAuthError('Forbidden', 403));
 
-      const adapter = new GitHubAdapter(mockSource, mockClient as any);
+      const adapter = new GitHubAdapter(mockSource, mockClient);
 
       try {
         await adapter.fetchMetadata();
@@ -396,7 +396,7 @@ tags:
       const mockClient = createMockClient();
       mockClient.getRepository.rejects(new GitHubNotFoundError('test-owner', 'test-repo'));
 
-      const adapter = new GitHubAdapter(mockSource, mockClient as any);
+      const adapter = new GitHubAdapter(mockSource, mockClient);
 
       try {
         await adapter.fetchMetadata();
@@ -412,14 +412,14 @@ tags:
       const testCases = [
         { error: new GitHubAuthError('Bad credentials', 401), expectedPhrase: 'Authentication failed' },
         { error: new GitHubAuthError('Forbidden', 403), expectedPhrase: 'Access forbidden' },
-        { error: new GitHubNotFoundError('test-owner', 'test-repo'), expectedPhrase: 'Repository not found' },
+        { error: new GitHubNotFoundError('test-owner', 'test-repo'), expectedPhrase: 'Repository not found' }
       ];
 
       for (const testCase of testCases) {
         const mockClient = createMockClient();
         mockClient.getRepository.rejects(testCase.error);
 
-        const adapter = new GitHubAdapter(mockSource, mockClient as any);
+        const adapter = new GitHubAdapter(mockSource, mockClient);
 
         try {
           await adapter.fetchMetadata();
@@ -441,10 +441,10 @@ tags:
       mockClient.downloadAsset.resolves(Buffer.from(JSON.stringify({
         id: 'test-bundle',
         name: 'Test Bundle',
-        version: '1.0.0',
+        version: '1.0.0'
       })));
 
-      const adapter = new GitHubAdapter(mockSource, mockClient as any);
+      const adapter = new GitHubAdapter(mockSource, mockClient);
       await adapter.fetchBundles();
 
       // Manifest should only be downloaded once for a single URL
@@ -458,10 +458,10 @@ tags:
       mockClient.downloadAsset.resolves(Buffer.from(JSON.stringify({
         id: 'test-bundle',
         name: 'Test Bundle',
-        version: '1.0.0',
+        version: '1.0.0'
       })));
 
-      const adapter = new GitHubAdapter(mockSource, mockClient as any);
+      const adapter = new GitHubAdapter(mockSource, mockClient);
       await adapter.fetchBundles();
 
       assert.strictEqual(mockClient.downloadAsset.callCount, 1);
@@ -486,15 +486,15 @@ tags:
             name: 'deployment-manifest.json',
             url: `https://api.github.com/repos/test-owner/test-repo/releases/assets/${100 + i}`,
             browser_download_url: `https://github.com/.../deployment-manifest.json`,
-            size: 1024,
+            size: 1024
           },
           {
             name: 'bundle.zip',
             url: `https://api.github.com/repos/test-owner/test-repo/releases/assets/${200 + i}`,
             browser_download_url: `https://github.com/.../bundle.zip`,
-            size: 2048,
-          },
-        ],
+            size: 2048
+          }
+        ]
       }));
       mockClient.listReleases.resolves(releases);
 
@@ -505,11 +505,11 @@ tags:
         return Promise.resolve(Buffer.from(JSON.stringify({
           id: `test-bundle-${idx}`,
           name: `Test Bundle ${idx}`,
-          version: `1.0.${idx}`,
+          version: `1.0.${idx}`
         })));
       });
 
-      const adapter = new GitHubAdapter(mockSource, mockClient as any);
+      const adapter = new GitHubAdapter(mockSource, mockClient);
       const bundles = await adapter.fetchBundles();
 
       assert.strictEqual(bundles.length, 15);
@@ -531,8 +531,8 @@ tags:
           body: '',
           published_at: '2025-01-01T00:00:00Z',
           assets: [
-            { name: 'bundle.zip', url: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/201', browser_download_url: '', size: 2048 },
-          ],
+            { name: 'bundle.zip', url: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/201', browser_download_url: '', size: 2048 }
+          ]
         },
         makeRelease({
           tag_name: 'v0.8.0',
@@ -542,16 +542,16 @@ tags:
               name: 'deployment-manifest.yml',
               url: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/102',
               browser_download_url: '',
-              size: 1024,
+              size: 1024
             },
             {
               name: 'bundle.zip',
               url: 'https://api.github.com/repos/test-owner/test-repo/releases/assets/202',
               browser_download_url: '',
-              size: 2048,
-            },
-          ],
-        }),
+              size: 2048
+            }
+          ]
+        })
       ]);
 
       mockClient.downloadAsset.callsFake((url: string) => {
@@ -564,7 +564,7 @@ tags:
         return Promise.reject(new Error('unexpected URL'));
       });
 
-      const adapter = new GitHubAdapter(mockSource, mockClient as any);
+      const adapter = new GitHubAdapter(mockSource, mockClient);
       const bundles = await adapter.fetchBundles();
 
       assert.strictEqual(bundles.length, 2);

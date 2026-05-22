@@ -1,6 +1,14 @@
 import * as assert from 'node:assert';
-import { extractDescription, extractEnvironments, extractTags, hasValidBundleAssets, mapReleaseToBundle } from '../../../src/adapters/helpers/release-mapper';
-import type { GitHubRelease } from '../../../src/services/github-client';
+import {
+  extractDescription,
+  extractEnvironments,
+  extractTags,
+  hasValidBundleAssets,
+  mapReleaseToBundle,
+} from '../../../src/adapters/helpers/release-mapper';
+import type {
+  GitHubRelease,
+} from '../../../src/services/github-client';
 
 suite('release-mapper', () => {
   suite('extractDescription()', () => {
@@ -38,7 +46,7 @@ suite('release-mapper', () => {
     test('returns true when release has manifest and bundle', () => {
       const release = { assets: [
         { name: 'deployment-manifest.yml', url: '', browser_download_url: '', size: 100 },
-        { name: 'bundle.zip', url: '', browser_download_url: '', size: 5000 },
+        { name: 'bundle.zip', url: '', browser_download_url: '', size: 5000 }
       ] } as any;
       assert.strictEqual(hasValidBundleAssets(release), true);
     });
@@ -54,11 +62,14 @@ suite('release-mapper', () => {
         tag_name: 'v1.2.3', name: 'My Bundle Release', body: 'A great bundle',
         assets: [
           { name: 'deployment-manifest.yml', url: 'https://api.github.com/assets/1', browser_download_url: '', size: 100 },
-          { name: 'bundle.zip', url: 'https://api.github.com/assets/2', browser_download_url: '', size: 5000 },
+          { name: 'bundle.zip', url: 'https://api.github.com/assets/2', browser_download_url: '', size: 5000 }
         ],
-        published_at: '2026-01-15T00:00:00Z',
+        published_at: '2026-01-15T00:00:00Z'
       };
-      const manifest = { id: 'my-bundle', name: 'My Bundle', version: '1.2.3', description: 'From manifest', author: 'manifest-author', environments: ['vscode'], tags: ['ai'], dependencies: [], license: 'MIT' };
+      const manifest = {
+        id: 'my-bundle', name: 'My Bundle', version: '1.2.3', description: 'From manifest',
+        author: 'manifest-author', environments: ['vscode'], tags: ['ai'], dependencies: [], license: 'MIT'
+      };
       const bundle = mapReleaseToBundle(release, manifest, 'octocat', 'hello-world', 'source-1', 'https://github.com/octocat/hello-world');
       assert.strictEqual(bundle.name, 'My Bundle');
       assert.strictEqual(bundle.version, '1.2.3');
@@ -69,9 +80,9 @@ suite('release-mapper', () => {
         tag_name: 'v2.0.0', name: 'Release Name', body: 'desc',
         assets: [
           { name: 'deployment-manifest.json', url: 'u1', browser_download_url: '', size: 100 },
-          { name: 'my-bundle.tar.gz', url: 'u2', browser_download_url: '', size: 5000 },
+          { name: 'my-bundle.tar.gz', url: 'u2', browser_download_url: '', size: 5000 }
         ],
-        published_at: '2026-02-01T00:00:00Z',
+        published_at: '2026-02-01T00:00:00Z'
       };
       const bundle = mapReleaseToBundle(release, null, 'octocat', 'hello-world', 'source-1', 'https://github.com/octocat/hello-world');
       assert.strictEqual(bundle.name, 'Release Name');

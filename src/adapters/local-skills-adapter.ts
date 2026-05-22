@@ -24,13 +24,13 @@ import {
   ValidationResult,
 } from '../types/registry';
 import {
-  ParsedSkillFile,
   SkillItem,
 } from '../types/skills';
 import {
   Logger,
 } from '../utils/logger';
 import {
+  formatSkillVersion,
   parseSkillMd,
 } from './helpers/skill-parser';
 import {
@@ -217,14 +217,17 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
       const parsedSkillMd = parseSkillMd(raw);
 
       const entries = await readdir(skillPath);
-      const files = entries.filter((entry) => {
-        const entryPath = path.join(skillPath, entry);
-        try {
-          return fs.statSync(entryPath).isFile();
-        } catch {
-          return false;
-        }
-      });
+      const fileChecks = await Promise.all(
+        entries.map(async (entry) => {
+          try {
+            const s = await stat(path.join(skillPath, entry));
+            return s.isFile() ? entry : null;
+          } catch {
+            return null;
+          }
+        })
+      );
+      const files = fileChecks.filter((f): f is string => f !== null);
       // Calculate content hash of skill directory
       const contentHash = await this.calculateContentHash(skillPath, files);
 
@@ -248,7 +251,6 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
     }
   }
 
-
   /**
    * Create Bundle from SkillItem
    * @param skill
@@ -263,7 +265,7 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
       id: bundleId,
       name: skill.name,
       // Content hash drives hash-based versioning for update detection.
-      version: this.formatSkillVersion(skill.contentHash),
+      version: formatSkillVersion(skill.contentHash || ''),
       description: skill.description,
       author: 'Local',
       sourceId: this.source.id,
@@ -301,14 +303,6 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
     }
 
     return hash.digest('hex');
-  }
-
-  /**
-   * Format skill version from content hash.
-   * @param contentHash
-   */
-  private formatSkillVersion(contentHash?: string): string {
-    return contentHash ? `hash:${contentHash}` : '1.0.0';
   }
 
   /**
@@ -393,7 +387,7 @@ export class LocalSkillsAdapter extends RepositoryAdapter {
 
     return {
       id: `local-skills-${sourceName}-${skill.id}`,
-      version: this.formatSkillVersion(skill.contentHash),
+      version: formatSkillVersion(skill.contentHash || ''),
       name: skill.name,
 
       metadata: {

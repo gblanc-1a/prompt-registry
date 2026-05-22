@@ -1,8 +1,18 @@
 import * as crypto from 'node:crypto';
 import * as yaml from 'js-yaml';
-import type { Bundle } from '../../types/registry';
-import type { ParsedSkillFile, SkillFrontmatter, SkillItem } from '../../types/skills';
+import type {
+  Bundle,
+} from '../../types/registry';
+import type {
+  ParsedSkillFile,
+  SkillFrontmatter,
+  SkillItem,
+} from '../../types/skills';
 
+/**
+ * Parses a skill .md file with YAML frontmatter into structured parts.
+ * @param content - Raw markdown content with optional YAML frontmatter
+ */
 export function parseSkillMd(content: string): ParsedSkillFile {
   const frontmatterMatch = content.match(/^---\s*\n([\s\S]*?)\n---\s*\n([\s\S]*)$/);
   if (!frontmatterMatch) {
@@ -19,9 +29,14 @@ export function parseSkillMd(content: string): ParsedSkillFile {
   return { frontmatter, content: markdownContent, raw: content };
 }
 
-export function calculateContentHash(files: Array<{ path: string; sha?: string; download_url?: string }>): string {
+/**
+ * Computes a deterministic SHA-256 hash from file paths and their SHAs.
+ * @param files - Array of file entries with path and optional sha/download_url
+ */
+// eslint-disable-next-line @typescript-eslint/naming-convention -- mirrors GitHub API JSON field names
+export function calculateContentHash(files: { path: string; sha?: string; download_url?: string }[]): string {
   const hash = crypto.createHash('sha256');
-  const sorted = [...files].sort((a, b) => a.path.localeCompare(b.path));
+  const sorted = [...files].toSorted((a, b) => a.path.localeCompare(b.path));
   for (const file of sorted) {
     hash.update(file.path);
     hash.update(':');
@@ -31,13 +46,22 @@ export function calculateContentHash(files: Array<{ path: string; sha?: string; 
   return hash.digest('hex');
 }
 
+/**
+ * Formats a content hash as a version string for VersionManager compatibility.
+ * @param contentHash - SHA-256 hex digest of skill contents
+ */
 export function formatSkillVersion(contentHash: string): string {
-  const major = parseInt(contentHash.substring(0, 4), 16) % 100;
-  const minor = parseInt(contentHash.substring(4, 8), 16) % 100;
-  const patch = parseInt(contentHash.substring(8, 12), 16) % 1000;
-  return `${major}.${minor}.${patch}`;
+  return contentHash ? `hash:${contentHash}` : '1.0.0';
 }
 
+/**
+ * Maps a SkillItem to a Bundle for registry display.
+ * @param skill - Parsed skill item
+ * @param owner - Repository owner
+ * @param repo - Repository name
+ * @param sourceId - Registry source identifier
+ * @param sourceUrl - Source repository URL
+ */
 export function mapSkillToBundle(skill: SkillItem, owner: string, repo: string, sourceId: string, sourceUrl: string): Bundle {
   const bundleId = `skills-${owner}-${repo}-${skill.id}`;
   return {
@@ -56,6 +80,6 @@ export function mapSkillToBundle(skill: SkillItem, owner: string, repo: string, 
     repository: sourceUrl,
     homepage: `https://github.com/${owner}/${repo}/tree/main/${skill.path}`,
     manifestUrl: `https://api.github.com/repos/${owner}/${repo}/contents/${skill.skillMdPath}`,
-    downloadUrl: `https://github.com/${owner}/${repo}/archive/refs/heads/main.zip`,
+    downloadUrl: `https://github.com/${owner}/${repo}/archive/refs/heads/main.zip`
   };
 }

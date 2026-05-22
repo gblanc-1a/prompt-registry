@@ -40,6 +40,9 @@ import {
   ApmPackageMapper,
 } from './apm-package-mapper';
 import {
+  titleCase,
+} from './helpers/collection-parser';
+import {
   RepositoryAdapter,
 } from './repository-adapter';
 
@@ -138,6 +141,7 @@ export class ApmAdapter extends RepositoryAdapter {
   /**
    * Validate GitHub URL format
    * Security: Prevents URL injection attacks
+   * @param url
    */
   private isValidGitHubUrl(url: string): boolean {
     return GITHUB_URL_PATTERN.test(url);
@@ -208,6 +212,7 @@ export class ApmAdapter extends RepositoryAdapter {
 
   /**
    * Fetch apm.yml content via GitHubClient
+   * @param filePath
    */
   private async fetchApmManifest(filePath: string): Promise<ApmManifest | null> {
     try {
@@ -229,6 +234,7 @@ export class ApmAdapter extends RepositoryAdapter {
 
   /**
    * Cleanup temporary directory
+   * @param dir
    */
   private async cleanupTempDir(dir: string): Promise<void> {
     try {
@@ -240,6 +246,8 @@ export class ApmAdapter extends RepositoryAdapter {
 
   /**
    * Create ZIP archive from installed APM package
+   * @param bundle
+   * @param installDir
    */
   private createBundleArchive(bundle: Bundle, installDir: string): Promise<Buffer> {
     return new Promise<Buffer>((resolve, reject) => {
@@ -258,6 +266,9 @@ export class ApmAdapter extends RepositoryAdapter {
 
   /**
    * Populate archive with manifest and prompt files
+   * @param archive
+   * @param bundle
+   * @param installDir
    */
   private async populateArchive(
     archive: archiver.Archiver,
@@ -294,6 +305,8 @@ export class ApmAdapter extends RepositoryAdapter {
 
   /**
    * Create deployment manifest
+   * @param bundle
+   * @param installDir
    */
   private async createDeploymentManifest(bundle: Bundle, installDir: string): Promise<any> {
     const apmManifestPath = path.join(installDir, 'apm.yml');
@@ -312,7 +325,7 @@ export class ApmAdapter extends RepositoryAdapter {
 
       return {
         id,
-        name: this.titleCase(id.replace(/-/g, ' ')),
+        name: titleCase(id.replace(/-/g, ' ')),
         description: `From ${bundle.name}`,
         file: `prompts/${filename}`,
         type: this.detectFileType(filename),
@@ -347,6 +360,8 @@ export class ApmAdapter extends RepositoryAdapter {
 
   /**
    * Find prompt files
+   * @param dir
+   * @param recursive
    */
   private async findPromptFiles(dir: string, recursive = true): Promise<string[]> {
     const files: string[] = [];
@@ -384,6 +399,7 @@ export class ApmAdapter extends RepositoryAdapter {
 
   /**
    * Detect file type from extension
+   * @param filename
    */
   private detectFileType(filename: string): 'prompt' | 'instructions' | 'chatmode' | 'agent' {
     if (filename.endsWith('.instructions.md')) {
@@ -396,15 +412,6 @@ export class ApmAdapter extends RepositoryAdapter {
       return 'agent';
     }
     return 'prompt';
-  }
-
-  /**
-   * Convert to title case
-   */
-  private titleCase(str: string): string {
-    return str.split(' ')
-      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-      .join(' ');
   }
 
   /**
@@ -435,6 +442,7 @@ export class ApmAdapter extends RepositoryAdapter {
 
   /**
    * Download a bundle by installing via APM CLI
+   * @param bundle
    */
   public async downloadBundle(bundle: Bundle): Promise<Buffer> {
     this.logger.debug(`[ApmAdapter] Downloading: ${bundle.id}`);

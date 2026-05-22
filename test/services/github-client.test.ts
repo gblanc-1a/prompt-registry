@@ -19,7 +19,7 @@ suite('GitHubClient', () => {
   suite('constructor', () => {
     test('parses HTTPS URL to extract owner and repo', () => {
       const client = new GitHubClient({
-        sourceUrl: 'https://github.com/octocat/hello-world',
+        sourceUrl: 'https://github.com/octocat/hello-world'
       });
       assert.strictEqual(client.owner, 'octocat');
       assert.strictEqual(client.repo, 'hello-world');
@@ -27,7 +27,7 @@ suite('GitHubClient', () => {
 
     test('parses HTTPS URL with .git suffix', () => {
       const client = new GitHubClient({
-        sourceUrl: 'https://github.com/octocat/hello-world.git',
+        sourceUrl: 'https://github.com/octocat/hello-world.git'
       });
       assert.strictEqual(client.owner, 'octocat');
       assert.strictEqual(client.repo, 'hello-world');
@@ -35,7 +35,7 @@ suite('GitHubClient', () => {
 
     test('parses SSH URL', () => {
       const client = new GitHubClient({
-        sourceUrl: 'git@github.com:octocat/hello-world.git',
+        sourceUrl: 'git@github.com:octocat/hello-world.git'
       });
       assert.strictEqual(client.owner, 'octocat');
       assert.strictEqual(client.repo, 'hello-world');
@@ -63,7 +63,7 @@ suite('GitHubClient', () => {
 
       const client = new GitHubClient({
         sourceUrl: 'https://github.com/octocat/hello-world',
-        explicitToken: 'explicit-token',
+        explicitToken: 'explicit-token'
       });
       await client.authenticate();
 
@@ -75,7 +75,7 @@ suite('GitHubClient', () => {
 
       const client = new GitHubClient({
         sourceUrl: 'https://github.com/octocat/hello-world',
-        explicitToken: 'explicit-token-1234',
+        explicitToken: 'explicit-token-1234'
       });
       await client.authenticate();
 
@@ -86,7 +86,7 @@ suite('GitHubClient', () => {
       sandbox.stub(vscode.authentication, 'getSession').rejects(new Error('no session'));
 
       const client = new GitHubClient({
-        sourceUrl: 'https://github.com/octocat/hello-world',
+        sourceUrl: 'https://github.com/octocat/hello-world'
       });
 
       sandbox.stub(client as any, 'execGhAuthToken').resolves('gh-cli-token-12345678');
@@ -100,7 +100,7 @@ suite('GitHubClient', () => {
       sandbox.stub(vscode.authentication, 'getSession').rejects(new Error('no session'));
 
       const client = new GitHubClient({
-        sourceUrl: 'https://github.com/octocat/hello-world',
+        sourceUrl: 'https://github.com/octocat/hello-world'
       });
 
       sandbox.stub(client as any, 'execGhAuthToken').rejects(new Error('gh not found'));
@@ -115,7 +115,7 @@ suite('GitHubClient', () => {
         .resolves({ accessToken: 'cached-token' } as any);
 
       const client = new GitHubClient({
-        sourceUrl: 'https://github.com/octocat/hello-world',
+        sourceUrl: 'https://github.com/octocat/hello-world'
       });
 
       await client.authenticate();
@@ -138,7 +138,7 @@ suite('GitHubClient', () => {
       const mockResponse = {
         data: [
           { name: 'file1.md', path: 'skills/file1.md', type: 'file', download_url: 'https://raw.github.com/file1.md', sha: 'abc123', size: 100 },
-          { name: 'subdir', path: 'skills/subdir', type: 'dir', download_url: null, sha: 'def456', size: 0 },
+          { name: 'subdir', path: 'skills/subdir', type: 'dir', download_url: null, sha: 'def456', size: 0 }
         ]
       };
       sandbox.stub((client as any).octokit.repos, 'getContent').resolves(mockResponse);
@@ -176,7 +176,7 @@ suite('GitHubClient', () => {
     test('returns releases list', async () => {
       const mockReleases = [
         { tag_name: 'v1.0.0', name: 'Release 1.0', body: 'First release', assets: [], published_at: '2026-01-01T00:00:00Z' },
-        { tag_name: 'v2.0.0', name: 'Release 2.0', body: 'Second release', assets: [], published_at: '2026-02-01T00:00:00Z' },
+        { tag_name: 'v2.0.0', name: 'Release 2.0', body: 'Second release', assets: [], published_at: '2026-02-01T00:00:00Z' }
       ];
       sandbox.stub((client as any).octokit.repos, 'listReleases').resolves({ data: mockReleases });
 
@@ -202,9 +202,9 @@ suite('GitHubClient', () => {
         data: {
           tree: [
             { path: 'src/index.ts', type: 'blob', sha: 'abc', size: 200 },
-            { path: 'src/utils', type: 'tree', sha: 'def', size: 0 },
+            { path: 'src/utils', type: 'tree', sha: 'def', size: 0 }
           ],
-          truncated: false,
+          truncated: false
         }
       };
       sandbox.stub((client as any).octokit.git, 'getTree').resolves(mockTree);
@@ -251,7 +251,7 @@ suite('GitHubClient', () => {
     test('downloads a release asset via octokit when URL matches asset pattern', async () => {
       const fakeBuffer = Buffer.from('zip-content');
       sandbox.stub((client as any).octokit.repos, 'getReleaseAsset').resolves({
-        data: fakeBuffer,
+        data: fakeBuffer
       });
 
       const result = await client.downloadAsset('https://api.github.com/repos/octocat/hello-world/releases/assets/123');

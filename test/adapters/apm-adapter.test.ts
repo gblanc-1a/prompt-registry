@@ -9,11 +9,11 @@ import {
   ApmAdapter,
 } from '../../src/adapters/apm-adapter';
 import {
-  GitHubClient,
-} from '../../src/services/github-client';
-import {
   ApmRuntimeManager,
 } from '../../src/services/apm-runtime-manager';
+import {
+  GitHubClient,
+} from '../../src/services/github-client';
 import {
   RegistrySource,
 } from '../../src/types/registry';
@@ -318,9 +318,10 @@ suite('ApmAdapter', () => {
       ];
 
       for (const url of maliciousUrls) {
+        const client = mockClient;
         const source = { ...mockSource, url };
         assert.throws(
-          () => new ApmAdapter(source, mockClient),
+          () => new ApmAdapter(source, client),
           /Invalid|URL|GitHub/i,
           `Should reject: ${url}`
         );

@@ -45,6 +45,9 @@ suite('SkillsAdapter Tests', () => {
 
   /**
    * Helper to set up mock responses for a skills structure
+   * @param options
+   * @param options.skills
+   * @param options.skillsDirectoryExists
    */
   const setupSkillsMocks = (options: {
     skills?: {
@@ -123,7 +126,7 @@ Instructions for ${skill.name}
 
   suite('Constructor', () => {
     test('should create adapter with valid GitHub URL', () => {
-      const adapter = new SkillsAdapter(mockSource, mockClient as any);
+      const adapter = new SkillsAdapter(mockSource, mockClient);
       assert.strictEqual(adapter.type, 'skills');
     });
 
@@ -151,7 +154,7 @@ Instructions for ${skill.name}
         }]
       });
 
-      const adapter = new SkillsAdapter(mockSource, mockClient as any);
+      const adapter = new SkillsAdapter(mockSource, mockClient);
       const bundles = await adapter.fetchBundles();
 
       assert.strictEqual(bundles.length, 1);
@@ -183,7 +186,7 @@ Instructions for ${skill.name}
         ]
       });
 
-      const adapter = new SkillsAdapter(mockSource, mockClient as any);
+      const adapter = new SkillsAdapter(mockSource, mockClient);
       const bundles = await adapter.fetchBundles();
 
       assert.strictEqual(bundles.length, 3);
@@ -237,13 +240,13 @@ Instructions for ${skill.name}
       };
 
       setupNestedSkill('sha-diagram');
-      let adapter = new SkillsAdapter(mockSource, mockClient as any);
+      let adapter = new SkillsAdapter(mockSource, mockClient);
       let bundles = await adapter.fetchBundles();
       assert.strictEqual(bundles.length, 1);
       const versionWithOriginalAsset = bundles[0].version;
 
       setupNestedSkill('sha-diagram-updated');
-      adapter = new SkillsAdapter(mockSource, mockClient as any);
+      adapter = new SkillsAdapter(mockSource, mockClient);
       bundles = await adapter.fetchBundles();
       const versionWithUpdatedAsset = bundles[0].version;
 
@@ -260,7 +263,7 @@ Instructions for ${skill.name}
 
       setupSkillsMocks({ skills: manySkills });
 
-      const adapter = new SkillsAdapter(mockSource, mockClient as any);
+      const adapter = new SkillsAdapter(mockSource, mockClient);
       const bundles = await adapter.fetchBundles();
 
       assert.strictEqual(bundles.length, 10);
@@ -291,7 +294,7 @@ Instructions for ${skill.name}
         { name: 'README.md', path: 'skills/invalid-skill/README.md', type: 'file' as const }
       ]);
 
-      const adapter = new SkillsAdapter(mockSource, mockClient as any);
+      const adapter = new SkillsAdapter(mockSource, mockClient);
       const bundles = await adapter.fetchBundles();
 
       assert.strictEqual(bundles.length, 1);
@@ -315,7 +318,7 @@ Instructions for ${skill.name}
         }]
       });
 
-      const adapter = new SkillsAdapter(mockSource, mockClient as any);
+      const adapter = new SkillsAdapter(mockSource, mockClient);
       const result = await adapter.validate();
 
       assert.strictEqual(result.valid, true);
@@ -332,7 +335,7 @@ Instructions for ${skill.name}
 
       setupSkillsMocks({ skillsDirectoryExists: false });
 
-      const adapter = new SkillsAdapter(mockSource, mockClient as any);
+      const adapter = new SkillsAdapter(mockSource, mockClient);
       const result = await adapter.validate();
 
       assert.strictEqual(result.valid, false);
@@ -349,7 +352,7 @@ Instructions for ${skill.name}
       // Empty skills directory
       mockClient.getContents.withArgs('skills').resolves([]);
 
-      const adapter = new SkillsAdapter(mockSource, mockClient as any);
+      const adapter = new SkillsAdapter(mockSource, mockClient);
       const result = await adapter.validate();
 
       assert.strictEqual(result.valid, true);
@@ -359,7 +362,7 @@ Instructions for ${skill.name}
 
   suite('getManifestUrl()', () => {
     test('should return correct manifest URL for skill', () => {
-      const adapter = new SkillsAdapter(mockSource, mockClient as any);
+      const adapter = new SkillsAdapter(mockSource, mockClient);
       const url = adapter.getManifestUrl('skills-test-owner-test-skills-repo-algorithmic-art');
 
       assert.strictEqual(url, 'https://raw.githubusercontent.com/test-owner/test-skills-repo/main/skills/algorithmic-art/SKILL.md');
@@ -368,7 +371,7 @@ Instructions for ${skill.name}
 
   suite('getDownloadUrl()', () => {
     test('should return repository archive URL', () => {
-      const adapter = new SkillsAdapter(mockSource, mockClient as any);
+      const adapter = new SkillsAdapter(mockSource, mockClient);
       const url = adapter.getDownloadUrl('skills-test-owner-test-skills-repo-algorithmic-art');
 
       assert.strictEqual(url, 'https://github.com/test-owner/test-skills-repo/archive/refs/heads/main.zip');
@@ -385,7 +388,7 @@ Instructions for ${skill.name}
         Buffer.from('---\nname: My Skill\ndescription: A test skill\n---\n\n# My Skill\nInstructions')
       );
 
-      const adapter = new SkillsAdapter(mockSource, mockClient as any);
+      const adapter = new SkillsAdapter(mockSource, mockClient);
       const bundle = {
         id: 'skills-test-owner-test-skills-repo-my-skill',
         name: 'My Skill',
@@ -420,7 +423,7 @@ Instructions for ${skill.name}
         ]
       });
 
-      const adapter = new SkillsAdapter(mockSource, mockClient as any);
+      const adapter = new SkillsAdapter(mockSource, mockClient);
       const metadata = await adapter.fetchMetadata();
 
       assert.strictEqual(metadata.bundleCount, 2);

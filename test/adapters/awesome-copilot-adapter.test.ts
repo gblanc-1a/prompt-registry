@@ -11,7 +11,6 @@ import {
 } from '../../src/adapters/awesome-copilot-adapter';
 import {
   GitHubClient,
-  GitHubContentItem,
 } from '../../src/services/github-client';
 import {
   GitHubNotFoundError,
@@ -47,7 +46,7 @@ suite('AwesomeCopilotAdapter', () => {
 
   suite('Constructor and Validation', () => {
     test('should accept valid awesome-copilot source', () => {
-      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient as unknown as GitHubClient);
+      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient);
       assert.strictEqual(adapter.type, 'awesome-copilot');
     });
 
@@ -56,7 +55,7 @@ suite('AwesomeCopilotAdapter', () => {
       const client = sandbox.createStubInstance(GitHubClient);
       Object.defineProperty(client, 'owner', { value: 'microsoft', configurable: true });
       Object.defineProperty(client, 'repo', { value: 'prompt-bundle-spec', configurable: true });
-      const adapter = new AwesomeCopilotAdapter(source, client as unknown as GitHubClient);
+      const adapter = new AwesomeCopilotAdapter(source, client);
       assert.ok(adapter);
     });
   });
@@ -80,7 +79,7 @@ items:
 `)
       );
 
-      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient as unknown as GitHubClient);
+      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient);
       const bundles = await adapter.fetchBundles();
 
       assert.strictEqual(bundles.length, 1);
@@ -99,7 +98,7 @@ items:
         Buffer.from('invalid: yaml: content:')
       );
 
-      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient as unknown as GitHubClient);
+      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient);
       const bundles = await adapter.fetchBundles();
 
       // Should handle parsing error gracefully (returns null for invalid collections)
@@ -109,7 +108,7 @@ items:
     test('should handle empty collections directory', async () => {
       mockClient.getContents.withArgs('collections', 'main').resolves([]);
 
-      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient as unknown as GitHubClient);
+      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient);
       const bundles = await adapter.fetchBundles();
 
       assert.strictEqual(bundles.length, 0);
@@ -130,7 +129,7 @@ items:
 `)
       );
 
-      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient as unknown as GitHubClient);
+      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient);
 
       // First call should hit the API
       const bundles1 = await adapter.fetchBundles();
@@ -164,12 +163,12 @@ items:
 `)
       );
 
-      const adapter = new AwesomeCopilotAdapter(source, mockClient as unknown as GitHubClient);
+      const adapter = new AwesomeCopilotAdapter(source, mockClient);
       const bundles = await adapter.fetchBundles();
 
       assert.strictEqual(bundles.length, 1);
       // Verify it called with custom branch and path
-      sinon.assert.calledWith(mockClient.getContents, 'custom-path', 'develop');
+      assert.ok(mockClient.getContents.calledWith('custom-path', 'develop'), 'getContents called with custom-path and develop branch');
     });
 
     test('should set manifestUrl and downloadUrl on bundles', async () => {
@@ -187,7 +186,7 @@ items:
 `)
       );
 
-      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient as unknown as GitHubClient);
+      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient);
       const bundles = await adapter.fetchBundles();
 
       assert.strictEqual(bundles[0].manifestUrl, 'https://raw.githubusercontent.com/test-owner/awesome-copilot/main/collections/urls-test.collection.yml');
@@ -231,7 +230,7 @@ items:
         Buffer.from('# Test Prompt\n\nThis is a test prompt.')
       );
 
-      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient as unknown as GitHubClient);
+      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient);
       const buffer = await adapter.downloadBundle(mockBundle);
 
       assert.ok(Buffer.isBuffer(buffer));
@@ -271,7 +270,7 @@ items: []
 `)
       );
 
-      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient as unknown as GitHubClient);
+      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient);
       const buffer = await adapter.downloadBundle(mockBundle);
 
       // ZIP should contain deployment-manifest.yml
@@ -315,7 +314,7 @@ items:
         new GitHubNotFoundError('test-owner', 'awesome-copilot', 'prompts/missing.prompt.md')
       );
 
-      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient as unknown as GitHubClient);
+      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient);
 
       // Should throw error for missing files
       let errorThrown = false;
@@ -336,7 +335,7 @@ items:
         { name: 'col2.collection.yml', path: 'collections/col2.collection.yml', type: 'file' }
       ]);
 
-      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient as unknown as GitHubClient);
+      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient);
       const metadata = await adapter.fetchMetadata();
 
       assert.strictEqual(metadata.name, 'test-owner/awesome-copilot');
@@ -351,7 +350,7 @@ items:
         { name: 'test.collection.yml', path: 'collections/test.collection.yml', type: 'file' }
       ]);
 
-      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient as unknown as GitHubClient);
+      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient);
       const result = await adapter.validate();
 
       assert.strictEqual(result.valid, true);
@@ -364,7 +363,7 @@ items:
         new GitHubNotFoundError('test-owner', 'awesome-copilot', 'collections')
       );
 
-      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient as unknown as GitHubClient);
+      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient);
       const result = await adapter.validate();
 
       assert.strictEqual(result.valid, false);
@@ -376,7 +375,7 @@ items:
         { name: 'readme.md', path: 'collections/readme.md', type: 'file' }
       ]);
 
-      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient as unknown as GitHubClient);
+      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient);
       const result = await adapter.validate();
 
       assert.strictEqual(result.valid, false);
@@ -407,7 +406,7 @@ items:
 `)
       );
 
-      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient as unknown as GitHubClient);
+      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient);
       const bundles = await adapter.fetchBundles();
 
       assert.ok(bundles.length > 0);
@@ -415,14 +414,13 @@ items:
       const breakdown = (bundles[0] as any).breakdown;
       assert.strictEqual(breakdown.prompts, 1);
       assert.strictEqual(breakdown.instructions, 1);
-      assert.strictEqual(breakdown.chatModes, 1);
-      assert.strictEqual(breakdown.agents, 1);
+      assert.strictEqual(breakdown.agents, 2);
     });
   });
 
   suite('getManifestUrl / getDownloadUrl', () => {
     test('should build correct raw GitHub URLs', () => {
-      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient as unknown as GitHubClient);
+      const adapter = new AwesomeCopilotAdapter(mockSource, mockClient);
 
       const manifestUrl = adapter.getManifestUrl('test-bundle');
       assert.strictEqual(manifestUrl, 'https://raw.githubusercontent.com/test-owner/awesome-copilot/main/collections/test-bundle.collection.yml');
@@ -436,7 +434,7 @@ items:
         ...mockSource,
         config: { branch: 'develop' }
       };
-      const adapter = new AwesomeCopilotAdapter(source, mockClient as unknown as GitHubClient);
+      const adapter = new AwesomeCopilotAdapter(source, mockClient);
 
       const url = adapter.getManifestUrl('test-bundle');
       assert.ok(url.includes('/develop/'));
@@ -486,7 +484,7 @@ items:
 `)
     );
 
-    const adapter = new AwesomeCopilotAdapter(mockSource, mockClient as unknown as GitHubClient);
+    const adapter = new AwesomeCopilotAdapter(mockSource, mockClient);
     const bundles = await adapter.fetchBundles();
 
     assert.strictEqual(bundles.length, 1);
@@ -546,7 +544,7 @@ items:
       Buffer.from('{"setting": "value"}')
     );
 
-    const adapter = new AwesomeCopilotAdapter(mockSource, mockClient as unknown as GitHubClient);
+    const adapter = new AwesomeCopilotAdapter(mockSource, mockClient);
     const buffer = await adapter.downloadBundle(mockBundle);
 
     // Verify the archive was created
@@ -607,7 +605,7 @@ mcpServers:
 `)
     );
 
-    const adapter = new AwesomeCopilotAdapter(mockSource, mockClient as unknown as GitHubClient);
+    const adapter = new AwesomeCopilotAdapter(mockSource, mockClient);
     const bundles = await adapter.fetchBundles();
 
     assert.strictEqual(bundles.length, 1);

@@ -24,21 +24,25 @@ export interface GitHubContentItem {
   name: string;
   path: string;
   type: 'file' | 'dir';
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- mirrors GitHub API JSON field names
   download_url?: string;
   sha?: string;
   size?: number;
 }
 
 export interface GitHubRelease {
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- mirrors GitHub API JSON field names
   tag_name: string;
   name: string;
   body: string;
   assets: GitHubReleaseAsset[];
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- mirrors GitHub API JSON field names
   published_at: string;
 }
 
 export interface GitHubReleaseAsset {
   name: string;
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- mirrors GitHub API JSON field names
   browser_download_url: string;
   url: string;
   size: number;
@@ -64,10 +68,12 @@ export interface GitHubClientOptions {
 }
 
 export class GitHubClient {
+  private static readonly MAX_REDIRECTS = 10;
+
   public readonly owner: string;
   public readonly repo: string;
   private octokit: Octokit;
-  private authenticated = false;
+  private authResolved = false;
   private authToken: string | undefined;
   private readonly explicitToken: string | undefined;
   private readonly scopes: string[];
@@ -82,23 +88,100 @@ export class GitHubClient {
     this.octokit = new Octokit();
   }
 
+  private async execGhAuthToken(): Promise<string> {
+    const { stdout } = await execAsync('gh auth token');
+    return stdout.trim();
+  }
+
+  private async fetchBuffer(url: string, depth = 0): Promise<Buffer> {
+    if (depth >= GitHubClient.MAX_REDIRECTS) {
+      throw new GitHubClientError(`Too many redirects (max ${GitHubClient.MAX_REDIRECTS})`);
+    }
+    const https = await import('node:https');
+    const headers: Record<string, string> = {
+      'User-Agent': 'Prompt-Registry-VSCode-Extension'
+    };
+    if (this.authToken && this.isGitHubDomain(url)) {
+      headers.Authorization = `token ${this.authToken}`;
+    }
+
+    return new Promise((resolve, reject) => {
+      https.get(url, { headers }, (res) => {
+        if (res.statusCode === 301 || res.statusCode === 302) {
+          const redirectUrl = res.headers.location;
+          if (redirectUrl) {
+            this.fetchBuffer(redirectUrl, depth + 1).then(resolve).catch(reject);
+            return;
+          }
+        }
+        if (res.statusCode && res.statusCode >= 400) {
+          reject(new GitHubClientError(`Download failed: ${res.statusCode}`, res.statusCode));
+          return;
+        }
+        const chunks: Buffer[] = [];
+        res.on('data', (chunk: Buffer) => chunks.push(chunk));
+        res.on('end', () => resolve(Buffer.concat(chunks)));
+      }).on('error', (err) => reject(new GitHubClientError(`Download failed: ${err.message}`)));
+    });
+  }
+
+  private isGitHubDomain(url: string): boolean {
+    try {
+      const parsed = new URL(url);
+      return parsed.hostname.includes('github.com') || parsed.hostname.includes('githubusercontent.com');
+    } catch {
+      return false;
+    }
+  }
+
+  private async ensureAuthenticated(): Promise<void> {
+    if (!this.authResolved) {
+      await this.authenticate();
+    }
+  }
+
+  private handleApiError(error: any, path?: string): never {
+    if (error.status === 404) {
+      throw new GitHubNotFoundError(this.owner, this.repo, path);
+    }
+    if (error.status === 401 || error.status === 403) {
+      const rateLimitReset = error.response?.headers?.['x-ratelimit-reset'];
+      if (rateLimitReset && error.status === 403) {
+        throw new GitHubRateLimitError(new Date(Number(rateLimitReset) * 1000));
+      }
+      throw new GitHubAuthError(error.message, error.status);
+    }
+    throw new GitHubClientError(error.message, error.status);
+  }
+
+  private static parseGitHubUrl(url: string): { owner: string; repo: string } {
+    const cleaned = url.replace(/\.git$/, '');
+    const match = cleaned.match(/github\.com[/:]([^/]+)\/([^/]+)/);
+
+    if (!match) {
+      throw new GitHubClientError(`Invalid GitHub URL: ${url}`);
+    }
+
+    return { owner: match[1], repo: match[2] };
+  }
+
   public getAuthMethod(): string {
     return this.authMethod;
   }
 
   public async authenticate(): Promise<void> {
-    if (this.authenticated) {
+    if (this.authResolved) {
       return;
     }
 
     // 1. VS Code GitHub authentication (primary)
     try {
-      const session = await vscode.authentication.getSession('github', this.scopes, { createIfNone: true });
+      const session = await vscode.authentication.getSession('github', this.scopes, { createIfNone: false });
       if (session) {
         this.authToken = session.accessToken;
         this.authMethod = 'vscode';
         this.octokit = new Octokit({ auth: this.authToken });
-        this.authenticated = true;
+        this.authResolved = true;
         return;
       }
     } catch {
@@ -110,7 +193,7 @@ export class GitHubClient {
       this.authToken = this.explicitToken.trim();
       this.authMethod = 'explicit';
       this.octokit = new Octokit({ auth: this.authToken });
-      this.authenticated = true;
+      this.authResolved = true;
       return;
     }
 
@@ -121,7 +204,7 @@ export class GitHubClient {
         this.authToken = token.trim();
         this.authMethod = 'gh-cli';
         this.octokit = new Octokit({ auth: this.authToken });
-        this.authenticated = true;
+        this.authResolved = true;
         return;
       }
     } catch {
@@ -131,12 +214,21 @@ export class GitHubClient {
     // 4. No authentication
     this.authMethod = 'none';
     this.octokit = new Octokit();
-    this.authenticated = true;
+    this.authResolved = true;
   }
 
-  private async execGhAuthToken(): Promise<string> {
-    const { stdout } = await execAsync('gh auth token');
-    return stdout.trim();
+  public async forceReauthenticate(): Promise<void> {
+    this.authResolved = false;
+    this.authToken = undefined;
+    this.authMethod = 'none';
+
+    const session = await vscode.authentication.getSession('github', this.scopes, { forceNewSession: true });
+    if (session) {
+      this.authToken = session.accessToken;
+      this.authMethod = 'vscode';
+      this.octokit = new Octokit({ auth: this.authToken });
+      this.authResolved = true;
+    }
   }
 
   public async getContents(path: string, ref?: string): Promise<GitHubContentItem[]> {
@@ -146,7 +238,7 @@ export class GitHubClient {
         owner: this.owner,
         repo: this.repo,
         path,
-        ...(ref ? { ref } : {}),
+        ...(ref ? { ref } : {})
       });
       const data = Array.isArray(response.data) ? response.data : [response.data];
       return data.map((item: any) => ({
@@ -155,7 +247,7 @@ export class GitHubClient {
         type: item.type as 'file' | 'dir',
         download_url: item.download_url ?? undefined,
         sha: item.sha,
-        size: item.size,
+        size: item.size
       }));
     } catch (error: any) {
       this.handleApiError(error, path);
@@ -188,7 +280,7 @@ export class GitHubClient {
         owner: this.owner,
         repo: this.repo,
         path,
-        ...(ref ? { ref } : {}),
+        ...(ref ? { ref } : {})
       });
       const data = response.data as any;
       if (data.content && data.encoding === 'base64') {
@@ -209,7 +301,7 @@ export class GitHubClient {
       const response = await this.octokit.repos.listReleases({
         owner: this.owner,
         repo: this.repo,
-        per_page: 100,
+        per_page: 100
       });
       return response.data as unknown as GitHubRelease[];
     } catch (error: any) {
@@ -223,7 +315,7 @@ export class GitHubClient {
       const response = await this.octokit.repos.getReleaseByTag({
         owner: this.owner,
         repo: this.repo,
-        tag,
+        tag
       });
       return response.data as unknown as GitHubRelease;
     } catch (error: any) {
@@ -238,13 +330,13 @@ export class GitHubClient {
         owner: this.owner,
         repo: this.repo,
         tree_sha: sha,
-        recursive: recursive ? 'true' : undefined,
-      } as any);
+        recursive: recursive ? 'true' : undefined
+      });
       return response.data.tree.map((entry: any) => ({
         path: entry.path,
         type: entry.type,
         sha: entry.sha,
-        size: entry.size,
+        size: entry.size
       }));
     } catch (error: any) {
       this.handleApiError(error);
@@ -256,12 +348,12 @@ export class GitHubClient {
     try {
       const response = await this.octokit.repos.get({
         owner: this.owner,
-        repo: this.repo,
+        repo: this.repo
       });
       return {
         name: response.data.name,
         description: response.data.description || '',
-        updatedAt: response.data.updated_at,
+        updatedAt: response.data.updated_at
       };
     } catch (error: any) {
       this.handleApiError(error);
@@ -278,9 +370,17 @@ export class GitHubClient {
         owner: this.owner,
         repo: this.repo,
         asset_id: Number(assetIdMatch[1]),
-        headers: { accept: 'application/octet-stream' },
+        headers: { accept: 'application/octet-stream' }
       });
-      return Buffer.from(response.data as any);
+      const data = response.data as unknown;
+      if (data instanceof ArrayBuffer) {
+        return Buffer.from(data);
+      }
+      if (Buffer.isBuffer(data)) {
+        return data;
+      }
+      // Fallback for string responses (binary encoding preserves byte values)
+      return Buffer.from(data as string, 'binary');
     }
 
     // For other URLs (e.g., browser_download_url), use direct fetch
@@ -303,9 +403,11 @@ export class GitHubClient {
         })
       );
 
-      for (const result of batchResults) {
+      for (const [j, result] of batchResults.entries()) {
         if (result.status === 'fulfilled') {
           results.set(result.value.url, result.value.buffer);
+        } else {
+          console.warn(`[GitHubClient] Download failed for ${batch[j]}: ${result.reason?.message || result.reason}`);
         }
       }
     }
@@ -316,74 +418,5 @@ export class GitHubClient {
   public async downloadRawContent(url: string): Promise<Buffer> {
     await this.ensureAuthenticated();
     return this.fetchBuffer(url);
-  }
-
-  private async fetchBuffer(url: string): Promise<Buffer> {
-    const https = await import('node:https');
-    const headers: Record<string, string> = {
-      'User-Agent': 'Prompt-Registry-VSCode-Extension',
-    };
-    if (this.authToken && this.isGitHubDomain(url)) {
-      headers.Authorization = `token ${this.authToken}`;
-    }
-
-    return new Promise((resolve, reject) => {
-      https.get(url, { headers }, (res) => {
-        if (res.statusCode === 301 || res.statusCode === 302) {
-          const redirectUrl = res.headers.location;
-          if (redirectUrl) {
-            this.fetchBuffer(redirectUrl).then(resolve).catch(reject);
-            return;
-          }
-        }
-        if (res.statusCode && res.statusCode >= 400) {
-          reject(new GitHubClientError(`Download failed: ${res.statusCode}`, res.statusCode));
-          return;
-        }
-        const chunks: Buffer[] = [];
-        res.on('data', (chunk: Buffer) => chunks.push(chunk));
-        res.on('end', () => resolve(Buffer.concat(chunks)));
-      }).on('error', (err) => reject(new GitHubClientError(`Download failed: ${err.message}`)));
-    });
-  }
-
-  private isGitHubDomain(url: string): boolean {
-    try {
-      const parsed = new URL(url);
-      return parsed.hostname.includes('github.com') || parsed.hostname.includes('githubusercontent.com');
-    } catch {
-      return false;
-    }
-  }
-
-  private async ensureAuthenticated(): Promise<void> {
-    if (!this.authenticated) {
-      await this.authenticate();
-    }
-  }
-
-  private handleApiError(error: any, path?: string): never {
-    if (error.status === 404) {
-      throw new GitHubNotFoundError(this.owner, this.repo, path);
-    }
-    if (error.status === 401 || error.status === 403) {
-      const rateLimitReset = error.response?.headers?.['x-ratelimit-reset'];
-      if (rateLimitReset && error.status === 403) {
-        throw new GitHubRateLimitError(new Date(Number(rateLimitReset) * 1000));
-      }
-      throw new GitHubAuthError(error.message, error.status);
-    }
-    throw new GitHubClientError(error.message, error.status);
-  }
-
-  private static parseGitHubUrl(url: string): { owner: string; repo: string } {
-    const cleaned = url.replace(/\.git$/, '');
-    const match = cleaned.match(/github\.com[/:]([^/]+)\/([^/]+)/);
-
-    if (!match) {
-      throw new GitHubClientError(`Invalid GitHub URL: ${url}`);
-    }
-
-    return { owner: match[1], repo: match[2] };
   }
 }

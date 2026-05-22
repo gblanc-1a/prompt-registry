@@ -1,5 +1,7 @@
 import * as yaml from 'js-yaml';
-import type { Bundle } from '../../types/registry';
+import type {
+  Bundle,
+} from '../../types/registry';
 
 export interface CollectionManifest {
   id: string;
@@ -9,6 +11,7 @@ export interface CollectionManifest {
   author?: string;
   tags?: string[];
   items: CollectionItem[];
+  // eslint-disable-next-line @typescript-eslint/naming-convention -- mirrors deployment manifest YAML field names
   display?: { ordering?: string; show_badge?: boolean };
   mcp?: { items?: Record<string, any> };
   mcpServers?: Record<string, any>;
@@ -22,42 +25,67 @@ export interface CollectionItem {
 export interface CollectionBreakdown {
   prompts: number;
   instructions: number;
-  chatModes: number;
   agents: number;
   skills: number;
   mcpServers: number;
 }
 
+/**
+ * Parses a YAML collection manifest string into a typed object.
+ * @param content - Raw YAML string
+ */
 export function parseCollectionYaml(content: string): CollectionManifest {
   return yaml.load(content) as CollectionManifest;
 }
 
+/**
+ * Returns tags as environments, defaulting to ['vscode'] when empty.
+ * @param tags - Collection tags from manifest
+ */
 export function inferEnvironments(tags: string[]): string[] {
-  const envs: string[] = [];
-  if (tags.includes('claude-code') || tags.includes('claude')) { envs.push('claude-code'); }
-  if (tags.includes('cursor')) { envs.push('cursor'); }
-  if (tags.includes('windsurf')) { envs.push('windsurf'); }
-  if (envs.length === 0) { envs.push('vscode'); }
-  return envs;
+  return tags.length > 0 ? [...tags] : ['vscode'];
 }
 
+/**
+ * Counts collection items by kind and MCP servers.
+ * @param items - Collection items to count
+ * @param mcpServers - Optional MCP server definitions
+ */
 export function calculateBreakdown(items: CollectionItem[], mcpServers?: Record<string, any>): CollectionBreakdown {
   const breakdown: CollectionBreakdown = {
-    prompts: 0, instructions: 0, chatModes: 0, agents: 0, skills: 0,
-    mcpServers: mcpServers ? Object.keys(mcpServers).length : 0,
+    prompts: 0, instructions: 0, agents: 0, skills: 0,
+    mcpServers: mcpServers ? Object.keys(mcpServers).length : 0
   };
   for (const item of items) {
     switch (item.kind) {
-      case 'prompt': breakdown.prompts++; break;
-      case 'instruction': breakdown.instructions++; break;
-      case 'chat-mode': breakdown.chatModes++; break;
-      case 'agent': breakdown.agents++; break;
-      case 'skill': breakdown.skills++; break;
+      case 'prompt': {
+        breakdown.prompts++;
+        break;
+      }
+      case 'instruction': {
+        breakdown.instructions++;
+        break;
+      }
+      case 'chat-mode':
+      case 'agent': {
+        breakdown.agents++;
+        break;
+      }
+      case 'skill': {
+        breakdown.skills++;
+        break;
+      }
     }
   }
   return breakdown;
 }
 
+/**
+ * Maps a CollectionManifest to a Bundle for registry display.
+ * @param collection - Parsed collection manifest
+ * @param sourceId - Registry source identifier
+ * @param repoUrl - GitHub repository URL
+ */
 export function mapCollectionToBundle(collection: CollectionManifest, sourceId: string, repoUrl: string): Bundle {
   return {
     id: collection.id,
@@ -74,11 +102,38 @@ export function mapCollectionToBundle(collection: CollectionManifest, sourceId: 
     lastUpdated: new Date().toISOString(),
     size: `${collection.items.length} items`,
     dependencies: [],
-    license: 'MIT',
+    license: 'MIT'
   };
 }
 
 function extractOwnerFromUrl(url: string): string {
   const match = url.match(/github\.com[/:]([^/]+)/);
   return match ? match[1] : 'unknown';
+}
+
+const KIND_MAP: Record<string, 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill'> = {
+  prompt: 'prompt',
+  instruction: 'instructions',
+  'chat-mode': 'chatmode',
+  agent: 'agent',
+  skill: 'skill'
+};
+
+/**
+ * Maps a collection item kind to its prompt type string.
+ * @param kind - Item kind from collection manifest
+ */
+export function mapKindToType(kind: string): 'prompt' | 'instructions' | 'chatmode' | 'agent' | 'skill' {
+  return KIND_MAP[kind] || 'prompt';
+}
+
+/**
+ * Converts a string to title case.
+ * @param str - Input string
+ */
+export function titleCase(str: string): string {
+  return str
+    .split(' ')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
 }

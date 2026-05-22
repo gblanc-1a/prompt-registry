@@ -291,6 +291,7 @@ export class EngagementService {
    * @param options.version
    * @param options.hubId
    * @param options.sourceId
+   * @param options.displayName
    */
   public async submitRating(
     resourceType: EngagementResourceType,
@@ -300,6 +301,7 @@ export class EngagementService {
       version?: string;
       hubId?: string;
       sourceId?: string;
+      displayName?: string;
     }
   ): Promise<Rating> {
     const rating: Rating = {
@@ -310,7 +312,8 @@ export class EngagementService {
       score,
       version: options?.version,
       sourceId: options?.sourceId,
-      hubId: options?.hubId
+      hubId: options?.hubId,
+      displayName: options?.displayName
     };
 
     const backend = this.getBackend(options?.hubId);

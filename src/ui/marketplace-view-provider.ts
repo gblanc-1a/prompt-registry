@@ -642,7 +642,14 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
       const engagementService = EngagementService.getInstance();
       // Persist the stable config sourceId (not the hash-based adapter ID) so ratings survive config changes
       const configSourceId = ratingCache.getConfigSourceId(sourceId);
-      await engagementService.submitRating('bundle', bundleId, newRating, { hubId, sourceId: configSourceId });
+      // Look up the bundle's display name so the backend can seed a new discussion body on first vote.
+      const bundles = await this.registryManager.searchBundles({ cacheOnly: true });
+      const displayName = bundles.find((b) => b.id === bundleId && b.sourceId === sourceId)?.name;
+      await engagementService.submitRating('bundle', bundleId, newRating, {
+        hubId,
+        sourceId: configSourceId,
+        displayName
+      });
       this.logger.debug(`Submitted ${stars}-star rating for bundle ${bundleId} (hub: ${hubId ?? 'local'})`);
       onSuccess(newRating);
     } catch (error) {

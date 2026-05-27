@@ -1,0 +1,4 @@
+engineStrict: true
+packages:
+  - 'packages/*'
+  - 'lib'  # Keep legacy in workspace during migration

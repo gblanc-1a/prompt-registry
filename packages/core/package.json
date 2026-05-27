@@ -17,6 +17,9 @@
     "types"
   ],
   "author": "Amadeus IT Group",
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "watch": "tsc --watch",

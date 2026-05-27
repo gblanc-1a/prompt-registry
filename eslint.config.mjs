@@ -26,7 +26,7 @@ export default defineConfig([
   ),
   ...createSharedConfig({
     name: 'prompt-registry',
-    tsProjects: ['tsconfig.json', 'tsconfig.test.json'],
+    tsProjects: ['tsconfig.json', 'tsconfig.test.json', 'packages/core/tsconfig.json', 'packages/core/tsconfig.test.json'],
     tsconfigRootDir: import.meta.dirname,
     nodeGlobFiles: ['src/**/*.ts']
   }),

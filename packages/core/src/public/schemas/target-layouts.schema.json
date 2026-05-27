@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://prompt-registry/schemas/target-layouts.schema.json",
+  "title": "Target Layouts Configuration",
+  "description": "Configures how bundle primitive files are routed into target directories for each IDE/tool type. Supports hierarchical overrides: built-in → user (~/.config/prompt-registry/layouts.yml) → project (./prompt-registry-layouts.yml). Each level deep-merges kindRoutes so you only need to specify entries you want to change.",
+  "type": "object",
+  "required": ["layouts"],
+  "additionalProperties": false,
+  "properties": {
+    "layouts": {
+      "description": "Map from target type identifier (e.g. 'vscode', 'kiro') to its layout definitions.",
+      "type": "object",
+      "additionalProperties": {
+        "$ref": "#/$defs/TargetLayoutDef"
+      }
+    }
+  },
+  "$defs": {
+    "TargetLayoutDef": {
+      "description": "Layout definitions for a target type, keyed by scope (user / repository).",
+      "type": "object",
+      "required": ["user"],
+      "additionalProperties": false,
+      "properties": {
+        "user": {
+          "$ref": "#/$defs/ScopedLayoutDef",
+          "description": "Layout when the target has scope: user."
+        },
+        "repository": {
+          "$ref": "#/$defs/ScopedLayoutDef",
+          "description": "Layout when the target has scope: repository. Falls back to 'user' layout if absent."
+        }
+      }
+    },
+    "ScopedLayoutDef": {
+      "description": "Layout for one scope: base directory and per-kind subdirectory routing.",
+      "type": "object",
+      "required": ["baseDir", "kindRoutes"],
+      "additionalProperties": false,
+      "properties": {
+        "baseDir": {
+          "type": "string",
+          "description": "Base directory for installation. Supports ${HOME}, ${USERPROFILE}, and the special ${workspaceRoot} token (resolved from target.workspaceRoot ?? target.path ?? '.' at install time).",
+          "examples": [
+            "${HOME}/.config/Code/User",
+            "${workspaceRoot}",
+            "${HOME}/.kiro"
+          ]
+        },
+        "kindRoutes": {
+          "type": "object",
+          "description": "Map from bundle sub-path prefix (e.g. 'prompts/') to output sub-path relative to baseDir (e.g. '.github/prompts/'). Keys must end with '/'.",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "examples": [
+            {
+              "prompts/": "prompts/",
+              "skills/": "skills/"
+            }
+          ]
+        },
+        "skipPaths": {
+          "type": "array",
+          "description": "Bundle-relative file paths to skip entirely (e.g. manifests, READMEs). Defaults to [deployment-manifest.yml, README.md] if absent.",
+          "items": {
+            "type": "string"
+          },
+          "examples": [
+            ["deployment-manifest.yml", "README.md"]
+          ]
+        }
+      }
+    }
+  }
+}

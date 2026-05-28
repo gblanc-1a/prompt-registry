@@ -5,10 +5,18 @@ on:
     branches: [main]
     paths:
       - "lib/**"
+      - ".github/workflows/lib-collection-scripts-ci.yml"
+      - "package.json"
+      - "package-lock.json"
+      - "eslint.shared.mjs"
   pull_request:
     branches: [main]
     paths:
       - "lib/**"
+      - ".github/workflows/lib-collection-scripts-ci.yml"
+      - "package.json"
+      - "package-lock.json"
+      - "eslint.shared.mjs"
   workflow_dispatch:
 
 concurrency:
@@ -43,6 +51,10 @@ jobs:
       - name: Build TypeScript
         working-directory: lib
         run: npm run build
+
+      - name: Run linting
+        working-directory: lib
+        run: npm run lint
 
       - name: Run tests
         working-directory: lib

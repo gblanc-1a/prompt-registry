@@ -33,7 +33,8 @@
   },
   "dependencies": {
     "@prompt-registry/core": "workspace:*",
-    "@prompt-registry/infra": "workspace:*"
+    "@prompt-registry/infra": "workspace:*",
+    "js-yaml": "^4.1.0"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",

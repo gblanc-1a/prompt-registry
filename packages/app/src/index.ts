@@ -7,11 +7,23 @@
 // Context detection
 export * from './context-detection';
 
+// Collection
+export * from './collection/generate-skill';
+export * from './collection/read-collection';
+
+// Discovery
+export * from './discovery/recommendation-engine';
+
 // Install
 export * from './install';
+export * from './install/uninstall-pipeline';
+export * from './install/layout-resolver';
 
 // Registry
 export * from './registry';
+
+// Search
+export * from './search/export-profile';
 
 // Writers (moved from infra due to CLI dependencies)
 export * from './writers/file-tree-writer';

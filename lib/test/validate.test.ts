@@ -16,7 +16,7 @@ import {
   validateItemKind,
   validateVersion,
   VALIDATION_RULES,
-} from '@prompt-registry/cli';
+} from '../src/validate';
 
 function createTempDir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));

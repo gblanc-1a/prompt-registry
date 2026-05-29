@@ -16,7 +16,7 @@ import {
   validateSkillDescription,
   validateSkillFolder,
   validateSkillName,
-} from '@prompt-registry/cli';
+} from '../src/skills';
 
 function createTempDir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));

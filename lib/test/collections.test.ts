@@ -9,7 +9,7 @@ import {
   listCollectionFiles,
   readCollection,
   resolveCollectionItemPaths,
-} from '@prompt-registry/cli';
+} from '../src/collections';
 
 function createTempDir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));

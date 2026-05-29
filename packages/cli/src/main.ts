@@ -23,7 +23,7 @@ import {
   UpdateCommand,
 } from './commands/update';
 import {
-  createStatusCommand,
+  StatusCommand,
 } from './commands/status';
 import {
   ProfileListCommand,
@@ -51,7 +51,7 @@ import {
   createApplyCommand,
 } from './commands/apply';
 import {
-  createInitCommand,
+  InitCommand,
 } from './commands/init';
 import {
   createDoctorCommand,
@@ -90,7 +90,7 @@ import {
   IndexReportCommand,
 } from './commands/index-report';
 import {
-  createTargetTypesCommand,
+  TargetTypesCommand,
 } from './commands/target-types';
 import {
   createConfigListCommand,
@@ -147,21 +147,20 @@ async function main(): Promise<number> {
   const tokens = defaultTokenProvider(ctx.env);
 
   const commands = [
-    createStatusCommand(),
     createApplyCommand(),
-    createInitCommand(),
     createDoctorCommand(),
     createDiscoverCommand(),
     createCollectionListCommand(),
     createCollectionValidateCommand(),
     createCollectionAffectedCommand(),
     createSkillValidateCommand(),
-    createTargetTypesCommand(),
     createConfigListCommand(),
     createPluginsListCommand(),
   ];
 
   const commandClasses = [
+    StatusCommand,
+    InitCommand,
     InstallCommand,
     UninstallCommand,
     UpdateCommand,
@@ -184,6 +183,7 @@ async function main(): Promise<number> {
     TargetAddCommand,
     TargetListCommand,
     TargetRemoveCommand,
+    TargetTypesCommand,
     IndexBuildCommand,
     IndexExportCommand,
     IndexSearchCommand,
@@ -218,11 +218,5 @@ async function main(): Promise<number> {
   return exitCode;
 }
 
-// Execute the CLI
-main().then((code) => process.exit(code)).catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
-
-// Export for use by index.ts
+// Export for use by index.ts and bin/prompt-registry.js
 export { main };

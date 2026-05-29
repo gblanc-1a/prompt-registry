@@ -96,52 +96,6 @@ export interface IndexSearchOptions {
   tokens?: TokenProvider;
 }
 
-/**
- * Build the `index search` command using defineCommand (for test compatibility).
- * @param opts CLI options.
- * @returns CommandDefinition wired to the framework adapter.
- */
-export const createIndexSearchCommand = (
-  opts: IndexSearchOptions = {}
-): CommandDefinition =>
-  defineCommand({
-    path: ['index', 'search'],
-    description: 'Search a primitive index by free text + facets.',
-    category: 'Index Management',
-    run: async ({ ctx }: { ctx: Context }): Promise<number> => {
-      const fmt = opts.output ?? 'text';
-      const indexPath = opts.indexFile ?? defaultIndexFile(ctx.env);
-      try {
-        const idx = loadIndex(indexPath);
-        const query: SearchQuery = {
-          q: opts.query,
-          kinds: opts.kinds,
-          sources: opts.sources,
-          bundles: opts.bundles,
-          tags: opts.tags,
-          installedOnly: opts.installedOnly,
-          limit: opts.limit,
-          offset: opts.offset,
-          explain: opts.explain
-        };
-        const result = idx.search(query);
-        formatOutput({
-          ctx,
-          command: 'index.search',
-          output: fmt,
-          status: 'ok',
-          data: result,
-          textRenderer: (r) => renderSearchText(r)
-        });
-        if (opts.install === true && result.hits.length > 0) {
-          return await searchAndInstall(result, opts, ctx, fmt);
-        }
-        return 0;
-      } catch (cause) {
-        return failWith(ctx, fmt, 'index.search', classifyError(cause, indexPath));
-      }
-    }
-  });
 
 /**
  * Index search command class.

@@ -671,7 +671,9 @@ scenario_12_export_profile() {
 
     log_info "Exporting profile from shortlist"
     local shortlist_id
-    shortlist_id=$(run_cmd "$PR_BIN index shortlist list --index \"$XDG_CACHE_HOME/primitive-index.json\" -o json | jq -r '.data.shortlists[0].id'") || true
+    local list_output
+    list_output=$(run_cmd "$PR_BIN index shortlist list --index \"$XDG_CACHE_HOME/primitive-index.json\" -o json") || true
+    shortlist_id=$(echo "$list_output" | jq -r '.data.shortlists[0].id')
 
     if [ -n "$shortlist_id" ] && [ "$shortlist_id" != "null" ]; then
         local output

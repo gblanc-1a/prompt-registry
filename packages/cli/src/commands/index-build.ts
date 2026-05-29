@@ -48,59 +48,6 @@ interface BuildResult {
   stats: IndexStats;
 }
 
-/**
- * Build the `index build` command.
- * @param opts CLI options.
- * @returns CommandDefinition.
- */
-export const createIndexBuildCommand = (
-  opts: IndexBuildOptions
-): CommandDefinition =>
-  defineCommand({
-    path: ['index', 'build'],
-    description: 'Build a primitive index from a local folder of bundles.',
-    category: 'Index Management',
-    run: async ({ ctx }: { ctx: Context }): Promise<number> => {
-      const fmt = opts.output ?? 'text';
-      if (opts.root.length === 0) {
-        return failWith(ctx, fmt, 'index.build', new RegistryError({
-          code: 'USAGE.MISSING_FLAG',
-          message: 'index build: --root <DIR> is required'
-        }));
-      }
-      try {
-        const outFile = opts.outFile ?? path.join(opts.root, 'primitive-index.json');
-        const provider = new LocalFolderBundleProvider({
-          root: opts.root,
-          sourceId: opts.sourceId
-        });
-        const idx = await PrimitiveIndex.buildFrom(provider, {
-          hubId: opts.sourceId
-        });
-        saveIndex(idx, outFile);
-        const stats = idx.stats();
-        const data: BuildResult = { outFile, stats };
-        formatOutput({
-          ctx,
-          command: 'index.build',
-          output: fmt,
-          status: 'ok',
-          data,
-          textRenderer: (d) =>
-            `built ${String(d.stats.primitives)} primitives `
-            + `from ${String(d.stats.bundles)} bundles → ${d.outFile}\n`
-        });
-        return 0;
-      } catch (cause) {
-        const err = new RegistryError({
-          code: 'INDEX.BUILD_FAILED',
-          message: `index build failed: ${cause instanceof Error ? cause.message : String(cause)}`,
-          cause: cause instanceof Error ? cause : undefined
-        });
-        return failWith(ctx, fmt, 'index.build', err);
-      }
-    }
-  });
 
 /**
  * Index build command class.

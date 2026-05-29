@@ -125,50 +125,6 @@ async function ensureTargetDirectory(fs: Context['fs'], targetPath: string | und
  * @param err Registry error.
  */
 
-/**
- * Build the `target add` command using defineCommand (for test compatibility).
- * @param opts - Command options.
- * @returns CommandDefinition wired to the framework adapter.
- */
-export const createTargetAddCommand = (
-  opts: TargetAddOptions
-): CommandDefinition =>
-  defineCommand({
-    path: ['target', 'add'],
-    description: 'Register a new install target in the project config (`prompt-registry.yml`).',
-    category: 'Installation',
-    run: async ({ ctx }: { ctx: Context }): Promise<number> => {
-      const fmt = opts.output ?? 'text';
-      const validationError = validateTargetInputs(opts);
-      if (validationError) {
-        return failWith(ctx, fmt, 'target.add', validationError);
-      }
-      const cwd = ctx.cwd();
-      opts.path = normalizeTargetPath(opts.path, cwd);
-      const target = buildTarget(opts);
-      try {
-        const result = await addTarget(
-          { cwd, fs: ctx.fs },
-          target
-        );
-        await ensureTargetDirectory(ctx.fs, target.path);
-        formatOutput({
-          ctx,
-          command: 'target.add',
-          output: fmt,
-          status: 'ok',
-          data: { target, file: result.file, created: result.created },
-          textRenderer: (d) => d.created
-            ? `Created ${d.file} with target "${d.target.name}" (${d.target.type}).\n`
-            : `Added target "${d.target.name}" (${d.target.type}) to ${d.file}.\n`
-        });
-        return 0;
-      } catch (cause) {
-        const error = buildTargetAddError(cause, opts);
-        return failWith(ctx, fmt, 'target.add', error);
-      }
-    }
-  });
 
 /**
  * Target add command class.

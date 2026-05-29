@@ -14,10 +14,10 @@ import {
   NodeHttpClient,
 } from '@prompt-registry/infra';
 import {
-  createInstallCommand,
+  InstallCommand,
 } from './commands/install';
 import {
-  createUninstallCommand,
+  UninstallCommand,
 } from './commands/uninstall';
 import {
   UpdateCommand,
@@ -147,8 +147,6 @@ async function main(): Promise<number> {
   const tokens = defaultTokenProvider(ctx.env);
 
   const commands = [
-    createInstallCommand(),
-    createUninstallCommand(),
     createStatusCommand(),
     createApplyCommand(),
     createInitCommand(),
@@ -164,6 +162,8 @@ async function main(): Promise<number> {
   ];
 
   const commandClasses = [
+    InstallCommand,
+    UninstallCommand,
     UpdateCommand,
     ProfileListCommand,
     ProfileActivateCommand,

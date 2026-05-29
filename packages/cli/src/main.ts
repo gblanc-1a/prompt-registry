@@ -72,19 +72,22 @@ import {
   createSkillValidateCommand,
 } from './commands/skill-validate';
 import {
-  createIndexSearchCommand,
+  IndexSearchCommand,
 } from './commands/index-search';
 import {
-  createIndexShortlistCommand,
+  IndexShortlistNewCommand,
+  IndexShortlistAddCommand,
+  IndexShortlistRemoveCommand,
+  IndexShortlistListCommand,
 } from './commands/index-shortlist';
 import {
-  createIndexHarvestCommand,
+  IndexHarvestCommand,
 } from './commands/index-harvest';
 import {
-  createIndexStatsCommand,
+  IndexStatsCommand,
 } from './commands/index-stats';
 import {
-  createIndexReportCommand,
+  IndexReportCommand,
 } from './commands/index-report';
 import {
   createTargetTypesCommand,
@@ -155,13 +158,6 @@ async function main(): Promise<number> {
     createCollectionValidateCommand(),
     createCollectionAffectedCommand(),
     createSkillValidateCommand(),
-    createIndexSearchCommand(),
-    createIndexShortlistCommand({ subcommand: 'add' }),
-    createIndexShortlistCommand({ subcommand: 'list' }),
-    createIndexShortlistCommand({ subcommand: 'remove' }),
-    createIndexHarvestCommand(),
-    createIndexStatsCommand(),
-    createIndexReportCommand(),
     createTargetTypesCommand(),
     createConfigListCommand(),
     createPluginsListCommand(),
@@ -190,6 +186,14 @@ async function main(): Promise<number> {
     TargetRemoveCommand,
     IndexBuildCommand,
     IndexExportCommand,
+    IndexSearchCommand,
+    IndexShortlistNewCommand,
+    IndexShortlistAddCommand,
+    IndexShortlistRemoveCommand,
+    IndexShortlistListCommand,
+    IndexHarvestCommand,
+    IndexStatsCommand,
+    IndexReportCommand,
     ExplainCommand,
     ConfigGetCommand,
     SkillNewCommand,

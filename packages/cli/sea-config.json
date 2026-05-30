@@ -1,0 +1,4 @@
+{
+  "main": "dist/prompt-registry-bundle.js",
+  "output": "sea-prep.blob"
+}

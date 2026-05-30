@@ -17,3 +17,6 @@ export * from './validate';
 
 // Bundle ID utilities (re-exported from core)
 export * from './bundle-id';
+
+// Main CLI entry point
+export { main as run } from './main';

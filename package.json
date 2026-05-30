@@ -2,9 +2,10 @@
   "name": "prompt-registry-workspace",
   "private": true,
   "description": "pnpm workspace root \u2014 orchestrates packages/*, apps/*, lib",
+  "packageManager": "pnpm@11.5.0",
   "engines": {
     "node": ">=18.0.0",
-    "pnpm": ">=8.0.0"
+    "pnpm": ">=11.0.0"
   },
   "scripts": {
     "build": "pnpm -r run build",

@@ -2,5 +2,12 @@ engineStrict: true
 packages:
   - 'packages/*'
   - 'apps/*'
-  - 'lib'  # Keep legacy in workspace during migration
+  - 'lib' # Keep legacy in workspace during migration
   - 'github-actions/*'
+
+
+allowBuilds:
+  '@vscode/vsce-sign': true
+  esbuild: true
+  keytar: true
+  unrs-resolver: true

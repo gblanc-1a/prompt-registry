@@ -6,7 +6,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 await esbuild.build({
-  entryPoints: ['src/main.ts'],
+  entryPoints: ['src/sea-entry.ts'],
   bundle: true,
   platform: 'node',
   target: 'node24',

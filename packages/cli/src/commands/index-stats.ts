@@ -58,7 +58,7 @@ export class IndexStatsCommand extends BaseIndexStatsCommand {
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
     description: 'Show summary statistics for a primitive index.',
-    category: 'Index Management',
+    category: 'Index & Search',
     details: `
       Usage: prompt-registry index stats [options]
 
@@ -163,7 +163,7 @@ export const createIndexStatsCommand = (
   defineCommand({
     path: ['index', 'stats'],
     description: 'Show summary statistics for a primitive index.',
-    category: 'Index Management',
+    category: 'Index & Search',
     run: ({ ctx }: { ctx: Context }): number | Promise<number> => {
       const fmt = opts.output ?? 'text';
       const indexPath = opts.indexFile ?? defaultIndexFile(ctx.env);

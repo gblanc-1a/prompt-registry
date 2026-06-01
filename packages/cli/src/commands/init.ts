@@ -111,7 +111,7 @@ export const createInitCommand = (
   defineCommand({
     path: ['init'],
     description: 'Bootstrap a project: add a target and optionally import a hub.',
-    category: 'Project',
+    category: 'Getting Started',
     run: async ({ ctx }: { ctx: Context }): Promise<number> => {
       return runInit(ctx, opts);
     }
@@ -125,7 +125,7 @@ export class InitCommand extends Command {
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
     description: 'Bootstrap a project: add a target and optionally import a hub.',
-    category: 'Project',
+    category: 'Getting Started',
     details: `
       Usage: prompt-registry init [options]
 

@@ -65,8 +65,8 @@ export class SkillNewCommand extends BaseSkillNewCommand {
   public static readonly paths = [['skill', 'new']];
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
-    description: 'Create a new agent skill folder + SKILL.md template. (Replaces `create-skill`.)',
-    category: 'Skill Management',
+    description: 'Create a new agent skill folder + SKILL.md template.',
+    category: 'Build & Author',
     details: `
       Usage: prompt-registry skill new [options]
 
@@ -179,8 +179,8 @@ export const createSkillNewCommand = (
 ): CommandDefinition =>
   defineCommand({
     path: ['skill', 'new'],
-    description: 'Create a new agent skill folder + SKILL.md template. (Replaces `create-skill`.)',
-    category: 'Skill Management',
+    description: 'Create a new agent skill folder + SKILL.md template.',
+    category: 'Build & Author',
     run: ({ ctx }: { ctx: Context }): number => {
       const cwd = ctx.cwd();
       const result = createSkill(cwd, opts.skillName, opts.description, opts.skillsDir ?? 'skills');

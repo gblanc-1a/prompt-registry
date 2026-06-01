@@ -61,7 +61,7 @@ export const createIndexReportCommand = (
   defineCommand({
     path: ['index', 'report'],
     description: 'Render a hub-harvest report from a progress log.',
-    category: 'Index Management',
+    category: 'Index & Search',
     run: async ({ ctx }: { ctx: Context }): Promise<number> => {
       const fmt = opts.output ?? 'text';
       const progressFile = opts.progressFile ?? defaultProgressFile(opts.hubRepo, ctx.env);
@@ -140,7 +140,7 @@ export class IndexReportCommand extends Command {
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
     description: 'Render a hub-harvest report from a progress log.',
-    category: 'Index Management',
+    category: 'Index & Search',
     details: `
       Usage: prompt-registry index report [options]
 

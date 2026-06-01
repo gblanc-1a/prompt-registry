@@ -25,6 +25,7 @@ import {
   defineCommand,
   formatOutput,
   type OutputFormat,
+  renderTable,
 } from '../framework';
 
 interface PluginRecord {
@@ -61,7 +62,7 @@ export class PluginsListCommand extends BasePluginsListCommand {
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
     description: 'List `prompt-registry-<name>` plugins discovered on $PATH (kubectl-style).',
-    category: 'Diagnostics',
+    category: 'Configure & Debug',
     details: `
       Usage: prompt-registry plugins list [options]
 
@@ -202,7 +203,7 @@ export const createPluginsListCommand = (
   defineCommand({
     path: ['plugins', 'list'],
     description: 'List `prompt-registry-<name>` plugins discovered on $PATH (kubectl-style).',
-    category: 'Diagnostics',
+    category: 'Configure & Debug',
     run: async ({ ctx }: { ctx: Context }): Promise<number> => {
       const pathVar = ctx.env.PATH ?? '';
       const plugins = await scanPathForPlugins(pathVar, ctx);
@@ -221,9 +222,12 @@ export const createPluginsListCommand = (
     }
   });
 
-const renderText = (records: PluginRecord[]): string => {
-  if (records.length === 0) {
-    return 'No plugins found on $PATH.\n  (Plugins are executables named `prompt-registry-<name>` discoverable via PATH.)\n';
-  }
-  return records.map((r) => `${r.name}  ${r.source}`).join('\n') + '\n';
-};
+const renderText = (records: PluginRecord[]): string =>
+  renderTable<PluginRecord>({
+    columns: [
+      { header: 'NAME', get: (r) => r.name },
+      { header: 'SOURCE', get: (r) => r.source }
+    ],
+    rows: records,
+    emptyMessage: 'No plugins found on $PATH.\n  (Plugins are executables named `prompt-registry-<name>` discoverable via PATH.)\n'
+  });

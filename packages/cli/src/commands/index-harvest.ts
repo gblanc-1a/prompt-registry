@@ -73,7 +73,7 @@ export const createIndexHarvestCommand = (
   defineCommand({
     path: ['index', 'harvest'],
     description: 'Fetch hub-config, walk every source, and write a primitive index.',
-    category: 'Index Management',
+    category: 'Index & Search',
     run: async ({ ctx }: { ctx: Context }): Promise<number> => {
       const fmt = opts.output ?? 'text';
       const noHubConfig = opts.noHubConfig === true;
@@ -192,7 +192,7 @@ export class IndexHarvestCommand extends Command {
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
     description: 'Fetch hub-config, walk every source, and write a primitive index.',
-    category: 'Index Management',
+    category: 'Index & Search',
     details: `
       Usage: prompt-registry index harvest [options]
 

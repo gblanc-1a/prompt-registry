@@ -25,6 +25,7 @@ import {
   loadConfig,
   Option,
   type OutputFormat,
+  renderTable,
 } from '../framework';
 
 /**
@@ -44,30 +45,19 @@ interface TargetRecord {
  * @param targets - Array of TargetRecord rows.
  * @returns Rendered table string (newline-terminated).
  */
-const renderTargetTable = (targets: TargetRecord[]): string => {
-  if (targets.length === 0) {
-    return 'No targets configured.\n'
-      + 'Add one with: `prompt-registry target add <name> --type <vscode|copilot-cli|kiro|windsurf|vscode-insiders>`\n';
-  }
-  const header = ['NAME', 'TYPE', 'SCOPE', 'PATH', 'ALLOWED-KINDS'];
-  const rows = targets.map((t) => [
-    t.name,
-    t.type,
-    t.scope ?? '',
-    t.path ?? '',
-    t.allowedKinds === undefined ? '' : t.allowedKinds.join(',')
-  ]);
-  const widths = header.map((h, i) => Math.max(
-    h.length,
-    ...rows.map((r) => r[i].length)
-  ));
-  const fmtRow = (r: string[]): string =>
-    r.map((cell, i) => cell.padEnd(widths[i])).join('  ').trimEnd();
-  return [
-    fmtRow(header),
-    ...rows.map((r): string => fmtRow(r))
-  ].join('\n') + '\n';
-};
+const renderTargetTable = (targets: TargetRecord[]): string =>
+  renderTable<TargetRecord>({
+    columns: [
+      { header: 'NAME', get: (t) => t.name },
+      { header: 'TYPE', get: (t) => t.type },
+      { header: 'SCOPE', get: (t) => t.scope ?? '' },
+      { header: 'PATH', get: (t) => t.path ?? '' },
+      { header: 'ALLOWED-KINDS', get: (t) => t.allowedKinds?.join(',') ?? '' }
+    ],
+    rows: targets,
+    emptyMessage: 'No targets configured.\n'
+      + 'Add one with: `prompt-registry target add <name> --type <vscode|copilot-cli|kiro|windsurf|vscode-insiders>`\n'
+  });
 
 /**
  * Target list command options.
@@ -87,7 +77,7 @@ export const createTargetListCommand = (
   defineCommand({
     path: ['target', 'list'],
     description: 'List configured install targets (vscode, copilot-cli, kiro, …).',
-    category: 'Installation',
+    category: 'Install & Manage',
     run: async ({ ctx }: { ctx: Context }): Promise<number> => {
       const fmt = opts.output ?? 'text';
       const config = await loadConfig({
@@ -122,7 +112,14 @@ export class TargetListCommand extends Command {
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
     description: 'List configured install targets (vscode, copilot-cli, kiro, …).',
-    category: 'Installation'
+    category: 'Install & Manage',
+    details: `
+      Usage: prompt-registry target list [-o <format>]
+
+      Examples:
+        $ prompt-registry target list
+        $ prompt-registry target list -o json
+    `
   });
 
   public output = Option.String('-o,--output');

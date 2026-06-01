@@ -54,7 +54,7 @@ export const createIndexBenchCommand = (
   defineCommand({
     path: ['index', 'bench'],
     description: 'Run a search microbenchmark over a gold-set against an index.',
-    category: 'Index Management',
+    category: 'Index & Search',
     // eslint-disable-next-line @typescript-eslint/require-await -- Intentionally async for interface compatibility
     run: async ({ ctx }: { ctx: Context }): Promise<number> => {
       const fmt = opts.output ?? 'text';
@@ -106,7 +106,7 @@ export class IndexBenchCommand extends Command {
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
     description: 'Run a search microbenchmark over a gold-set against an index.',
-    category: 'Index Management',
+    category: 'Index & Search',
     details: `
       Usage: prompt-registry index bench --gold <FILE> [options]
 

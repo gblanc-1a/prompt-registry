@@ -130,26 +130,39 @@ const loadUserConfig = async (opts: LoadConfigOptions): Promise<Config | undefin
 };
 
 /**
+ * Resolve the project config file path via Cargo-style upward walk.
+ * @param opts cwd / fs.
+ * @returns Absolute path to the first found config file, or undefined.
+ */
+export const resolveProjectConfigPath = async (opts: LoadConfigOptions): Promise<string | undefined> => {
+  let dir = opts.cwd;
+  while (true) {
+    for (const name of PROJECT_CONFIG_NAMES) {
+      const candidate = path.join(dir, name);
+      if (await opts.fs.exists(candidate)) {
+        return candidate;
+      }
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) {
+      return undefined;
+    }
+    dir = parent;
+  }
+};
+
+/**
  * Layer 3: project config via Cargo-style upward walk.
  * @param opts cwd / fs.
  * @returns Parsed project config or undefined when no file is found
  *          before reaching the filesystem root.
  */
 const loadProjectConfig = async (opts: LoadConfigOptions): Promise<Config | undefined> => {
-  let dir = opts.cwd;
-  while (true) {
-    for (const name of PROJECT_CONFIG_NAMES) {
-      const candidate = path.join(dir, name);
-      if (await opts.fs.exists(candidate)) {
-        return parseYamlFile(candidate, opts.fs);
-      }
-    }
-    const parent = path.dirname(dir);
-    if (parent === dir) {
-      return undefined; // reached filesystem root
-    }
-    dir = parent;
+  const configPath = await resolveProjectConfigPath(opts);
+  if (configPath === undefined) {
+    return undefined;
   }
+  return parseYamlFile(configPath, opts.fs);
 };
 
 /**

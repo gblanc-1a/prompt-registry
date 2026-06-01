@@ -54,7 +54,14 @@ export class TargetTypesCommand extends Command {
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
     description: 'List all supported install target types with descriptions.',
-    category: 'Installation'
+    category: 'Install & Manage',
+    details: `
+      Usage: prompt-registry target types [-o <format>]
+
+      Examples:
+        $ prompt-registry target types
+        $ prompt-registry target types -o json
+    `
   });
 
   public output = Option.String('-o,--output');
@@ -86,7 +93,7 @@ export const createTargetTypesCommand = (opts: TargetTypesOptions = {}): Command
   defineCommand({
     path: ['target', 'types'],
     description: 'List all supported install target types with descriptions.',
-    category: 'Installation',
+    category: 'Install & Manage',
     // eslint-disable-next-line @typescript-eslint/require-await -- synchronous body, Promise return type required by framework contract
     run: async ({ ctx }: { ctx: Context }): Promise<number> => {
       const data: TargetTypeEntry[] = TARGET_TYPES.map((t) => ({

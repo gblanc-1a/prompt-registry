@@ -143,7 +143,7 @@ export class UpdateCommand extends BaseUpdateCommand {
   // eslint-disable-next-line new-cap -- Command.Usage is a Clipanion static factory, not a constructor
   public static readonly usage = Command.Usage({
     description: 'Check for newer versions of installed bundles and upgrade them.',
-    category: 'Installation',
+    category: 'Install & Manage',
     details: `
       prompt-registry update [--lockfile <path>] [--target <name>]
                              [--dry-run] [--interactive] [--no-hub-sync]

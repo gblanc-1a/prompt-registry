@@ -136,6 +136,17 @@ abstract class BaseProfileCommand extends Command {
  */
 export class ProfileListCommand extends BaseProfileCommand {
   public static readonly paths = [['profile', 'list']];
+  public static readonly usage = Command.Usage({
+    description: 'List profiles in a hub.',
+    category: 'Hub & Discovery',
+    details: `
+      Usage: prompt-registry profile list [--hub <hub-id>]
+
+      Examples:
+        $ prompt-registry profile list
+        $ prompt-registry profile list --hub my-hub
+    `
+  });
 
   public async execute() {
     const { ctx, http, tokens } = this.commandContext;
@@ -186,6 +197,17 @@ export class ProfileListCommand extends BaseProfileCommand {
  */
 export class ProfileShowCommand extends BaseProfileCommand {
   public static readonly paths = [['profile', 'show']];
+  public static readonly usage = Command.Usage({
+    description: 'Show details of a profile.',
+    category: 'Hub & Discovery',
+    details: `
+      Usage: prompt-registry profile show <profile-id> [--hub <hub-id>]
+
+      Examples:
+        $ prompt-registry profile show my-profile
+        $ prompt-registry profile show my-profile --hub my-hub
+    `
+  });
   public profileId = Option.String({ required: false });
 
   public async execute() {
@@ -239,6 +261,22 @@ export class ProfileShowCommand extends BaseProfileCommand {
  */
 export class ProfileActivateCommand extends BaseProfileCommand {
   public static readonly paths = [['profile', 'activate']];
+  public static readonly usage = Command.Usage({
+    description: 'Activate a profile on configured targets.',
+    category: 'Hub & Discovery',
+    details: `
+      Usage: prompt-registry profile activate <profile-id> [--hub <hub-id>] [--target <name>] [--dry-run]
+
+      Options:
+        --target <name>  Comma-separated target names to limit activation.
+        --dry-run        Preview changes without applying.
+
+      Examples:
+        $ prompt-registry profile activate default
+        $ prompt-registry profile activate default --target vscode
+        $ prompt-registry profile activate default --dry-run
+    `
+  });
   public profileId = Option.String({ required: false });
   public targets = Option.String('--target');
   public dryRun = Option.Boolean('--dry-run', false);
@@ -347,6 +385,20 @@ export class ProfileActivateCommand extends BaseProfileCommand {
  */
 export class ProfileDeactivateCommand extends BaseProfileCommand {
   public static readonly paths = [['profile', 'deactivate']];
+  public static readonly usage = Command.Usage({
+    description: 'Deactivate the currently active profile.',
+    category: 'Hub & Discovery',
+    details: `
+      Usage: prompt-registry profile deactivate [--dry-run]
+
+      Options:
+        --dry-run  Preview changes without applying.
+
+      Examples:
+        $ prompt-registry profile deactivate
+        $ prompt-registry profile deactivate --dry-run
+    `
+  });
   public dryRun = Option.Boolean('--dry-run', false);
 
   public async execute() {
@@ -394,6 +446,16 @@ export class ProfileDeactivateCommand extends BaseProfileCommand {
  */
 export class ProfileCurrentCommand extends BaseProfileCommand {
   public static readonly paths = [['profile', 'current']];
+  public static readonly usage = Command.Usage({
+    description: 'Show the currently active profile.',
+    category: 'Hub & Discovery',
+    details: `
+      Usage: prompt-registry profile current
+
+      Examples:
+        $ prompt-registry profile current
+    `
+  });
 
   public async execute() {
     const { ctx, http, tokens } = this.commandContext;
@@ -427,7 +489,7 @@ export class ProfileCreateCommand extends BaseProfileCommand {
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
     description: 'Create a new local profile in the default-local hub.',
-    category: 'Configuration',
+    category: 'Hub & Discovery',
     details: `
       Usage: prompt-registry profile create <profile-id> --name <name> [options]
 
@@ -524,7 +586,7 @@ export class ProfileEditCommand extends BaseProfileCommand {
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
     description: 'Edit an existing local profile (add/remove bundles, change description).',
-    category: 'Configuration',
+    category: 'Hub & Discovery',
     details: `
       Usage: prompt-registry profile edit <profile-id> [options]
 
@@ -672,7 +734,7 @@ export class ProfilePublishCommand extends BaseProfileCommand {
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
     description: 'Publish a profile to a hub by injecting it into hub-config.yml and syncing.',
-    category: 'Configuration',
+    category: 'Hub & Discovery',
     details: `
       Usage: prompt-registry profile publish <profile-id> --hub <hub-id> [--file <path>]
 

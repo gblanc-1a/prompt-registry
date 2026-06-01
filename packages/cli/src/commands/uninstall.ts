@@ -138,8 +138,8 @@ export class UninstallCommand extends BaseUninstallCommand {
   public static readonly paths = [['uninstall']];
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
-    description: 'Remove bundles from a configured target. Use <bundle-id> to uninstall a specific bundle, --lockfile <path> to uninstall from a lockfile, or --all to remove all bundles.',
-    category: 'Installation',
+    description: 'Remove bundles from a configured target.',
+    category: 'Install & Manage',
     details: `
       Usage: prompt-registry uninstall [options]
 
@@ -578,8 +578,8 @@ export const createUninstallCommand = (
 ): CommandDefinition =>
   defineCommand({
     path: ['uninstall'],
-    description: 'Remove bundles from a configured target. Use <bundle-id> to uninstall a specific bundle, --lockfile <path> to uninstall from a lockfile, or --all to remove all bundles.',
-    category: 'Installation',
+    description: 'Remove bundles from a configured target.',
+    category: 'Install & Manage',
     run: async ({ ctx }: { ctx: Context }): Promise<number> => {
       const fmt = opts.output ?? 'text';
       const { bundle: noBundle, lockfile: noLockfile, all: noAll } = validateInputs(opts, { flags: ['bundle', 'lockfile', 'all'] });

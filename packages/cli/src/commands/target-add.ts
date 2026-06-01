@@ -134,8 +134,8 @@ export class TargetAddCommand extends Command {
   public static readonly paths = [['target', 'add']];
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
-    description: 'Register a new install target in the project config (`prompt-registry.yml`).',
-    category: 'Installation',
+    description: 'Register a new install target.',
+    category: 'Install & Manage',
     details: `
       Usage: prompt-registry target add <name> --type <kind> [--scope <user|repository>] [--path <path>]
 

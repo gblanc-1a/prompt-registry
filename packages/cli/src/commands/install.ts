@@ -213,8 +213,8 @@ export class InstallCommand extends BaseInstallCommand {
   public static readonly paths = [['install']];
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
-    description: 'Install bundles from remote sources or local directories to a configured target. Use <bundle-id> for imperative mode or --lockfile <path> for declarative mode.',
-    category: 'Installation',
+    description: 'Install bundles to a configured target.',
+    category: 'Install & Manage',
     details: `
       Usage: prompt-registry install [options]
 
@@ -1136,8 +1136,8 @@ export const createInstallCommand = (
 ): CommandDefinition =>
   defineCommand({
     path: ['install'],
-    description: 'Install bundles from remote sources or local directories to a configured target. Use <bundle-id> for imperative mode or --lockfile <path> for declarative mode.',
-    category: 'Installation',
+    description: 'Install bundles to a configured target.',
+    category: 'Install & Manage',
     run: async ({ ctx }: { ctx: Context }): Promise<number> => {
       const fmt = opts.output ?? 'text';
       const { bundle: noBundle, lockfile: noLockfile } = validateInputs(opts, { flags: ['bundle', 'lockfile'] });

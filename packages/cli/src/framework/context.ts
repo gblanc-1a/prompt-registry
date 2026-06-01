@@ -92,4 +92,9 @@ export interface Context {
   env: Readonly<Record<string, string>>;
   cwd(): string;
   exit(code: number): void;
+  /**
+   * Terminal color depth (0 = monochrome, 1 = basic, 4 = ANSI, 8 = 256-color, 24 = truecolor).
+   * Used by the CLI framework to decide whether to emit ANSI color codes.
+   */
+  colorDepth: number;
 }

@@ -54,8 +54,8 @@ export class TargetRemoveCommand extends BaseTargetRemoveCommand {
   public static readonly paths = [['target', 'remove']];
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
-    description: 'Remove a configured install target from the project config (`prompt-registry.yml`).',
-    category: 'Installation',
+    description: 'Remove a configured install target.',
+    category: 'Install & Manage',
     details: `
       Usage: prompt-registry target remove <name> [options]
 
@@ -165,8 +165,8 @@ export const createTargetRemoveCommand = (
 ): CommandDefinition =>
   defineCommand({
     path: ['target', 'remove'],
-    description: 'Remove a configured install target from the project config (`prompt-registry.yml`).',
-    category: 'Installation',
+    description: 'Remove a configured install target.',
+    category: 'Install & Manage',
     run: async ({ ctx }: { ctx: Context }): Promise<number> => {
       const fmt = opts.output ?? 'text';
       if (opts.name.length === 0) {

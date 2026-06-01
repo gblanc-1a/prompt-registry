@@ -58,7 +58,7 @@ export class IndexBuildCommand extends Command {
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
     description: 'Build a primitive index from a local folder of bundles.',
-    category: 'Index Management',
+    category: 'Index & Search',
     details: `
       Usage: prompt-registry index build --root <DIR> [options]
 

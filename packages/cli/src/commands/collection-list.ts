@@ -32,6 +32,7 @@ import {
   type OutputFormat,
   RegistryError,
   renderError,
+  renderTable,
 } from '../framework';
 
 /**
@@ -64,8 +65,8 @@ export class CollectionListCommand extends BaseCollectionListCommand {
   public static readonly paths = [['collection', 'list']];
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
-    description: 'List `*.collection.yml` files under the current repo and print their id/name/path. (Replaces `list-collections`.)',
-    category: 'Collection Management',
+    description: 'List `*.collection.yml` files and print their id/name/path.',
+    category: 'Build & Author',
     details: `
       Usage: prompt-registry collection list [options]
 
@@ -171,8 +172,8 @@ export const createCollectionListCommand = (
 ): CommandDefinition =>
   defineCommand({
     path: ['collection', 'list'],
-    description: 'List `*.collection.yml` files under the current repo and print their id/name/path. (Replaces `list-collections`.)',
-    category: 'Collection Management',
+    description: 'List `*.collection.yml` files and print their id/name/path.',
+    category: 'Build & Author',
     run: async ({ ctx }: { ctx: Context }): Promise<number> => {
       const cwd = ctx.cwd();
       const collectionsDir = path.join(cwd, 'collections');
@@ -258,13 +259,13 @@ const listCollections = async (
  * @param records Collection records.
  * @returns Formatted text output.
  */
-const renderCollectionsText = (records: CollectionRecord[]): string => {
-  if (records.length === 0) {
-    return 'no collections found\n';
-  }
-  // Stable, scriptable: `<id>  <name>  <relative-path>` per line.
-  // Two-space gaps survive `awk '{print $1}'` style pipelines.
-  return records
-    .map((r) => `${r.id}  ${r.name}  ${r.file}`)
-    .join('\n') + '\n';
-};
+const renderCollectionsText = (records: CollectionRecord[]): string =>
+  renderTable<CollectionRecord>({
+    columns: [
+      { header: 'ID', get: (r) => r.id },
+      { header: 'NAME', get: (r) => r.name },
+      { header: 'FILE', get: (r) => r.file }
+    ],
+    rows: records,
+    emptyMessage: 'no collections found\n'
+  });

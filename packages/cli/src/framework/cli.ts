@@ -32,6 +32,12 @@ import type {
 import type {
   Context,
 } from './context';
+import {
+  renderGlobalHelp,
+} from './help-renderer';
+import {
+  suggestCommand,
+} from './suggest';
 
 /**
  * Public command shape returned by `defineCommand`. Pure data plus a run
@@ -143,7 +149,7 @@ export const runCli = async (argv: string[], opts: RunCliOptions): Promise<numbe
   const cli = new Cli({
     binaryName: opts.name,
     binaryVersion: opts.version,
-    enableColors: false
+    enableColors: opts.ctx.colorDepth > 0
   });
 
   // Built-in --help and --version commands.
@@ -163,8 +169,14 @@ export const runCli = async (argv: string[], opts: RunCliOptions): Promise<numbe
     stdin: adaptReadable(),
     stdout: adaptWritable(opts.ctx.stdout),
     stderr: adaptWritable(opts.ctx.stderr),
-    colorDepth: 0
+    colorDepth: opts.ctx.colorDepth
   };
+
+  // Bare invocation or top-level --help: render custom landing page.
+  if (argv.length === 0 || argv[0] === '--help' || argv[0] === '-h') {
+    opts.ctx.stdout.write(renderGlobalHelp(cli, opts.name, opts.version));
+    return 0;
+  }
 
   // We bypass clipanion's `cli.run` because (a) it always returns 0/1,
   // collapsing the EX_USAGE / EX_SOFTWARE distinction we need,
@@ -180,6 +192,12 @@ export const runCli = async (argv: string[], opts: RunCliOptions): Promise<numbe
     // That's EX_USAGE = 64.
     const message = err instanceof Error ? err.message : String(err);
     opts.ctx.stderr.write(`${message}\n`);
+
+    const suggestion = suggestCommand(argv, cli, opts.name);
+    if (suggestion !== undefined) {
+      opts.ctx.stderr.write(`Did you mean: ${suggestion}\n`);
+    }
+
     return 64;
   }
 
@@ -193,7 +211,7 @@ export const runCli = async (argv: string[], opts: RunCliOptions): Promise<numbe
     binaryName: opts.name,
     binaryVersion: opts.version,
     enableCapture: false,
-    enableColors: false,
+    enableColors: opts.ctx.colorDepth > 0,
     definitions: () => cli.definitions(),
     // eslint-disable-next-line @typescript-eslint/no-unsafe-argument -- clipanion internal API accepts any
     definition: (c: any) => cli.definition(c),

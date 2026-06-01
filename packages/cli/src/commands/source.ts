@@ -58,6 +58,24 @@ abstract class BaseSourceCommand extends Command {
  */
 export class SourceAddCommand extends BaseSourceCommand {
   public static readonly paths = [['source', 'add']];
+  public static readonly usage = Command.Usage({
+    description: 'Add a detached source to the default-local hub.',
+    category: 'Hub & Discovery',
+    details: `
+      Usage: prompt-registry source add --url <ref> [--type <type>] [--id <id>] [--name <name>]
+
+      Options:
+        --type <type>   Source type: github (default) or local.
+        --url <ref>     GitHub owner/repo or local path.
+        --id <id>       Source ID (defaults to generated ID).
+        --name <name>   Display name (defaults to ID).
+        --enabled       Enable the source (default true).
+
+      Examples:
+        $ prompt-registry source add --url amadeus/copilot-skills
+        $ prompt-registry source add --type local --url ./skills --id local-skills
+    `
+  });
   public sourceType = Option.String('--type');
   public url = Option.String('--url');
   public sourceId = Option.String('--id');
@@ -96,6 +114,17 @@ export class SourceAddCommand extends BaseSourceCommand {
  */
 export class SourceListCommand extends BaseSourceCommand {
   public static readonly paths = [['source', 'list']];
+  public static readonly usage = Command.Usage({
+    description: 'List sources across all hubs or a specific hub.',
+    category: 'Hub & Discovery',
+    details: `
+      Usage: prompt-registry source list [--hub <hub-id>]
+
+      Examples:
+        $ prompt-registry source list
+        $ prompt-registry source list --hub my-hub
+    `
+  });
   public hubId = Option.String('--hub');
 
   public async execute() {
@@ -131,6 +160,16 @@ export class SourceListCommand extends BaseSourceCommand {
  */
 export class SourceRemoveCommand extends BaseSourceCommand {
   public static readonly paths = [['source', 'remove']];
+  public static readonly usage = Command.Usage({
+    description: 'Remove a detached source from the default-local hub.',
+    category: 'Hub & Discovery',
+    details: `
+      Usage: prompt-registry source remove <source-id>
+
+      Examples:
+        $ prompt-registry source remove local-skills
+    `
+  });
   public sourceId = Option.String();
 
   public async execute() {

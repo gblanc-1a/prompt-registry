@@ -165,7 +165,7 @@ export const createApplyCommand = (opts: ApplyOptions = {}): CommandDefinition =
   defineCommand({
     path: ['apply'],
     description: 'Idempotent: sync active hub and re-activate profile recorded in the lockfile.',
-    category: 'Workflow',
+    category: 'Install & Manage',
     run: async ({ ctx }: { ctx: Context }): Promise<number> => {
       const fmt = opts.output ?? 'text';
 

@@ -62,7 +62,7 @@ export const createIndexShortlistCommand = (
   defineCommand({
     path: ['index', 'shortlist', opts.subcommand],
     description: `Manage primitive-index shortlists: ${opts.subcommand}.`,
-    category: 'Index Management',
+    category: 'Index & Search',
     run: ({ ctx }: { ctx: Context }): number | Promise<number> => {
       const fmt = opts.output ?? 'text';
       const indexPath = opts.indexFile ?? defaultIndexFile(ctx.env);
@@ -222,7 +222,7 @@ export class IndexShortlistNewCommand extends Command {
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
     description: 'Create a new shortlist.',
-    category: 'Index Management',
+    category: 'Index & Search',
     details: `
       Usage: prompt-registry index shortlist new --name <NAME> [options]
 
@@ -274,7 +274,7 @@ export class IndexShortlistAddCommand extends Command {
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
     description: 'Add a primitive to a shortlist.',
-    category: 'Index Management',
+    category: 'Index & Search',
     details: `
       Usage: prompt-registry index shortlist add --id <SHORTLIST_ID> --primitive <PRIMITIVE_ID> [options]
 
@@ -336,7 +336,7 @@ export class IndexShortlistRemoveCommand extends Command {
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
     description: 'Remove a primitive from a shortlist.',
-    category: 'Index Management',
+    category: 'Index & Search',
     details: `
       Usage: prompt-registry index shortlist remove --id <SHORTLIST_ID> --primitive <PRIMITIVE_ID> [options]
 
@@ -398,7 +398,7 @@ export class IndexShortlistListCommand extends Command {
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
     description: 'List all shortlists.',
-    category: 'Index Management',
+    category: 'Index & Search',
     details: `
       Usage: prompt-registry index shortlist list [options]
 

@@ -54,8 +54,8 @@ export class SkillValidateCommand extends BaseSkillValidateCommand {
   public static readonly paths = [['skill', 'validate']];
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
-    description: 'Validate every skill folder under <cwd>/skills/ against the Agent Skills spec. (Replaces `validate-skills`.)',
-    category: 'Skill Management',
+    description: 'Validate every skill folder under <cwd>/skills/ against the Agent Skills spec.',
+    category: 'Build & Author',
     details: `
       Usage: prompt-registry skill validate [options]
 
@@ -150,8 +150,8 @@ export const createSkillValidateCommand = (
 ): CommandDefinition =>
   defineCommand({
     path: ['skill', 'validate'],
-    description: 'Validate every skill folder under <cwd>/skills/ against the Agent Skills spec. (Replaces `validate-skills`.)',
-    category: 'Skill Management',
+    description: 'Validate every skill folder under <cwd>/skills/ against the Agent Skills spec.',
+    category: 'Build & Author',
     run: ({ ctx }: { ctx: Context }): number => {
       const cwd = ctx.cwd();
       const result = validateAllSkills(cwd, opts.skillsDir ?? 'skills');

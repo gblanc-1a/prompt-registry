@@ -76,7 +76,7 @@ export const createDiscoverCommand = (
   defineCommand({
     path: ['discover'],
     description: 'Discover relevant Copilot resources based on project context.',
-    category: 'Discovery',
+    category: 'Hub & Discovery',
     run: async ({ ctx }: { ctx: Context }): Promise<number> => {
       const fmt = opts.output ?? 'text';
       const indexPath = opts.indexFile ?? defaultIndexFile(ctx.env);
@@ -167,7 +167,7 @@ export class DiscoverCommand extends Command {
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
     description: 'Discover relevant Copilot resources based on project context.',
-    category: 'Discovery',
+    category: 'Hub & Discovery',
     details: `
       Usage: prompt-registry discover [options]
 

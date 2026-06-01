@@ -73,7 +73,7 @@ export const createIndexExportCommand = (
   defineCommand({
     path: ['index', 'export'],
     description: 'Export a shortlist as a hub profile YAML.',
-    category: 'Index Management',
+    category: 'Index & Search',
     run: ({ ctx }: { ctx: Context }): number | Promise<number> => {
       const fmt = opts.output ?? 'text';
       if (opts.shortlistId.length === 0) {
@@ -173,7 +173,7 @@ export class IndexExportCommand extends Command {
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
     description: 'Export a shortlist as a hub profile YAML.',
-    category: 'Index Management',
+    category: 'Index & Search',
     details: `
       Usage: prompt-registry index export --shortlist <SHORTLIST_ID> --profile-id <ID> [options]
 

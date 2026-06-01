@@ -145,7 +145,8 @@ export const createTestContext = (options: TestContextOptions = {}): TestContext
     env,
     cwd: () => cwdValue,
     exit,
-    exitCode
+    exitCode,
+    colorDepth: 0
   };
 };
 

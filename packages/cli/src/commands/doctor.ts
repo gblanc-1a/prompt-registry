@@ -90,7 +90,7 @@ export class DoctorCommand extends BaseDoctorCommand {
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
     description: 'Run environment self-checks and print a health report.',
-    category: 'Diagnostics',
+    category: 'Configure & Debug',
     details: `
       Usage: prompt-registry doctor [options]
 
@@ -169,7 +169,7 @@ export const createDoctorCommand = (opts: { output?: OutputFormat } = {}): Comma
   defineCommand({
     path: ['doctor'],
     description: 'Run environment self-checks and print a health report.',
-    category: 'Diagnostics',
+    category: 'Configure & Debug',
     run: async ({ ctx }: { ctx: Context }): Promise<number> => {
       const result = await runDoctorChecks(ctx);
       const statusValue = result.summary.warn > 0 ? 'warning' : 'ok';

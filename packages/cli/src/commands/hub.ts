@@ -56,6 +56,20 @@ abstract class BaseHubCommand extends Command {
  */
 export class HubListCommand extends BaseHubCommand {
   public static readonly paths = [['hub', 'list']];
+  public static readonly usage = Command.Usage({
+    description: 'List imported hubs and optionally check reachability.',
+    category: 'Hub & Discovery',
+    details: `
+      Usage: prompt-registry hub list [--check]
+
+      Options:
+        --check  Probe reachability of each hub source.
+
+      Examples:
+        $ prompt-registry hub list
+        $ prompt-registry hub list --check
+    `
+  });
   public check = Option.Boolean('--check');
 
   public async execute() {
@@ -105,6 +119,25 @@ export class HubListCommand extends BaseHubCommand {
  */
 export class HubAddCommand extends BaseHubCommand {
   public static readonly paths = [['hub', 'add']];
+  public static readonly usage = Command.Usage({
+    description: 'Import a hub from a reference (GitHub repo, local path, or URL).',
+    category: 'Hub & Discovery',
+    details: `
+      Usage: prompt-registry hub add --location <ref> [--type <type>] [--id <id>]
+
+      Options:
+        --type <type>      Reference type: github (default), local, url.
+        --location <ref>   GitHub owner/repo, local path, or URL.
+        --ref <branch>     Git branch, tag, or commit (GitHub only).
+        --id <id>          Custom hub ID (defaults to repo name).
+        --no-sync          Skip syncing after import.
+        --no-use           Skip setting as active hub.
+
+      Examples:
+        $ prompt-registry hub add --location amadeus/copilot-hub
+        $ prompt-registry hub add --type local --location ./my-hub --id local-hub
+    `
+  });
   public refType = Option.String('--type');
   public refLocation = Option.String('--location');
   public refRef = Option.String('--ref');
@@ -171,6 +204,18 @@ export class HubAddCommand extends BaseHubCommand {
  */
 export class HubUseCommand extends BaseHubCommand {
   public static readonly paths = [['hub', 'use']];
+  public static readonly usage = Command.Usage({
+    description: 'Set or clear the active hub.',
+    category: 'Hub & Discovery',
+    details: `
+      Usage: prompt-registry hub use <hub-id>
+             prompt-registry hub use --clear
+
+      Examples:
+        $ prompt-registry hub use amadeus-copilot-hub
+        $ prompt-registry hub use --clear
+    `
+  });
   public clear = Option.Boolean('--clear');
   public hubId = Option.String({ required: false });
 
@@ -213,6 +258,16 @@ export class HubUseCommand extends BaseHubCommand {
  */
 export class HubRemoveCommand extends BaseHubCommand {
   public static readonly paths = [['hub', 'remove']];
+  public static readonly usage = Command.Usage({
+    description: 'Remove an imported hub.',
+    category: 'Hub & Discovery',
+    details: `
+      Usage: prompt-registry hub remove <hub-id>
+
+      Examples:
+        $ prompt-registry hub remove old-hub
+    `
+  });
   public hubId = Option.String({ required: false });
 
   public async execute() {
@@ -244,6 +299,22 @@ export class HubRemoveCommand extends BaseHubCommand {
  */
 export class HubCreateCommand extends BaseHubCommand {
   public static readonly paths = [['hub', 'create']];
+  public static readonly usage = Command.Usage({
+    description: 'Scaffold a hub-config.yml skeleton.',
+    category: 'Hub & Discovery',
+    details: `
+      Usage: prompt-registry hub create --name <name> [--out <dir>] [--add-source <path>]
+
+      Options:
+        --name <name>        Hub display name.
+        --out <dir>          Output directory (default: cwd).
+        --add-source <path>  Pre-populate a local source in the config.
+
+      Examples:
+        $ prompt-registry hub create --name "My Hub"
+        $ prompt-registry hub create --name "Dev Hub" --out ./hubs/dev
+    `
+  });
   public name = Option.String('--name');
   public out = Option.String('--out');
   public addSource = Option.String('--add-source');
@@ -300,6 +371,17 @@ export class HubCreateCommand extends BaseHubCommand {
  */
 export class HubSyncCommand extends BaseHubCommand {
   public static readonly paths = [['hub', 'sync']];
+  public static readonly usage = Command.Usage({
+    description: 'Re-fetch and sync a hub config.',
+    category: 'Hub & Discovery',
+    details: `
+      Usage: prompt-registry hub sync [<hub-id>]
+
+      Examples:
+        $ prompt-registry hub sync          # sync active hub
+        $ prompt-registry hub sync my-hub   # sync specific hub
+    `
+  });
   public hubId = Option.String({ required: false });
 
   public async execute() {
@@ -336,6 +418,16 @@ export class HubSyncCommand extends BaseHubCommand {
  */
 export class HubRefreshCommand extends BaseHubCommand {
   public static readonly paths = [['hub', 'refresh']];
+  public static readonly usage = Command.Usage({
+    description: 'Sync the active hub (shorthand for hub sync).',
+    category: 'Hub & Discovery',
+    details: `
+      Usage: prompt-registry hub refresh
+
+      Examples:
+        $ prompt-registry hub refresh   # same as: hub sync (active)
+    `
+  });
 
   public async execute() {
     const { ctx, http, tokens } = this.commandContext;

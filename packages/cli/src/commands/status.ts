@@ -35,6 +35,7 @@ import {
   type OutputFormat,
   RegistryError,
   renderError,
+  resolveProjectConfigPath,
 } from '../framework';
 
 /** Bundle detail shown in verbose mode. */
@@ -47,6 +48,8 @@ export interface StatusBundle {
 
 /** Status data shape returned to callers. */
 export interface StatusData {
+  configPath: string | null;
+  userTargetsPath: string | null;
   targets: { name: string; type: string; scope: string }[];
   activeHubId: string | null;
   hubs: string[];
@@ -67,7 +70,7 @@ export const createStatusCommand = (
   defineCommand({
     path: ['status'],
     description: 'Show current configuration state: targets, active hub, index, and lockfile.',
-    category: 'Project',
+    category: 'Configure & Debug',
     run: async ({ ctx }: { ctx: Context }): Promise<number> => {
       return runStatus(ctx, opts.output ?? 'text', opts.verbose ?? false);
     }
@@ -81,11 +84,12 @@ export class StatusCommand extends Command {
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
     description: 'Show current configuration state: targets, active hub, index, and lockfile.',
-    category: 'Project',
+    category: 'Configure & Debug',
     details: `
       Usage: prompt-registry status [-o json]
 
       Reads local config files (no network calls) and prints a summary of:
+        - Project config file location (prompt-registry.yml)
         - Configured targets
         - Active hub and available hubs
         - Primitive index size
@@ -114,10 +118,12 @@ async function runStatus(ctx: Context, fmt: OutputFormat, verbose: boolean): Pro
   try {
     const userPaths = resolveUserConfigPaths(ctx.env);
 
-    const [targets, hubIds, activeHubId] = await Promise.all([
+    const [targets, hubIds, activeHubId, configPath, userTargetsExists] = await Promise.all([
       loadTargets(ctx),
       readHubIds(userPaths.hubs, ctx),
-      readActiveHubId(userPaths.activeHub, ctx)
+      readActiveHubId(userPaths.activeHub, ctx),
+      resolveProjectConfigPath({ cwd: ctx.cwd(), env: ctx.env, fs: ctx.fs }),
+      ctx.fs.exists(userPaths.userTargets)
     ]);
 
     const indexPath = defaultIndexFile(ctx.env);
@@ -140,6 +146,8 @@ async function runStatus(ctx: Context, fmt: OutputFormat, verbose: boolean): Pro
     }
 
     const data: StatusData = {
+      configPath: configPath ?? null,
+      userTargetsPath: userTargetsExists ? userPaths.userTargets : null,
       targets: targets.map((t) => ({ name: t.name, type: t.type, scope: t.scope ?? 'user' })),
       activeHubId,
       hubs: hubIds,
@@ -202,6 +210,16 @@ async function readActiveHubId(activeHubPath: string, ctx: Context): Promise<str
   }
 }
 
+function renderConfigLine(configPath: string | null, userTargetsPath: string | null): string {
+  if (configPath !== null) {
+    return `config      ${configPath}\n`;
+  }
+  if (userTargetsPath !== null) {
+    return `config      ${userTargetsPath} (user)\n`;
+  }
+  return 'config      (none — run `prompt-registry init`)\n';
+}
+
 function renderTargetsLine(targets: StatusData['targets']): string {
   if (targets.length === 0) {
     return 'targets     (none — run `prompt-registry target add`)\n';
@@ -249,6 +267,7 @@ function renderStatusText(d: StatusData): string {
   return [
     'prompt-registry status\n',
     '─'.repeat(40) + '\n',
+    renderConfigLine(d.configPath, d.userTargetsPath),
     renderTargetsLine(d.targets),
     ...renderHubLines(d.activeHubId, d.hubs),
     renderIndexLine(d.index),

@@ -83,8 +83,8 @@ export class VersionComputeCommand extends BaseVersionComputeCommand {
   public static readonly paths = [['version', 'compute']];
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
-    description: 'Compute the next semver version + git tag for a collection. (Replaces `compute-collection-version`.)',
-    category: 'Bundle Management',
+    description: 'Compute the next semver version + git tag for a collection.',
+    category: 'Build & Author',
     details: `
       Usage: prompt-registry version compute [options]
 
@@ -191,8 +191,8 @@ export const createVersionComputeCommand = (
 ): CommandDefinition =>
   defineCommand({
     path: ['version', 'compute'],
-    description: 'Compute the next semver version + git tag for a collection. (Replaces `compute-collection-version`.)',
-    category: 'Bundle Management',
+    description: 'Compute the next semver version + git tag for a collection.',
+    category: 'Build & Author',
     run: ({ ctx }: { ctx: Context }): number => {
       const cwd = ctx.cwd();
       try {

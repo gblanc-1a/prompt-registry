@@ -50,6 +50,7 @@ export type {
 } from './config';
 export {
   loadConfig,
+  resolveProjectConfigPath,
 } from './config';
 export type {
   FormatOutputOptions,
@@ -100,3 +101,10 @@ export {
 export {
   copyCommandPrototype,
 } from './command-class';
+export type {
+  RenderTableOptions,
+  TableColumn,
+} from './table';
+export {
+  renderTable,
+} from './table';

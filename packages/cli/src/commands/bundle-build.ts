@@ -106,8 +106,8 @@ export class BundleBuildCommand extends BaseBundleBuildCommand {
   public static readonly paths = [['bundle', 'build']];
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
-    description: 'Generate a deployment manifest and zip the collection items into a reproducible bundle. (Replaces `build-collection-bundle`.)',
-    category: 'Bundle Management',
+    description: 'Generate a deployment manifest and zip collection items into a bundle.',
+    category: 'Build & Author',
     details: `
       Usage: prompt-registry bundle build [options]
 
@@ -305,8 +305,8 @@ export const createBundleBuildCommand = (
 ): CommandDefinition =>
   defineCommand({
     path: ['bundle', 'build'],
-    description: 'Generate a deployment manifest and zip the collection items into a reproducible bundle. (Replaces `build-collection-bundle`.)',
-    category: 'Bundle Management',
+    description: 'Generate a deployment manifest and zip collection items into a bundle.',
+    category: 'Build & Author',
     run: async ({ ctx }: { ctx: Context }): Promise<number> => {
       try {
         const cwd = ctx.cwd();

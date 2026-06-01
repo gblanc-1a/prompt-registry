@@ -56,7 +56,7 @@ export class ConfigGetCommand extends BaseConfigGetCommand {
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
     description: 'Read a config value by dotted key path (e.g., `output.json.indent`).',
-    category: 'Configuration',
+    category: 'Configure & Debug',
     details: `
       Usage: prompt-registry config get <dotted.key> [options]
 
@@ -179,7 +179,7 @@ export const createConfigGetCommand = (
   defineCommand({
     path: ['config', 'get'],
     description: 'Read a config value by dotted key path (e.g., `output.json.indent`).',
-    category: 'Configuration',
+    category: 'Configure & Debug',
     run: async ({ ctx }: { ctx: Context }): Promise<number> => {
       if (opts.key.length === 0) {
         const err = new RegistryError({

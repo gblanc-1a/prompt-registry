@@ -79,8 +79,8 @@ export class BundleManifestCommand extends BaseBundleManifestCommand {
   public static readonly paths = [['bundle', 'manifest']];
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
-    description: 'Generate a deployment-manifest.yml from a collection.yml + the referenced item files. (Replaces `generate-manifest`.)',
-    category: 'Bundle Management',
+    description: 'Generate a deployment-manifest.yml from a collection.yml.',
+    category: 'Build & Author',
     details: `
       Usage: prompt-registry bundle manifest [options]
 
@@ -399,8 +399,8 @@ export const createBundleManifestCommand = (
 ): CommandDefinition =>
   defineCommand({
     path: ['bundle', 'manifest'],
-    description: 'Generate a deployment-manifest.yml from a collection.yml + the referenced item files. (Replaces `generate-manifest`.)',
-    category: 'Bundle Management',
+    description: 'Generate a deployment-manifest.yml from a collection.yml.',
+    category: 'Build & Author',
     run: async ({ ctx }: { ctx: Context }): Promise<number> => {
       const cwd = ctx.cwd();
       const outFile = opts.outFile ?? 'deployment-manifest.yml';

@@ -72,8 +72,8 @@ export class CollectionAffectedCommand extends BaseCollectionAffectedCommand {
   public static readonly paths = [['collection', 'affected']];
   // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
   public static readonly usage = Command.Usage({
-    description: 'Print collections whose files or items overlap with the supplied changed-path list. (Replaces `detect-affected-collections`.)',
-    category: 'Collection Management',
+    description: 'Print collections that overlap with the supplied changed-path list.',
+    category: 'Build & Author',
     details: `
       Usage: prompt-registry collection affected [options]
 
@@ -182,8 +182,8 @@ export const createCollectionAffectedCommand = (
 ): CommandDefinition =>
   defineCommand({
     path: ['collection', 'affected'],
-    description: 'Print collections whose files or items overlap with the supplied changed-path list. (Replaces `detect-affected-collections`.)',
-    category: 'Collection Management',
+    description: 'Print collections that overlap with the supplied changed-path list.',
+    category: 'Build & Author',
     run: ({ ctx }: { ctx: Context }): number => {
       const cwd = ctx.cwd();
       const changed = (opts.changedPaths ?? [])

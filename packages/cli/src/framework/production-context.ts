@@ -122,6 +122,16 @@ const createProductionStdin = (): InputStream => ({
  * @param overrides.cwd
  * @returns A `Context` whose IO surfaces are wired to real Node primitives.
  */
+const detectColorDepth = (): number => {
+  if (process.env.NO_COLOR !== undefined) {
+    return 0;
+  }
+  if (process.stdout.isTTY) {
+    return 4; // ANSI 16 colors (clipanion only needs > 0)
+  }
+  return 0;
+};
+
 export const createProductionContext = (overrides: { cwd?: string } = {}): Context => ({
   fs: createProductionFs(),
   net: createProductionNet(),
@@ -139,5 +149,6 @@ export const createProductionContext = (overrides: { cwd?: string } = {}): Conte
     // here, enforcing the invariant that all IO goes through Context.
     // eslint-disable-next-line unicorn/no-process-exit -- This is the single, intentional sink for process termination; the invariant forbids process.exit anywhere else in src/.
     process.exit(code);
-  }
+  },
+  colorDepth: detectColorDepth()
 });

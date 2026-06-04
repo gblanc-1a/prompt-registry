@@ -3,7 +3,7 @@
 # End-to-End User Flow Test Script
 # Simulates realistic user workflows from scratch
 #
-# This script tests the complete lifecycle (54 scenarios):
+# This script tests the complete lifecycle (62 scenarios):
 #
 # Setup:
 #   1. Create install target via target add (non-interactive)
@@ -85,6 +85,18 @@
 #
 # Optional (requires --use-real-hub):
 #  50. Interactive hub bundle installation (real GitHub hub)
+#
+# Bundle creator pipeline:
+#  53. Scaffold collection.yml + prompt file for a new bundle
+#  54. collection list — discover collections in the repo
+#  55. collection validate — pass on a valid collection
+#  56. collection validate -- fail on a malformed collection (error envelope)
+#  57. collection affected — detect changed collections by path
+#  58. bundle manifest — generate deployment-manifest.yml
+#  59. bundle build (with --repo-slug) — produce bundle zip
+#  60. bundle build (no --repo-slug, no env) — cwd-basename fallback
+#  61. bundle build (GITHUB_REPOSITORY env fallback)
+#  62. install bundle from the built zip — round-trip validation
 #
 # Cleanup:
 #  51. Remove target and clean up test directories
@@ -2064,6 +2076,491 @@ scenario_52_init_repo_scope() {
 }
 
 # ============================================================================
+# Bundle Creator Pipeline Scenarios (53-62)
+# ============================================================================
+
+scenario_53_scaffold_bundle_repo() {
+    log_section "Scenario 53: Scaffold Bundle Repository Structure"
+
+    local bundle_repo_dir="$PR_TEST_ROOT/bundle-repo"
+    mkdir -p "$bundle_repo_dir/collections"
+    mkdir -p "$bundle_repo_dir/prompts"
+    mkdir -p "$bundle_repo_dir/skills/greet-skill"
+
+    log_info "Creating collection.yml"
+    cat > "$bundle_repo_dir/collections/greet.collection.yml" <<'EOF'
+id: greet
+name: Greeting Collection
+description: A collection of greeting prompts and skills
+author: e2e-tester
+tags:
+  - greeting
+  - test
+items:
+  - path: prompts/hello.prompt.md
+    kind: prompt
+  - path: prompts/farewell.prompt.md
+    kind: prompt
+  - path: skills/greet-skill/SKILL.md
+    kind: skill
+EOF
+
+    log_info "Creating prompt files"
+    cat > "$bundle_repo_dir/prompts/hello.prompt.md" <<'EOF'
+# Hello Prompt
+
+A friendly greeting prompt.
+
+## Description
+Generates a warm greeting for the user.
+
+## Usage
+Ask Copilot to greet someone using this prompt.
+EOF
+
+    cat > "$bundle_repo_dir/prompts/farewell.prompt.md" <<'EOF'
+# Farewell Prompt
+
+A polite farewell prompt.
+
+## Description
+Generates a graceful farewell message.
+EOF
+
+    log_info "Creating skill file"
+    cat > "$bundle_repo_dir/skills/greet-skill/SKILL.md" <<'EOF'
+# Greet Skill
+
+A skill for generating personalized greetings.
+
+## Purpose
+This skill generates context-aware greetings.
+
+## Usage
+Invoke this skill to produce a greeting tailored to context.
+EOF
+
+    if assert_file_exists "$bundle_repo_dir/collections/greet.collection.yml" \
+    && assert_file_exists "$bundle_repo_dir/prompts/hello.prompt.md" \
+    && assert_file_exists "$bundle_repo_dir/skills/greet-skill/SKILL.md"; then
+        log_success "Bundle repository scaffold created at $bundle_repo_dir"
+    else
+        log_error "Failed to create bundle repository scaffold"
+        return 1
+    fi
+}
+
+scenario_54_collection_list() {
+    log_section "Scenario 54: Collection List"
+
+    local bundle_repo_dir="$PR_TEST_ROOT/bundle-repo"
+    cd "$bundle_repo_dir"
+
+    log_info "Listing collections in bundle repo"
+    local output
+    output=$(run_cmd "$PR_BIN collection list -o json") || true
+
+    if assert_json_status "$output"; then
+        local count
+        count=$(echo "$output" | jq -r '.data | length')
+        if [ "$count" -ge 1 ]; then
+            local first_id
+            first_id=$(echo "$output" | jq -r '.data[0].id')
+            log_success "collection list: found $count collection(s), first id: $first_id"
+        else
+            log_error "collection list: expected at least 1 collection, got $count"
+            return 1
+        fi
+    else
+        log_error "collection list failed"
+        echo "$output"
+        return 1
+    fi
+}
+
+scenario_55_collection_validate_pass() {
+    log_section "Scenario 55: Collection Validate — Happy Path"
+
+    local bundle_repo_dir="$PR_TEST_ROOT/bundle-repo"
+    cd "$bundle_repo_dir"
+
+    log_info "Validating all collections (expect pass)"
+    local output
+    output=$(run_cmd "$PR_BIN collection validate -o json") || true
+
+    if assert_json_status "$output"; then
+        local ok
+        ok=$(echo "$output" | jq -r '.data.ok')
+        local total
+        total=$(echo "$output" | jq -r '.data.totalFiles')
+        if [ "$ok" = "true" ]; then
+            log_success "collection validate: all $total collection(s) valid"
+        else
+            log_error "collection validate: expected ok=true, got $ok"
+            echo "$output"
+            return 1
+        fi
+    else
+        log_error "collection validate failed"
+        echo "$output"
+        return 1
+    fi
+
+    log_info "Testing --verbose flag in text mode"
+    local text_output
+    text_output=$(run_cmd "$PR_BIN collection validate --verbose") || true
+    if echo "$text_output" | grep -qi "valid"; then
+        log_success "collection validate --verbose: output contains validation result"
+    else
+        log_warning "collection validate --verbose: expected validation text in output"
+    fi
+}
+
+scenario_56_collection_validate_fail() {
+    log_section "Scenario 56: Collection Validate — Malformed Collection Error Envelope"
+
+    local broken_dir="$PR_TEST_ROOT/broken-bundle-repo"
+    mkdir -p "$broken_dir/collections"
+    mkdir -p "$broken_dir/prompts"
+
+    log_info "Creating malformed collection (missing id, references non-existent file)"
+    cat > "$broken_dir/collections/broken.collection.yml" <<'EOF'
+name: Broken Collection
+description: This collection has no id and references a missing file
+items:
+  - path: prompts/nonexistent.prompt.md
+    kind: prompt
+EOF
+
+    cd "$broken_dir"
+
+    local output
+    output=$(run_cmd "$PR_BIN collection validate -o json") || true
+
+    if echo "$output" | jq -e '.status == "error"' > /dev/null 2>&1; then
+        local errors_count
+        errors_count=$(echo "$output" | jq -r '.data.errors | length')
+        log_success "collection validate: correctly reported error (${errors_count} error(s) found)"
+    elif echo "$output" | jq -e '.data.ok == false' > /dev/null 2>&1; then
+        log_success "collection validate: correctly identified invalid collection (data.ok=false)"
+    else
+        log_warning "collection validate: expected error or ok=false for broken collection"
+        echo "$output"
+    fi
+
+    cd "$PR_TEST_ROOT/project"
+}
+
+scenario_57_collection_affected() {
+    log_section "Scenario 57: Collection Affected — CI Change Detection"
+
+    local bundle_repo_dir="$PR_TEST_ROOT/bundle-repo"
+    cd "$bundle_repo_dir"
+
+    log_info "Testing: changed collection file itself is detected"
+    local output
+    output=$(run_cmd "$PR_BIN collection affected --changed-path collections/greet.collection.yml -o json") || true
+
+    if assert_json_status "$output"; then
+        local affected_count
+        affected_count=$(echo "$output" | jq -r '.data.affected | length')
+        if [ "$affected_count" -ge 1 ]; then
+            local affected_id
+            affected_id=$(echo "$output" | jq -r '.data.affected[0].id')
+            log_success "collection affected (collection file): detected $affected_count collection(s) — id: $affected_id"
+        else
+            log_error "collection affected: expected collection to be affected when its own file changed"
+            return 1
+        fi
+    else
+        log_error "collection affected failed"
+        echo "$output"
+        return 1
+    fi
+
+    log_info "Testing: changed item path is detected"
+    output=$(run_cmd "$PR_BIN collection affected --changed-path prompts/hello.prompt.md -o json") || true
+
+    if assert_json_status "$output"; then
+        local affected_count
+        affected_count=$(echo "$output" | jq -r '.data.affected | length')
+        if [ "$affected_count" -ge 1 ]; then
+            log_success "collection affected (item path): detected $affected_count collection(s)"
+        else
+            log_error "collection affected: expected collection to be affected when an item path changed"
+            return 1
+        fi
+    else
+        log_error "collection affected (item path) failed"
+        echo "$output"
+        return 1
+    fi
+
+    log_info "Testing: unrelated path returns no affected collections"
+    output=$(run_cmd "$PR_BIN collection affected --changed-path README.md -o json") || true
+
+    if assert_json_status "$output"; then
+        local affected_count
+        affected_count=$(echo "$output" | jq -r '.data.affected | length')
+        if [ "$affected_count" -eq 0 ]; then
+            log_success "collection affected (unrelated path): correctly returns 0 affected"
+        else
+            log_warning "collection affected (unrelated path): expected 0, got $affected_count"
+        fi
+    fi
+}
+
+scenario_58_bundle_manifest() {
+    log_section "Scenario 58: Bundle Manifest — Generate deployment-manifest.yml"
+
+    local bundle_repo_dir="$PR_TEST_ROOT/bundle-repo"
+    cd "$bundle_repo_dir"
+
+    local manifest_out="$PR_TEST_ROOT/bundle-repo/dist/greet/deployment-manifest.yml"
+    mkdir -p "$(dirname "$manifest_out")"
+
+    log_info "Generating deployment manifest for greet collection"
+    local output
+    output=$(run_cmd "$PR_BIN bundle manifest \
+        --collection-file collections/greet.collection.yml \
+        --version 1.2.0 \
+        --out-file \"$manifest_out\" \
+        -o json") || true
+
+    if assert_json_status "$output"; then
+        local manifest_id
+        manifest_id=$(echo "$output" | jq -r '.data.id')
+        local total_items
+        total_items=$(echo "$output" | jq -r '.data.totalItems')
+        local version
+        version=$(echo "$output" | jq -r '.data.version')
+        log_success "bundle manifest: id=$manifest_id, version=$version, totalItems=$total_items"
+
+        if [ "$version" = "1.2.0" ]; then
+            log_success "bundle manifest: version matches 1.2.0"
+        else
+            log_error "bundle manifest: expected version=1.2.0, got $version"
+            return 1
+        fi
+
+        if assert_file_exists "$manifest_out"; then
+            log_success "bundle manifest: deployment-manifest.yml written to $manifest_out"
+        else
+            log_error "bundle manifest: expected output file not found: $manifest_out"
+            return 1
+        fi
+
+        log_info "Verifying manifest YAML structure"
+        if command -v python3 >/dev/null 2>&1; then
+            local manifest_id_yaml
+            manifest_id_yaml=$(python3 -c "import sys,yaml; d=yaml.safe_load(open('$manifest_out')); print(d.get('id',''))" 2>/dev/null) || true
+            if [ "$manifest_id_yaml" = "greet" ]; then
+                log_success "bundle manifest: YAML id field is 'greet'"
+            else
+                log_warning "bundle manifest: YAML id=$manifest_id_yaml (expected greet)"
+            fi
+        fi
+    else
+        log_error "bundle manifest failed"
+        echo "$output"
+        return 1
+    fi
+}
+
+scenario_59_bundle_build_with_repo_slug() {
+    log_section "Scenario 59: Bundle Build — Explicit --repo-slug"
+
+    local bundle_repo_dir="$PR_TEST_ROOT/bundle-repo"
+    cd "$bundle_repo_dir"
+
+    local out_dir="$PR_TEST_ROOT/bundle-repo/dist"
+
+    log_info "Building bundle with explicit --repo-slug"
+    local output
+    output=$(run_cmd "$PR_BIN bundle build \
+        --collection-file collections/greet.collection.yml \
+        --version 1.2.0 \
+        --repo-slug e2e-test-org \
+        --out-dir \"$out_dir\" \
+        -o json") || true
+
+    if assert_json_status "$output"; then
+        local bundle_id
+        bundle_id=$(echo "$output" | jq -r '.data.bundleId')
+        local zip_asset
+        zip_asset=$(echo "$output" | jq -r '.data.zipAsset')
+
+        log_success "bundle build (explicit slug): bundleId=$bundle_id"
+
+        if echo "$bundle_id" | grep -q "e2e-test-org"; then
+            log_success "bundle build: bundleId contains repo slug 'e2e-test-org'"
+        else
+            log_error "bundle build: bundleId='$bundle_id' does not contain 'e2e-test-org'"
+            return 1
+        fi
+
+        if echo "$bundle_id" | grep -q "greet"; then
+            log_success "bundle build: bundleId contains collection id 'greet'"
+        else
+            log_error "bundle build: bundleId='$bundle_id' does not contain 'greet'"
+            return 1
+        fi
+
+        if assert_file_exists "$zip_asset"; then
+            local zip_size
+            zip_size=$(stat -c%s "$zip_asset" 2>/dev/null || stat -f%z "$zip_asset" 2>/dev/null || echo "0")
+            log_success "bundle build: zip written to $zip_asset (${zip_size} bytes)"
+        else
+            log_error "bundle build: zip asset not found: $zip_asset"
+            return 1
+        fi
+    else
+        log_error "bundle build (explicit slug) failed"
+        echo "$output"
+        return 1
+    fi
+}
+
+scenario_60_bundle_build_cwd_fallback() {
+    log_section "Scenario 60: Bundle Build — cwd Basename Fallback (no --repo-slug, no env)"
+
+    local bundle_repo_dir="$PR_TEST_ROOT/bundle-repo"
+    cd "$bundle_repo_dir"
+
+    local out_dir="$PR_TEST_ROOT/bundle-repo/dist-fallback"
+    local expected_slug
+    expected_slug=$(basename "$bundle_repo_dir")
+
+    log_info "Building bundle without --repo-slug and no GITHUB_REPOSITORY set"
+    log_info "Expected slug: $expected_slug (from cwd basename)"
+    local output
+    # Use a subshell with unset to guarantee GITHUB_REPOSITORY is absent
+    output=$(
+        unset GITHUB_REPOSITORY
+        run_cmd "$PR_BIN bundle build \
+            --collection-file collections/greet.collection.yml \
+            --version 1.2.0 \
+            --out-dir \"$out_dir\" \
+            -o json"
+    ) || true
+
+    if assert_json_status "$output"; then
+        local bundle_id
+        bundle_id=$(echo "$output" | jq -r '.data.bundleId')
+        log_success "bundle build (cwd fallback): bundleId=$bundle_id"
+
+        if echo "$bundle_id" | grep -qF "$expected_slug"; then
+            log_success "bundle build (cwd fallback): bundleId contains cwd basename '$expected_slug'"
+        else
+            log_error "bundle build (cwd fallback): bundleId='$bundle_id' does not contain cwd basename '$expected_slug'"
+            return 1
+        fi
+    else
+        log_error "bundle build (cwd fallback) failed"
+        echo "$output"
+        return 1
+    fi
+}
+
+scenario_61_bundle_build_github_env_fallback() {
+    log_section "Scenario 61: Bundle Build — GITHUB_REPOSITORY Env Fallback"
+
+    local bundle_repo_dir="$PR_TEST_ROOT/bundle-repo"
+    cd "$bundle_repo_dir"
+
+    local out_dir="$PR_TEST_ROOT/bundle-repo/dist-envfallback"
+
+    log_info "Building bundle with GITHUB_REPOSITORY env var (no --repo-slug)"
+    local output
+    # Use a subshell with export to ensure the env var is set only for this call
+    output=$(
+        export GITHUB_REPOSITORY="e2e-org/greet-repo"
+        run_cmd "$PR_BIN bundle build \
+            --collection-file collections/greet.collection.yml \
+            --version 1.2.0 \
+            --out-dir \"$out_dir\" \
+            -o json"
+    ) || true
+
+    if assert_json_status "$output"; then
+        local bundle_id
+        bundle_id=$(echo "$output" | jq -r '.data.bundleId')
+        log_success "bundle build (GITHUB_REPOSITORY fallback): bundleId=$bundle_id"
+
+        if echo "$bundle_id" | grep -q "e2e-org-greet-repo"; then
+            log_success "bundle build (GITHUB_REPOSITORY fallback): bundleId contains normalized slug 'e2e-org-greet-repo'"
+        else
+            log_error "bundle build (GITHUB_REPOSITORY fallback): bundleId='$bundle_id' does not contain 'e2e-org-greet-repo'"
+            return 1
+        fi
+    else
+        log_error "bundle build (GITHUB_REPOSITORY fallback) failed"
+        echo "$output"
+        return 1
+    fi
+}
+
+scenario_62_install_from_built_zip() {
+    log_section "Scenario 62: Install from Built Bundle Zip — Round-Trip Validation"
+
+    cd "$PR_TEST_ROOT/project"
+
+    log_info "Verifying target is configured"
+    if ! assert_file_exists "$PR_TEST_ROOT/project/prompt-registry.yml"; then
+        log_warning "prompt-registry.yml not found, recreating target"
+        local setup_output
+        setup_output=$(run_cmd "$PR_BIN target add $TARGET_NAME --type copilot-cli --path \"$PR_TEST_ROOT/copilot-cli\" -o json") || true
+        if ! assert_json_status "$setup_output"; then
+            log_error "Failed to recreate target"
+            echo "$setup_output"
+            return 1
+        fi
+    fi
+
+    local zip_path
+    zip_path=$(find "$PR_TEST_ROOT/bundle-repo/dist/greet" -name "*.bundle.zip" 2>/dev/null | head -1)
+
+    if [ -z "$zip_path" ]; then
+        log_warning "No zip asset found from scenario 59. Run scenario 59 first."
+        return 0
+    fi
+
+    log_info "Installing bundle from zip: $zip_path"
+    local output
+    output=$(run_cmd "$PR_BIN install greet --from \"$zip_path\" --target $TARGET_NAME -o json") || true
+
+    if assert_json_status "$output"; then
+        log_success "install from zip: succeeded"
+
+        log_info "Verifying installed files"
+        local target_path="$PR_TEST_ROOT/copilot-cli"
+        local all_ok=true
+
+        if assert_file_exists "$target_path/prompts/hello.prompt.md"; then
+            log_success "install from zip: hello.prompt.md installed"
+        else
+            log_error "install from zip: hello.prompt.md NOT installed"
+            all_ok=false
+        fi
+
+        if assert_file_exists "$target_path/prompts/farewell.prompt.md"; then
+            log_success "install from zip: farewell.prompt.md installed"
+        else
+            log_error "install from zip: farewell.prompt.md NOT installed"
+            all_ok=false
+        fi
+
+        if [ "$all_ok" = false ]; then
+            return 1
+        fi
+    else
+        log_error "install from built zip failed"
+        echo "$output"
+        return 1
+    fi
+}
+
+# ============================================================================
 # Main
 # ============================================================================
 
@@ -2206,6 +2703,18 @@ main() {
 
     # Optional (real hub)
     scenario_32_interactive_hub_install || true  # Non-critical (requires --use-real-hub)
+
+    # Bundle creator pipeline
+    scenario_53_scaffold_bundle_repo || failures=$((failures + 1))
+    scenario_54_collection_list || failures=$((failures + 1))
+    scenario_55_collection_validate_pass || failures=$((failures + 1))
+    scenario_56_collection_validate_fail || true  # Non-critical (broken collection — we test the error envelope)
+    scenario_57_collection_affected || failures=$((failures + 1))
+    scenario_58_bundle_manifest || failures=$((failures + 1))
+    scenario_59_bundle_build_with_repo_slug || failures=$((failures + 1))
+    scenario_60_bundle_build_cwd_fallback || failures=$((failures + 1))
+    scenario_61_bundle_build_github_env_fallback || failures=$((failures + 1))
+    scenario_62_install_from_built_zip || failures=$((failures + 1))
 
     # Cleanup (always runs)
     scenario_31_cleanup || true

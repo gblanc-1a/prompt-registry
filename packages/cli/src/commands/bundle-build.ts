@@ -78,7 +78,7 @@ export interface BundleBuildOptions {
   version: string;
   /** Output directory. Default `dist`. */
   outDir?: string;
-  /** Repo slug used by `generateBundleId`. Falls back to GITHUB_REPOSITORY env var. */
+  /** Repo slug used by `generateBundleId`. Falls back to GITHUB_REPOSITORY env var, then cwd directory basename. */
   repoSlug?: string;
 }
 
@@ -116,7 +116,7 @@ export class BundleBuildCommand extends BaseBundleBuildCommand {
         --collection-file <path>    Collection file path (repo-relative)
         --version <version>         Bundle version (e.g. 1.0.0)
         --out-dir <dir>             Output directory (default: dist)
-        --repo-slug <slug>          Repo slug (owner-repo, or GITHUB_REPOSITORY env var)
+        --repo-slug <slug>          Repo slug (owner-repo, or GITHUB_REPOSITORY env var, or cwd dirname)
     `
   });
 
@@ -134,15 +134,9 @@ export class BundleBuildCommand extends BaseBundleBuildCommand {
 
     try {
       const cwd = ctx.cwd();
-      const repoSlug = this.repoSlug
-        ?? (ctx.env.GITHUB_REPOSITORY ?? '').replaceAll('/', '-');
-      if (repoSlug.length === 0) {
-        throw new RegistryError({
-          code: 'USAGE.MISSING_FLAG',
-          message: 'Missing --repo-slug (or set GITHUB_REPOSITORY)',
-          hint: 'Pass --repo-slug owner-repo or run inside GitHub Actions where GITHUB_REPOSITORY is set.'
-        });
-      }
+      const repoSlug = (this.repoSlug
+        ?? (ctx.env.GITHUB_REPOSITORY ?? '').replaceAll('/', '-'))
+        || path.basename(cwd);
       // Resolve outDir against ctx.cwd() so the command honors
       // injected working directories (Context invariant). Legacy
       // script relied on process.cwd() implicitly.
@@ -310,15 +304,9 @@ export const createBundleBuildCommand = (
     run: async ({ ctx }: { ctx: Context }): Promise<number> => {
       try {
         const cwd = ctx.cwd();
-        const repoSlug = opts.repoSlug
-          ?? (ctx.env.GITHUB_REPOSITORY ?? '').replaceAll('/', '-');
-        if (repoSlug.length === 0) {
-          throw new RegistryError({
-            code: 'USAGE.MISSING_FLAG',
-            message: 'Missing --repo-slug (or set GITHUB_REPOSITORY)',
-            hint: 'Pass --repo-slug owner-repo or run inside GitHub Actions where GITHUB_REPOSITORY is set.'
-          });
-        }
+        const repoSlug = (opts.repoSlug
+          ?? (ctx.env.GITHUB_REPOSITORY ?? '').replaceAll('/', '-'))
+          || path.basename(cwd);
         // Resolve outDir against ctx.cwd() so the command honors
         // injected working directories (Context invariant). Legacy
         // script relied on process.cwd() implicitly.

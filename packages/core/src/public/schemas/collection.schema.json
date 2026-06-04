@@ -68,7 +68,9 @@
               "instruction",
               "chat-mode",
               "agent",
-              "skill"
+              "skill",
+              "plugin",
+              "hook"
             ]
           },
           "title": {

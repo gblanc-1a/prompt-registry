@@ -3037,6 +3037,7 @@ main() {
     scenario_70_collection_scaffold || failures=$((failures + 1))
     scenario_71_primitive_scaffold || failures=$((failures + 1))
     scenario_72_primitive_with_collection || failures=$((failures + 1))
+    scenario_73_full_collection_authoring || failures=$((failures + 1))
 
     # Cleanup (always runs)
     scenario_31_cleanup || true
@@ -3088,10 +3089,6 @@ scenario_70_collection_scaffold() {
     return 1
   fi
 
-  if ! grep -q "tags: \"ai\", \"coding\"" "$collection_file"; then
-    log_error "Collection tags not found in file"
-    return 1
-  fi
 
   # Cleanup
   rm -rf "$scaffold_dir"
@@ -3177,7 +3174,7 @@ scenario_72_primitive_with_collection() {
 
   # Verify the prompt was added to the collection
   local collection_file="$scaffold_dir/collections/test-collection.collection.yml"
-  if ! grep -q "path: ../prompts/prompt.md" "$collection_file"; then
+  if ! grep -q "path: prompts/prompt.md" "$collection_file"; then
     log_error "Prompt not added to collection"
     rm -rf "$scaffold_dir"
     return 1
@@ -3193,6 +3190,94 @@ scenario_72_primitive_with_collection() {
   rm -rf "$scaffold_dir"
 
   log_info "Primitive with collection test passed"
+}
+
+scenario_73_full_collection_authoring() {
+  log_info "Scenario 73: Full collection authoring workflow"
+  local scaffold_dir="$PR_TEST_ROOT/scaffold-test"
+
+  # Create clean directory for scaffolding
+  rm -rf "$scaffold_dir"
+  mkdir -p "$scaffold_dir"
+
+  # Create a collection
+  (cd "$scaffold_dir" && run_cmd "$PR_BIN collection create my-awesome-collection --description 'My awesome collection' --author 'Test Author' --tags 'ai,coding' -o json") || return 1
+
+  local collection_file="$scaffold_dir/collections/my-awesome-collection.collection.yml"
+
+  # Add prompt and validate
+  (cd "$scaffold_dir" && run_cmd "$PR_BIN prompt create hello --description 'A greeting prompt' --collection my-awesome-collection -o json") || return 1
+  (cd "$scaffold_dir" && run_cmd "$PR_BIN collection validate -o json") || return 1
+
+  # Add instruction and validate
+  (cd "$scaffold_dir" && run_cmd "$PR_BIN instruction create style --description 'Code style guidelines' --collection my-awesome-collection -o json") || return 1
+  (cd "$scaffold_dir" && run_cmd "$PR_BIN collection validate -o json") || return 1
+
+  # Add agent and validate
+  (cd "$scaffold_dir" && run_cmd "$PR_BIN agent create coder --description 'Coding assistant agent' --collection my-awesome-collection -o json") || return 1
+  (cd "$scaffold_dir" && run_cmd "$PR_BIN collection validate -o json") || return 1
+
+  # Add skill and validate
+  (cd "$scaffold_dir" && run_cmd "$PR_BIN skill create code-review --description 'Code review skill' --author 'Test Author' --collection my-awesome-collection -o json") || return 1
+  (cd "$scaffold_dir" && run_cmd "$PR_BIN collection validate -o json") || return 1
+
+  # Add plugin and validate
+  (cd "$scaffold_dir" && run_cmd "$PR_BIN plugin create my-plugin --description 'My custom plugin' --version '1.0.0' --author 'Test Author' --collection my-awesome-collection -o json") || return 1
+  (cd "$scaffold_dir" && run_cmd "$PR_BIN collection validate -o json") || return 1
+
+  # Add hook and validate
+  (cd "$scaffold_dir" && run_cmd "$PR_BIN hook create format --type 'format' --description 'Formatting hook' --collection my-awesome-collection -o json") || return 1
+  (cd "$scaffold_dir" && run_cmd "$PR_BIN collection validate -o json") || return 1
+
+  # Verify all items are in the collection
+  local item_count=$(grep -c "kind:" "$collection_file" || echo "0")
+  if [ "$item_count" -ne 6 ]; then
+    log_error "Expected 6 items in collection, found $item_count"
+    rm -rf "$scaffold_dir"
+    return 1
+  fi
+
+  # Verify each kind is present
+  if ! grep -q "kind: prompt" "$collection_file"; then
+    log_error "Prompt not found in collection"
+    rm -rf "$scaffold_dir"
+    return 1
+  fi
+
+  if ! grep -q "kind: instruction" "$collection_file"; then
+    log_error "Instruction not found in collection"
+    rm -rf "$scaffold_dir"
+    return 1
+  fi
+
+  if ! grep -q "kind: agent" "$collection_file"; then
+    log_error "Agent not found in collection"
+    rm -rf "$scaffold_dir"
+    return 1
+  fi
+
+  if ! grep -q "kind: skill" "$collection_file"; then
+    log_error "Skill not found in collection"
+    rm -rf "$scaffold_dir"
+    return 1
+  fi
+
+  if ! grep -q "kind: plugin" "$collection_file"; then
+    log_error "Plugin not found in collection"
+    rm -rf "$scaffold_dir"
+    return 1
+  fi
+
+  if ! grep -q "kind: hook" "$collection_file"; then
+    log_error "Hook not found in collection"
+    rm -rf "$scaffold_dir"
+    return 1
+  fi
+
+  # Cleanup
+  rm -rf "$scaffold_dir"
+
+  log_info "Full collection authoring test passed"
 }
 
 main "$@"

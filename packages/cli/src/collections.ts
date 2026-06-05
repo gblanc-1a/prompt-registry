@@ -43,6 +43,11 @@ export function readCollection(repoRoot: string, collectionFile: string): Collec
     throw new Error(`Invalid collection YAML: ${collectionFile}`);
   }
 
+  // Ensure items array is initialized
+  if (!collection.items) {
+    collection.items = [];
+  }
+
   return collection;
 }
 
@@ -101,4 +106,18 @@ export function resolveCollectionItemPaths(repoRoot: string, collection: Collect
   }
 
   return allPaths;
+}
+
+/**
+ * Write a collection object to a YAML file.
+ * @param repoRoot - Repository root path
+ * @param collectionFile - Collection file path (absolute or repo-relative)
+ * @param collection - Collection object to write
+ */
+export function writeCollection(repoRoot: string, collectionFile: string, collection: Collection): void {
+  const abs = path.isAbsolute(collectionFile)
+    ? collectionFile
+    : path.join(repoRoot, collectionFile);
+  const content = yaml.dump(collection, { indent: 2, lineWidth: -1 });
+  fs.writeFileSync(abs, content, 'utf8');
 }

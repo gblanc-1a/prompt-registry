@@ -3036,6 +3036,7 @@ main() {
     # Scaffolding tests
     scenario_70_collection_scaffold || failures=$((failures + 1))
     scenario_71_primitive_scaffold || failures=$((failures + 1))
+    scenario_72_primitive_with_collection || failures=$((failures + 1))
 
     # Cleanup (always runs)
     scenario_31_cleanup || true
@@ -3056,7 +3057,7 @@ scenario_70_collection_scaffold() {
   log_info "Scenario 70: Collection scaffolding"
   local collection_name="test-collection"
   local scaffold_dir="$PR_TEST_ROOT/scaffold-test"
-  local collection_file="$scaffold_dir/collections/collection.yml"
+  local collection_file="$scaffold_dir/collections/${collection_name}.collection.yml"
 
   # Create clean directory for scaffolding
   rm -rf "$scaffold_dir"
@@ -3158,6 +3159,40 @@ scenario_71_primitive_scaffold() {
   rm -rf "$scaffold_dir"
 
   log_info "Primitive scaffolding test passed"
+}
+
+scenario_72_primitive_with_collection() {
+  log_info "Scenario 72: Primitive scaffolding with collection attachment"
+  local scaffold_dir="$PR_TEST_ROOT/scaffold-test"
+
+  # Create clean directory for scaffolding
+  rm -rf "$scaffold_dir"
+  mkdir -p "$scaffold_dir"
+
+  # First create a collection
+  (cd "$scaffold_dir" && run_cmd "$PR_BIN collection create test-collection --description 'Test collection' --author 'Test Author' -o json") || return 1
+
+  # Create a prompt and add it to the collection
+  (cd "$scaffold_dir" && run_cmd "$PR_BIN prompt create hello --description 'A greeting prompt' --collection test-collection -o json") || return 1
+
+  # Verify the prompt was added to the collection
+  local collection_file="$scaffold_dir/collections/test-collection.collection.yml"
+  if ! grep -q "path: ../prompts/prompt.md" "$collection_file"; then
+    log_error "Prompt not added to collection"
+    rm -rf "$scaffold_dir"
+    return 1
+  fi
+
+  if ! grep -q "kind: prompt" "$collection_file"; then
+    log_error "Prompt kind not set in collection"
+    rm -rf "$scaffold_dir"
+    return 1
+  fi
+
+  # Cleanup
+  rm -rf "$scaffold_dir"
+
+  log_info "Primitive with collection test passed"
 }
 
 main "$@"

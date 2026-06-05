@@ -60,3 +60,6 @@ export * from './stores/json-index-store';
 // Utilities
 export * from './checksum';
 export * from './default-hubs';
+
+// Scaffolding
+export * from './scaffolding';

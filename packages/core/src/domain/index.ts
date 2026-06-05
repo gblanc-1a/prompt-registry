@@ -131,3 +131,16 @@ export type {
   RecommendationId,
   ProfileDraftId,
 } from './discovery/types';
+
+// Scaffolding domain types for CLI scaffolding commands.
+export {
+  ScaffoldType,
+  generateSanitizedId,
+} from './scaffold';
+export type {
+  ScaffoldOptions,
+  TemplateContext,
+  TemplateInfo,
+  TemplateManifest,
+  ScaffoldResult,
+} from './scaffold';

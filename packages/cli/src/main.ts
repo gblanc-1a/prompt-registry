@@ -72,6 +72,10 @@ import {
   createCollectionAffectedCommandClass,
 } from './commands/collection-affected';
 import {
+  CollectionCreateCommand,
+  createCollectionCreateCommandClass,
+} from './commands/collection-create';
+import {
   createSkillValidateCommand,
 } from './commands/skill-validate';
 import {
@@ -205,6 +209,7 @@ async function main(): Promise<number> {
     CollectionListCommand,
     CollectionValidateCommand,
     CollectionAffectedCommand,
+    CollectionCreateCommand,
   ];
 
   const exitCode = await runCli(process.argv.slice(2), {

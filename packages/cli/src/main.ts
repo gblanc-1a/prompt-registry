@@ -76,6 +76,30 @@ import {
   createCollectionCreateCommandClass,
 } from './commands/collection-create';
 import {
+  PromptCreateCommand,
+  createPromptCreateCommandClass,
+} from './commands/prompt-create';
+import {
+  InstructionCreateCommand,
+  createInstructionCreateCommandClass,
+} from './commands/instruction-create';
+import {
+  AgentCreateCommand,
+  createAgentCreateCommandClass,
+} from './commands/agent-create';
+import {
+  SkillCreateCommand,
+  createSkillCreateCommandClass,
+} from './commands/skill-create';
+import {
+  PluginCreateCommand,
+  createPluginCreateCommandClass,
+} from './commands/plugin-create';
+import {
+  HookCreateCommand,
+  createHookCreateCommandClass,
+} from './commands/hook-create';
+import {
   createSkillValidateCommand,
 } from './commands/skill-validate';
 import {
@@ -210,6 +234,12 @@ async function main(): Promise<number> {
     CollectionValidateCommand,
     CollectionAffectedCommand,
     CollectionCreateCommand,
+    PromptCreateCommand,
+    InstructionCreateCommand,
+    AgentCreateCommand,
+    SkillCreateCommand,
+    PluginCreateCommand,
+    HookCreateCommand,
   ];
 
   const exitCode = await runCli(process.argv.slice(2), {

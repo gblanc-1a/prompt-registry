@@ -60,13 +60,16 @@ import {
   createDiscoverCommand,
 } from './commands/discover';
 import {
-  createCollectionListCommand,
+  CollectionListCommand,
+  createCollectionListCommandClass,
 } from './commands/collection-list';
 import {
-  createCollectionValidateCommand,
+  CollectionValidateCommand,
+  createCollectionValidateCommandClass,
 } from './commands/collection-validate';
 import {
-  createCollectionAffectedCommand,
+  CollectionAffectedCommand,
+  createCollectionAffectedCommandClass,
 } from './commands/collection-affected';
 import {
   createSkillValidateCommand,
@@ -150,9 +153,6 @@ async function main(): Promise<number> {
     createApplyCommand(),
     createDoctorCommand(),
     createDiscoverCommand(),
-    createCollectionListCommand(),
-    createCollectionValidateCommand(),
-    createCollectionAffectedCommand(),
     createSkillValidateCommand(),
     createConfigListCommand(),
     createPluginsListCommand(),
@@ -202,6 +202,9 @@ async function main(): Promise<number> {
     VersionComputeCommand,
     IndexEvalCommand,
     IndexBenchCommand,
+    CollectionListCommand,
+    CollectionValidateCommand,
+    CollectionAffectedCommand,
   ];
 
   const exitCode = await runCli(process.argv.slice(2), {

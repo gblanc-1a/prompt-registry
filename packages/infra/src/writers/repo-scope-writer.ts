@@ -66,6 +66,8 @@ interface DeploymentManifest {
   agents?: { id: string; file: string; type: string }[];
   instructions?: { id: string; file: string; type: string }[];
   skills?: { id: string; file: string; type: string }[];
+  hooks?: { id: string; file: string; type: string }[];
+  plugins?: { id: string; file: string; type: string }[];
 }
 
 /**
@@ -132,6 +134,12 @@ export class RepositoryScopeWriter {
     }
     if (typeLower === 'skill') {
       return 'skills';
+    }
+    if (typeLower === 'hook') {
+      return 'hooks';
+    }
+    if (typeLower === 'plugin') {
+      return 'plugins';
     }
     return null;
   }
@@ -209,6 +217,37 @@ export class RepositoryScopeWriter {
     skillDirs.push(skillDir);
   }
 
+  /**
+   * Install a single plugin item by copying its entire directory from the bundle.
+   * @param p Plugin item with file and optional id.
+   * @param p.file Plugin manifest file path.
+   * @param p.id Optional target plugin ID override.
+   * @param files Extracted bundle files.
+   * @param written Accumulates written file paths.
+   * @param skillDirs Accumulates plugin directory paths (reusing skillDirs for cleanup).
+   */
+  private async installPluginItem(
+    p: { file: string; id?: string },
+    files: ExtractedFiles,
+    written: string[],
+    skillDirs: string[]
+  ): Promise<void> {
+    const sourcePluginId = this.extractPluginId(p.file);
+    const sourcePrefix = `plugins/${sourcePluginId}`;
+    const targetPluginId = p.id ?? sourcePluginId;
+    const pluginDir = path.join(this.workspaceRoot, '.github', `plugins/${targetPluginId}`);
+    for (const [bundlePath, bytes] of files) {
+      if (bundlePath.startsWith(sourcePrefix)) {
+        const relativePath = bundlePath.slice(sourcePrefix.length);
+        const targetPath = path.join(pluginDir, relativePath);
+        await this.fs.mkdir(path.dirname(targetPath), { recursive: true });
+        await this.fs.writeFile(targetPath, new TextDecoder().decode(bytes));
+        written.push(targetPath);
+      }
+    }
+    skillDirs.push(pluginDir);
+  }
+
   private async processManifestItems(
     items: { type: string; file: string; id?: string }[],
     files: ExtractedFiles,
@@ -219,6 +258,8 @@ export class RepositoryScopeWriter {
     for (const p of items) {
       if (p.type.toLowerCase() === 'skill') {
         await this.installSkillItem(p, files, written, skillDirs);
+      } else if (p.type.toLowerCase() === 'plugin') {
+        await this.installPluginItem(p, files, written, skillDirs);
       } else {
         const bytes = files.get(p.file);
         if (bytes) {
@@ -240,6 +281,15 @@ export class RepositoryScopeWriter {
     const skillIndex = parts.indexOf('skills');
     if (skillIndex !== -1 && skillIndex + 1 < parts.length) {
       return this.sanitizeId(parts[skillIndex + 1]);
+    }
+    return 'unknown';
+  }
+
+  private extractPluginId(filePath: string): string {
+    const parts = filePath.split('/');
+    const pluginIndex = parts.indexOf('plugins');
+    if (pluginIndex !== -1 && pluginIndex + 1 < parts.length) {
+      return this.sanitizeId(parts[pluginIndex + 1]);
     }
     return 'unknown';
   }
@@ -373,6 +423,13 @@ export class RepositoryScopeWriter {
     }
     if (manifest.instructions) {
       await this.processManifestItems(manifest.instructions, files, written, skipped, skillDirs);
+    }
+    // Process hooks and plugins
+    if (manifest.hooks) {
+      await this.processManifestItems(manifest.hooks, files, written, skipped, skillDirs);
+    }
+    if (manifest.plugins) {
+      await this.processManifestItems(manifest.plugins, files, written, skipped, skillDirs);
     }
 
     // Process skills

@@ -19,12 +19,14 @@ import type {
 
 describe('domain barrel shape', () => {
   describe('runtime exports', () => {
-    it('exposes PRIMITIVE_KINDS with all six kinds', () => {
+    it('exposes PRIMITIVE_KINDS with all eight kinds', () => {
       expect(domain.PRIMITIVE_KINDS.toSorted()).toStrictEqual([
         'agent',
         'chat-mode',
+        'hook',
         'instruction',
         'mcp-server',
+        'plugin',
         'prompt',
         'skill'
       ]);

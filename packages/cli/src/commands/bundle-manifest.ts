@@ -186,7 +186,9 @@ export const createBundleManifestCommandClass = (
  */
 const KIND_TO_TYPE_MAP: Record<string, string> = {
   instruction: 'instructions',
-  'chat-mode': 'chatmode'
+  'chat-mode': 'chatmode',
+  plugin: 'plugin',
+  hook: 'hook'
 };
 
 /**
@@ -219,6 +221,39 @@ function extractItemMetadata(itemContent: string): { name: string; description: 
 }
 
 /**
+ * Extract item metadata from JSON content (plugin.json or hook config).
+ * Falls back to empty strings when fields are absent.
+ * @param itemContent Raw JSON string.
+ * @returns Extracted name and description.
+ */
+function extractJsonItemMetadata(itemContent: string): { name: string; description: string } {
+  try {
+    const parsed = JSON.parse(itemContent) as Record<string, unknown>;
+    return {
+      name: typeof parsed.name === 'string' ? parsed.name : '',
+      description: typeof parsed.description === 'string' ? parsed.description : ''
+    };
+  } catch {
+    return { name: '', description: '' };
+  }
+}
+
+/**
+ * Extract item metadata from file content, dispatching by extension.
+ * @param itemContent Raw file content.
+ * @param itemPath Repo-relative path (used to determine format).
+ * @returns Extracted name and description.
+ */
+function extractItemMetadataByPath(
+  itemContent: string,
+  itemPath: string
+): { name: string; description: string } {
+  return itemPath.endsWith('.json')
+    ? extractJsonItemMetadata(itemContent)
+    : extractItemMetadata(itemContent);
+}
+
+/**
  * Generate item ID from path and kind.
  * @param itemPath Item path.
  * @param kind Item kind.
@@ -226,7 +261,7 @@ function extractItemMetadata(itemContent: string): { name: string; description: 
  */
 function generateItemId(itemPath: string, kind: string): string {
   const extension = path.extname(itemPath);
-  if (kind === 'skill') {
+  if (kind === 'skill' || kind === 'plugin') {
     const parts = itemPath.split('/');
     return parts.length >= 2
       ? (parts.at(-2) ?? path.basename(itemPath, extension))
@@ -251,7 +286,7 @@ function buildPromptEntry(
   collection: RawCollection,
   itemContent: string
 ): { id: string; name: string; description: string; file: string; type: string; tags: string[] } {
-  const { name, description } = extractItemMetadata(itemContent);
+  const { name, description } = extractItemMetadataByPath(itemContent, itemPath);
   const itemId = generateItemId(itemPath, item.kind || '');
   const tags = Array.isArray(collection.tags) ? [...collection.tags] : [];
   const type = KIND_TO_TYPE_MAP[item.kind || ''] ?? item.kind;

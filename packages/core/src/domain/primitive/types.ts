@@ -17,6 +17,8 @@ export type PrimitiveKind =
   | 'chat-mode'
   | 'agent'
   | 'skill'
+  | 'plugin'
+  | 'hook'
   | 'mcp-server';
 
 export const PRIMITIVE_KINDS: readonly PrimitiveKind[] = [
@@ -25,6 +27,8 @@ export const PRIMITIVE_KINDS: readonly PrimitiveKind[] = [
   'chat-mode',
   'agent',
   'skill',
+  'plugin',
+  'hook',
   'mcp-server'
 ] as const;
 

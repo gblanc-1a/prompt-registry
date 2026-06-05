@@ -85,6 +85,8 @@ describe('validateItemKind', () => {
     expect(validateItemKind('instruction')).toEqual({ valid: true });
     expect(validateItemKind('agent')).toEqual({ valid: true });
     expect(validateItemKind('skill')).toEqual({ valid: true });
+    expect(validateItemKind('plugin')).toEqual({ valid: true });
+    expect(validateItemKind('hook')).toEqual({ valid: true });
   });
 
   it('accepts uppercase kinds (normalizes)', () => {
@@ -111,11 +113,9 @@ describe('validateItemKind', () => {
     expect(result.replacement).toBe('agent');
   });
 
-  it('rejects deprecated kind chat-mode', () => {
+  it('accepts chat-mode as a valid kind', () => {
     const result = validateItemKind('chat-mode');
-    expect(result.valid).toBe(false);
-    expect(result.error).toContain('deprecated');
-    expect(result.replacement).toBe('agent');
+    expect(result.valid).toBe(true);
   });
 
   it('rejects invalid kind', () => {
@@ -316,6 +316,25 @@ describe('validateCollectionObject', () => {
     expect(result.ok).toBe(false);
   });
 
+  it('accepts collection with all supported kinds including plugin and hook', () => {
+    const collection = {
+      id: 'all-kinds',
+      name: 'All Kinds Collection',
+      items: [
+        { path: 'prompts/hello.prompt.md', kind: 'prompt' },
+        { path: 'instructions/style.instructions.md', kind: 'instruction' },
+        { path: 'chatmodes/review.chatmode.md', kind: 'chat-mode' },
+        { path: 'agents/coder.agent.md', kind: 'agent' },
+        { path: 'skills/my-skill/SKILL.md', kind: 'skill' },
+        { path: 'plugins/my-plugin/plugin.json', kind: 'plugin' },
+        { path: 'hooks/format.json', kind: 'hook' }
+      ]
+    };
+    const result = validateCollectionObject(collection, 'test');
+    expect(result.ok).toBe(true);
+    expect(result.errors).toEqual([]);
+  });
+
   it('collects multiple errors', () => {
     const collection = {
       id: 'Invalid_ID',
@@ -332,7 +351,22 @@ describe('DEFAULT_VALIDATION_RULES', () => {
     expect(DEFAULT_VALIDATION_RULES.collectionId).toBeDefined();
     expect(DEFAULT_VALIDATION_RULES.collectionId.maxLength).toBe(100);
     expect(DEFAULT_VALIDATION_RULES.version).toBeDefined();
-    expect(DEFAULT_VALIDATION_RULES.itemKinds).toContain('prompt');
     expect(DEFAULT_VALIDATION_RULES.deprecatedKinds).toHaveProperty('chatmode');
+  });
+
+  it('itemKinds contains all 7 supported kinds', () => {
+    const kinds = DEFAULT_VALIDATION_RULES.itemKinds;
+    expect(kinds).toContain('prompt');
+    expect(kinds).toContain('instruction');
+    expect(kinds).toContain('chat-mode');
+    expect(kinds).toContain('agent');
+    expect(kinds).toContain('skill');
+    expect(kinds).toContain('plugin');
+    expect(kinds).toContain('hook');
+  });
+
+  it('chat-mode is a valid kind, not deprecated', () => {
+    expect(DEFAULT_VALIDATION_RULES.itemKinds).toContain('chat-mode');
+    expect(DEFAULT_VALIDATION_RULES.deprecatedKinds).not.toHaveProperty('chat-mode');
   });
 });

@@ -65,7 +65,8 @@ function kindForCollection(p: Primitive): CollectionItem['kind'] | null {
   if (p.kind === 'mcp-server') {
     return null;
   }
-  return p.kind;
+  // Plugin and hook are now valid collection kinds
+  return p.kind as CollectionItem['kind'];
 }
 
 function resolvePrimitives(index: PrimitiveIndex, shortlist: Shortlist): { primitives: Primitive[]; warnings: string[] } {

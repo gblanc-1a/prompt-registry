@@ -7,7 +7,9 @@
           "prompts/": "prompts/",
           "chatmodes/": "chatmodes/",
           "instructions/": "instructions/",
-          "skills/": "skills/"
+          "skills/": "skills/",
+          "hooks/": "hooks/",
+          "plugins/": "plugins/"
         },
         "skipPaths": ["deployment-manifest.yml", "README.md"]
       },
@@ -17,7 +19,9 @@
           "prompts/": ".github/prompts/",
           "chatmodes/": ".github/chatmodes/",
           "instructions/": ".github/instructions/",
-          "skills/": ".github/skills/"
+          "skills/": ".github/skills/",
+          "hooks/": ".github/hooks/",
+          "plugins/": ".github/plugins/"
         },
         "skipPaths": ["deployment-manifest.yml", "README.md"]
       }
@@ -29,7 +33,9 @@
           "prompts/": "prompts/",
           "chatmodes/": "chatmodes/",
           "instructions/": "instructions/",
-          "skills/": "skills/"
+          "skills/": "skills/",
+          "hooks/": "hooks/",
+          "plugins/": "plugins/"
         },
         "skipPaths": ["deployment-manifest.yml", "README.md"]
       },
@@ -39,7 +45,9 @@
           "prompts/": ".github/prompts/",
           "chatmodes/": ".github/chatmodes/",
           "instructions/": ".github/instructions/",
-          "skills/": ".github/skills/"
+          "skills/": ".github/skills/",
+          "hooks/": ".github/hooks/",
+          "plugins/": ".github/plugins/"
         },
         "skipPaths": ["deployment-manifest.yml", "README.md"]
       }
@@ -51,10 +59,9 @@
           "prompts/": "prompts/",
           "agents/": "agents/",
           "skills/": "skills/",
-          "prompt-registry/prompts/": "prompts/",
-          "prompt-registry/agents/": "agents/",
-          "prompt-registry/skills/": "skills/",
-          "prompt-registry/instructions/": "instructions/"
+          "instructions/": "instructions/",
+          "hooks/": "hooks/",
+          "plugins/": "plugins/"
         },
         "skipPaths": ["deployment-manifest.yml", "README.md", "collections/"]
       },
@@ -64,10 +71,9 @@
           "prompts/": ".github/prompts/",
           "agents/": ".github/agents/",
           "skills/": ".github/skills/",
-          "prompt-registry/prompts/": ".github/prompts/",
-          "prompt-registry/agents/": ".github/agents/",
-          "prompt-registry/skills/": ".github/skills/",
-          "prompt-registry/instructions/": ".github/instructions/"
+          "instructions/": ".github/instructions/",
+          "hooks/": ".github/hooks/",
+          "plugins/": ".github/plugins/"
         },
         "skipPaths": ["deployment-manifest.yml", "README.md", "collections/"]
       }
@@ -122,7 +128,9 @@
           "agents/": "agents/",
           "instructions/": "instructions/",
           "chatmodes/": "modes/",
-          "skills/": "skills/"
+          "skills/": "skills/",
+          "hooks/": "hooks/",
+          "plugins/": "plugins/"
         },
         "skipPaths": ["deployment-manifest.yml", "README.md"]
       },
@@ -133,7 +141,9 @@
           "agents/": ".claude/agents/",
           "instructions/": ".claude/instructions/",
           "chatmodes/": ".claude/modes/",
-          "skills/": ".claude/skills/"
+          "skills/": ".claude/skills/",
+          "hooks/": ".claude/hooks/",
+          "plugins/": ".claude/plugins/"
         },
         "skipPaths": ["deployment-manifest.yml", "README.md"]
       }

@@ -28,7 +28,7 @@ export function loadItemKindsFromSchema(schemaDir?: string): string[] {
   try {
     const schemaPath = schemaDir
       ? path.join(schemaDir, 'collection.schema.json')
-      : path.join(__dirname, '..', '..', 'schemas', 'collection.schema.json');
+      : path.join(__dirname, '..', '..', 'core', 'src', 'public', 'schemas', 'collection.schema.json');
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
     const kinds = schema?.properties?.items?.items?.properties?.kind?.enum;
     if (Array.isArray(kinds) && kinds.length > 0) {
@@ -58,8 +58,7 @@ export const VALIDATION_RULES: ValidationRules = {
   },
   itemKinds: loadItemKindsFromSchema(),
   deprecatedKinds: {
-    chatmode: 'agent',
-    'chat-mode': 'agent'
+    chatmode: 'agent'
   }
 };
 

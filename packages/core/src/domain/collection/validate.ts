@@ -27,10 +27,9 @@ export const DEFAULT_VALIDATION_RULES: ValidationRules = {
     default: '1.0.0',
     description: 'semantic versioning format (X.Y.Z)'
   },
-  itemKinds: ['prompt', 'instruction', 'agent', 'skill'],
+  itemKinds: ['prompt', 'instruction', 'chat-mode', 'agent', 'skill', 'plugin', 'hook'],
   deprecatedKinds: {
-    chatmode: 'agent',
-    'chat-mode': 'agent'
+    chatmode: 'agent'
   }
 };
 

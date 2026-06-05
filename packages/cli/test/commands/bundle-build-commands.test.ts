@@ -618,3 +618,166 @@ describe('collection affected - integration', () => {
     expect(data.data.affected).toHaveLength(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 11. All-kinds collection: plugin + hook support
+// ---------------------------------------------------------------------------
+
+describe('all-kinds collection - plugin and hook support', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'pr-allkinds-test-'));
+
+    // Scaffold all directories
+    for (const dir of ['collections', 'prompts', 'instructions', 'chatmodes',
+      'agents', 'skills/my-skill', 'plugins/my-plugin', 'hooks']) {
+      await fs.mkdir(path.join(tmpDir, dir), { recursive: true });
+    }
+
+    // Primitive files
+    await fs.writeFile(path.join(tmpDir, 'prompts/hello.prompt.md'), '# Hello Prompt\n');
+    await fs.writeFile(
+      path.join(tmpDir, 'instructions/style.instructions.md'),
+      '# Code Style\n\n> Keep lines under 100 chars.\n'
+    );
+    await fs.writeFile(
+      path.join(tmpDir, 'chatmodes/review.chatmode.md'),
+      '# Code Review Mode\n'
+    );
+    await fs.writeFile(path.join(tmpDir, 'agents/coder.agent.md'), '# Coder Agent\n');
+    await fs.writeFile(path.join(tmpDir, 'skills/my-skill/SKILL.md'), '# My Skill\n');
+
+    // Plugin: plugin.json with name + description
+    await fs.writeFile(
+      path.join(tmpDir, 'plugins/my-plugin/plugin.json'),
+      JSON.stringify({ name: 'My Plugin', description: 'A test plugin', version: '1.0.0' })
+    );
+
+    // Hook: hooks.json (flat format per VS Code / GitHub Copilot spec)
+    await fs.writeFile(
+      path.join(tmpDir, 'hooks/format.json'),
+      JSON.stringify({
+        hooks: {
+          PostToolUse: [{ type: 'command', command: './scripts/format.sh' }]
+        }
+      })
+    );
+
+    // Collection referencing all 7 kinds
+    await fs.writeFile(
+      path.join(tmpDir, 'collections/all-kinds.collection.yml'),
+      [
+        'id: all-kinds',
+        'name: All Kinds',
+        'description: Collection with every supported primitive type',
+        'items:',
+        '  - path: prompts/hello.prompt.md',
+        '    kind: prompt',
+        '  - path: instructions/style.instructions.md',
+        '    kind: instruction',
+        '  - path: chatmodes/review.chatmode.md',
+        '    kind: chat-mode',
+        '  - path: agents/coder.agent.md',
+        '    kind: agent',
+        '  - path: skills/my-skill/SKILL.md',
+        '    kind: skill',
+        '  - path: plugins/my-plugin/plugin.json',
+        '    kind: plugin',
+        '  - path: hooks/format.json',
+        '    kind: hook',
+      ].join('\n')
+    );
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('collection validate accepts all-kinds collection', async () => {
+    const { exitCode, stdout } = await runCommand(
+      ['collection', 'validate', '-o', 'json'],
+      {
+        commandClasses: [CollectionValidateCommand],
+        context: { cwd: tmpDir, fs: createNodeFsAdapter(), env: {} },
+      }
+    );
+    expect(exitCode).toBe(0);
+    const data = JSON.parse(stdout);
+    expect(data.status).toBe('ok');
+    expect(data.data.ok).toBe(true);
+  });
+
+  it('bundle manifest generates entries for plugin and hook items with JSON metadata', async () => {
+    const outFile = path.join(tmpDir, 'deployment-manifest.yml');
+    const { exitCode } = await runCommand(
+      [
+        'bundle', 'manifest',
+        '--collection-file', 'collections/all-kinds.collection.yml',
+        '--version', '1.0.0',
+        '--out-file', outFile,
+        '-o', 'json',
+      ],
+      {
+        commandClasses: [BundleManifestCommand],
+        context: { cwd: tmpDir, fs: createNodeFsAdapter(), env: {} },
+      }
+    );
+    expect(exitCode).toBe(0);
+    const manifestContent = await fs.readFile(outFile, 'utf8');
+    // Plugin entry: type should be 'plugin', id derived from parent dir name
+    expect(manifestContent).toContain('type: plugin');
+    expect(manifestContent).toContain('my-plugin');
+    // Hook entry: type should be 'hook'
+    expect(manifestContent).toContain('type: hook');
+    expect(manifestContent).toContain('format');
+  });
+
+  it('bundle build succeeds with all-kinds collection and produces zip + manifest', async () => {
+    const outDir = path.join(tmpDir, 'dist');
+    const { exitCode, stdout } = await runCommand(
+      [
+        'bundle', 'build',
+        '--collection-file', 'collections/all-kinds.collection.yml',
+        '--version', '1.0.0',
+        '--repo-slug', 'test-org',
+        '--out-dir', outDir,
+        '-o', 'json',
+      ],
+      {
+        commandClasses: [BundleBuildCommand],
+        context: { cwd: tmpDir, fs: createNodeFsAdapter(), env: {} },
+      }
+    );
+    expect(exitCode).toBe(0);
+    const data = JSON.parse(stdout);
+    expect(data.status).toBe('ok');
+    expect(data.data.bundleId).toContain('all-kinds');
+    // Zip should exist on disk
+    const zipPath = path.join(outDir, 'all-kinds', 'all-kinds.bundle.zip');
+    const zipExists = await fs.access(zipPath).then(() => true).catch(() => false);
+    expect(zipExists).toBe(true);
+  });
+
+  it('collection affected detects changes to plugin and hook files', async () => {
+    const { exitCode: e1, stdout: s1 } = await runCommand(
+      ['collection', 'affected', '--changed-path', 'plugins/my-plugin/plugin.json', '-o', 'json'],
+      {
+        commandClasses: [CollectionAffectedCommand],
+        context: { cwd: tmpDir, fs: createNodeFsAdapter(), env: {} },
+      }
+    );
+    expect(e1).toBe(0);
+    expect(JSON.parse(s1).data.affected[0].id).toBe('all-kinds');
+
+    const { exitCode: e2, stdout: s2 } = await runCommand(
+      ['collection', 'affected', '--changed-path', 'hooks/format.json', '-o', 'json'],
+      {
+        commandClasses: [CollectionAffectedCommand],
+        context: { cwd: tmpDir, fs: createNodeFsAdapter(), env: {} },
+      }
+    );
+    expect(e2).toBe(0);
+    expect(JSON.parse(s2).data.affected[0].id).toBe('all-kinds');
+  });
+});

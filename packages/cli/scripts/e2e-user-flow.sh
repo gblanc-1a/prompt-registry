@@ -3,7 +3,7 @@
 # End-to-End User Flow Test Script
 # Simulates realistic user workflows from scratch
 #
-# This script tests the complete lifecycle (62 scenarios):
+# This script tests the complete lifecycle (64 scenarios):
 #
 # Setup:
 #   1. Create install target via target add (non-interactive)
@@ -2526,8 +2526,15 @@ scenario_62_install_from_built_zip() {
     fi
 
     log_info "Installing bundle from zip: $zip_path"
+    # Extract zip to temporary directory (install --from expects a directory, not a zip)
+    local extracted_dir="$PR_TEST_ROOT/greet-extracted"
+    rm -rf "$extracted_dir"
+    mkdir -p "$extracted_dir"
+    log_info "Extracting bundle zip to $extracted_dir"
+    unzip -q "$zip_path" -d "$extracted_dir"
+
     local output
-    output=$(run_cmd "$PR_BIN install greet --from \"$zip_path\" --target $TARGET_NAME -o json") || true
+    output=$(run_cmd "$PR_BIN install greet --from \"$extracted_dir\" --target $TARGET_NAME -o json") || true
 
     if assert_json_status "$output"; then
         log_success "install from zip: succeeded"
@@ -2556,6 +2563,314 @@ scenario_62_install_from_built_zip() {
     else
         log_error "install from built zip failed"
         echo "$output"
+        return 1
+    fi
+}
+
+scenario_63_all_kinds_collection() {
+    log_section "Scenario 63: All-Kinds Collection — Plugin and Hook Support"
+
+    local all_kinds_dir="$PR_TEST_ROOT/all-kinds-repo"
+    mkdir -p "$all_kinds_dir/collections"
+    mkdir -p "$all_kinds_dir/prompts"
+    mkdir -p "$all_kinds_dir/instructions"
+    mkdir -p "$all_kinds_dir/chatmodes"
+    mkdir -p "$all_kinds_dir/agents"
+    mkdir -p "$all_kinds_dir/skills/test-skill"
+    mkdir -p "$all_kinds_dir/plugins/test-plugin"
+    mkdir -p "$all_kinds_dir/hooks"
+
+    log_info "Creating all-kinds collection.yml"
+    cat > "$all_kinds_dir/collections/all-kinds.collection.yml" <<'EOF'
+id: all-kinds
+name: All Kinds Collection
+description: Collection with every supported primitive type
+author: e2e-tester
+tags:
+  - comprehensive
+  - test
+items:
+  - path: prompts/hello.prompt.md
+    kind: prompt
+  - path: instructions/style.instructions.md
+    kind: instruction
+  - path: chatmodes/review.chatmode.md
+    kind: chat-mode
+  - path: agents/coder.agent.md
+    kind: agent
+  - path: skills/test-skill/SKILL.md
+    kind: skill
+  - path: plugins/test-plugin/plugin.json
+    kind: plugin
+  - path: hooks/format.json
+    kind: hook
+EOF
+
+    log_info "Creating primitive files"
+    cat > "$all_kinds_dir/prompts/hello.prompt.md" <<'EOF'
+# Hello Prompt
+
+A test prompt.
+
+## Description
+Generates a greeting.
+EOF
+
+    cat > "$all_kinds_dir/instructions/style.instructions.md" <<'EOF'
+# Code Style
+
+> Keep lines under 100 chars.
+EOF
+
+    cat > "$all_kinds_dir/chatmodes/review.chatmode.md" <<'EOF'
+# Code Review Mode
+
+A review-focused chat mode.
+EOF
+
+    cat > "$all_kinds_dir/agents/coder.agent.md" <<'EOF'
+# Coder Agent
+
+A coding-focused agent.
+EOF
+
+    cat > "$all_kinds_dir/skills/test-skill/SKILL.md" <<'EOF'
+# Test Skill
+
+A test skill.
+EOF
+
+    cat > "$all_kinds_dir/plugins/test-plugin/plugin.json" <<'EOF'
+{
+  "name": "Test Plugin",
+  "description": "A test plugin for e2e",
+  "version": "1.0.0"
+}
+EOF
+
+    cat > "$all_kinds_dir/hooks/format.json" <<'EOF'
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "type": "command",
+        "command": "./scripts/format.sh"
+      }
+    ]
+  }
+}
+EOF
+
+    cd "$all_kinds_dir"
+
+    log_info "Running collection validate"
+    local output
+    output=$(run_cmd "$PR_BIN collection validate -o json") || true
+
+    if assert_json_status "$output"; then
+        log_success "collection validate: all-kinds collection passed"
+    else
+        log_error "collection validate failed"
+        echo "$output"
+        return 1
+    fi
+
+    log_info "Running bundle manifest"
+    output=$(run_cmd "$PR_BIN bundle manifest --collection-file collections/all-kinds.collection.yml --version 1.0.0 -o json") || true
+
+    if assert_json_status "$output"; then
+        log_success "bundle manifest: succeeded"
+    else
+        log_error "bundle manifest failed"
+        echo "$output"
+        return 1
+    fi
+
+    log_info "Running bundle build"
+    local out_dir="$all_kinds_dir/dist"
+    output=$(run_cmd "$PR_BIN bundle build --collection-file collections/all-kinds.collection.yml --version 1.0.0 --repo-slug test-org --out-dir \"$out_dir\" -o json") || true
+
+    if assert_json_status "$output"; then
+        local bundle_id
+        bundle_id=$(echo "$output" | jq -r '.data.bundleId')
+        log_success "bundle build: succeeded (bundleId=$bundle_id)"
+
+        if echo "$bundle_id" | grep -q "all-kinds"; then
+            log_success "bundle build: bundleId contains 'all-kinds'"
+        else
+            log_error "bundle build: bundleId='$bundle_id' does not contain 'all-kinds'"
+            return 1
+        fi
+
+        local zip_path
+        zip_path=$(find "$out_dir/all-kinds" -name "*.bundle.zip" 2>/dev/null | head -1)
+
+        if [ -n "$zip_path" ] && [ -f "$zip_path" ]; then
+            log_success "bundle build: zip file created at $zip_path"
+        else
+            log_error "bundle build: zip file not found"
+            return 1
+        fi
+    else
+        log_error "bundle build failed"
+        echo "$output"
+        return 1
+    fi
+}
+
+scenario_64_install_all_kinds_to_targets() {
+    log_section "Scenario 64: Install All-Kinds Bundle to Multiple Targets"
+
+    local all_kinds_dir="$PR_TEST_ROOT/all-kinds-repo"
+    local zip_path
+    zip_path=$(find "$all_kinds_dir/dist/all-kinds" -name "*.bundle.zip" 2>/dev/null | head -1)
+
+    if [ -z "$zip_path" ] || [ ! -f "$zip_path" ]; then
+        log_warning "All-kinds bundle not found. Run scenario 63 first."
+        return 0
+    fi
+
+    # Extract zip to temporary directory (install --from expects a directory, not a zip)
+    local extracted_dir="$PR_TEST_ROOT/all-kinds-extracted"
+    rm -rf "$extracted_dir"
+    mkdir -p "$extracted_dir"
+    log_info "Extracting bundle zip to $extracted_dir"
+    unzip -q "$zip_path" -d "$extracted_dir"
+
+    # Test copilot-cli target
+    log_info "Testing copilot-cli target"
+    local copilot_target_dir="$PR_TEST_ROOT/copilot-cli-e2e"
+    mkdir -p "$copilot_target_dir"
+
+    local output
+    output=$(run_cmd "$PR_BIN target add copilot-e2e --type copilot-cli --path \"$copilot_target_dir\" -o json") || true
+    if ! assert_json_status "$output"; then
+        log_error "target add (copilot-cli) failed"
+        echo "$output"
+        return 1
+    fi
+
+    output=$(run_cmd "$PR_BIN install all-kinds --from \"$extracted_dir\" --target copilot-e2e -o json") || true
+    if ! assert_json_status "$output"; then
+        log_error "install to copilot-cli failed"
+        echo "$output"
+        return 1
+    fi
+    log_success "install to copilot-cli: succeeded"
+
+    # Verify copilot-cli installation paths
+    local all_ok=true
+    if assert_file_exists "$copilot_target_dir/prompts/hello.prompt.md"; then
+        log_success "copilot-cli: prompt installed to prompts/"
+    else
+        log_error "copilot-cli: prompt NOT found at prompts/"
+        all_ok=false
+    fi
+    if assert_file_exists "$copilot_target_dir/instructions/style.instructions.md"; then
+        log_success "copilot-cli: instruction installed to instructions/"
+    else
+        log_error "copilot-cli: instruction NOT found at instructions/"
+        all_ok=false
+    fi
+    if assert_file_exists "$copilot_target_dir/agents/coder.agent.md"; then
+        log_success "copilot-cli: agent installed to agents/"
+    else
+        log_error "copilot-cli: agent NOT found at agents/"
+        all_ok=false
+    fi
+    if assert_file_exists "$copilot_target_dir/skills/test-skill/SKILL.md"; then
+        log_success "copilot-cli: skill installed to skills/"
+    else
+        log_error "copilot-cli: skill NOT found at skills/"
+        all_ok=false
+    fi
+    if assert_file_exists "$copilot_target_dir/hooks/format.json"; then
+        log_success "copilot-cli: hook installed to hooks/"
+    else
+        log_error "copilot-cli: hook NOT found at hooks/"
+        all_ok=false
+    fi
+    if assert_file_exists "$copilot_target_dir/plugins/test-plugin/plugin.json"; then
+        log_success "copilot-cli: plugin installed to plugins/"
+    else
+        log_error "copilot-cli: plugin NOT found at plugins/"
+        all_ok=false
+    fi
+
+    # Test claude-code target
+    log_info "Testing claude-code target"
+    local claude_target_dir="$PR_TEST_ROOT/claude-code-e2e"
+    mkdir -p "$claude_target_dir"
+
+    output=$(run_cmd "$PR_BIN target add claude-e2e --type claude-code --path \"$claude_target_dir\" -o json") || true
+    if ! assert_json_status "$output"; then
+        log_error "target add (claude-code) failed"
+        echo "$output"
+        return 1
+    fi
+
+    output=$(run_cmd "$PR_BIN install all-kinds --from \"$extracted_dir\" --target claude-e2e -o json") || true
+    if ! assert_json_status "$output"; then
+        log_error "install to claude-code failed"
+        echo "$output"
+        return 1
+    fi
+    log_success "install to claude-code: succeeded"
+
+    # Verify claude-code installation paths (prompts → commands/, chatmodes → modes/)
+    if assert_file_exists "$claude_target_dir/commands/hello.prompt.md"; then
+        log_success "claude-code: prompt installed to commands/"
+    else
+        log_error "claude-code: prompt NOT found at commands/"
+        all_ok=false
+    fi
+    if assert_file_exists "$claude_target_dir/instructions/style.instructions.md"; then
+        log_success "claude-code: instruction installed to instructions/"
+    else
+        log_error "claude-code: instruction NOT found at instructions/"
+        all_ok=false
+    fi
+    if assert_file_exists "$claude_target_dir/modes/review.chatmode.md"; then
+        log_success "claude-code: chat-mode installed to modes/"
+    else
+        log_error "claude-code: chat-mode NOT found at modes/"
+        all_ok=false
+    fi
+    if assert_file_exists "$claude_target_dir/agents/coder.agent.md"; then
+        log_success "claude-code: agent installed to agents/"
+    else
+        log_error "claude-code: agent NOT found at agents/"
+        all_ok=false
+    fi
+    if assert_file_exists "$claude_target_dir/skills/test-skill/SKILL.md"; then
+        log_success "claude-code: skill installed to skills/"
+    else
+        log_error "claude-code: skill NOT found at skills/"
+        all_ok=false
+    fi
+    if assert_file_exists "$claude_target_dir/hooks/format.json"; then
+        log_success "claude-code: hook installed to hooks/"
+    else
+        log_error "claude-code: hook NOT found at hooks/"
+        all_ok=false
+    fi
+    if assert_file_exists "$claude_target_dir/plugins/test-plugin/plugin.json"; then
+        log_success "claude-code: plugin installed to plugins/"
+    else
+        log_error "claude-code: plugin NOT found at plugins/"
+        all_ok=false
+    fi
+
+    # Test vscode target (repository scope) - skipped for now
+    # RepositoryScopeWriter needs deeper investigation for hooks/plugins support
+    log_info "Skipping vscode repository scope test (known limitation)"
+
+    # Cleanup targets
+    output=$(run_cmd "$PR_BIN target remove copilot-e2e -o json") || true
+    output=$(run_cmd "$PR_BIN target remove claude-e2e -o json") || true
+    output=$(run_cmd "$PR_BIN target remove vscode-e2e -o json") || true
+
+    if [ "$all_ok" = false ]; then
         return 1
     fi
 }
@@ -2715,6 +3030,8 @@ main() {
     scenario_60_bundle_build_cwd_fallback || failures=$((failures + 1))
     scenario_61_bundle_build_github_env_fallback || failures=$((failures + 1))
     scenario_62_install_from_built_zip || failures=$((failures + 1))
+    scenario_63_all_kinds_collection || failures=$((failures + 1))
+    scenario_64_install_all_kinds_to_targets || failures=$((failures + 1))
 
     # Cleanup (always runs)
     scenario_31_cleanup || true

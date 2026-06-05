@@ -29,7 +29,7 @@ export interface AllCollectionsResult extends ObjectValidationResult {
 
 export interface CollectionItem {
   path: string;
-  kind: string;
+  kind: 'prompt' | 'instruction' | 'chat-mode' | 'agent' | 'skill' | 'plugin' | 'hook';
   name?: string;
   description?: string;
 }

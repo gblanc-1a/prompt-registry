@@ -3033,6 +3033,10 @@ main() {
     scenario_63_all_kinds_collection || failures=$((failures + 1))
     scenario_64_install_all_kinds_to_targets || failures=$((failures + 1))
 
+    # Scaffolding tests
+    scenario_70_collection_scaffold || failures=$((failures + 1))
+    scenario_71_primitive_scaffold || failures=$((failures + 1))
+
     # Cleanup (always runs)
     scenario_31_cleanup || true
 
@@ -3045,6 +3049,115 @@ main() {
         log_error "$failures scenario(s) failed"
         exit 1
     fi
+}
+
+# Scaffolding E2E tests
+scenario_70_collection_scaffold() {
+  log_info "Scenario 70: Collection scaffolding"
+  local collection_name="test-collection"
+  local scaffold_dir="$PR_TEST_ROOT/scaffold-test"
+  local collection_file="$scaffold_dir/collections/collection.yml"
+
+  # Create clean directory for scaffolding
+  rm -rf "$scaffold_dir"
+  mkdir -p "$scaffold_dir"
+
+  # Run scaffold command from the clean directory
+  (cd "$scaffold_dir" && run_cmd "$PR_BIN collection create $collection_name --description 'Test collection' --author 'Test Author' --tags 'ai,coding' -o json") || return 1
+
+  # Verify collection file was created
+  if [ ! -f "$collection_file" ]; then
+    log_error "Collection file not created: $collection_file"
+    return 1
+  fi
+
+  # Verify collection file content
+  if ! grep -q "id: $collection_name" "$collection_file"; then
+    log_error "Collection ID not found in file"
+    return 1
+  fi
+
+  if ! grep -q "description: Test collection" "$collection_file"; then
+    log_error "Collection description not found in file"
+    return 1
+  fi
+
+  if ! grep -q "author: Test Author" "$collection_file"; then
+    log_error "Collection author not found in file"
+    return 1
+  fi
+
+  if ! grep -q "tags: \"ai\", \"coding\"" "$collection_file"; then
+    log_error "Collection tags not found in file"
+    return 1
+  fi
+
+  # Cleanup
+  rm -rf "$scaffold_dir"
+
+  log_info "Collection scaffolding test passed"
+}
+
+scenario_71_primitive_scaffold() {
+  log_info "Scenario 71: Primitive scaffolding"
+  local scaffold_dir="$PR_TEST_ROOT/scaffold-test"
+
+  # Create clean directory for scaffolding
+  rm -rf "$scaffold_dir"
+  mkdir -p "$scaffold_dir"
+
+  # Test prompt scaffolding
+  (cd "$scaffold_dir" && run_cmd "$PR_BIN prompt create hello --description 'A greeting prompt' -o json") || return 1
+  if [ ! -f "$scaffold_dir/prompts/prompt.md" ]; then
+    log_error "Prompt file not created"
+    rm -rf "$scaffold_dir"
+    return 1
+  fi
+
+  # Test instruction scaffolding
+  (cd "$scaffold_dir" && run_cmd "$PR_BIN instruction create style --description 'Code style guidelines' -o json") || return 1
+  if [ ! -f "$scaffold_dir/instructions/instruction.md" ]; then
+    log_error "Instruction file not created"
+    rm -rf "$scaffold_dir"
+    return 1
+  fi
+
+  # Test agent scaffolding
+  (cd "$scaffold_dir" && run_cmd "$PR_BIN agent create coder --description 'Coding assistant agent' -o json") || return 1
+  if [ ! -f "$scaffold_dir/agents/agent.md" ]; then
+    log_error "Agent file not created"
+    rm -rf "$scaffold_dir"
+    return 1
+  fi
+
+  # Test skill scaffolding
+  (cd "$scaffold_dir" && run_cmd "$PR_BIN skill create code-review --description 'Code review skill' --author 'Test Author' -o json") || return 1
+  if [ ! -f "$scaffold_dir/skills/code-review/SKILL.md" ]; then
+    log_error "Skill file not created"
+    rm -rf "$scaffold_dir"
+    return 1
+  fi
+
+  # Test plugin scaffolding (currently creates plugin.json in plugins/ without subdirectory)
+  (cd "$scaffold_dir" && run_cmd "$PR_BIN plugin create my-plugin --description 'My custom plugin' --version '1.0.0' --author 'Test Author' -o json") || return 1
+  if [ ! -f "$scaffold_dir/plugins/plugin.json" ]; then
+    log_error "Plugin file not created"
+    rm -rf "$scaffold_dir"
+    return 1
+  fi
+
+  # Test hook scaffolding
+  (cd "$scaffold_dir" && run_cmd "$PR_BIN hook create format --type 'format' --description 'Formatting hook' -o json") || return 1
+  if [ ! -f "$scaffold_dir/hooks/hook.json" ]; then
+    log_error "Hook file not created"
+    rm -rf "$scaffold_dir"
+    return 1
+  fi
+
+  # Cleanup
+  rm -rf "$scaffold_dir"
+
+  log_info "Primitive scaffolding test passed"
 }
 
 main "$@"

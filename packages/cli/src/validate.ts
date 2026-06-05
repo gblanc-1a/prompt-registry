@@ -9,6 +9,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as yaml from 'js-yaml';
+import { SCHEMA_DIR } from '@prompt-registry/core';
 import type {
   AllCollectionsResult,
   Collection,
@@ -28,7 +29,7 @@ export function loadItemKindsFromSchema(schemaDir?: string): string[] {
   try {
     const schemaPath = schemaDir
       ? path.join(schemaDir, 'collection.schema.json')
-      : path.join(__dirname, '..', '..', 'core', 'src', 'public', 'schemas', 'collection.schema.json');
+      : path.join(SCHEMA_DIR, 'collection.schema.json');
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
     const kinds = schema?.properties?.items?.items?.properties?.kind?.enum;
     if (Array.isArray(kinds) && kinds.length > 0) {

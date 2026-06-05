@@ -23,13 +23,14 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run copy-templates",
     "watch": "tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src test",
     "lint:fix": "eslint src test --fix",
+    "copy-templates": "mkdir -p dist/scaffolding && cp -r src/scaffolding/templates dist/scaffolding/",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {

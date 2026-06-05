@@ -15,6 +15,7 @@ import type {
 import {
   normalizeRepoRelativePath,
   validateCollectionObject,
+  SCHEMA_DIR,
 } from '@prompt-registry/core';
 import * as yaml from 'js-yaml';
 
@@ -28,7 +29,7 @@ export function loadItemKindsFromSchema(schemaDir?: string): string[] {
   try {
     const schemaPath = schemaDir
       ? path.join(schemaDir, 'collection.schema.json')
-      : path.join(__dirname, '../../../schemas/collection.schema.json');
+      : path.join(SCHEMA_DIR, 'collection.schema.json');
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment -- JSON.parse returns any
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access -- Dynamic schema access

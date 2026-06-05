@@ -21,13 +21,14 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run copy-schemas",
     "watch": "tsc --watch",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src test",
     "lint:fix": "eslint src test --fix",
+    "copy-schemas": "mkdir -p dist/public && cp -r src/public/schemas dist/public/",
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {

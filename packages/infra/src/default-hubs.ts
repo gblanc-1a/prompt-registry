@@ -4,14 +4,8 @@
  * This file contains the default hub configurations offered to users
  * during first-time installation. Each hub configuration is verified
  * for accessibility before being activated.
- *
- * Configurations can be:
- * 1. Defined in code (HARDCODED_DEFAULT_HUBS constant)
- * 2. Loaded from default-hubs.json (if available in lib/config/)
  */
 
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 import {
   type HubReference,
 } from '@prompt-registry/core';
@@ -71,43 +65,11 @@ const HARDCODED_DEFAULT_HUBS: DefaultHubConfig[] = [
   }
 ];
 
-let cachedHubs: DefaultHubConfig[] | null = null;
-
 /**
- * Load default hubs from JSON configuration file (if available)
- * Falls back to hardcoded configuration
- */
-function loadDefaultHubs(): DefaultHubConfig[] | null {
-  if (cachedHubs) {
-    return cachedHubs;
-  }
-
-  try {
-    // Try to load from JSON file in lib/config/
-    const configPath = path.join(__dirname, '..', '..', 'config', 'default-hubs.json');
-    if (fs.existsSync(configPath)) {
-      const content = fs.readFileSync(configPath, 'utf8');
-      const config = JSON.parse(content);
-      if (config.defaultHubs && Array.isArray(config.defaultHubs)) {
-        cachedHubs = config.defaultHubs;
-        return cachedHubs;
-      }
-    }
-  } catch {
-    // Silently fall back to hardcoded defaults
-  }
-
-  // Fallback to hardcoded defaults
-  cachedHubs = HARDCODED_DEFAULT_HUBS;
-  return cachedHubs;
-}
-
-/**
- * Get all default hubs (loaded from JSON or hardcoded)
+ * Get all default hubs
  */
 export function getDefaultHubs(): DefaultHubConfig[] {
-  const hubs = loadDefaultHubs();
-  return hubs || HARDCODED_DEFAULT_HUBS;
+  return HARDCODED_DEFAULT_HUBS;
 }
 
 /**
@@ -130,11 +92,4 @@ export function getRecommendedHub(): DefaultHubConfig | undefined {
  */
 export function findDefaultHub(name: string): DefaultHubConfig | undefined {
   return getDefaultHubs().find((hub) => hub.name === name);
-}
-
-/**
- * Clear the cached hubs (for testing purposes)
- */
-export function clearCache(): void {
-  cachedHubs = null;
 }

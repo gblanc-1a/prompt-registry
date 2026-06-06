@@ -1,271 +1,389 @@
-# C4 Component Diagrams (Level 3)
+# Component Diagrams (Level 3)
 
-Detailed component diagrams for key subsystems.
+Detailed component diagrams for key subsystems within each package.
 
-## CLI Framework Components
+## CLI Package Components
 
 ```mermaid
 flowchart TB
-    subgraph CLI["CLI Commands"]
-        cmd[Individual command implementations]
-    end
+    subgraph CLI["@prompt-registry/cli"]
+        subgraph Commands["CLI Commands"]
+            collCmd[Collection Commands<br/>create, validate, list]
+            primCmd[Primitive Commands<br/>prompt, instruction, agent, skill, plugin, hook]
+            bundleCmd[Bundle Commands<br/>build, manifest]
+            initCmd[Init Command<br/>Initialize registry]
+            sourceCmd[Source Commands<br/>add, list, remove]
+            hubCmd[Hub Commands<br/>add, list, remove]
+            statusCmd[Status Command<br/>Show status]
+            updateCmd[Update Commands<br/>check, apply]
+        end
 
-    subgraph Framework["CLI Framework"]
-        defineCmd[defineCommand<br/>Creates CommandDefinition]
-        ctx[Context<br/>I/O abstraction]
-        err[RegistryError<br/>Structured errors]
-        fmt[Formatters<br/>Output formatting]
-        parse[Arg Parse<br/>Argument parsing]
-        prodCtx[ProductionContext<br/>Real filesystem I/O]
+        subgraph Framework["CLI Framework"]
+            ctx[Context<br/>I/O abstraction]
+            err[RegistryError<br/>Structured errors]
+            fmt[Formatters<br/>Output formatting]
+            cmdClass[Command Class<br/>Base class]
+        end
+
+        subgraph Validation["Validation"]
+            collVal[Collection Validation<br/>YAML schema validation]
+        end
+
+        subgraph Builder["Bundle Builder"]
+            zipBuilder[ZIP Builder<br/>Deterministic bundle creation]
+        end
     end
 
     FS[(File System<br/>Node.js fs)]
 
-    cmd --> defineCmd
-    cmd --> ctx
-    cmd --> err
-    cmd --> fmt
-    cmd --> parse
+    collCmd --> ctx
+    collCmd --> err
+    collCmd --> fmt
+    collCmd --> collVal
 
-    ctx --> prodCtx
-    prodCtx --> FS
+    primCmd --> ctx
+    primCmd --> err
+    primCmd --> fmt
+
+    bundleCmd --> ctx
+    bundleCmd --> err
+    bundleCmd --> fmt
+    bundleCmd --> zipBuilder
+
+    initCmd --> ctx
+    initCmd --> err
+    initCmd --> fmt
+
+    sourceCmd --> ctx
+    sourceCmd --> err
+    sourceCmd --> fmt
+
+    hubCmd --> ctx
+    hubCmd --> err
+    hubCmd --> fmt
+
+    statusCmd --> ctx
+    statusCmd --> err
+    statusCmd --> fmt
+
+    updateCmd --> ctx
+    updateCmd --> err
+    updateCmd --> fmt
+
+    ctx --> FS
+    collVal --> FS
+    zipBuilder --> FS
 ```
 
 ### Key Components
 
-| Component | Responsibility | Key Methods/Properties |
-|-----------|----------------|------------------------|
-| `defineCommand` | Factory for command definitions | `defineCommand(opts): CommandDefinition` |
-| `Context` | I/O abstraction | `cwd()`, `fs.*`, `stdout`, `stderr`, `env` |
-| `RegistryError` | Structured errors | `code`, `message`, `hint`, `context`, `toJSON()` |
-| `Formatters` | Output formatting | `formatOutput()`, `renderError()` |
-| `ArgParse` | Argument parsing | `parseSingleArg()`, `parseMultiArg()`, `hasFlag()` |
+| Component | Responsibility | Key Files |
+|-----------|----------------|-----------|
+| Collection Commands | Collection scaffolding and validation | `collection-create.ts`, `collection-validate.ts`, `collection-list.ts` |
+| Primitive Commands | Primitive scaffolding (7 types) | `prompt-create.ts`, `instruction-create.ts`, `agent-create.ts`, `skill-create.ts`, `plugin-create.ts`, `hook-create.ts` |
+| Bundle Commands | Bundle building and manifest generation | `bundle-build.ts`, `bundle-manifest.ts` |
+| Init Command | Registry initialization | `init.ts` |
+| Source Commands | Source management | `source.ts` |
+| Hub Commands | Hub management | `hub.ts` |
+| Status Command | Status display | `status.ts` |
+| Update Commands | Update checking and application | `update.ts` |
+| CLI Framework | I/O abstraction, error handling, output formatting, command base class | `framework/context.ts`, `framework/error.ts`, `framework/output.ts`, `framework/command-class.ts` |
+| Collection Validation | YAML schema validation | `validate.ts` |
+| Bundle Builder | Deterministic ZIP creation | `bundle-build.ts` |
 
 ---
 
-## Primitive Index Components
+## Infra Package Components
 
 ```mermaid
 flowchart TB
-    subgraph API["CLI / API"]
-        cli[Search requests]
+    subgraph Infra["@prompt-registry/infra"]
+        subgraph GitHub["GitHub Integration"]
+            client[GitHubClient<br/>API client]
+            token[TokenProvider<br/>Token resolution]
+            etag[EtagStore<br/>HTTP caching]
+        end
+
+        subgraph Harvester["Harvester"]
+            providers[Bundle Providers<br/>GitHub, AwesomeCopilot, APM, Local]
+            harvestOrch[Harvest Orchestrator<br/>Bundle discovery]
+        end
+
+        subgraph Search["Search Engine"]
+            bm25[BM25 Engine<br/>Scoring]
+            facets[Facet Index<br/>Filtering]
+            searchOrch[Search Orchestrator<br/>Search API]
+        end
+
+        subgraph Stores["Storage"]
+            indexStore[Index Store<br/>JSON files]
+            blobCache[Blob Cache<br/>SHA1 storage]
+            checksumStore[Checksum Store<br/>File checksums]
+        end
+
+        subgraph Scaffolding["Scaffolding"]
+            templateEngine[Template Engine<br/>Handlebars rendering]
+            templates[Template Files<br/>7 primitive types]
+        end
+
+        subgraph Downloaders["Downloaders"]
+            assetFetcher[Asset Fetcher<br/>Release downloads]
+        end
+
+        subgraph Extractors["Extractors"]
+            zipExtractor[ZIP Extractor<br/>Bundle extraction]
+        end
     end
 
-    subgraph Index["Primitive Index"]
-        primIndex[PrimitiveIndex<br/>Main search API]
-        bm25[BM25Index<br/>BM25 scoring]
-        extract[Extractor<br/>Frontmatter extraction]
-        harvester[Harvester<br/>Bundle harvesting]
-        facets[FacetIndex<br/>Kind/tag/source filters]
-        shortlist[Shortlist<br/>Candidate set management]
-    end
-
-    subgraph Providers["Bundle Providers"]
-        installed[InstalledBundles<br/>Local bundles]
-        hubBundles[HubBundles<br/>Remote hub bundles]
-        localFolder[LocalFolder<br/>Local filesystem bundles]
-    end
-
-    Store[(Index Store<br/>JSON)]
-
-    cli --> primIndex
-    primIndex --> bm25
-    primIndex --> facets
-    primIndex --> shortlist
-    primIndex --> harvester
-    primIndex --> Store
-
-    harvester --> installed
-    harvester --> hubBundles
-    harvester --> localFolder
-
-    installed --> extract
-    hubBundles --> extract
-    localFolder --> extract
-```
-
-### Key Components
-
-| Component | Responsibility | Key Methods |
-|-----------|----------------|-------------|
-| `PrimitiveIndex` | Search API | `search()`, `facet()`, `shortlist()`, `exportProfile()` |
-| `BM25Index` | BM25 scoring | `index()`, `search()`, `scoreTerm()` |
-| `Harvester` | Bundle discovery | `harvest()`, `harvestBundle()` |
-| `Extractor` | Content parsing | `extractFromFile()`, `extractMcpPrimitives()` |
-| `FacetIndex` | Filtering | `filter()`, `intersect()` |
-| `Shortlist` | Candidate sets | `create()`, `add()`, `remove()`, `list()` |
-
----
-
-## Installation System Components
-
-```mermaid
-flowchart TB
-    subgraph API["CLI / API"]
-        cli[Install requests]
-    end
-
-    subgraph Install["Installation System"]
-        installer[BundleInstaller<br/>Core installation logic]
-        targets[TargetStateStore<br/>Target configuration]
-        lockfile[LockfileManager<br/>Lockfile CRUD]
-        validator[BundleValidator<br/>Bundle validation]
-    end
-
-    subgraph Scopes["Scope Writers"]
-        repoScope[RepositoryScopeWriter<br/>Writes to .github/]
-        userScope[UserScopeService<br/>Writes to user config]
-    end
-
-    Config[(Config Store<br/>YAML/JSON)]
+    GitHubAPI[(GitHub API<br/>HTTPS)]
     FS[(File System<br/>Node.js fs)]
-
-    cli --> installer
-    cli --> targets
-
-    installer --> targets
-    installer --> lockfile
-    installer --> validator
-    installer --> repoScope
-    installer --> userScope
-
-    targets --> Config
-    lockfile --> Config
-    repoScope --> FS
-    userScope --> FS
-```
-
-### Key Components
-
-| Component | Responsibility | Key Methods |
-|-----------|----------------|-------------|
-| `BundleInstaller` | Installation orchestration | `install()`, `uninstall()` |
-| `TargetStateStore` | Target management | `add()`, `remove()`, `list()`, `get()` |
-| `LockfileManager` | Lockfile operations | `addBundle()`, `removeBundle()`, `load()` |
-| `BundleValidator` | Bundle validation | `validateBundle()`, `validateManifest()` |
-| `RepositoryScopeWriter` | Repo-scoped writes | `install()`, `remove()` |
-| `UserScopeService` | User-scoped writes | `install()`, `remove()` |
-
----
-
-## GitHub Integration Components
-
-```mermaid
-flowchart TB
-    subgraph Index["Harvester"]
-        req[Content requests]
-    end
-
-    subgraph GitHub["GitHub Integration"]
-        client[GitHubClient<br/>API client]
-        fetcher[AssetFetcher<br/>Release downloading]
-        blobCache[BlobCache<br/>Content-addressed caching]
-        etag[EtagStore<br/>HTTP caching]
-        token[TokenProvider<br/>Token resolution]
-    end
-
-    API[(GitHub API<br/>REST API)]
-
-    req --> client
-    req --> fetcher
 
     client --> token
     client --> etag
-    client --> API
+    client --> GitHubAPI
 
-    fetcher --> blobCache
-    fetcher --> API
+    harvestOrch --> providers
+    harvestOrch --> client
+    harvestOrch --> assetFetcher
 
-    etag -. "If-None-Match" .-> API
+    searchOrch --> bm25
+    searchOrch --> facets
+    searchOrch --> indexStore
+
+    providers --> indexStore
+    providers --> blobCache
+
+    etag -. "If-None-Match" .-> GitHubAPI
+
+    assetFetcher --> blobCache
+    assetFetcher --> GitHubAPI
+
+    templateEngine --> templates
+    templateEngine --> FS
+
+    zipExtractor --> FS
 ```
 
 ### Key Components
 
-| Component | Responsibility | Key Methods |
-|-----------|----------------|-------------|
-| `GitHubClient` | API operations | `getContents()`, `getTree()`, `getRateLimit()` |
-| `AssetFetcher` | Release downloads | `fetchAsset()`, `fetchBundle()` |
-| `BlobCache` | Content caching | `get()`, `set()`, `has()` |
-| `EtagStore` | HTTP caching | `getEtag()`, `setEtag()` |
-| `TokenProvider` | Auth tokens | `getToken()`, `resolveToken()` |
+| Component | Responsibility | Key Files |
+|-----------|----------------|-----------|
+| GitHubClient | API operations with rate limiting | `github/client.ts` |
+| TokenProvider | Auth token resolution | `github/token.ts` |
+| EtagStore | HTTP caching for 304 responses | `github/etag-store.ts` |
+| Bundle Providers | Source implementations | `harvest/bundle-providers/` |
+| Harvest Orchestrator | Bundle discovery orchestration | `harvest/harvester.ts` |
+| BM25 Engine | Full-text search scoring | `search/bm25-engine.ts` |
+| Primitive Index | Search API with faceting | `search/primitive-index.ts` |
+| Index Store | JSON file storage | `stores/` |
+| Blob Cache | Content-addressed SHA1 storage | `github/blob-cache.ts` |
+| Template Engine | Handlebars template rendering | `scaffolding/template-engine.ts` |
+| Template Files | Templates for 7 primitive types | `scaffolding/templates/` |
+| Asset Fetcher | Release asset downloading | `github/asset-fetcher.ts` |
+| ZIP Extractor | Bundle extraction | `harvest/extractor.ts` |
 
 ---
 
-## Domain Layer Components
+## App Package Components
 
 ```mermaid
 flowchart TB
-    subgraph Domain["Domain Layer (Pure Types)"]
-        bundle[Bundle Types<br/>BundleManifest, BundleRef]
-        primitive[Primitive Types<br/>Primitive, PrimitiveKind]
-        hub[Hub Types<br/>HubConfig, HubSource]
-        install[Install Types<br/>Target, Installable]
-        registry[Registry Types<br/>RegistryConfig, BundleSpec]
+    subgraph App["@prompt-registry/app"]
+        subgraph Collection["Collection Logic"]
+            readColl[Read Collection<br/>Parse and validate]
+            genSkill[Generate Skill<br/>Skill generation]
+        end
+
+        subgraph Install["Install Orchestration"]
+            installBundle[Install Bundle<br/>Installation logic]
+            uninstallBundle[Uninstall Bundle<br/>Uninstallation logic]
+            installPipeline[Install Pipeline<br/>Orchestration]
+            uninstallPipeline[Uninstall Pipeline<br/>Orchestration]
+            layoutResolver[Layout Resolver<br/>Layout configuration]
+        end
+
+        subgraph Registry["Registry Management"]
+            hubMgr[Hub Manager<br/>Hub configuration]
+            profileActivator[Profile Activator<br/>Profile logic]
+            userConfigPaths[User Config Paths<br/>Configuration paths]
+        end
+
+        subgraph ContextDetection["Context Detection"]
+            detector[Detector<br/>Repository detection]
+        end
     end
 
-    CLI[CLI<br/>Uses domain types]
-    Index[Primitive Index<br/>Uses domain types]
-    Installer[Installer<br/>Uses domain types]
+    FS[(File System<br/>Node.js fs)]
 
-    CLI --> bundle
-    CLI --> primitive
-    Index --> primitive
-    Index --> bundle
-    Installer --> install
-    Installer --> registry
+    readColl --> FS
+    genSkill --> FS
+
+    installBundle --> FS
+    uninstallBundle --> FS
+    installPipeline --> FS
+    uninstallPipeline --> FS
+    layoutResolver --> FS
+
+    hubMgr --> FS
+    profileActivator --> FS
+    userConfigPaths --> FS
+
+    detector --> FS
 ```
 
-### Key Types
+### Key Components
 
-| Type | Purpose | Key Properties |
-|------|---------|----------------|
-| `BundleManifest` | Bundle metadata | `id`, `version`, `name`, `items[]` |
-| `Primitive` | Union of all kinds | `kind`, `id`, `title/description` |
-| `HubConfig` | Hub definition | `sources[]`, `id`, `name` |
-| `Target` | Install destination | `id`, `type`, `path` |
-| `RegistryConfig` | Settings | `targets[]`, `sources[]` |
+| Component | Responsibility | Key Files |
+|-----------|----------------|-----------|
+| Read Collection | Parse and validate collection YAML | `collection/read-collection.ts` |
+| Generate Skill | Generate skill from collection | `collection/generate-skill.ts` |
+| Install Bundle | Bundle installation logic | `install/install-bundle.ts` |
+| Uninstall Bundle | Bundle uninstallation logic | `install/uninstall-bundle.ts` |
+| Install Pipeline | Installation orchestration | `install/pipeline.ts` |
+| Uninstall Pipeline | Uninstallation orchestration | `install/uninstall-pipeline.ts` |
+| Layout Resolver | Layout configuration resolution | `install/layout-resolver.ts` |
+| Hub Manager | Hub configuration management | `registry/hub-manager.ts` |
+| Profile Activator | Profile activation logic | `registry/profile-activator.ts` |
+| User Config Paths | User configuration paths | `registry/user-config-paths.ts` |
+| Context Detector | Repository context detection | `context-detection/detector.ts` |
+
+---
+
+## Core Package Components
+
+```mermaid
+flowchart TB
+    subgraph Core["@prompt-registry/core"]
+        subgraph Domain["Domain Types"]
+            bundle[Bundle Types<br/>BundleManifest, BundleRef]
+            collection[Collection Types<br/>Collection, CollectionItem]
+            primitive[Primitive Types<br/>Primitive, PrimitiveKind]
+            hub[Hub Types<br/>HubConfig, HubSource]
+            install[Install Types<br/>Target, Installable]
+            registry[Registry Types<br/>RegistryConfig, BundleSpec]
+            scaffold[Scaffold Types<br/>ScaffoldContext, ScaffoldResult]
+            skill[Skill Types<br/>Skill, SkillMetadata]
+            source[Source Types<br/>Source, SourceId]
+        end
+
+        subgraph Ports["Port Interfaces"]
+            bundleDownloader[Bundle Downloader<br/>Download interface]
+            bundleExtractor[Bundle Extractor<br/>Extraction interface]
+            clock[Clock<br/>Time interface]
+            copilotSDK[Copilot SDK<br/>Copilot integration]
+            filesystem[Filesystem<br/>File operations]
+            githubAPI[GitHub API<br/>GitHub operations]
+            http[HTTP<br/>HTTP operations]
+            indexStore[Index Store<br/>Index storage]
+            layoutConfigLoader[Layout Config Loader<br/>Layout configuration]
+            mcpServer[MCP Server<br/>MCP operations]
+            sourceResolver[Source Resolver<br/>Source resolution]
+            targetWriter[Target Writer<br/>Target writing]
+        end
+
+        subgraph Public["Public APIs"]
+            schemas[JSON Schemas<br/>Validation schemas]
+            schemaDir[SCHEMA_DIR<br/>Schema path export]
+        end
+    end
+```
+
+### Key Components
+
+| Component | Responsibility | Key Files |
+|-----------|----------------|-----------|
+| Bundle Types | Bundle metadata and references | `domain/bundle/` |
+| Collection Types | Collection structure and items | `domain/collection/` |
+| Primitive Types | Primitive union and kinds | `domain/primitive/` |
+| Hub Types | Hub configuration | `domain/hub/` |
+| Install Types | Installation targets | `domain/install/` |
+| Registry Types | Registry configuration | `domain/registry/` |
+| Scaffold Types | Scaffolding context and results | `domain/scaffold/` |
+| Skill Types | Skill metadata | `domain/skill/` |
+| Source Types | Source definitions | `domain/source/` |
+| Source ID | Source ID utilities | `domain/source-id.ts` |
+| Spec Parser | Specification parsing | `domain/spec-parser.ts` |
+| Port Interfaces | Abstractions for implementations | `ports/` |
+| JSON Schemas | Validation schemas | `public/schemas/` |
+| SCHEMA_DIR | Exported schema path | `index.ts` |
+
+---
+
+## SDK Package Components
+
+```mermaid
+flowchart TB
+    subgraph SDK["@prompt-registry/sdk"]
+        subgraph API["SDK APIs"]
+            searchAPI[Search API<br/>Placeholder]
+            installAPI[Install API<br/>Placeholder]
+            discoveryAPI[Discovery API<br/>Placeholder]
+        end
+    end
+```
+
+### Key Components
+
+| Component | Responsibility | Status |
+|-----------|----------------|--------|
+| Search API | High-level search interface | Placeholder |
+| Install API | High-level installation interface | Placeholder |
+| Discovery API | High-level discovery interface | Placeholder |
+
+**Note**: SDK is currently a minimal placeholder for future integration APIs.
+
+---
 
 ## Component Dependencies
 
 ```mermaid
 flowchart TB
-    subgraph Domain["Domain Layer (No deps)"]
-        D[Bundle/Primitive/Hub Types]
+    subgraph Core["@prompt-registry/core<br/>No package deps"]
+        D[Domain Types]
+        P[Port Interfaces]
+        S[JSON Schemas]
     end
 
-    subgraph Framework["CLI Framework"]
-        F[Context/Errors/Formatters]
-    end
-
-    subgraph Features["Feature Layers"]
-        I[PrimitiveIndex]
+    subgraph Infra["@prompt-registry/infra<br/>Depends on core"]
+        G[GitHub Client]
         H[Harvester]
-        G[GitHubClient]
-        N[BundleInstaller]
+        SR[Search Engine]
+        ST[Storage]
+        SC[Scaffolding]
     end
 
-    subgraph CLI["CLI Commands"]
-        C[Command implementations]
+    subgraph App["@prompt-registry/app<br/>Depends on core, infra"]
+        C[Collection Logic]
+        I[Install Orchestration]
+        R[Registry Management]
+        DSC[Discovery]
     end
 
-    D --> F
-    D --> I
-    D --> H
-    D --> G
-    D --> N
+    subgraph CLI["@prompt-registry/cli<br/>Depends on core, infra, app"]
+        CMD[CLI Commands]
+        FRM[CLI Framework]
+        VAL[Validation]
+        BL[Bundle Builder]
+    end
 
-    F --> C
-    I --> C
-    N --> C
+    subgraph SDK["@prompt-registry/sdk<br/>Depends on core, infra"]
+        API[SDK APIs]
+    end
 
-    H --> I
-    G --> H
+    Infra --> Core
+    App --> Core
+    App --> Infra
+    CLI --> Core
+    CLI --> Infra
+    CLI --> App
+    SDK --> Core
+    SDK --> Infra
 ```
 
-**Key Rule**: Domain has no dependencies. Feature layers depend only on Domain and Framework. CLI depends on everything.
+**Key Rule**: Core has no package dependencies. Infra depends only on Core. App depends on Core and Infra. CLI depends on Core, Infra, and App. SDK depends on Core and Infra.
 
 ## See Also
 
-- [System Context](./c4-system-context.md) — External view
-- [Container Diagram](./c4-container.md) — High-level containers
-- [Data Flow](./data-flow.md) — Process flows
+- [Codemap](./codemap.md) — Package structure and dependencies
+- [System Context](./system-context.md) — External relationships
+- [Container Diagram](./container.md) — High-level containers

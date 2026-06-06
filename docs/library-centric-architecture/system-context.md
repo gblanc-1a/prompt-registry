@@ -1,6 +1,6 @@
-# C4 System Context (Level 1)
+# System Context (Level 1)
 
-The System Context diagram shows the library as a black box and its relationships with users and external systems.
+The System Context diagram shows the prompt-registry packages as a black box and their relationships with users and external systems.
 
 ## Diagram
 
@@ -8,30 +8,35 @@ The System Context diagram shows the library as a black box and its relationship
 flowchart TB
     dev[Developer<br/>Uses CLI]
     author[Collection Author<br/>Creates collections]
-    ext_dev[Extension Developer<br/>Uses API]
+    ext_dev[Extension Developer<br/>Uses SDK]
 
-    subgraph Library["@prompt-registry/collection-scripts"]
-        lib[Collection Scripts Library<br/>TypeScript library]
+    subgraph Packages["Prompt Registry Packages"]
+        core[@prompt-registry/core<br/>Domain types]
+        infra[@prompt-registry/infra<br/>Infrastructure]
+        app[@prompt-registry/app<br/>Application layer]
+        cli[@prompt-registry/cli<br/>CLI interface]
+        sdk[@prompt-registry/sdk<br/>SDK for integrations]
     end
 
     github[GitHub<br/>API for releases, contents]
     npm[npm Registry<br/>Package distribution]
     FS[File System<br/>Local collections, configs]
 
-    dev --> lib
-    author --> lib
-    ext_dev --> lib
+    dev --> cli
+    author --> cli
+    ext_dev --> sdk
 
-    lib --> github
-    lib --> npm
-    lib --> FS
+    infra --> github
+    cli --> FS
+    app --> FS
+    infra --> FS
 
-    dev -."validation, building, installing".-> lib
-    author -."publishing collections".-> lib
-    ext_dev -."search, installation".-> lib
-    lib -."Fetches from".-> github
-    lib -."Published to".-> npm
-    lib -."Reads/Writes".-> FS
+    dev -."validation, building, installing".-> cli
+    author -."scaffolding, publishing".-> cli
+    ext_dev -."search, installation".-> sdk
+    infra -."Fetches from".-> github
+    Packages -."Published to".-> npm
+    Packages -."Reads/Writes".-> FS
 ```
 
 ## Personas
@@ -39,22 +44,24 @@ flowchart TB
 ### Developer
 Uses the CLI tools for day-to-day operations:
 - Validate collection YAML files
+- Scaffold collections and primitives (prompts, instructions, agents, skills, plugins, hooks)
 - Build and publish bundles
 - Search for primitives in hubs
 - Install bundles to their development environment
 
 ### Collection Author
 Creates and maintains prompt collections:
+- Uses CLI to scaffold collections and primitives
 - Defines collection metadata in YAML
 - Creates primitive content (prompts, skills, agents)
 - Publishes collections to GitHub releases
 - Manages versioning with semantic versioning
 
 ### Extension Developer
-Integrates the library into VS Code extensions or other tools:
-- Uses the PrimitiveIndex API for search
-- Uses the installation system for bundle management
+Integrates the SDK into VS Code extensions or other tools:
+- Uses the SDK APIs for search and installation
 - Leverages the domain types for type safety
+- Builds custom integrations on top of the packages
 
 ## External Systems
 
@@ -67,8 +74,9 @@ Primary integration point for:
 
 ### npm Registry
 Distribution channel:
-- Package published as `@prompt-registry/collection-scripts`
-- Consumed via `npx` or `npm install`
+- Packages published as `@prompt-registry/core`, `@prompt-registry/infra`, `@prompt-registry/app`, `@prompt-registry/cli`, `@prompt-registry/sdk`
+- Consumed via `npm install` or workspace protocol in monorepo
+- CLI installable via `npm install -g @prompt-registry/cli`
 - Supports provenance attestation for supply chain security
 
 ### File System
@@ -83,6 +91,7 @@ Local storage for:
 | As a... | I want to... | So that... |
 |---------|-------------|------------|
 | Developer | Validate my collection YAML | I catch errors before publishing |
+| Developer | Scaffold collections and primitives | I can quickly start creating content |
 | Collection Author | Build a deterministic bundle | Users get identical content |
 | Extension Developer | Search primitives by keyword | I can recommend relevant prompts |
 | Developer | Install a bundle to VS Code | I can use the primitives immediately |
@@ -90,6 +99,6 @@ Local storage for:
 
 ## See Also
 
-- [Container Diagram](./c4-container.md) — Internal architecture
-- [Component Diagrams](./c4-component.md) — Detailed component views
-- [Data Flow](./data-flow.md) — Key process flows
+- [Codemap](./codemap.md) — Package structure and dependencies
+- [Container Diagram](./container.md) — Internal architecture
+- [Component Diagrams](./component.md) — Detailed component views

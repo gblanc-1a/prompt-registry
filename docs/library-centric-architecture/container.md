@@ -1,137 +1,155 @@
-# C4 Container Diagram (Level 2)
+# Container Diagram (Level 2)
 
-The Container diagram shows the high-level technology choices and how responsibilities are distributed.
+The Container diagram shows the high-level technology choices and how responsibilities are distributed across packages.
 
 ## Diagram
 
 ```mermaid
 flowchart TB
-    dev[Developer<br/>CLI user or extension developer]
+    dev[Developer<br/>CLI user]
+    ext_dev[Extension Developer<br/>SDK user]
 
-    subgraph Library["@prompt-registry/collection-scripts"]
-        CLI[CLI Interface<br/>Node.js<br/>Unified CLI]
-        Framework[CLI Framework<br/>TypeScript<br/>Abstractions]
-        Validation[Validation Engine<br/>TypeScript<br/>YAML schema]
-        Builder[Bundle Builder<br/>TypeScript<br/>ZIP creation]
-        Publisher[Publisher<br/>TypeScript<br/>GitHub releases]
-        Index[Primitive Index<br/>TypeScript<br/>BM25 search]
-        Harvester[Harvester<br/>TypeScript<br/>Bundle discovery]
-        BM25[BM25 Engine<br/>TypeScript<br/>Zero deps]
-        Installer[Bundle Installer<br/>TypeScript<br/>Multi-target]
-        Targets[Target Manager<br/>TypeScript<br/>Config management]
-        Scopes[Scope Writers<br/>TypeScript<br/>File writers]
+    subgraph Core["@prompt-registry/core<br/>Domain Layer"]
+        Domain[Domain Types<br/>TypeScript<br/>Pure types]
+        Ports[Port Interfaces<br/>TypeScript<br/>Abstractions]
+        Schemas[JSON Schemas<br/>Validation schemas]
+    end
+
+    subgraph Infra["@prompt-registry/infra<br/>Infrastructure Layer"]
         GitHub[GitHub Client<br/>TypeScript<br/>Rate limiting]
-        Cache[Blob Cache<br/>TypeScript<br/>SHA1 caching]
-        
-        IndexDB[(Index Store<br/>JSON)]
-        CacheDB[(Blob Cache<br/>Files)]
-        ConfigDB[(Config Store<br/>YAML/JSON)]
+        Harvester[Harvester<br/>TypeScript<br/>Bundle discovery]
+        Search[Search Engine<br/>TypeScript<br/>BM25]
+        Stores[Storage<br/>TypeScript<br/>Index/Cache]
+        Scaffolding[Template Engine<br/>TypeScript<br/>Templates]
+        Downloaders[Downloaders<br/>TypeScript<br/>Asset fetching]
+        Extractors[Extractors<br/>TypeScript<br/>ZIP extraction]
+    end
+
+    subgraph App["@prompt-registry/app<br/>Application Layer"]
+        Collection[Collection Logic<br/>TypeScript<br/>Read/write]
+        Install[Install Orchestration<br/>TypeScript<br/>Target management]
+        Registry[Registry Management<br/>TypeScript<br/>Profile logic]
+        Discovery[Discovery<br/>TypeScript<br/>Context detection]
+    end
+
+    subgraph CLI["@prompt-registry/cli<br/>CLI Layer"]
+        CLIInterface[CLI Commands<br/>TypeScript<br/>Clipanion]
+        Framework[CLI Framework<br/>TypeScript<br/>I/O abstraction]
+        Validation[Validation<br/>TypeScript<br/>Collection validation]
+        Builder[Bundle Builder<br/>TypeScript<br/>ZIP creation]
+    end
+
+    subgraph SDK["@prompt-registry/sdk<br/>SDK Layer"]
+        SDKAPI[SDK APIs<br/>TypeScript<br/>Placeholder]
     end
 
     GitHubAPI[(GitHub API<br/>HTTPS)]
     FS[(File System<br/>Node.js fs)]
+    IndexDB[(Index Store<br/>JSON)]
+    CacheDB[(Blob Cache<br/>Files)]
+    ConfigDB[(Config Store<br/>YAML/JSON)]
 
-    dev --> CLI
-    dev -."stdin/stdout/stderr".-> CLI
+    dev --> CLIInterface
+    ext_dev --> SDKAPI
 
-    CLI --> Framework
-    CLI --> Validation
-    CLI --> Builder
-    CLI --> Publisher
-    CLI --> Index
-    CLI --> Installer
+    CLIInterface --> Framework
+    CLIInterface --> Validation
+    CLIInterface --> Builder
+    CLIInterface --> Install
+    CLIInterface --> Collection
 
-    Framework --> Validation
-    Framework -."Validates input via".-> FS
+    Framework --> FS
 
-    Index --> BM25
-    Index --> Harvester
-    Index --> IndexDB
+    Validation --> Schemas
+    Validation --> FS
 
-    Harvester --> GitHub
-    Harvester --> Cache
+    Builder --> FS
+
+    Install --> App
+    Install --> FS
+
+    Collection --> App
+    Collection --> FS
+
+    Registry --> App
+    Registry --> FS
+
+    Discovery --> App
+    Discovery --> FS
+
+    App --> Infra
+    App --> Core
+
+    SDKAPI --> Infra
+    SDKAPI --> Core
+
+    Infra --> Core
 
     GitHub --> GitHubAPI
     GitHub -."HTTPS/JSON".-> GitHubAPI
-    GitHub -."ETag caching".-> Cache
+    GitHub -."ETag caching".-> Stores
 
-    Cache --> CacheDB
+    Harvester --> GitHub
+    Harvester --> Stores
 
-    Installer --> Targets
-    Installer --> Scopes
-    Installer --> ConfigDB
+    Search --> Stores
+    Search --> IndexDB
 
-    Targets --> ConfigDB
-    Scopes --> FS
+    Stores --> CacheDB
+    Stores --> ConfigDB
+
+    Scaffolding --> FS
+    Downloaders --> GitHub
+    Extractors --> FS
 ```
 
 ## Container Descriptions
 
-### CLI Interface
-The entry point for users. Provides a unified `prompt-registry` binary with subcommands:
-- `collection validate|list`
-- `bundle build|manifest`
-- `index search|harvest|shortlist`
-- `install|target|doctor`
+### @prompt-registry/core (Domain Layer)
+Pure domain types and interfaces with no external dependencies:
+- **Domain Types**: Bundle, Collection, Primitive, Hub, Install, Registry types
+- **Port Interfaces**: Abstractions for external implementations
+- **JSON Schemas**: Validation schemas for collections and hubs
+- **Exports**: `SCHEMA_DIR` for schema path access
 
-**Technology**: Node.js 18+, TypeScript, compiled to JavaScript
+**Technology**: TypeScript, js-yaml (for schema parsing only)
 
-### CLI Framework
-Abstractions that make CLI commands testable and framework-agnostic:
-- **Context**: I/O abstraction (fs, stdout, env)
-- **CommandDefinition**: Standard command interface
-- **RegistryError**: Structured error types
-- **Formatters**: Text, JSON, YAML, ndjson output
+### @prompt-registry/infra (Infrastructure Layer)
+Infrastructure implementations for external integrations:
+- **GitHub Client**: API integration with rate limiting and ETag caching
+- **Harvester**: Bundle discovery from GitHub, AwesomeCopilot, APM, Local sources
+- **Search Engine**: BM25 full-text search with faceted filtering
+- **Storage**: Index store (JSON), blob cache (SHA1), ETag store
+- **Template Engine**: Scaffolding templates for all primitive types
+- **Downloaders**: Asset downloading from GitHub releases
+- **Extractors**: ZIP bundle extraction
+- **Exports**: `TEMPLATE_ROOT` and `TEMPLATE_PATHS` for template access
 
-### Validation Engine
-Schema validation for collection YAML files:
-- Collection ID format (lowercase, kebab-case)
-- Semantic version validation
-- Item kind validation (prompt, skill, agent, etc.)
-- File existence checks
-- Cross-reference validation
+**Technology**: TypeScript, axios, js-yaml, yauzl
 
-### Bundle Builder
-Creates reproducible ZIP bundles:
-- Deterministic timestamps (fixed to 1980-01-01)
-- Sorted file entries
-- Maximum compression
-- Includes deployment manifest
+### @prompt-registry/app (Application Layer)
+Orchestration of business logic:
+- **Collection Logic**: Reading and writing collection files
+- **Install Orchestration**: Target management and bundle installation
+- **Registry Management**: Profile and registry configuration
+- **Discovery**: Repository context detection
 
-### Primitive Index
-The core search engine:
-- BM25 full-text search
-- Faceted filtering (kind, tag, source)
-- Shortlist management
-- Profile export
-- Resumable harvesting
+**Technology**: TypeScript, js-yaml
 
-### Harvester
-Discovers and fetches bundle content:
-- GitHub API integration
-- Local folder providers
-- Smart caching with ETags
-- Concurrent fetching with rate limiting
-- Progress tracking (JSONL)
+### @prompt-registry/cli (CLI Layer)
+User-facing CLI interface using Clipanion framework:
+- **CLI Commands**: collection, bundle, init, source, hub, status, update, and scaffolding commands
+- **CLI Framework**: I/O abstraction, error handling, output formatting
+- **Validation**: Collection YAML validation
+- **Bundle Builder**: Deterministic ZIP bundle creation
 
-### Bundle Installer
-Multi-target installation system:
-- Validates bundles before install
-- Handles target-specific paths
-- Manages lockfiles
-- Supports rollback on failure
+**Technology**: TypeScript, Clipanion, inquirer, archiver, semver, typanion, yauzl, js-yaml
 
-### GitHub Client
-GitHub API integration:
-- Rate limit awareness
-- Exponential backoff with jitter
-- ETag caching for 304 responses
-- Token resolution (env, gh CLI)
+### @prompt-registry/sdk (SDK Layer)
+High-level APIs for integrations (placeholder):
+- **SDK APIs**: Placeholder for future integration APIs
 
-### Storage
-- **Index Store**: JSON files with schema versioning
-- **Blob Cache**: Content-addressed SHA1 storage
-- **Config Store**: YAML configs and JSON lockfiles
+**Technology**: TypeScript
 
 ## Container Relationships
 
@@ -140,13 +158,17 @@ GitHub API integration:
 | CLI | Framework | Uses for I/O abstraction |
 | CLI | Validation | Validates collections |
 | CLI | Builder | Creates bundles |
-| CLI | Publisher | Manages releases |
-| CLI | Index | Searches primitives |
-| CLI | Installer | Installs bundles |
-| Index | Harvester | Populates from sources |
+| CLI | App | Uses for business logic |
+| CLI | Core | Uses for domain types |
+| CLI | Infra | Uses for infrastructure |
+| App | Infra | Uses for infrastructure implementations |
+| App | Core | Uses for domain types |
+| SDK | Infra | Uses for infrastructure implementations |
+| SDK | Core | Uses for domain types |
+| Infra | Core | Uses for domain types |
 | Harvester | GitHub | Fetches content |
-| Installer | Targets | Manages destinations |
-| Installer | Scopes | Writes files |
+| Search | Stores | Uses for index/cache |
+| GitHub | Stores | Uses for ETag caching |
 
 ## Technology Choices
 
@@ -154,14 +176,26 @@ GitHub API integration:
 |-----------|-----------|-----------|
 | Language | TypeScript | Type safety, VS Code ecosystem |
 | Runtime | Node.js 18+ | Matches VS Code's Node version |
+| CLI Framework | Clipanion | Modern CLI framework with TypeScript support |
 | Search | Hand-rolled BM25 | Zero deps, deterministic, inspectable |
 | HTTP | axios | Familiar, interceptors for retry |
 | YAML | js-yaml | Already a dependency |
-| ZIP | adm-zip | Pure JS, no native deps |
-| Testing | Mocha + Chai | Existing test suite |
+| ZIP | yauzl | Pure JS, no native deps |
+| Validation | JSON Schema | Standard validation with AJV |
+| Testing | Vitest | Modern test framework with coverage |
+
+## Package Dependencies
+
+| Package | Dependencies |
+|---------|-------------|
+| @prompt-registry/core | js-yaml |
+| @prompt-registry/infra | @prompt-registry/core, axios, js-yaml, yauzl |
+| @prompt-registry/app | @prompt-registry/core, @prompt-registry/infra, js-yaml |
+| @prompt-registry/cli | @prompt-registry/core, @prompt-registry/infra, @prompt-registry/app, clipanion, inquirer, archiver, semver, typanion, yauzl, js-yaml |
+| @prompt-registry/sdk | @prompt-registry/core, @prompt-registry/infra |
 
 ## See Also
 
-- [System Context](./c4-system-context.md) — External relationships
-- [Component Diagrams](./c4-component.md) — Detailed internals
-- [Data Flow](./data-flow.md) — Process flows
+- [Codemap](./codemap.md) — Package structure and dependencies
+- [System Context](./system-context.md) — External relationships
+- [Component Diagrams](./component.md) — Detailed internals

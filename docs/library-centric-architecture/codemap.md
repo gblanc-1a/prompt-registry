@@ -4,47 +4,39 @@ This document provides a structural overview of the packages architecture in the
 
 ## Package Dependency Graph
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                         @prompt-registry/cli                      │
-│  (CLI Interface - Clipanion-based command line tool)              │
-└────────────┬──────────────────────────────────────────────────────┘
-             │
-             ├──► @prompt-registry/app
-             │
-             ├──► @prompt-registry/core
-             │
-             └──► @prompt-registry/infra
-             
-┌─────────────────────────────────────────────────────────────────┐
-│                         @prompt-registry/sdk                      │
-│  (SDK for integrations - placeholder, minimal implementation)     │
-└────────────┬──────────────────────────────────────────────────────┘
-             │
-             ├──► @prompt-registry/core
-             │
-             └──► @prompt-registry/infra
+```mermaid
+graph TD
+    subgraph cli["@prompt-registry/cli"]
+        cli_desc["CLI Interface - Clipanion-based command line tool"]
+    end
 
-┌─────────────────────────────────────────────────────────────────┐
-│                         @prompt-registry/app                      │
-│  (Application Layer - orchestration, install, registry)         │
-└────────────┬──────────────────────────────────────────────────────┘
-             │
-             ├──► @prompt-registry/core
-             │
-             └──► @prompt-registry/infra
+    subgraph sdk["@prompt-registry/sdk"]
+        sdk_desc["SDK for integrations - placeholder, minimal implementation"]
+    end
 
-┌─────────────────────────────────────────────────────────────────┐
-│                        @prompt-registry/infra                     │
-│  (Infrastructure Layer - GitHub, harvesters, search, storage)   │
-└────────────┬──────────────────────────────────────────────────────┘
-             │
-             └──► @prompt-registry/core
+    subgraph app["@prompt-registry/app"]
+        app_desc["Application Layer - orchestration, install, registry"]
+    end
 
-┌─────────────────────────────────────────────────────────────────┐
-│                         @prompt-registry/core                    │
-│  (Domain Layer - types, interfaces, ports - no package deps)     │
-└─────────────────────────────────────────────────────────────────┘
+    subgraph infra["@prompt-registry/infra"]
+        infra_desc["Infrastructure Layer - GitHub, harvesters, search, storage"]
+    end
+
+    subgraph core["@prompt-registry/core"]
+        core_desc["Domain Layer - types, interfaces, ports - no package deps"]
+    end
+
+    cli --> app
+    cli --> core
+    cli --> infra
+
+    sdk --> core
+    sdk --> infra
+
+    app --> core
+    app --> infra
+
+    infra --> core
 ```
 
 ## Package Details
@@ -243,6 +235,7 @@ The architecture enforces clear boundaries:
 
 ## See Also
 
+- [Clean Architecture](./clean-architecture.md) — Clean Architecture principles and how they apply to prompt-registry
 - [System Context](./system-context.md) — External relationships and user personas
 - [Container Diagram](./container.md) — High-level containers and technology choices
 - [Component Diagrams](./component.md) — Detailed component views

@@ -1,6 +1,6 @@
 {
   "name": "@prompt-registry/core",
-  "version": "1.0.0",
+  "version": "0.0.1-alpha.1",
   "description": "Core domain types and interfaces for Prompt Registry",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

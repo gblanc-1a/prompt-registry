@@ -1,6 +1,6 @@
 {
   "name": "@prompt-registry/cli",
-  "version": "1.0.0",
+  "version": "0.0.1-alpha.1",
   "description": "CLI for Prompt Registry - install, manage, and validate Copilot prompt collections",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

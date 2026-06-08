@@ -1,6 +1,6 @@
 {
   "name": "@prompt-registry/infra",
-  "version": "1.0.0",
+  "version": "0.0.1-alpha.1",
   "description": "Infrastructure layer for Prompt Registry - GitHub clients, harvesters, search, and storage",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

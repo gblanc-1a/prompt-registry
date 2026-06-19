@@ -24,3 +24,8 @@ export type {
   TargetLayout,
 } from './layout';
 export { validateTargetLayoutsConfig } from './layout';
+export type {
+  TransformContext,
+  TransformResult,
+} from './transform';
+export { noChange, changed } from './transform';

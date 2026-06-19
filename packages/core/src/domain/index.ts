@@ -49,6 +49,11 @@ export type {
   TargetLayout,
 } from './install';
 export { validateTargetLayoutsConfig } from './install';
+export type {
+  TransformContext,
+  TransformResult,
+} from './install';
+export { noChange, changed } from './install';
 
 export type {
   Collection,

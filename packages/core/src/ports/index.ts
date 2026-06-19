@@ -66,3 +66,7 @@ export type {
   McpServer,
   McpTool,
 } from './mcp-server';
+
+export type {
+  ResourceTransformer,
+} from './resource-transformer';

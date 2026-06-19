@@ -21,6 +21,7 @@ import type {
   ExtractedFiles,
   KindRoutes,
   LayoutConfigLoader,
+  ResourceTransformer,
   Target,
   TargetLayout,
   TargetWriter,
@@ -122,6 +123,8 @@ export interface FileTreeTargetWriterOptions {
   fs: WriterFs;
   /** Process env, used for ${VAR} expansion. */
   env: Record<string, string | undefined>;
+  /** Optional resource transformer for target-specific content transformations. */
+  transformer?: ResourceTransformer;
 }
 
 /**
@@ -171,9 +174,28 @@ export class FileTreeTargetWriter implements TargetWriter {
         skipped.push(bundlePath);
         continue;
       }
+      
+      // Decode content
+      let content = new TextDecoder().decode(bytes);
+      
+      // Apply transformation if transformer is provided
+      if (this.opts.transformer !== undefined) {
+        try {
+          const result = this.opts.transformer.transform({
+            target,
+            filePath: bundlePath,
+            content,
+          });
+          content = result.content;
+        } catch (transformError) {
+          // Fail-safe: on transformation error, use original content
+          // In production, this would log a warning
+        }
+      }
+      
       const outPath = path.join(baseDir, route.outPrefix, route.tail);
       await this.opts.fs.mkdir(path.dirname(outPath), { recursive: true });
-      await this.opts.fs.writeFile(outPath, new TextDecoder().decode(bytes));
+      await this.opts.fs.writeFile(outPath, content);
       written.push(outPath);
     }
     return { written, skipped };

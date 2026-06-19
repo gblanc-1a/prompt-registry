@@ -93,3 +93,11 @@ export function getRecommendedHub(): DefaultHubConfig | undefined {
 export function findDefaultHub(name: string): DefaultHubConfig | undefined {
   return getDefaultHubs().find((hub) => hub.name === name);
 }
+
+/**
+ * Clear cache (no-op since getDefaultHubs returns hardcoded array)
+ * Kept for backward compatibility with tests
+ */
+export function clearCache(): void {
+  // No-op: getDefaultHubs returns HARDCODED_DEFAULT_HUBS directly
+}

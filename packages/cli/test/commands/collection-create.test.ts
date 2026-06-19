@@ -7,3 +7,10 @@
  * - Collection file creation
  * - Validation of created collection
  */
+import { describe, it } from 'vitest';
+
+describe('collection-create command', () => {
+  it.skip('is not yet implemented', () => {
+    // Placeholder test - command implementation pending
+  });
+});

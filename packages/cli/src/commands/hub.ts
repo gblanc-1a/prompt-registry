@@ -60,14 +60,15 @@ export class HubListCommand extends BaseHubCommand {
     description: 'List imported hubs and optionally check reachability.',
     category: 'Hub & Discovery',
     details: `
-      Usage: prompt-registry hub list [--check]
+      Usage: prompt-registry hub list [options]
 
       Options:
-        --check  Probe reachability of each hub source.
+        --check                 Probe reachability of each hub source
+        -o, --output <format>  Output format (text, json, yaml, ndjson)
 
       Examples:
-        $ prompt-registry hub list
-        $ prompt-registry hub list --check
+        prompt-registry hub list
+        prompt-registry hub list --check
     `
   });
   public check = Option.Boolean('--check');
@@ -123,19 +124,20 @@ export class HubAddCommand extends BaseHubCommand {
     description: 'Import a hub from a reference (GitHub repo, local path, or URL).',
     category: 'Hub & Discovery',
     details: `
-      Usage: prompt-registry hub add --location <ref> [--type <type>] [--id <id>]
+      Usage: prompt-registry hub add --location <ref> [options]
 
       Options:
-        --type <type>      Reference type: github (default), local, url.
-        --location <ref>   GitHub owner/repo, local path, or URL.
-        --ref <branch>     Git branch, tag, or commit (GitHub only).
-        --id <id>          Custom hub ID (defaults to repo name).
-        --no-sync          Skip syncing after import.
-        --no-use           Skip setting as active hub.
+        --type <type>            Reference type: github (default), local, url
+        --location <ref>         GitHub owner/repo, local path, or URL
+        --ref <branch>           Git branch, tag, or commit (GitHub only)
+        --id <id>                Custom hub ID (defaults to repo name)
+        --no-sync                Skip syncing after import
+        --no-use                 Skip setting as active hub
+        -o, --output <format>     Output format (text, json, yaml, ndjson)
 
       Examples:
-        $ prompt-registry hub add --location amadeus/copilot-hub
-        $ prompt-registry hub add --type local --location ./my-hub --id local-hub
+        prompt-registry hub add --location amadeus/copilot-hub
+        prompt-registry hub add --type local --location ./my-hub --id local-hub
     `
   });
   public refType = Option.String('--type');
@@ -209,11 +211,15 @@ export class HubUseCommand extends BaseHubCommand {
     category: 'Hub & Discovery',
     details: `
       Usage: prompt-registry hub use <hub-id>
-             prompt-registry hub use --clear
+      Usage: prompt-registry hub use --clear
+
+      Options:
+        --clear                  Clear the active hub
+        -o, --output <format>     Output format (text, json, yaml, ndjson)
 
       Examples:
-        $ prompt-registry hub use amadeus-copilot-hub
-        $ prompt-registry hub use --clear
+        prompt-registry hub use amadeus-copilot-hub
+        prompt-registry hub use --clear
     `
   });
   public clear = Option.Boolean('--clear');
@@ -264,8 +270,11 @@ export class HubRemoveCommand extends BaseHubCommand {
     details: `
       Usage: prompt-registry hub remove <hub-id>
 
+      Options:
+        -o, --output <format>  Output format (text, json, yaml, ndjson)
+
       Examples:
-        $ prompt-registry hub remove old-hub
+        prompt-registry hub remove old-hub
     `
   });
   public hubId = Option.String({ required: false });

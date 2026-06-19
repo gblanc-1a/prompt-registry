@@ -110,6 +110,22 @@ export class IndexSearchCommand extends Command {
     details: `
       Usage: prompt-registry index search [options] [query]
 
+      Options:
+        --query <text>           Search query text
+        --index <path>           Path to index file
+        --kinds <kinds>          Filter by primitive kind (comma-separated)
+        --sources <sources>       Filter by source IDs (comma-separated)
+        --bundles <bundles>      Filter by bundle IDs (comma-separated)
+        --tags <tags>            Filter by tags (comma-separated)
+        --installed-only          Show only installed primitives
+        --limit <n>              Limit number of results
+        --offset <n>             Skip first n results
+        --explain                 Show search scoring explanation
+        --install                Install matching primitives
+        --interactive            Interactive mode for installation
+        --install-target <name>  Target name for installation
+        -o, --output <format>    Output format (text, json, yaml, ndjson)
+
       Examples:
         prompt-registry index search "docker"
         prompt-registry index search --query "docker" --kinds skill

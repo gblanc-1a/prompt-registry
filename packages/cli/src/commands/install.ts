@@ -218,11 +218,6 @@ export class InstallCommand extends BaseInstallCommand {
     details: `
       Usage: prompt-registry install [options]
 
-      Examples:
-        prompt-registry install --from <path> --target my-vscode
-        prompt-registry install --lockfile prompt-registry.lock.json --target my-vscode
-        prompt-registry install --source amadeus-hub --interactive --target my-vscode
-
       Options:
         --from <path>           Path to an already-built bundle directory
         --lockfile <path>       Path to a lockfile for declarative installation
@@ -233,6 +228,12 @@ export class InstallCommand extends BaseInstallCommand {
         --scope <scope>         Installation scope (user or repository)
         --commit-mode <mode>    Commit mode for repository scope
         --verbose               Show detailed progress and error messages
+        -o, --output <format>  Output format (text, json, yaml, ndjson)
+
+      Examples:
+        prompt-registry install --from <path> --target my-vscode
+        prompt-registry install --lockfile prompt-registry.lock.json --target my-vscode
+        prompt-registry install --source amadeus-hub --interactive --target my-vscode
     `
   });
 

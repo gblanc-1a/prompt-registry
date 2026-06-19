@@ -145,11 +145,24 @@ export class UpdateCommand extends BaseUpdateCommand {
     description: 'Check for newer versions of installed bundles and upgrade them.',
     category: 'Install & Manage',
     details: `
-      prompt-registry update [--lockfile <path>] [--target <name>]
-                             [--dry-run] [--interactive] [--no-hub-sync]
+      Usage: prompt-registry update [options]
 
       Reads the lockfile, checks each remote bundle against its upstream source,
       and installs available upgrades.
+
+      Options:
+        --lockfile <path>       Path to a lockfile
+        --target <name>         Target name to update
+        --dry-run               Check for updates without applying
+        --interactive           Interactive mode: select which updates to apply
+        --no-hub-sync           Skip syncing hub before checking updates
+        -o, --output <format>  Output format (text, json, yaml, ndjson)
+
+      Examples:
+        prompt-registry update
+        prompt-registry update --target my-vscode
+        prompt-registry update --dry-run
+        prompt-registry update --interactive
     `
   });
 

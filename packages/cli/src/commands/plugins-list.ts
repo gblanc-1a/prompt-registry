@@ -66,8 +66,14 @@ export class PluginsListCommand extends BasePluginsListCommand {
     details: `
       Usage: prompt-registry plugins list [options]
 
+      Discovers prompt-registry-<name> executables on $PATH and reports conflicts.
+
       Options:
         -o, --output <format>  Output format (text, json, yaml, ndjson)
+
+      Examples:
+        prompt-registry plugins list
+        prompt-registry plugins list -o json
     `
   });
 

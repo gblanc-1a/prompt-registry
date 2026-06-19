@@ -164,7 +164,7 @@ async function updateLockfileWithChecksums(
 export const createApplyCommand = (opts: ApplyOptions = {}): CommandDefinition =>
   defineCommand({
     path: ['apply'],
-    description: 'Idempotent: sync active hub and re-activate profile recorded in the lockfile.',
+    description: 'Idempotent: sync active hub and re-activate profile recorded in the lockfile. Reads lockfile, syncs hub, and activates profile.',
     category: 'Install & Manage',
     run: async ({ ctx }: { ctx: Context }): Promise<number> => {
       const fmt = opts.output ?? 'text';

@@ -62,6 +62,12 @@ export class IndexBuildCommand extends Command {
     details: `
       Usage: prompt-registry index build --root <DIR> [options]
 
+      Options:
+        --root <dir>            Root directory containing bundles (required)
+        --out, --out-file <path>  Output index file path
+        --source-id <id>         Source ID for the index
+        -o, --output <format>     Output format (text, json, yaml, ndjson)
+
       Examples:
         prompt-registry index build --root ./bundles
         prompt-registry index build --root ./bundles --out /tmp/index.json

@@ -143,11 +143,6 @@ export class UninstallCommand extends BaseUninstallCommand {
     details: `
       Usage: prompt-registry uninstall [options]
 
-      Examples:
-        prompt-registry uninstall --lockfile prompt-registry.lock.json --target my-vscode
-        prompt-registry uninstall --all --target my-vscode
-        prompt-registry uninstall --dry-run --target my-vscode
-
       Options:
         --bundle <id>          Bundle id to uninstall
         --lockfile <path>      Path to a lockfile for declarative uninstallation
@@ -156,6 +151,12 @@ export class UninstallCommand extends BaseUninstallCommand {
         --dry-run              Preview removal without deleting files
         --scope <scope>        Installation scope (user or repository)
         --commit-mode <mode>   Commit mode for repository scope
+        -o, --output <format> Output format (text, json, yaml, ndjson)
+
+      Examples:
+        prompt-registry uninstall --lockfile prompt-registry.lock.json --target my-vscode
+        prompt-registry uninstall --all --target my-vscode
+        prompt-registry uninstall --dry-run --target my-vscode
     `
   });
 

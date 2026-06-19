@@ -117,7 +117,7 @@ export const createConfigListCommand = (
 ): CommandDefinition =>
   defineCommand({
     path: ['config', 'list'],
-    description: 'Print the resolved config (post-merge across all 8 precedence layers).',
+    description: 'Print the resolved config (post-merge across all 8 precedence layers). Shows hubs, targets, profiles, and paths.',
     category: 'Configure & Debug',
     run: async ({ ctx }: { ctx: Context }): Promise<number> => {
       const config = await loadConfig({

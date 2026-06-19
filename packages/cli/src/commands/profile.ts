@@ -140,11 +140,15 @@ export class ProfileListCommand extends BaseProfileCommand {
     description: 'List profiles in a hub.',
     category: 'Hub & Discovery',
     details: `
-      Usage: prompt-registry profile list [--hub <hub-id>]
+      Usage: prompt-registry profile list [options]
+
+      Options:
+        --hub <hub-id>           Hub ID to list profiles from
+        -o, --output <format>     Output format (text, json, yaml, ndjson)
 
       Examples:
-        $ prompt-registry profile list
-        $ prompt-registry profile list --hub my-hub
+        prompt-registry profile list
+        prompt-registry profile list --hub my-hub
     `
   });
 
@@ -201,11 +205,15 @@ export class ProfileShowCommand extends BaseProfileCommand {
     description: 'Show details of a profile.',
     category: 'Hub & Discovery',
     details: `
-      Usage: prompt-registry profile show <profile-id> [--hub <hub-id>]
+      Usage: prompt-registry profile show <profile-id> [options]
+
+      Options:
+        --hub <hub-id>           Hub ID containing the profile
+        -o, --output <format>     Output format (text, json, yaml, ndjson)
 
       Examples:
-        $ prompt-registry profile show my-profile
-        $ prompt-registry profile show my-profile --hub my-hub
+        prompt-registry profile show my-profile
+        prompt-registry profile show my-profile --hub my-hub
     `
   });
   public profileId = Option.String({ required: false });
@@ -265,16 +273,18 @@ export class ProfileActivateCommand extends BaseProfileCommand {
     description: 'Activate a profile on configured targets.',
     category: 'Hub & Discovery',
     details: `
-      Usage: prompt-registry profile activate <profile-id> [--hub <hub-id>] [--target <name>] [--dry-run]
+      Usage: prompt-registry profile activate <profile-id> [options]
 
       Options:
-        --target <name>  Comma-separated target names to limit activation.
-        --dry-run        Preview changes without applying.
+        --hub <hub-id>           Hub ID containing the profile
+        --target <name>          Comma-separated target names to limit activation
+        --dry-run                Preview changes without applying
+        -o, --output <format>     Output format (text, json, yaml, ndjson)
 
       Examples:
-        $ prompt-registry profile activate default
-        $ prompt-registry profile activate default --target vscode
-        $ prompt-registry profile activate default --dry-run
+        prompt-registry profile activate default
+        prompt-registry profile activate default --target vscode
+        prompt-registry profile activate default --dry-run
     `
   });
   public profileId = Option.String({ required: false });
@@ -389,14 +399,15 @@ export class ProfileDeactivateCommand extends BaseProfileCommand {
     description: 'Deactivate the currently active profile.',
     category: 'Hub & Discovery',
     details: `
-      Usage: prompt-registry profile deactivate [--dry-run]
+      Usage: prompt-registry profile deactivate [options]
 
       Options:
-        --dry-run  Preview changes without applying.
+        --dry-run                Preview changes without applying
+        -o, --output <format>     Output format (text, json, yaml, ndjson)
 
       Examples:
-        $ prompt-registry profile deactivate
-        $ prompt-registry profile deactivate --dry-run
+        prompt-registry profile deactivate
+        prompt-registry profile deactivate --dry-run
     `
   });
   public dryRun = Option.Boolean('--dry-run', false);

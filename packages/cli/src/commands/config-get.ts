@@ -62,6 +62,10 @@ export class ConfigGetCommand extends BaseConfigGetCommand {
 
       Options:
         -o, --output <format>  Output format (text, json, yaml, ndjson)
+
+      Examples:
+        prompt-registry config get output.json.indent
+        prompt-registry config get targets -o json
     `
   });
 

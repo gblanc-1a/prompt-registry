@@ -61,6 +61,9 @@ export class TargetRemoveCommand extends BaseTargetRemoveCommand {
 
       Options:
         -o, --output <format>  Output format (text, json, yaml, ndjson)
+
+      Examples:
+        prompt-registry target remove my-vscode
     `
   });
 

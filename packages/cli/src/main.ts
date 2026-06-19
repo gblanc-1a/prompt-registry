@@ -55,6 +55,8 @@ import {
 } from './commands/init';
 import {
   createDoctorCommand,
+  createDoctorCommandClass,
+  DoctorCommand,
 } from './commands/doctor';
 import {
   createDiscoverCommand,
@@ -101,6 +103,8 @@ import {
 } from './commands/hook-create';
 import {
   createSkillValidateCommand,
+  createSkillValidateCommandClass,
+  SkillValidateCommand,
 } from './commands/skill-validate';
 import {
   IndexSearchCommand,
@@ -128,6 +132,8 @@ import {
 } from './commands/config-list';
 import {
   createPluginsListCommand,
+  createPluginsListCommandClass,
+  PluginsListCommand,
 } from './commands/plugins-list';
 import {
   TargetAddCommand,
@@ -168,6 +174,9 @@ import {
 import {
   IndexBenchCommand,
 } from './commands/index-bench';
+import {
+  CompletionCommand,
+} from './commands/completion';
 
 /**
  * Main entry point.
@@ -179,11 +188,8 @@ async function main(): Promise<number> {
 
   const commands = [
     createApplyCommand(),
-    createDoctorCommand(),
     createDiscoverCommand(),
-    createSkillValidateCommand(),
     createConfigListCommand(),
-    createPluginsListCommand(),
   ];
 
   const commandClasses = [
@@ -240,6 +246,10 @@ async function main(): Promise<number> {
     SkillCreateCommand,
     PluginCreateCommand,
     HookCreateCommand,
+    createDoctorCommandClass(ctx),
+    createPluginsListCommandClass(ctx),
+    createSkillValidateCommandClass(ctx),
+    CompletionCommand,
   ];
 
   const exitCode = await runCli(process.argv.slice(2), {

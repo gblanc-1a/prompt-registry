@@ -94,8 +94,14 @@ export class DoctorCommand extends BaseDoctorCommand {
     details: `
       Usage: prompt-registry doctor [options]
 
+      Checks Node version, project config, install targets, GitHub auth, and API reachability.
+
       Options:
         -o, --output <format>  Output format (text, json, yaml, ndjson)
+
+      Examples:
+        prompt-registry doctor
+        prompt-registry doctor -o json
     `
   });
 

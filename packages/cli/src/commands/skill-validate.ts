@@ -59,10 +59,17 @@ export class SkillValidateCommand extends BaseSkillValidateCommand {
     details: `
       Usage: prompt-registry skill validate [options]
 
+      Validates SKILL.md files and folder structure against the Agent Skills specification.
+
       Options:
         -o, --output <format>       Output format (text, json, yaml, ndjson)
         --skills-dir <dir>          Skills directory (default: skills)
         --verbose                   Print each ok skill in text mode
+
+      Examples:
+        prompt-registry skill validate
+        prompt-registry skill validate --skills-dir my-skills
+        prompt-registry skill validate -o json
     `
   });
 

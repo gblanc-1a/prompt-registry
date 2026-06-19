@@ -86,7 +86,7 @@ export class StatusCommand extends Command {
     description: 'Show current configuration state: targets, active hub, index, and lockfile.',
     category: 'Configure & Debug',
     details: `
-      Usage: prompt-registry status [-o json]
+      Usage: prompt-registry status [options]
 
       Reads local config files (no network calls) and prints a summary of:
         - Project config file location (prompt-registry.yml)
@@ -94,6 +94,15 @@ export class StatusCommand extends Command {
         - Active hub and available hubs
         - Primitive index size
         - Installed bundles from lockfile
+
+      Options:
+        -o, --output <format>  Output format (text, json, yaml, ndjson)
+        --verbose               Include per-bundle details from lockfile
+
+      Examples:
+        prompt-registry status
+        prompt-registry status -o json
+        prompt-registry status --verbose
     `
   });
 

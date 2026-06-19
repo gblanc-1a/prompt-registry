@@ -114,11 +114,14 @@ export class TargetListCommand extends Command {
     description: 'List configured install targets (vscode, copilot-cli, kiro, …).',
     category: 'Install & Manage',
     details: `
-      Usage: prompt-registry target list [-o <format>]
+      Usage: prompt-registry target list [options]
+
+      Options:
+        -o, --output <format>  Output format (text, json, yaml, ndjson)
 
       Examples:
-        $ prompt-registry target list
-        $ prompt-registry target list -o json
+        prompt-registry target list
+        prompt-registry target list -o json
     `
   });
 

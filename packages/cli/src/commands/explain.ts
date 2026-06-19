@@ -240,7 +240,10 @@ export class ExplainCommand extends Command {
     description: 'Print documentation for a RegistryError code.',
     category: 'Configure & Debug',
     details: `
-      Usage: prompt-registry explain <NAMESPACE.CODE>
+      Usage: prompt-registry explain <NAMESPACE.CODE> [options]
+
+      Options:
+        -o, --output <format>  Output format (text, json, yaml, ndjson)
 
       Examples:
         prompt-registry explain BUNDLE.NOT_FOUND

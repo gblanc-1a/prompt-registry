@@ -137,7 +137,15 @@ export class TargetAddCommand extends Command {
     description: 'Register a new install target.',
     category: 'Install & Manage',
     details: `
-      Usage: prompt-registry target add <name> --type <kind> [--scope <user|repository>] [--path <path>]
+      Usage: prompt-registry target add <name> --type <kind> [options]
+
+      Options:
+        --type <type>              Target type (required): vscode, vscode-insiders, copilot-cli, kiro, windsurf, claude-code
+        --scope <scope>            Installation scope: user (default) or repository
+        --path <path>              Custom installation path
+        --workspace-root <dir>     Workspace root for repository scope
+        --allowed-kinds <kinds>    Comma-separated allowed primitive kinds
+        -o, --output <format>     Output format (text, json, yaml, ndjson)
 
       Examples:
         prompt-registry target add my-copilot --type copilot-cli

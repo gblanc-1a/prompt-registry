@@ -28,7 +28,7 @@
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src test",
     "lint:fix": "eslint src test --fix",
-    "copy-schemas": "mkdir -p dist/public && cp -r src/public/schemas dist/public/",
+    "copy-schemas": "node -e \"const fs=require('fs');fs.cpSync('src/public/schemas','dist/public/schemas/',{recursive:true,force:true});\"",
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {

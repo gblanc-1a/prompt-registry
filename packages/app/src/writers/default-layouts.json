@@ -82,7 +82,7 @@
       "user": {
         "baseDir": "${HOME}/.kiro",
         "kindRoutes": {
-          "prompts/": "steering/",
+          "prompts/": "prompts/",
           "agents/": "agents/",
           "instructions/": "steering/",
           "skills/": "skills/"
@@ -92,7 +92,7 @@
       "repository": {
         "baseDir": "${workspaceRoot}",
         "kindRoutes": {
-          "prompts/": ".kiro/steering/",
+          "prompts/": ".kiro/prompts/",
           "agents/": ".kiro/agents/",
           "instructions/": ".kiro/steering/",
           "skills/": ".kiro/skills/"

@@ -25,6 +25,9 @@ export * from './registry';
 // Search
 export * from './search/export-profile';
 
+// Transform
+export * from './transform/transformer-registry';
+
 // Writers (moved from infra due to CLI dependencies)
 export * from './writers/file-tree-writer';
 

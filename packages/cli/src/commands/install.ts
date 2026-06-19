@@ -72,6 +72,7 @@ import {
 } from '@prompt-registry/infra';
 import {
   FileTreeTargetWriter,
+  TransformerRegistry,
   type TargetWriter,
 } from '@prompt-registry/app';
 import {
@@ -428,6 +429,9 @@ const createWriterFactory = (
   ctx: Context,
   opts: InstallOptions
 ): (target: Target) => TargetWriter => {
+  // Create transformer registry with built-in transformers
+  const transformerRegistry = TransformerRegistry.withBuiltIns();
+
   return (target: Target): TargetWriter => {
     // Use CLI flags to override target scope if specified
     const scope = opts.scope ?? target.scope;
@@ -443,9 +447,11 @@ const createWriterFactory = (
       return new RepositoryScopeWriterAdapter(writer);
     }
     // Default to FileTreeTargetWriter for user scope
+    const transformer = transformerRegistry.getTransformer(target.type);
     return new FileTreeTargetWriter({
       fs: ctx.fs,
-      env: ctx.env
+      env: ctx.env,
+      transformer
     });
   };
 };
@@ -958,7 +964,9 @@ async function performRemoteInstall(
       });
       return 0;
     }
-    const writer = new FileTreeTargetWriter({ fs: ctx.fs, env: ctx.env });
+    const transformerRegistry = TransformerRegistry.withBuiltIns();
+    const transformer = transformerRegistry.getTransformer(target.type);
+    const writer = new FileTreeTargetWriter({ fs: ctx.fs, env: ctx.env, transformer });
     const result = await writer.write(target, files);
     const lockPath = path.join(ctx.cwd(), 'prompt-registry.lock.json');
     const existing = await readLockfile(lockPath, ctx.fs);

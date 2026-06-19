@@ -30,7 +30,7 @@
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src test",
     "lint:fix": "eslint src test --fix",
-    "copy-templates": "mkdir -p dist/scaffolding && cp -r src/scaffolding/templates dist/scaffolding/",
+    "copy-templates": "node -e \"const fs=require('fs');fs.mkdirSync('dist/scaffolding',{recursive:true});fs.cpSync('src/scaffolding/templates','dist/scaffolding/templates',{recursive:true,force:true});\"",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {

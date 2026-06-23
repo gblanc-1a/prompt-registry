@@ -25,14 +25,14 @@ import {
   unlinkSync,
 } from 'node:fs';
 import * as path from 'node:path';
-import archiver from 'archiver';
+import {
+  readCollection,
+} from '@prompt-registry/app';
 import {
   generateBundleId,
   normalizeRepoRelativePath,
 } from '@prompt-registry/core';
-import {
-  readCollection,
-} from '@prompt-registry/app';
+import archiver from 'archiver';
 import {
   resolveCollectionItemPaths,
 } from '../collections';
@@ -136,7 +136,7 @@ export class BundleBuildCommand extends BaseBundleBuildCommand {
       const cwd = ctx.cwd();
       const repoSlug = (this.repoSlug
         ?? (ctx.env.GITHUB_REPOSITORY ?? '').replaceAll('/', '-'))
-        || path.basename(cwd);
+      || path.basename(cwd);
       // Resolve outDir against ctx.cwd() so the command honors
       // injected working directories (Context invariant). Legacy
       // script relied on process.cwd() implicitly.
@@ -265,7 +265,7 @@ const createBundleBuildCommandDefinition = (
   }
   copyCommandPrototype(BundleBuildCommand, ConfiguredCommand);
 
-  return ConfiguredCommand as unknown as typeof BundleBuildCommand;
+  return ConfiguredCommand;
 };
 
 /**
@@ -306,7 +306,7 @@ export const createBundleBuildCommand = (
         const cwd = ctx.cwd();
         const repoSlug = (opts.repoSlug
           ?? (ctx.env.GITHUB_REPOSITORY ?? '').replaceAll('/', '-'))
-          || path.basename(cwd);
+        || path.basename(cwd);
         // Resolve outDir against ctx.cwd() so the command honors
         // injected working directories (Context invariant). Legacy
         // script relied on process.cwd() implicitly.

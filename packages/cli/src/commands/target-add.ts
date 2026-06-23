@@ -23,9 +23,7 @@ import {
 } from '@prompt-registry/infra';
 import {
   Command,
-  type CommandDefinition,
   Context,
-  defineCommand,
   failWith,
   formatOutput,
   getCommandContext,
@@ -124,7 +122,6 @@ async function ensureTargetDirectory(fs: Context['fs'], targetPath: string | und
  * @param output Output format.
  * @param err Registry error.
  */
-
 
 /**
  * Target add command class.

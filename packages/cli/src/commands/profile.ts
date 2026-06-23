@@ -18,37 +18,27 @@ import {
   resolveUserConfigPaths,
 } from '@prompt-registry/app';
 import {
-  type Target,
-} from '@prompt-registry/core';
+  resolveLayout,
+} from '@prompt-registry/app';
 import {
+  type HttpClient,
   type ProfileBundle,
+  type Target,
+  type TokenProvider,
 } from '@prompt-registry/core';
 import {
   generateSourceId,
 } from '@prompt-registry/core';
 import {
+  HubStore,
+  ProfileActivationStore,
   readLockfile,
+  readTargets,
   upsertEntry,
   upsertSource,
   upsertUseProfile,
   writeLockfile,
 } from '@prompt-registry/infra';
-import {
-  ProfileActivationStore,
-} from '@prompt-registry/infra';
-import {
-  readTargets,
-} from '@prompt-registry/infra';
-import {
-  HubStore,
-} from '@prompt-registry/infra';
-import {
-  resolveLayout,
-} from '@prompt-registry/app';
-import {
-  type HttpClient,
-  type TokenProvider,
-} from '@prompt-registry/core';
 import {
   Command,
   createHttpClientAndTokens,
@@ -216,6 +206,7 @@ export class ProfileShowCommand extends BaseProfileCommand {
         prompt-registry profile show my-profile --hub my-hub
     `
   });
+
   public profileId = Option.String({ required: false });
 
   public async execute() {
@@ -287,6 +278,7 @@ export class ProfileActivateCommand extends BaseProfileCommand {
         prompt-registry profile activate default --dry-run
     `
   });
+
   public profileId = Option.String({ required: false });
   public targets = Option.String('--target');
   public dryRun = Option.Boolean('--dry-run', false);
@@ -410,6 +402,7 @@ export class ProfileDeactivateCommand extends BaseProfileCommand {
         prompt-registry profile deactivate --dry-run
     `
   });
+
   public dryRun = Option.Boolean('--dry-run', false);
 
   public async execute() {

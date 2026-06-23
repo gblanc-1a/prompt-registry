@@ -11,12 +11,12 @@
  * dropped silently.
  */
 import {
+  readCollection,
+} from '@prompt-registry/app';
+import {
   listCollectionFiles,
   resolveCollectionItemPaths,
 } from '../collections';
-import {
-  readCollection,
-} from '@prompt-registry/app';
 import {
   Command,
   copyCommandPrototype,
@@ -154,7 +154,7 @@ const createCollectionAffectedCommandDefinition = (
   }
   copyCommandPrototype(CollectionAffectedCommand, ConfiguredCommand);
 
-  return ConfiguredCommand as unknown as typeof CollectionAffectedCommand;
+  return ConfiguredCommand;
 };
 
 /**

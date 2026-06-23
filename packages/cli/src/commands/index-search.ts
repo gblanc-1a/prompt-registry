@@ -10,46 +10,32 @@
  * with `--index <FILE>`.
  * @module cli/commands/index-search
  */
-import inquirer from 'inquirer';
-import type {
-  Target,
-} from '@prompt-registry/core';
-import type {
-  RegistrySource,
-} from '@prompt-registry/core';
 import {
   generateSourceId,
 } from '@prompt-registry/core';
-import {
-  defaultTokenProvider,
-} from '@prompt-registry/infra';
+import type {
+  HttpClient,
+  RegistrySource,
+  Target,
+  TokenProvider,
+} from '@prompt-registry/core';
 import {
   defaultIndexFile,
-} from '@prompt-registry/infra';
-import {
+  defaultTokenProvider,
+  loadIndex,
   NodeHttpClient,
+  readTargets,
 } from '@prompt-registry/infra';
 import type {
   PrimitiveKind,
   SearchQuery,
   SearchResult,
 } from '@prompt-registry/infra';
-import {
-  loadIndex,
-} from '@prompt-registry/infra';
-import {
-  readTargets,
-} from '@prompt-registry/infra';
-import type {
-  HttpClient,
-  TokenProvider,
-} from '@prompt-registry/core';
+import inquirer from 'inquirer';
 import {
   Command,
-  type CommandDefinition,
   type Context,
   createHubManager,
-  defineCommand,
   failWith,
   formatOutput,
   getCommandContext,
@@ -95,7 +81,6 @@ export interface IndexSearchOptions {
   /** DI seam: token provider (tests). */
   tokens?: TokenProvider;
 }
-
 
 /**
  * Index search command class.

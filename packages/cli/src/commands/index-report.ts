@@ -11,8 +11,6 @@
 import * as path from 'node:path';
 import {
   BlobCache,
-} from '@prompt-registry/infra';
-import {
   defaultHubCacheDir,
   defaultProgressFile,
 } from '@prompt-registry/infra';

@@ -11,14 +11,12 @@
 import * as fs from 'node:fs';
 import {
   defaultIndexFile,
+  loadIndex,
 } from '@prompt-registry/infra';
 import {
   type BenchCase,
   renderBenchReportMarkdown,
   runBench,
-} from '@prompt-registry/infra';
-import {
-  loadIndex,
 } from '@prompt-registry/infra';
 import {
   Command,

@@ -22,20 +22,12 @@ import {
   resolveUserConfigPaths,
 } from '@prompt-registry/app';
 import {
-  defaultTokenProvider,
-} from '@prompt-registry/infra';
-import {
-  NodeHttpClient,
-} from '@prompt-registry/infra';
-import {
   ActiveHubStore,
-} from '@prompt-registry/infra';
-import {
+  defaultTokenProvider,
   findProjectConfigPath,
-  readTargets,
-} from '@prompt-registry/infra';
-import {
   HubStore,
+  NodeHttpClient,
+  readTargets,
 } from '@prompt-registry/infra';
 import {
   Command,
@@ -148,7 +140,7 @@ const createDoctorCommandDefinition = (
   }
   copyCommandPrototype(DoctorCommand, ConfiguredCommand);
 
-  return ConfiguredCommand as unknown as typeof DoctorCommand;
+  return ConfiguredCommand;
 };
 
 /**

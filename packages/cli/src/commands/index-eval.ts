@@ -12,15 +12,13 @@
 import * as fs from 'node:fs';
 import {
   defaultIndexFile,
+  loadIndex,
 } from '@prompt-registry/infra';
 import {
   type PatternCase,
   type PatternReport,
   renderPatternReportMarkdown,
   runPatternEval,
-} from '@prompt-registry/infra';
-import {
-  loadIndex,
 } from '@prompt-registry/infra';
 import {
   Command,

@@ -12,24 +12,20 @@ import * as path from 'node:path';
 import {
   UninstallPipeline,
 } from '@prompt-registry/app';
+import {
+  FileTreeTargetWriter,
+  type TargetWriter,
+} from '@prompt-registry/app';
 import type {
   Target,
 } from '@prompt-registry/core';
 import {
   readLockfile,
+  readTargets,
   removeEntry,
+  TargetStateStore,
   writeLockfile,
 } from '@prompt-registry/infra';
-import {
-  TargetStateStore,
-} from '@prompt-registry/infra';
-import {
-  readTargets,
-} from '@prompt-registry/infra';
-import {
-  FileTreeTargetWriter,
-  type TargetWriter,
-} from '@prompt-registry/app';
 import {
   type RepositoryCommitMode,
   RepositoryScopeWriter,

@@ -14,10 +14,10 @@
 import {
   spawnSync,
 } from 'node:child_process';
-import * as semver from 'semver';
 import {
   readCollection,
 } from '@prompt-registry/app';
+import * as semver from 'semver';
 import {
   Command,
   copyCommandPrototype,
@@ -161,7 +161,7 @@ const createVersionComputeCommandDefinition = (
   }
   copyCommandPrototype(VersionComputeCommand, ConfiguredCommand);
 
-  return ConfiguredCommand as unknown as typeof VersionComputeCommand;
+  return ConfiguredCommand;
 };
 
 /**

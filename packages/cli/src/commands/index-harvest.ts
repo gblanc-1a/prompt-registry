@@ -17,8 +17,6 @@ import {
 } from '@prompt-registry/infra';
 import {
   ActiveHubStore,
-} from '@prompt-registry/infra';
-import {
   HubStore,
 } from '@prompt-registry/infra';
 import {
@@ -115,7 +113,7 @@ export const createIndexHarvestCommand = (
       const runner = opts.runPipeline ?? defaultHarvestHub;
       let result: HubHarvestPipelineResult;
       try {
-        result = await runner(pipelineOpts, ctx.env as NodeJS.ProcessEnv);
+        result = await runner(pipelineOpts, ctx.env);
       } catch (cause) {
         return failWith(ctx, fmt, 'index.harvest', new RegistryError({
           code: 'INDEX.HARVEST_FAILED',
@@ -273,7 +271,7 @@ export class IndexHarvestCommand extends Command {
     let result: HubHarvestPipelineResult;
 
     try {
-      result = await runner(pipelineOpts, ctx.env as NodeJS.ProcessEnv);
+      result = await runner(pipelineOpts, ctx.env);
     } catch (cause) {
       return failWith(ctx, fmt, 'index.harvest', buildHarvestError(cause));
     }

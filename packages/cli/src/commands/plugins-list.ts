@@ -122,7 +122,7 @@ const createPluginsListCommandDefinition = (
   }
   copyCommandPrototype(PluginsListCommand, ConfiguredCommand);
 
-  return ConfiguredCommand as unknown as typeof PluginsListCommand;
+  return ConfiguredCommand;
 };
 
 /**

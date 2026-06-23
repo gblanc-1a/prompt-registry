@@ -145,7 +145,7 @@ const createCollectionListCommandDefinition = (
   }
   copyCommandPrototype(CollectionListCommand, ConfiguredCommand);
 
-  return ConfiguredCommand as unknown as typeof CollectionListCommand;
+  return ConfiguredCommand;
 };
 
 /**

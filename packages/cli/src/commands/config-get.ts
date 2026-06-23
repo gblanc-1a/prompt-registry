@@ -154,7 +154,7 @@ const createConfigGetCommandDefinition = (
   }
   copyCommandPrototype(ConfigGetCommand, ConfiguredCommand);
 
-  return ConfiguredCommand as unknown as typeof ConfigGetCommand;
+  return ConfiguredCommand;
 };
 
 /**

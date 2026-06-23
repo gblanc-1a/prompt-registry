@@ -12,7 +12,9 @@ import type {
   TransformContext,
   TransformResult,
 } from '@prompt-registry/core';
-import { noChange } from '@prompt-registry/core';
+import {
+  noChange,
+} from '@prompt-registry/core';
 
 /**
  * Transformer that performs no transformations.

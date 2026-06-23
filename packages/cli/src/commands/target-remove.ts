@@ -140,7 +140,7 @@ const createTargetRemoveCommandDefinition = (
   }
   copyCommandPrototype(TargetRemoveCommand, ConfiguredCommand);
 
-  return ConfiguredCommand as unknown as typeof TargetRemoveCommand;
+  return ConfiguredCommand;
 };
 
 /**

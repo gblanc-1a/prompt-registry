@@ -12,17 +12,15 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import {
-  dump as toYaml,
-} from 'js-yaml';
-import {
   exportShortlistAsProfile,
 } from '@prompt-registry/app';
 import {
   defaultIndexFile,
-} from '@prompt-registry/infra';
-import {
   loadIndex,
 } from '@prompt-registry/infra';
+import {
+  dump as toYaml,
+} from 'js-yaml';
 import {
   Command,
   type CommandDefinition,

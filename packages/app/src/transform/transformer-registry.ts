@@ -13,8 +13,12 @@ import type {
 import type {
   TargetType,
 } from '@prompt-registry/core';
-import { NoOpTransformer } from './transformers/noop-transformer';
-import { KiroTransformer } from './transformers/kiro-transformer';
+import {
+  KiroTransformer,
+} from './transformers/kiro-transformer';
+import {
+  NoOpTransformer,
+} from './transformers/noop-transformer';
 
 /**
  * Registry of target-specific transformers.

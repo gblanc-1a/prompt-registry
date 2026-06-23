@@ -6,13 +6,11 @@
  * all produce the canonical envelope.
  * @module cli/commands/index-stats
  */
-import {
-  defaultIndexFile,
-} from '@prompt-registry/infra';
 import type {
   IndexStats,
 } from '@prompt-registry/infra';
 import {
+  defaultIndexFile,
   loadIndex,
 } from '@prompt-registry/infra';
 import {
@@ -134,7 +132,7 @@ const createIndexStatsCommandDefinition = (
   }
   copyCommandPrototype(IndexStatsCommand, ConfiguredCommand);
 
-  return ConfiguredCommand as unknown as typeof IndexStatsCommand;
+  return ConfiguredCommand;
 };
 
 /**

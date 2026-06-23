@@ -9,17 +9,21 @@
  */
 import * as path from 'node:path';
 import {
-  TemplateEngine,
-  TEMPLATE_PATHS,
-} from '@prompt-registry/infra';
-import {
   generateSanitizedId,
   TemplateContext,
 } from '@prompt-registry/core';
 import {
+  TEMPLATE_PATHS,
+  TemplateEngine,
+} from '@prompt-registry/infra';
+import {
+  readCollection,
+  writeCollection,
+} from '../collections';
+import {
   Command,
-  Option,
   copyCommandPrototype,
+  Option,
 } from '../framework';
 import {
   type Context,
@@ -28,12 +32,7 @@ import {
   RegistryError,
   renderError,
 } from '../framework';
-import {
-  readCollection,
-  writeCollection,
-} from '../collections';
 import type {
-  Collection,
   CollectionItem,
 } from '../types';
 
@@ -82,7 +81,7 @@ export class AgentCreateCommand extends BaseAgentCreateCommand {
 
   public async execute(): Promise<number> {
     const { ctx } = this.commandContext;
-    const fmt = (this.output ?? 'text') as OutputFormat;
+    const fmt = (this.output ?? 'text');
 
     try {
       // Determine agent name
@@ -178,6 +177,7 @@ export class AgentCreateCommand extends BaseAgentCreateCommand {
 
 /**
  * Create a configured agent create command class.
+ * @param ctx
  */
 const createAgentCreateCommandDefinition = (
   ctx: Context
@@ -191,11 +191,12 @@ const createAgentCreateCommandDefinition = (
 
   copyCommandPrototype(AgentCreateCommand, ConfiguredCommand);
 
-  return ConfiguredCommand as unknown as typeof AgentCreateCommand;
+  return ConfiguredCommand;
 };
 
 /**
  * Factory function to create a configured agent create command class.
+ * @param ctx
  */
 export const createAgentCreateCommandClass = (
   ctx: Context

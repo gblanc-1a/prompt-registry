@@ -8,6 +8,7 @@
 
 /**
  * Sanitize an ID by converting to lowercase and replacing non-alphanumeric chars with hyphens.
+ * @param name
  */
 export function generateSanitizedId(name: string): string {
   return name

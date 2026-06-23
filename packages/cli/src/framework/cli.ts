@@ -16,6 +16,10 @@
  *   thrown error         -> 70 (EX_SOFTWARE)
  *   --version / --help   -> 0
  */
+import type {
+  HttpClient,
+  TokenProvider,
+} from '@prompt-registry/core';
 import {
   Builtins,
   Cli,
@@ -25,10 +29,6 @@ import {
 import type {
   CommandClass,
 } from 'clipanion';
-import type {
-  HttpClient,
-  TokenProvider,
-} from '@prompt-registry/core';
 import type {
   Context,
 } from './context';

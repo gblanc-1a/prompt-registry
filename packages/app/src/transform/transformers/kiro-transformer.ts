@@ -18,7 +18,11 @@ import type {
   TransformContext,
   TransformResult,
 } from '@prompt-registry/core';
-import { noChange, changed, parseFrontmatter } from '@prompt-registry/core';
+import {
+  changed,
+  noChange,
+  parseFrontmatter,
+} from '@prompt-registry/core';
 
 /**
  * Transformer for Kiro-specific requirements.
@@ -43,16 +47,16 @@ export class KiroTransformer implements ResourceTransformer {
 
     try {
       const frontmatter = parseFrontmatter(context.content);
-      
+
       // Check if frontmatter markers exist in content
-      const hasFrontmatterMarkers = context.content.startsWith('---') && 
-        context.content.indexOf('---', 3) !== -1;
-      
+      const hasFrontmatterMarkers = context.content.startsWith('---')
+        && context.content.includes('---', 3);
+
       // If no frontmatter markers exist, return original content (fail-safe)
       if (!hasFrontmatterMarkers) {
         return noChange(context.content);
       }
-      
+
       // If name field already exists, no transformation needed
       if (frontmatter !== null && frontmatter.name !== undefined) {
         return noChange(context.content);
@@ -60,15 +64,15 @@ export class KiroTransformer implements ResourceTransformer {
 
       // Derive name from title or filename
       const derivedName = (frontmatter?.title) ?? this.extractNameFromPath(context.filePath);
-      
+
       // Update frontmatter with name field (create new if null)
-      const updatedFrontmatter = frontmatter === null 
+      const updatedFrontmatter = frontmatter === null
         ? { name: derivedName }
         : { ...frontmatter, name: derivedName };
       const updatedContent = this.serializeFrontmatter(updatedFrontmatter, context.content);
-      
+
       return changed(updatedContent);
-    } catch (error) {
+    } catch {
       // Fail-safe: on parsing error, return original content
       // In production, this would log a warning
       return noChange(context.content);
@@ -86,7 +90,7 @@ export class KiroTransformer implements ResourceTransformer {
     // Convert kebab-case to title case
     return baseName
       .split(/[-_]/)
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
       .join(' ');
   }
 
@@ -98,8 +102,8 @@ export class KiroTransformer implements ResourceTransformer {
    */
   private serializeFrontmatter(frontmatter: Record<string, unknown>, originalContent: string): string {
     const lines = originalContent.split('\n');
-    const frontmatterEndIndex = lines.findIndex(line => line === '---');
-    
+    const frontmatterEndIndex = lines.indexOf('---');
+
     if (frontmatterEndIndex === -1) {
       // No frontmatter found, prepend it
       const yamlLines = this.objectToYaml(frontmatter);
@@ -107,7 +111,7 @@ export class KiroTransformer implements ResourceTransformer {
     }
 
     const secondSeparatorIndex = lines.findIndex((line, idx) => idx > frontmatterEndIndex && line === '---');
-    
+
     if (secondSeparatorIndex === -1) {
       // Malformed frontmatter, return original
       return originalContent;
@@ -117,7 +121,7 @@ export class KiroTransformer implements ResourceTransformer {
     const yamlLines = this.objectToYaml(frontmatter);
     const beforeFrontmatter = lines.slice(0, frontmatterEndIndex + 1);
     const afterFrontmatter = lines.slice(secondSeparatorIndex);
-    
+
     return [...beforeFrontmatter, yamlLines, ...afterFrontmatter].join('\n');
   }
 

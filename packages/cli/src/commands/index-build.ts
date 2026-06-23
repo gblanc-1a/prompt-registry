@@ -8,23 +8,16 @@
  * @module cli/commands/index-build
  */
 import * as path from 'node:path';
-import {
-  LocalFolderBundleProvider,
-} from '@prompt-registry/infra';
-import {
-  PrimitiveIndex,
-} from '@prompt-registry/infra';
 import type {
   IndexStats,
 } from '@prompt-registry/infra';
 import {
+  LocalFolderBundleProvider,
+  PrimitiveIndex,
   saveIndex,
 } from '@prompt-registry/infra';
 import {
   Command,
-  type CommandDefinition,
-  type Context,
-  defineCommand,
   failWith,
   formatOutput,
   getCommandContext,
@@ -47,7 +40,6 @@ interface BuildResult {
   outFile: string;
   stats: IndexStats;
 }
-
 
 /**
  * Index build command class.

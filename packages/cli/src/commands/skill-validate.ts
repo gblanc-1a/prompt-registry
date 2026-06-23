@@ -6,11 +6,11 @@
  * framework's output formatter.
  */
 import {
-  type AllSkillsValidationResult,
-} from '@prompt-registry/core';
-import {
   validateAllSkills,
 } from '@prompt-registry/app';
+import {
+  type AllSkillsValidationResult,
+} from '@prompt-registry/core';
 import {
   Command,
   copyCommandPrototype,
@@ -127,7 +127,7 @@ const createSkillValidateCommandDefinition = (
   }
   copyCommandPrototype(SkillValidateCommand, ConfiguredCommand);
 
-  return ConfiguredCommand as unknown as typeof SkillValidateCommand;
+  return ConfiguredCommand;
 };
 
 /**

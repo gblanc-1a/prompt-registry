@@ -12,34 +12,28 @@
  *   prompt-registry init --target-name copilot --target-type copilot-cli --hub owner/repo --yes
  */
 import * as path from 'node:path';
-import inquirer from 'inquirer';
 import {
   resolveUserConfigPaths,
 } from '@prompt-registry/app';
 import {
+  HttpClient,
   type Target,
   TARGET_TYPES,
   type TargetType,
 } from '@prompt-registry/core';
-import {
-  getEnabledDefaultHubs,
-} from '@prompt-registry/infra';
 import type {
   TokenProvider,
-} from '@prompt-registry/infra';
-import {
-  writeLockfile,
 } from '@prompt-registry/infra';
 import {
   addTarget,
   addTargetToPath,
   findProjectConfigPath,
+  getEnabledDefaultHubs,
   readTargets,
+  writeLockfile,
   writeTargets,
 } from '@prompt-registry/infra';
-import type {
-  HttpClient,
-} from '@prompt-registry/core';
+import inquirer from 'inquirer';
 import {
   Command,
   type CommandDefinition,
@@ -153,7 +147,7 @@ export class InitCommand extends Command {
   public async execute(): Promise<number> {
     const { ctx, http, tokens } = this.commandContext;
     return runInit(ctx, {
-      output: (this.output ?? 'text') as OutputFormat,
+      output: (this.output ?? 'text'),
       targetName: this.targetName,
       targetType: this.targetType,
       scope: this.scope as TargetScope | undefined,
@@ -353,7 +347,7 @@ async function createOrReuseTarget(
   if (explicitPath !== undefined) {
     const result = await addTargetToPath(
       explicitPath,
-      { name: targetName, type: targetType as unknown as Target['type'], scope: targetScope },
+      { name: targetName, type: targetType, scope: targetScope },
       ctx.fs
     );
     return result;
@@ -365,7 +359,7 @@ async function createOrReuseTarget(
   if (existing !== undefined) {
     if ((existing.type as string) !== (targetType as string) || existing.scope !== targetScope) {
       const next = currentTargets.map((t) =>
-        t.name === targetName ? { ...t, type: targetType as unknown as Target['type'], scope: targetScope } : t
+        t.name === targetName ? { ...t, type: targetType, scope: targetScope } : t
       );
       const writeResult = await writeTargets(storeOpts, next);
       return { ...writeResult, updated: true };
@@ -376,7 +370,7 @@ async function createOrReuseTarget(
 
   return await addTarget(
     storeOpts,
-    { name: targetName, type: targetType as unknown as Target['type'], scope: targetScope }
+    { name: targetName, type: targetType, scope: targetScope }
   );
 }
 

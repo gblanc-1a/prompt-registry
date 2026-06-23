@@ -26,13 +26,6 @@ import {
   listCollectionFiles,
 } from '../collections';
 import {
-  type AllCollectionsResult,
-} from '../types';
-import {
-  generateMarkdown,
-  validateAllCollections,
-} from '../validate';
-import {
   Command,
   copyCommandPrototype,
   Option,
@@ -46,6 +39,13 @@ import {
   RegistryError,
   renderError,
 } from '../framework';
+import {
+  type AllCollectionsResult,
+} from '../types';
+import {
+  generateMarkdown,
+  validateAllCollections,
+} from '../validate';
 
 /**
  * Validation data.
@@ -198,7 +198,7 @@ const createCollectionValidateCommandDefinition = (
   }
   copyCommandPrototype(CollectionValidateCommand, ConfiguredCommand);
 
-  return ConfiguredCommand as unknown as typeof CollectionValidateCommand;
+  return ConfiguredCommand;
 };
 
 /**

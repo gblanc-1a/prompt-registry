@@ -9,19 +9,11 @@ import {
   resolveUserConfigPaths,
 } from '@prompt-registry/app';
 import {
-  defaultIndexFile,
-} from '@prompt-registry/infra';
-import {
   ActiveHubStore,
-} from '@prompt-registry/infra';
-import {
-  tryLoadIndex,
-} from '@prompt-registry/infra';
-import {
-  readLockfile,
-} from '@prompt-registry/infra';
-import {
+  defaultIndexFile,
   HubStore,
+  readLockfile,
+  tryLoadIndex,
 } from '@prompt-registry/infra';
 import {
   Command,

@@ -147,7 +147,7 @@ const createSkillNewCommandDefinition = (
   }
   copyCommandPrototype(SkillNewCommand, ConfiguredCommand);
 
-  return ConfiguredCommand as unknown as typeof SkillNewCommand;
+  return ConfiguredCommand;
 };
 
 /**

@@ -10,10 +10,10 @@
  * clipanion positional.
  */
 import * as path from 'node:path';
-import * as yaml from 'js-yaml';
 import {
   normalizeRepoRelativePath,
 } from '@prompt-registry/core';
+import * as yaml from 'js-yaml';
 import {
   Command,
   copyCommandPrototype,
@@ -159,7 +159,7 @@ const createBundleManifestCommandDefinition = (
   }
   copyCommandPrototype(BundleManifestCommand, ConfiguredCommand);
 
-  return ConfiguredCommand as unknown as typeof BundleManifestCommand;
+  return ConfiguredCommand;
 };
 
 /**

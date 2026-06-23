@@ -7,9 +7,6 @@
  * and writes it back atomically (saveIndex creates parent dirs).
  * @module cli/commands/index-shortlist
  */
-import {
-  defaultIndexFile,
-} from '@prompt-registry/infra';
 import type {
   PrimitiveIndex,
 } from '@prompt-registry/infra';
@@ -17,6 +14,7 @@ import type {
   Shortlist,
 } from '@prompt-registry/infra';
 import {
+  defaultIndexFile,
   loadIndex,
   saveIndex,
 } from '@prompt-registry/infra';

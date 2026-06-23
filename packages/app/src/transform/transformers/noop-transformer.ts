@@ -7,8 +7,6 @@
  */
 import type {
   ResourceTransformer,
-} from '@prompt-registry/core';
-import type {
   TransformContext,
   TransformResult,
 } from '@prompt-registry/core';

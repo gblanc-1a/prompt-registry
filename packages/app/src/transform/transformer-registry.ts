@@ -9,8 +9,6 @@
  */
 import type {
   ResourceTransformer,
-} from '@prompt-registry/core';
-import type {
   TargetType,
 } from '@prompt-registry/core';
 import {

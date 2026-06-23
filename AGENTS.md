@@ -82,6 +82,16 @@ pnpm --filter=@prompt-registry/infra run test:watch
 pnpm --filter=@prompt-registry/app  run test:coverage
 ```
 
+**Running a single test file with Vitest** — do NOT use `run test -- <file>` (pnpm passes the arg after `--` as a positional, not a vitest filter, so all tests run). Use `exec` instead:
+
+```bash
+# From repo root (preferred):
+pnpm --filter=@prompt-registry/cli exec vitest run test/commands/argument-parsing.test.ts
+
+# Or cd into the package first:
+cd packages/cli && npx vitest run test/commands/argument-parsing.test.ts
+```
+
 `packages/*` use **Vitest** (`vitest run`). `core` and `infra` builds also copy assets via Node (`copy-schemas` / `copy-templates`) — don't replace those `node -e fs.cpSync` steps with shell `cp` (Windows compatibility was a deliberate fix).
 
 ## VS Code extension
@@ -97,13 +107,26 @@ pnpm extension:package        # builds the .vsix (package:full)
 Run extension tests from `apps/vscode-extension/` (these scripts are npm, not pnpm-filtered):
 
 ```bash
-LOG_LEVEL=ERROR npm run test:unit          # Node, vscode mocked via test/mocha.setup.js
-npm run test:integration                   # real VS Code (Electron host)
-npm test                                   # both
-npm run test:one -- test/services/foo.test.ts   # single file (auto-compiles)
+# All unit tests — tests compile to test-dist/ automatically via pretest hook:
+cd apps/vscode-extension
+LOG_LEVEL=ERROR npm run test:unit
+
+# Single test file — auto-compiles via compile-tests, then runs just that file:
+npm run test:one -- test/services/foo.test.ts
+
+# If compile-tests already done, skip recompile:
+npm run test:one -- test/services/foo.test.ts --no-compile
+
+# Real VS Code host (Electron) — integration tests only:
+npm run test:integration
+
+# Both unit + integration:
+npm run test:all
 ```
 
-Tests compile to `test-dist/` first. `test/suite/**` = real-VS-Code integration; everything else = mocked unit/e2e. See `apps/vscode-extension/test/AGENTS.md` for test-writing patterns.
+**Prerequisite:** `compile-tests` requires `@prompt-registry/collection-scripts` in devDependencies (it is there via `workspace:*`). If `tsc` fails with "Cannot find module '@prompt-registry/collection-scripts'", run `pnpm install` from the repo root.
+
+`test/suite/**` = real-VS-Code integration; everything else = mocked unit/e2e. `LOG_LEVEL=ERROR` suppresses noisy runtime logs. See `apps/vscode-extension/test/AGENTS.md` for test-writing patterns.
 
 ## CLI
 

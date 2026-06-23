@@ -32,15 +32,26 @@ pnpm extension:package        # produces .vsix (package:full)
 **Run from `apps/vscode-extension/` using `npm run`, not `pnpm --filter`.**
 
 ```bash
-LOG_LEVEL=ERROR npm run test:unit          # Node; VS Code mocked via test/mocha.setup.js
-npm run test:integration                   # real VS Code (Electron host)
-npm test                                   # both
-npm run test:one -- test/services/foo.test.ts   # single file (auto-compiles)
-npm run test:coverage                      # all tests with c8
-npm run test:coverage:unit                 # unit only, c8 + html report
+# All unit tests (compiles to test-dist/ first, LOG_LEVEL suppresses runtime noise):
+LOG_LEVEL=ERROR npm run test:unit
+
+# Single test file — auto-compiles then runs just that file:
+npm run test:one -- test/services/foo.test.ts
+
+# Real VS Code Electron host (integration only):
+npm run test:integration
+
+# Both unit + integration:
+npm run test:all
+
+# Coverage:
+npm run test:coverage
+npm run test:coverage:unit
 ```
 
-Tests compile to `test-dist/` first. `test/mocha.setup.js` intercepts `require('vscode')` and loads `test/vscode-mock.js` — add missing VS Code APIs there before adding per-test stubs.
+**Compile step:** `npm run compile-tests` runs `tsc -p tsconfig.test.json` + copies fixtures into `test-dist/`. Requires `@prompt-registry/collection-scripts` devDependency (`workspace:*` — already in package.json). If you see "Cannot find module '@prompt-registry/collection-scripts'", run `pnpm install` from the repo root.
+
+`test/mocha.setup.js` intercepts `require('vscode')` and loads `test/vscode-mock.js` — add missing VS Code APIs there before adding per-test stubs.
 
 ## Test Layout
 

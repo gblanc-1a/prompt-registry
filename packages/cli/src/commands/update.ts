@@ -146,7 +146,7 @@ export class UpdateCommand extends BaseUpdateCommand {
     `
   });
 
-  public output = Option.String('-o,--output');
+  public output = Option.String('-o,--output') as OutputFormat | undefined;
   public lockfile = Option.String('--lockfile');
   public target = Option.String('--target');
   public dryRun = Option.Boolean('--dry-run', false);
@@ -157,7 +157,7 @@ export class UpdateCommand extends BaseUpdateCommand {
     const { ctx } = this.commandContext;
     const http = this.commandContext.http ?? new NodeHttpClient();
     const tokens = this.commandContext.tokens ?? defaultTokenProvider(ctx.env);
-    const fmt = (this.output ?? 'text') as OutputFormat;
+    const fmt = this.output ?? 'text';
 
     const lockPath = await resolveLockfilePath(ctx, this.lockfile);
     if (lockPath === null) {

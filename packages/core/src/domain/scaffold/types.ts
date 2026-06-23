@@ -21,6 +21,7 @@ export function generateSanitizedId(name: string): string {
 /**
  * Supported scaffold types for CLI commands.
  */
+/* eslint-disable @typescript-eslint/naming-convention -- PascalCase string-enum members are intentional domain vocabulary */
 export enum ScaffoldType {
   // Collection scaffolding
   Collection = 'collection',
@@ -38,6 +39,7 @@ export enum ScaffoldType {
   ProjectGitHub = 'project-github',
   ProjectApm = 'project-apm'
 }
+/* eslint-enable @typescript-eslint/naming-convention */
 
 /**
  * Common options for scaffold commands.

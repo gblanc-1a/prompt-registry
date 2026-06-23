@@ -55,7 +55,7 @@ abstract class BasePluginCreateCommand extends Command {
  */
 export class PluginCreateCommand extends BasePluginCreateCommand {
   public static readonly paths = [['plugin', 'create']];
-  // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
+
   public static readonly usage = Command.Usage({
     description: 'Create a new plugin directory',
     category: 'Primitive',

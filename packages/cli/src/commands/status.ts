@@ -73,7 +73,7 @@ export const createStatusCommand = (
  */
 export class StatusCommand extends Command {
   public static readonly paths = [['status']];
-  // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
+
   public static readonly usage = Command.Usage({
     description: 'Show current configuration state: targets, active hub, index, and lockfile.',
     category: 'Configure & Debug',

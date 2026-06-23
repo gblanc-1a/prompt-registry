@@ -55,7 +55,7 @@ abstract class BaseAgentCreateCommand extends Command {
  */
 export class AgentCreateCommand extends BaseAgentCreateCommand {
   public static readonly paths = [['agent', 'create']];
-  // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
+
   public static readonly usage = Command.Usage({
     description: 'Create a new agent file',
     category: 'Primitive',

@@ -55,7 +55,7 @@ abstract class BaseSkillCreateCommand extends Command {
  */
 export class SkillCreateCommand extends BaseSkillCreateCommand {
   public static readonly paths = [['skill', 'create']];
-  // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
+
   public static readonly usage = Command.Usage({
     description: 'Create a new skill directory',
     category: 'Primitive',

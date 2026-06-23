@@ -81,7 +81,7 @@ abstract class BaseVersionComputeCommand extends Command {
  */
 export class VersionComputeCommand extends BaseVersionComputeCommand {
   public static readonly paths = [['version', 'compute']];
-  // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
+
   public static readonly usage = Command.Usage({
     description: 'Compute the next semver version + git tag for a collection.',
     category: 'Build & Author',

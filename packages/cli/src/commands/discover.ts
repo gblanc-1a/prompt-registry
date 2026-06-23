@@ -160,7 +160,7 @@ export const createDiscoverCommand = (
  */
 export class DiscoverCommand extends Command {
   public static readonly paths = [['discover']];
-  // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
+
   public static readonly usage = Command.Usage({
     description: 'Discover relevant Copilot resources based on project context.',
     category: 'Hub & Discovery',

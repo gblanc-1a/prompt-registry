@@ -79,7 +79,7 @@ abstract class BaseDoctorCommand extends Command {
  */
 export class DoctorCommand extends BaseDoctorCommand {
   public static readonly paths = [['doctor']];
-  // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
+
   public static readonly usage = Command.Usage({
     description: 'Run environment self-checks and print a health report.',
     category: 'Configure & Debug',

@@ -56,7 +56,7 @@ abstract class BaseHookCreateCommand extends Command {
  */
 export class HookCreateCommand extends BaseHookCreateCommand {
   public static readonly paths = [['hook', 'create']];
-  // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
+
   public static readonly usage = Command.Usage({
     description: 'Create a new hook configuration file',
     category: 'Primitive',

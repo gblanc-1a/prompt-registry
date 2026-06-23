@@ -490,7 +490,7 @@ export class ProfileCurrentCommand extends BaseProfileCommand {
  */
 export class ProfileCreateCommand extends BaseProfileCommand {
   public static readonly paths = [['profile', 'create']];
-  // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
+
   public static readonly usage = Command.Usage({
     description: 'Create a new local profile in the default-local hub.',
     category: 'Hub & Discovery',
@@ -587,7 +587,7 @@ const applyBundleAdditions = (bundles: ProfileBundle[], spec: string, hubId: str
  */
 export class ProfileEditCommand extends BaseProfileCommand {
   public static readonly paths = [['profile', 'edit']];
-  // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
+
   public static readonly usage = Command.Usage({
     description: 'Edit an existing local profile (add/remove bundles, change description).',
     category: 'Hub & Discovery',
@@ -735,7 +735,7 @@ async function updateActivationLockfile(
  */
 export class ProfilePublishCommand extends BaseProfileCommand {
   public static readonly paths = [['profile', 'publish']];
-  // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
+
   public static readonly usage = Command.Usage({
     description: 'Publish a profile to a hub by injecting it into hub-config.yml and syncing.',
     category: 'Hub & Discovery',

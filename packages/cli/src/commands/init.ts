@@ -17,7 +17,6 @@ import {
 } from '@prompt-registry/app';
 import {
   HttpClient,
-  type Target,
   TARGET_TYPES,
   type TargetType,
 } from '@prompt-registry/core';
@@ -116,7 +115,7 @@ export const createInitCommand = (
  */
 export class InitCommand extends Command {
   public static readonly paths = [['init']];
-  // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
+
   public static readonly usage = Command.Usage({
     description: 'Bootstrap a project: add a target and optionally import a hub.',
     category: 'Getting Started',

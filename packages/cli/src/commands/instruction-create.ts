@@ -55,7 +55,7 @@ abstract class BaseInstructionCreateCommand extends Command {
  */
 export class InstructionCreateCommand extends BaseInstructionCreateCommand {
   public static readonly paths = [['instruction', 'create']];
-  // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
+
   public static readonly usage = Command.Usage({
     description: 'Create a new instruction file',
     category: 'Primitive',

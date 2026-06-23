@@ -59,7 +59,7 @@ abstract class BasePluginsListCommand extends Command {
  */
 export class PluginsListCommand extends BasePluginsListCommand {
   public static readonly paths = [['plugins', 'list']];
-  // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
+
   public static readonly usage = Command.Usage({
     description: 'List `prompt-registry-<name>` plugins discovered on $PATH (kubectl-style).',
     category: 'Configure & Debug',

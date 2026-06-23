@@ -8,7 +8,6 @@
  * so CI can gate ranking quality.
  * @module cli/commands/index-eval
  */
-// eslint-disable-next-line local/no-framework-imports -- bounded sync read of the gold-set file; refactoring loadIndex+gold to async ctx.fs is tracked separately.
 import * as fs from 'node:fs';
 import {
   defaultIndexFile,
@@ -101,7 +100,7 @@ export const createIndexEvalCommand = (
  */
 export class IndexEvalCommand extends Command {
   public static readonly paths = [['index', 'eval']];
-  // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
+
   public static readonly usage = Command.Usage({
     description: 'Run pattern-based relevance eval against an index.',
     category: 'Index & Search',

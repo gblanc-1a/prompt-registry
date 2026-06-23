@@ -47,7 +47,7 @@ interface BuildResult {
  */
 export class IndexBuildCommand extends Command {
   public static readonly paths = [['index', 'build']];
-  // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
+
   public static readonly usage = Command.Usage({
     description: 'Build a primitive index from a local folder of bundles.',
     category: 'Index & Search',

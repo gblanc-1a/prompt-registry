@@ -120,7 +120,7 @@ function renderUpdateOutput(d: { updated: number; checked: number; updates: Upda
 
 export class UpdateCommand extends BaseUpdateCommand {
   public static readonly paths = [['update']];
-  // eslint-disable-next-line new-cap -- Command.Usage is a Clipanion static factory, not a constructor
+
   public static readonly usage = Command.Usage({
     description: 'Check for newer versions of installed bundles and upgrade them.',
     category: 'Install & Manage',
@@ -146,7 +146,7 @@ export class UpdateCommand extends BaseUpdateCommand {
     `
   });
 
-  public output = Option.String('-o,--output') as OutputFormat | undefined;
+  public output = Option.String('-o', '--output') as OutputFormat | undefined;
   public lockfile = Option.String('--lockfile');
   public target = Option.String('--target');
   public dryRun = Option.Boolean('--dry-run', false);

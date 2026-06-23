@@ -52,7 +52,7 @@ abstract class BaseTargetRemoveCommand extends Command {
  */
 export class TargetRemoveCommand extends BaseTargetRemoveCommand {
   public static readonly paths = [['target', 'remove']];
-  // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
+
   public static readonly usage = Command.Usage({
     description: 'Remove a configured install target.',
     category: 'Install & Manage',

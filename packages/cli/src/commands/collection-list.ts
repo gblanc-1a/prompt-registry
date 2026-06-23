@@ -63,7 +63,7 @@ abstract class BaseCollectionListCommand extends Command {
  */
 export class CollectionListCommand extends BaseCollectionListCommand {
   public static readonly paths = [['collection', 'list']];
-  // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
+
   public static readonly usage = Command.Usage({
     description: 'List `*.collection.yml` files and print their id/name/path.',
     category: 'Build & Author',

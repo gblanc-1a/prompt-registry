@@ -88,7 +88,7 @@ export interface IndexSearchOptions {
  */
 export class IndexSearchCommand extends Command {
   public static readonly paths = [['index', 'search'], ['search']];
-  // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
+
   public static readonly usage = Command.Usage({
     description: 'Search a primitive index by free text + facets.',
     category: 'Index & Search',

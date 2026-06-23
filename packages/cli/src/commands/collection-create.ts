@@ -50,7 +50,7 @@ abstract class BaseCollectionCreateCommand extends Command {
  */
 export class CollectionCreateCommand extends BaseCollectionCreateCommand {
   public static readonly paths = [['collection', 'create']];
-  // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
+
   public static readonly usage = Command.Usage({
     description: 'Create a new collection file',
     category: 'Collection',

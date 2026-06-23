@@ -187,7 +187,7 @@ const isHubRefMissing = (noHubConfig: boolean, hubConfigFile: string | undefined
  */
 export class IndexHarvestCommand extends Command {
   public static readonly paths = [['index', 'harvest']];
-  // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
+
   public static readonly usage = Command.Usage({
     description: 'Fetch hub-config, walk every source, and write a primitive index.',
     category: 'Index & Search',

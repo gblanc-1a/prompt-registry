@@ -55,7 +55,7 @@ abstract class BasePromptCreateCommand extends Command {
  */
 export class PromptCreateCommand extends BasePromptCreateCommand {
   public static readonly paths = [['prompt', 'create']];
-  // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
+
   public static readonly usage = Command.Usage({
     description: 'Create a new prompt file',
     category: 'Primitive',

@@ -178,7 +178,7 @@ abstract class BaseInstallCommand extends Command {
  */
 export class InstallCommand extends BaseInstallCommand {
   public static readonly paths = [['install']];
-  // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
+
   public static readonly usage = Command.Usage({
     description: 'Install bundles to a configured target.',
     category: 'Install & Manage',

@@ -18,7 +18,6 @@
 // bounded usage is the single createWriteStream call inside
 // createDeterministicZip; the natural moment to add Context.fs.createWriteStream
 // is when install downloads are added.
-// eslint-disable-next-line local/no-framework-imports -- bounded fs ops for archiver: createWriteStream, existsSync, unlinkSync
 import {
   createWriteStream,
   existsSync,
@@ -104,7 +103,7 @@ abstract class BaseBundleBuildCommand extends Command {
  */
 export class BundleBuildCommand extends BaseBundleBuildCommand {
   public static readonly paths = [['bundle', 'build']];
-  // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
+
   public static readonly usage = Command.Usage({
     description: 'Generate a deployment manifest and zip collection items into a bundle.',
     category: 'Build & Author',

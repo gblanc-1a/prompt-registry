@@ -96,7 +96,7 @@ abstract class BaseCollectionValidateCommand extends Command {
  */
 export class CollectionValidateCommand extends BaseCollectionValidateCommand {
   public static readonly paths = [['collection', 'validate']];
-  // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
+
   public static readonly usage = Command.Usage({
     description: 'Validate `*.collection.yml` files against the schema.',
     category: 'Build & Author',

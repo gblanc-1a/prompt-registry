@@ -53,7 +53,7 @@ abstract class BaseIndexStatsCommand extends Command {
  */
 export class IndexStatsCommand extends BaseIndexStatsCommand {
   public static readonly paths = [['index', 'stats']];
-  // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
+
   public static readonly usage = Command.Usage({
     description: 'Show summary statistics for a primitive index.',
     category: 'Index & Search',

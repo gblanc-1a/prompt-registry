@@ -132,7 +132,7 @@ abstract class BaseUninstallCommand extends Command {
  */
 export class UninstallCommand extends BaseUninstallCommand {
   public static readonly paths = [['uninstall']];
-  // eslint-disable-next-line new-cap -- Command.Usage is a static method, not a constructor
+
   public static readonly usage = Command.Usage({
     description: 'Remove bundles from a configured target.',
     category: 'Install & Manage',

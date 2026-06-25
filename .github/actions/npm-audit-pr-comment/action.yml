@@ -53,8 +53,7 @@ runs:
             const advisories = new Map(
               Object.values(json.vulnerabilities ?? {})
                 .flatMap(v => (Array.isArray(v.via) ? v.via : [v.via]))
-                .filter(v => v && typeof v === 'object' && v.url)
-                .filter(v => SEVERITY_RANK.indexOf(v.severity) >= minRank)
+                .filter(v => v && typeof v === 'object' && v.url && SEVERITY_RANK.indexOf(v.severity) >= minRank)
                 .map(v => [v.url, v])
             )
 

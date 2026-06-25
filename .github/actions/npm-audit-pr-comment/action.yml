@@ -1,0 +1,93 @@
+name: npm audit PR comment
+description: >
+  Posts or updates a PR comment with pre-existing npm audit findings.
+  Informational only — never fails. Pair with dependency-review-action for gating.
+
+inputs:
+  working-directory:
+    description: Directory containing package.json / package-lock.json
+    required: true
+  audit-flags:
+    description: Extra flags forwarded to npm audit (e.g. --omit=dev --audit-level=moderate)
+    required: false
+    default: --audit-level=high
+  label:
+    description: Short label shown in the comment header (e.g. "website", "lib", "extension")
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Collect audit findings and post PR comment
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      env:
+        AUDIT_FLAGS: ${{ inputs.audit-flags }}
+        WORK_DIR: ${{ inputs.working-directory }}
+        LABEL: ${{ inputs.label }}
+      with:
+        script: |
+          const { execSync } = require('child_process')
+
+          let auditOutput
+          try {
+            auditOutput = execSync(
+              `npm audit --json ${process.env.AUDIT_FLAGS}`,
+              { cwd: process.env.WORK_DIR, stdio: ['pipe', 'pipe', 'pipe'] }
+            ).toString()
+          } catch (e) {
+            auditOutput = e.stdout?.toString() ?? '{}'
+          }
+
+          let report
+          try {
+            const json = JSON.parse(auditOutput)
+            const advisories = Object.values(json.vulnerabilities ?? {})
+              .flatMap(v => (Array.isArray(v.via) ? v.via : [v.via]))
+              .filter(v => v && typeof v === 'object' && v.url)
+              .reduce((map, v) => { map[v.url] = v; return map }, {})
+
+            const rows = Object.values(advisories).map(a =>
+              `| ${a.severity} | [${a.title}](${a.url}) | \`${a.module_name ?? a.name}\` |`
+            )
+
+            report = rows.length === 0
+              ? `✅ No vulnerabilities found (\`${process.env.AUDIT_FLAGS}\`).`
+              : [
+                  `⚠️ **Pre-existing vulnerabilities in \`${process.env.LABEL}\`** — not introduced by this PR, informational only.`,
+                  '',
+                  `| Severity | Advisory | Package |`,
+                  `|----------|----------|---------|`,
+                  ...rows,
+                  '',
+                  `> These were already present on the base branch. Use \`npm audit fix\` or upgrade dependencies to resolve them.`,
+                ].join('\n')
+          } catch (_) {
+            report = `⚠️ Could not parse audit output for \`${process.env.LABEL}\`.`
+          }
+
+          const marker = `<!-- npm-audit-comment:${process.env.LABEL} -->`
+          const body = `${marker}\n### npm audit — \`${process.env.LABEL}\`\n\n${report}`
+
+          const { data: comments } = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+          })
+
+          const existing = comments.find(c => c.body.includes(marker))
+          if (existing) {
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: existing.id,
+              body,
+            })
+          } else {
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            })
+          }

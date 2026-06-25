@@ -8,21 +8,25 @@ inputs:
     description: Directory containing package.json / package-lock.json
     required: true
   audit-flags:
-    description: Extra flags forwarded to npm audit (e.g. --omit=dev --audit-level=moderate)
+    description: Extra flags forwarded to npm audit (e.g. --omit=dev)
     required: false
-    default: --audit-level=high
+    default: ''
+  min-severity:
+    description: Minimum severity to include in the report (info, low, moderate, high, critical)
+    required: false
+    default: high
   label:
-    description: Short label shown in the comment header (e.g. "website", "lib", "extension")
+    description: Short label shown in the comment header (e.g. "website", "extension")
     required: true
 
 runs:
   using: composite
   steps:
     - name: Collect audit findings and post PR comment
-      if: github.event_name == 'pull_request'
       uses: actions/github-script@v7
       env:
         AUDIT_FLAGS: ${{ inputs.audit-flags }}
+        MIN_SEVERITY: ${{ inputs.min-severity }}
         WORK_DIR: ${{ inputs.working-directory }}
         LABEL: ${{ inputs.label }}
       with:
@@ -39,22 +43,29 @@ runs:
             auditOutput = e.stdout?.toString() ?? '{}'
           }
 
+          const SEVERITY_RANK = ['info', 'low', 'moderate', 'high', 'critical']
+          const minSeverity = (process.env.MIN_SEVERITY || 'high').toLowerCase()
+          const minRank = Math.max(0, SEVERITY_RANK.indexOf(minSeverity))
+
           let report
           try {
             const json = JSON.parse(auditOutput)
-            const advisories = Object.values(json.vulnerabilities ?? {})
-              .flatMap(v => (Array.isArray(v.via) ? v.via : [v.via]))
-              .filter(v => v && typeof v === 'object' && v.url)
-              .reduce((map, v) => { map[v.url] = v; return map }, {})
+            const advisories = new Map(
+              Object.values(json.vulnerabilities ?? {})
+                .flatMap(v => (Array.isArray(v.via) ? v.via : [v.via]))
+                .filter(v => v && typeof v === 'object' && v.url)
+                .filter(v => SEVERITY_RANK.indexOf(v.severity) >= minRank)
+                .map(v => [v.url, v])
+            )
 
-            const rows = Object.values(advisories).map(a =>
+            const rows = [...advisories.values()].map(a =>
               `| ${a.severity} | [${a.title}](${a.url}) | \`${a.module_name ?? a.name}\` |`
             )
 
             report = rows.length === 0
-              ? `✅ No vulnerabilities found (\`${process.env.AUDIT_FLAGS}\`).`
+              ? `✅ No vulnerabilities found (severity ≥ ${minSeverity}).`
               : [
-                  `⚠️ **Pre-existing vulnerabilities in \`${process.env.LABEL}\`** — not introduced by this PR, informational only.`,
+                  `⚠️ **Pre-existing vulnerabilities in \`${process.env.LABEL}\` (severity ≥ ${minSeverity})** — not introduced by this PR, informational only.`,
                   '',
                   `| Severity | Advisory | Package |`,
                   `|----------|----------|---------|`,
@@ -69,10 +80,11 @@ runs:
           const marker = `<!-- npm-audit-comment:${process.env.LABEL} -->`
           const body = `${marker}\n### npm audit — \`${process.env.LABEL}\`\n\n${report}`
 
-          const { data: comments } = await github.rest.issues.listComments({
+          const comments = await github.paginate(github.rest.issues.listComments, {
             owner: context.repo.owner,
             repo: context.repo.repo,
             issue_number: context.issue.number,
+            per_page: 100,
           })
 
           const existing = comments.find(c => c.body.includes(marker))

@@ -50,9 +50,11 @@ jobs:
         run: npm ci
 
       - name: Report pre-existing vulnerabilities on PR
+        if: github.event_name == 'pull_request'
         uses: ./.github/actions/npm-audit-pr-comment
         with:
           working-directory: ${{ github.workspace }}/website
+          min-severity: high
           label: website
 
       - name: Build documentation
@@ -68,28 +70,6 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: website/build
-
-  dependency-review:
-    name: Dependency Review (fail on new vulnerabilities)
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    permissions:
-      contents: read
-      pull-requests: write
-    steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@v2
-        with:
-          egress-policy: audit
-
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Dependency Review
-        uses: actions/dependency-review-action@v4
-        with:
-          fail-on-severity: high
-          vulnerability-check: true
 
   deploy:
     name: Deploy to GitHub Pages

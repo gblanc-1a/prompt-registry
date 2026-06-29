@@ -1,0 +1,95 @@
+name: Post npm-audit PR Comment
+
+on:
+  workflow_run:
+    # These names must match the `name:` of the workflows that run the
+    # npm-audit-pr-comment action. Renaming either workflow disables commenting.
+    workflows: ["Continuous Integration", "Deploy Documentation"]
+    types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read
+
+jobs:
+  post-comment:
+    name: Post npm-audit Comment
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.event == 'pull_request'
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
+      - name: Download npm-audit-comment artifact
+        id: artifact
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: npm-audit-comment
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: npm-audit-comment
+
+      - name: Warn if artifact not found
+        if: steps.artifact.outcome != 'success'
+        run: echo "::warning::No npm-audit-comment artifact found — skipping comment post."
+
+      - name: Post or update PR comment
+        if: steps.artifact.outcome == 'success'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs')
+
+            // Resolve the PR from the trusted head SHA, not the fork-controlled artifact.
+            const { owner, repo } = context.repo
+            const headSha = context.payload.workflow_run.head_sha
+            const prs = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner,
+              repo,
+              commit_sha: headSha,
+            })
+            const issueNumber = prs.data.find(
+              p => p.state === 'open' && p.base.repo.full_name === `${owner}/${repo}`
+            )?.number
+            if (!issueNumber) {
+              core.warning(`No open PR in ${owner}/${repo} associated with ${headSha} — skipping comment post.`)
+              return
+            }
+
+            const body = fs.readFileSync('npm-audit-comment/comment.md', 'utf8')
+
+            // Extract marker from first line of comment body (<!-- npm-audit-comment:LABEL -->)
+            const markerMatch = body.match(/^(<!-- npm-audit-comment:[^>]+ -->)/)
+            if (!markerMatch) {
+              core.warning('Could not find marker in comment body — skipping comment post.')
+              return
+            }
+            const marker = markerMatch[1]
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              per_page: 100,
+            })
+
+            const existing = comments.find(c => c.body.includes(marker))
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              })
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body,
+              })
+            }

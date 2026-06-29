@@ -1,7 +1,9 @@
 name: npm audit PR comment
 description: >
-  Posts or updates a PR comment with pre-existing npm audit findings.
-  Informational only — never fails. Pair with dependency-review-action for gating.
+  Generates a PR comment body with pre-existing npm audit findings and uploads it as an
+  artifact for the post-pr-comment workflow to post. Informational only — never fails.
+  Pair with dependency-review-action for gating.
+  Note: this action must be called at most once per workflow run (one artifact upload per run).
 
 inputs:
   working-directory:
@@ -22,7 +24,7 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Collect audit findings and post PR comment
+    - name: Collect audit findings and write artifact files
       uses: actions/github-script@v7
       env:
         AUDIT_FLAGS: ${{ inputs.audit-flags }}
@@ -32,6 +34,7 @@ runs:
       with:
         script: |
           const { execSync } = require('child_process')
+          const fs = require('fs')
 
           let auditOutput
           try {
@@ -79,26 +82,14 @@ runs:
           const marker = `<!-- npm-audit-comment:${process.env.LABEL} -->`
           const body = `${marker}\n### npm audit — \`${process.env.LABEL}\`\n\n${report}`
 
-          const comments = await github.paginate(github.rest.issues.listComments, {
-            owner: context.repo.owner,
-            repo: context.repo.repo,
-            issue_number: context.issue.number,
-            per_page: 100,
-          })
+          const tmpDir = process.env.RUNNER_TEMP
+          fs.writeFileSync(`${tmpDir}/comment.md`, body)
 
-          const existing = comments.find(c => c.body.includes(marker))
-          if (existing) {
-            await github.rest.issues.updateComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              comment_id: existing.id,
-              body,
-            })
-          } else {
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body,
-            })
-          }
+    - name: Upload audit comment artifact
+      uses: actions/upload-artifact@v4
+      # Informational only — upload failure must never fail the calling job.
+      continue-on-error: true
+      with:
+        name: npm-audit-comment
+        path: ${{ runner.temp }}/comment.md
+        retention-days: 1

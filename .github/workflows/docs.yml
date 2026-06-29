@@ -28,7 +28,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      pull-requests: write
+      # Read-only: commenting happens in post-pr-comment.yml via workflow_run.
+      pull-requests: read
     steps:
       - name: Harden Runner
         uses: step-security/harden-runner@v2

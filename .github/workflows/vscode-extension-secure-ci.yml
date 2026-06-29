@@ -35,7 +35,8 @@ jobs:
     permissions:
       contents: read
       security-events: write
-      pull-requests: write
+      # Read-only: commenting happens in post-pr-comment.yml via workflow_run.
+      pull-requests: read
 
     steps:
       - name: Harden Runner

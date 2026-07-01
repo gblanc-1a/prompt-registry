@@ -125,6 +125,11 @@ describe('Validation Module', () => {
       }
     });
 
+    it('should accept skill kind', () => {
+      const result = validateItemKind('skill');
+      assert.strictEqual(result.valid, true);
+    });
+
     it('should reject deprecated chatmode', () => {
       const result = validateItemKind('chatmode');
       assert.strictEqual(result.valid, false);
@@ -200,6 +205,17 @@ describe('Validation Module', () => {
         id: 'test-collection',
         name: 'Test Collection',
         items: [{ path: 'prompts/test.md', kind: 'prompt' }]
+      };
+      const result = validateCollectionObject(collection, 'test.yml');
+      assert.strictEqual(result.ok, true);
+      assert.strictEqual(result.errors.length, 0);
+    });
+
+    it('should accept a collection with a skill item', () => {
+      const collection = {
+        id: 'test-collection',
+        name: 'Test Collection',
+        items: [{ path: 'skills/my-skill/SKILL.md', kind: 'skill' }]
       };
       const result = validateCollectionObject(collection, 'test.yml');
       assert.strictEqual(result.ok, true);

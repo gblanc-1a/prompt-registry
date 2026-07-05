@@ -108,29 +108,33 @@ jobs:
         run: npm run build
 
       - name: Check if version changed
-        working-directory: lib
         id: version-check
-        run: |
-          PACKAGE_VERSION=$(node -p "require('./package.json').version")
-          echo "version=$PACKAGE_VERSION" >> $GITHUB_OUTPUT
-          
-          # Check if this version tag already exists
-          if git tag -l "collection-scripts-v$PACKAGE_VERSION" | grep -q .; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-            echo "Version $PACKAGE_VERSION already published"
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-          fi
-      - name: Create version tag
-        if: steps.version-check.outputs.exists == 'false'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          PACKAGE_VERSION=$(node -p "require('./lib/package.json').version")
+
+          if git tag -l "collection-scripts-v$PACKAGE_VERSION" | grep -q .; then
+            echo "Tag collection-scripts-v$PACKAGE_VERSION already exists, auto-bumping patch version"
+            (cd lib && npm version patch --no-git-tag-version)
+            PACKAGE_VERSION=$(node -p "require('./lib/package.json').version")
+            npm install --package-lock-only
+            git add lib/package.json package-lock.json
+            git add lib/package-lock.json 2>/dev/null || true
+            git commit -m "chore: auto-bump collection-scripts to v$PACKAGE_VERSION [skip ci]"
+            git push origin HEAD:main
+          fi
+
+          echo "version=$PACKAGE_VERSION" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create version tag
+        run: |
           git tag "collection-scripts-v${{ steps.version-check.outputs.version }}"
           git push origin "collection-scripts-v${{ steps.version-check.outputs.version }}"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Publish package
         working-directory: lib
-        if: steps.version-check.outputs.exists == 'false'
         run: npm publish --provenance --access public

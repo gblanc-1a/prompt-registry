@@ -128,12 +128,18 @@ npm test
 
 ### Releasing
 
-The package is configured to use provenance signing for npm publish. Make sure to set up OIDC authentication if publishing to npm.
-The version is taken from the package.json file. Therefore it is important to bump the version before publishing 
+The package is configured to use provenance signing for npm publish.
+
+**Patch releases are automatic.** When a change lands on `main` that touches the library, if the version in `lib/package.json` was not manually bumped, the CI pipeline auto-bumps the patch version, commits it back to `main`, tags, and publishes — no manual step required.
+
+**For minor or major releases**, bump the version manually before merging:
 
 ```bash
-npm version <patch|minor|major>
+cd lib
+npm version minor   # or major
 ```
+
+Committing a manually bumped version (where no `collection-scripts-v<version>` tag exists yet) causes the pipeline to publish that version as-is, skipping the auto-patch logic.
 
 ## License
 

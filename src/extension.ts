@@ -72,6 +72,9 @@ import {
   HubSyncScheduler,
 } from './services/hub-sync-scheduler';
 import {
+  InventoryScheduler,
+} from './services/inventory-scheduler';
+import {
   LockfileManager,
 } from './services/lockfile-manager';
 import {
@@ -164,6 +167,7 @@ export class PromptRegistryExtension {
 
   // Hub sync scheduler
   private hubSyncScheduler: HubSyncScheduler | undefined;
+  private inventoryScheduler: InventoryScheduler | undefined;
 
   // Update notification services
   private updateScheduler: UpdateScheduler | undefined;
@@ -221,6 +225,10 @@ export class PromptRegistryExtension {
         esTransport.subscribeToHubEvents(this.hubManager);
         this.telemetryService.addTransport(esTransport);
       }
+
+      // Start periodic inventory snapshots (installed bundle counts by scope/source).
+      this.inventoryScheduler = new InventoryScheduler(this.context, this.registryManager, this.telemetryService);
+      this.inventoryScheduler.initialize();
     } catch (error) {
       this.logger.warn('Failed to initialize telemetry service (non-fatal)', error);
     }

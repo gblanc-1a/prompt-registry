@@ -13,6 +13,9 @@ import {
   SetupStateManager,
 } from '../services/setup-state-manager';
 import {
+  TelemetryService,
+} from '../services/telemetry-service';
+import {
   isRemoteServerConfig,
   isStdioServerConfig,
 } from '../types/mcp';
@@ -42,8 +45,10 @@ import {
  * Message types sent from webview to extension
  */
 interface WebviewMessage {
-  type: 'refresh' | 'install' | 'update' | 'uninstall' | 'openDetails' | 'openPromptFile' | 'installVersion' | 'getVersions' | 'toggleAutoUpdate' | 'openSourceRepository' | 'completeSetup';
+  type: 'refresh' | 'install' | 'update' | 'uninstall' | 'openDetails' | 'openPromptFile' | 'installVersion' | 'getVersions' | 'toggleAutoUpdate' | 'openSourceRepository' | 'completeSetup' | 'search';
   bundleId?: string;
+  term?: string;
+  resultCount?: number;
   installPath?: string;
   filePath?: string;
   version?: string;
@@ -532,10 +537,35 @@ export class MarketplaceViewProvider implements vscode.WebviewViewProvider {
         await this.handleCompleteSetup();
         break;
       }
+      case 'search': {
+        this.handleSearch(message.term, message.resultCount);
+        break;
+      }
       default: {
         // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- value is safely stringifiable at runtime
         this.logger.warn(`Unknown message type: ${message.type}`);
       }
+    }
+  }
+
+  /**
+   * Track a marketplace search as an active-user signal.
+   * Only anonymized metrics are forwarded (query length + result count);
+   * the raw search term never leaves this method.
+   * @param term - the raw search query (reduced to its length)
+   * @param resultCount - number of bundles matching the query
+   */
+  private handleSearch(term?: string, resultCount?: number): void {
+    if (!term || term.length === 0) {
+      return;
+    }
+    try {
+      TelemetryService.getInstance().trackSearch({
+        termLength: term.length,
+        resultCount: resultCount ?? 0
+      });
+    } catch (error) {
+      this.logger.warn('Failed to track search telemetry (non-fatal)', error);
     }
   }
 

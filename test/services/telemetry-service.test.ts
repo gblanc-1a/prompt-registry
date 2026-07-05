@@ -172,6 +172,8 @@ suite('TelemetryService', () => {
         assert.strictEqual(doc.data?.version, '1.0.0');
         assert.strictEqual(doc.data?.scope, 'user');
         assert.strictEqual(doc.data?.sourceType, 'github');
+        // Correlation key so search events can be joined to installs
+        assert.strictEqual(typeof doc.data?.sessionId, 'string');
       });
 
       test('should default sourceType to unknown when not provided', () => {
@@ -401,6 +403,88 @@ suite('TelemetryService', () => {
       assert.strictEqual(doc.eventName, 'bundle.installed');
 
       disposeEmitters(mock.emitters);
+    });
+  });
+
+  suite('trackSearch()', () => {
+    test('should track bundle.searched with anonymized metrics and sessionId', () => {
+      service.trackSearch({ termLength: 7, resultCount: 3 });
+
+      const doc = mockTransport.last();
+      assert.strictEqual(doc.eventName, 'bundle.searched');
+      assert.strictEqual(doc.data?.termLength, 7);
+      assert.strictEqual(doc.data?.resultCount, 3);
+      assert.strictEqual(doc.data?.hasResults, true);
+      assert.strictEqual(typeof doc.data?.sessionId, 'string');
+    });
+
+    test('should report hasResults false when no results match', () => {
+      service.trackSearch({ termLength: 5, resultCount: 0 });
+
+      const doc = mockTransport.last();
+      assert.strictEqual(doc.data?.resultCount, 0);
+      assert.strictEqual(doc.data?.hasResults, false);
+    });
+
+    test('should NOT include the raw search term', () => {
+      service.trackSearch({ termLength: 12, resultCount: 1 });
+
+      const doc = mockTransport.last();
+      assert.strictEqual(doc.data?.term, undefined);
+    });
+  });
+
+  suite('trackInventorySnapshot()', () => {
+    test('should track inventory.snapshot with totals, scope counts and source types', () => {
+      service.trackInventorySnapshot({
+        total: 5,
+        byScope: { user: 2, workspace: 1, repository: 2 },
+        bySourceType: { github: 4, local: 1 }
+      });
+
+      const doc = mockTransport.last();
+      assert.strictEqual(doc.eventName, 'inventory.snapshot');
+      assert.strictEqual(doc.data?.total, 5);
+      assert.strictEqual(doc.data?.userCount, 2);
+      assert.strictEqual(doc.data?.workspaceCount, 1);
+      assert.strictEqual(doc.data?.repositoryCount, 2);
+      assert.deepStrictEqual(doc.data?.bySourceType, { github: 4, local: 1 });
+    });
+  });
+
+  suite('direct tracking respects telemetry level', () => {
+    let origCreate: any;
+
+    setup(() => {
+      origCreate = (vscode.env as any).createTelemetryLogger;
+    });
+
+    teardown(() => {
+      (vscode.env as any).createTelemetryLogger = origCreate;
+    });
+
+    test('should NOT emit search or inventory events when usage is disabled', () => {
+      TelemetryService.resetInstance();
+
+      (vscode.env as any).createTelemetryLogger = (sender: any, options: any) => {
+        const logger = origCreate(sender, options);
+        logger.isUsageEnabled = false;
+        return logger;
+      };
+
+      service = TelemetryService.getInstance();
+      const transport = new MockTransport();
+      service.addTransport(transport);
+
+      service.trackSearch({ termLength: 4, resultCount: 2 });
+      service.trackInventorySnapshot({
+        total: 1,
+        byScope: { user: 1, workspace: 0, repository: 0 },
+        bySourceType: { github: 1 }
+      });
+
+      assert.ok(!transport.documents.some((d) => d.eventName === 'bundle.searched'));
+      assert.ok(!transport.documents.some((d) => d.eventName === 'inventory.snapshot'));
     });
   });
 

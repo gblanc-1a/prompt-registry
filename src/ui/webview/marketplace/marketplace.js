@@ -10,6 +10,8 @@
   let showInstalledOnly = false;
   let setupState = 'complete'; // Default to complete to avoid showing setup prompt unnecessarily
   let sourcesCount = 0;
+  let lastResultCount = 0; // Count of bundles shown after the most recent filter/search
+  let searchDebounceTimer; // Debounces search telemetry so one event fires per search intent
 
   // Handle messages from extension
   window.addEventListener('message', (event) => {
@@ -172,6 +174,16 @@
   // Search functionality
   document.querySelector('#searchBox').addEventListener('input', () => {
     renderBundles();
+
+    // Debounced, anonymized search telemetry: one event per search intent.
+    clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = setTimeout(() => {
+      var term = document.querySelector('#searchBox').value.trim();
+      if (term === '') {
+        return;
+      }
+      vscode.postMessage({ type: 'search', term: term, resultCount: lastResultCount });
+    }, 400);
   });
 
   // Source selector button click
@@ -357,6 +369,9 @@
           || (bundle.author && bundle.author.toLowerCase().includes(term));
       });
     }
+
+    // Record the post-filter result count for search telemetry
+    lastResultCount = filteredBundles.length;
 
     if (filteredBundles.length === 0) {
       // Check if we have any bundles at all (before filtering)

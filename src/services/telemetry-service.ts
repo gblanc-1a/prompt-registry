@@ -66,7 +66,8 @@ export class TelemetryService {
       bundleId: bundle.bundleId,
       version: bundle.version,
       scope: bundle.scope,
-      sourceType: bundle.sourceType ?? 'unknown'
+      sourceType: bundle.sourceType ?? 'unknown',
+      sessionId: vscode.env.sessionId
     });
   }
 
@@ -145,6 +146,55 @@ export class TelemetryService {
       registryManager.onAutoUpdatePreferenceChanged((event) => this.telemetryLogger.logUsage('autoUpdate.preferenceChanged', { bundleId: event.bundleId, enabled: event.enabled })),
       registryManager.onRepositoryBundlesChanged(() => this.telemetryLogger.logUsage('repository.bundlesChanged'))
     );
+  }
+
+  /**
+   * Track a marketplace search as an active-user signal.
+   *
+   * Only anonymized metrics are recorded (never the raw query text):
+   * the query length, the number of matching results, and whether the
+   * search yielded any results. `sessionId` allows downstream analytics
+   * to correlate a search with a subsequent install within the same
+   * session (see {@link trackBundleEvent}).
+   * @param params - anonymized search metrics
+   * @param params.termLength - length of the search query
+   * @param params.resultCount - number of bundles matching the query
+   */
+  public trackSearch(params: { termLength: number; resultCount: number }): void {
+    this.telemetryLogger.logUsage('bundle.searched', {
+      termLength: params.termLength,
+      resultCount: params.resultCount,
+      hasResults: params.resultCount > 0,
+      sessionId: vscode.env.sessionId
+    });
+  }
+
+  /**
+   * Track a snapshot of the currently installed bundle inventory.
+   *
+   * Emitted periodically by {@link InventoryScheduler} to measure how many
+   * bundles are installed via the registry, broken down by scope and source
+   * type.
+   * @param params - aggregated inventory counts
+   * @param params.total - total number of installed bundles
+   * @param params.byScope - installed bundle counts keyed by scope
+   * @param params.byScope.user - number of user-scoped bundles
+   * @param params.byScope.workspace - number of workspace-scoped bundles
+   * @param params.byScope.repository - number of repository-scoped bundles
+   * @param params.bySourceType - installed bundle counts keyed by source type
+   */
+  public trackInventorySnapshot(params: {
+    total: number;
+    byScope: { user: number; workspace: number; repository: number };
+    bySourceType: Record<string, number>;
+  }): void {
+    this.telemetryLogger.logUsage('inventory.snapshot', {
+      total: params.total,
+      userCount: params.byScope.user,
+      workspaceCount: params.byScope.workspace,
+      repositoryCount: params.byScope.repository,
+      bySourceType: params.bySourceType
+    });
   }
 
   /**

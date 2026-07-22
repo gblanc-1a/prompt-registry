@@ -233,14 +233,29 @@ export class RegistryStorage {
    * @param source
    */
   public async addSource(source: RegistrySource): Promise<void> {
-    const config = await this.loadConfig();
+    await this.addSources([source]);
+  }
 
-    // Check for duplicate IDs
-    if (config.sources.some((s) => s.id === source.id)) {
-      throw new Error(`Source with ID '${source.id}' already exists`);
+  /**
+   * Add multiple sources with a single configuration write.
+   * @param sources
+   */
+  public async addSources(sources: RegistrySource[]): Promise<void> {
+    if (sources.length === 0) {
+      return;
     }
 
-    config.sources.push(source);
+    const config = await this.loadConfig();
+    const sourceIds = new Set(config.sources.map((source) => source.id));
+
+    for (const source of sources) {
+      if (sourceIds.has(source.id)) {
+        throw new Error(`Source with ID '${source.id}' already exists`);
+      }
+      sourceIds.add(source.id);
+    }
+
+    config.sources.push(...sources);
     await this.saveConfig(config);
   }
 

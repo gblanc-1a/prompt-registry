@@ -29,6 +29,7 @@ import type {
   HubConfig as CoreHubConfig,
   ValidationResult as CoreValidationResult,
   ProfileLifecycleSync,
+  RegistrySource,
 } from '@ai-primitives-hub/core';
 import {
   CompositeHubResolver,
@@ -562,7 +563,8 @@ export class HubManager {
         hubSources,
         {
           listSources: () => this.registryManager.listSources(),
-          addSource: (source) => this.registryManager.addSource(source),
+          addSource: (source) => this.registryManager.addSource(source, { validate: false }),
+          addSources: (sources: RegistrySource[]) => this.registryManager.addSources(sources, { validate: false }),
           updateSource: (sourceId, updates) => this.registryManager.updateSource(sourceId, updates)
         },
         this.translateLogEvent

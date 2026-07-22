@@ -65,6 +65,7 @@ export interface SourceOperations {
 export interface HubSourceSync {
   listSources(): Promise<RegistrySource[]>;
   addSource(source: RegistrySource): Promise<void>;
+  addSources?(sources: RegistrySource[]): Promise<void>;
   updateSource(sourceId: string, updates: Partial<RegistrySource>): Promise<void>;
 }
 

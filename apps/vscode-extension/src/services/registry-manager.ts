@@ -801,27 +801,57 @@ export class RegistryManager {
   /**
    * Add a new registry source
    * @param source
+   * @param options Registration options. Hub sources can skip remote validation
+   * because their configuration has already passed hub schema validation.
+   * @param options.validate Whether to validate the source remotely before registration.
    */
-  public async addSource(source: RegistrySource): Promise<void> {
+  public async addSource(
+    source: RegistrySource,
+    options: { validate?: boolean } = {}
+  ): Promise<void> {
     this.logger.info(`Adding source: ${source.name}`);
+    await this.addSources([source], options);
+    this.logger.info(`Source '${source.name}' added successfully`);
+  }
 
-    // Validate source (with global token if applicable)
-    const enrichedSource = this.enrichSourceWithGlobalToken(source);
-    const adapter = createRegistryAdapter(enrichedSource);
-    const validation = await adapter.validate();
+  /**
+   * Add registry sources with one storage write.
+   * @param sources
+   * @param options Registration options.
+   * @param options.validate Whether to validate sources remotely before registration.
+   */
+  public async addSources(
+    sources: RegistrySource[],
+    options: { validate?: boolean } = {}
+  ): Promise<void> {
+    const sourceAdapters = sources.map((source) => ({
+      source,
+      adapter: createRegistryAdapter(this.enrichSourceWithGlobalToken(source))
+    }));
 
-    if (!validation.valid) {
-      throw new Error(`Source validation failed: ${validation.errors.join(', ')}`);
+    if (options.validate !== false) {
+      const validations = await Promise.all(sourceAdapters.map(async ({ source, adapter }) => ({
+        source,
+        validation: await adapter.validate()
+      })));
+
+      const invalid = validations.find(({ validation }) => !validation.valid);
+      if (invalid) {
+        const errors = invalid.validation.errors.join(', ');
+        throw new Error(`Source validation failed for '${invalid.source.name}': ${errors}`);
+      }
     }
 
-    await this.storage.addSource(source);
-    this.adapters.set(source.id, adapter);
+    await this.storage.addSources(sources);
+    for (const { source, adapter } of sourceAdapters) {
+      this.adapters.set(source.id, adapter);
+    }
 
-    // Update cache
     this.sourcesCache = await this.storage.getSources();
 
-    this._onSourceAdded.fire(source);
-    this.logger.info(`Source '${source.name}' added successfully`);
+    for (const source of sources) {
+      this._onSourceAdded.fire(source);
+    }
   }
 
   /**

@@ -49,6 +49,7 @@ function makeRegistrySource(overrides: Partial<RegistrySource> = {}): RegistrySo
 function makePorts(initial: RegistrySource[] = []): {
   listSources: ReturnType<typeof vi.fn>;
   addSource: ReturnType<typeof vi.fn>;
+  addSources?: ReturnType<typeof vi.fn>;
   updateSource: ReturnType<typeof vi.fn>;
   sources: RegistrySource[];
 } {
@@ -58,6 +59,9 @@ function makePorts(initial: RegistrySource[] = []): {
     listSources: vi.fn(async () => [...sources]),
     addSource: vi.fn(async (source: RegistrySource) => {
       sources.push(source);
+    }),
+    addSources: vi.fn(async (newSources: RegistrySource[]) => {
+      sources.push(...newSources);
     }),
     updateSource: vi.fn(async (id: string, updates: Partial<RegistrySource>) => {
       const index = sources.findIndex((s) => s.id === id);
@@ -118,11 +122,28 @@ describe('loadHubSources', () => {
     const result = await loadHubSources('hub-a', [source], ports);
 
     expect(result).toEqual({ added: 1, updated: 0, skipped: 0 });
-    expect(ports.addSource).toHaveBeenCalledWith(expect.objectContaining({
-      id: generateSourceId('awesome-copilot', source.url, { branch: 'main', collectionsPath: 'collections' }),
-      name: 'Source 1',
-      hubId: 'hub-a'
-    }));
+    expect(ports.addSources).toHaveBeenCalledWith([
+      expect.objectContaining({
+        id: generateSourceId('awesome-copilot', source.url, { branch: 'main', collectionsPath: 'collections' }),
+        name: 'Source 1',
+        hubId: 'hub-a'
+      })
+    ]);
+  });
+
+  it('registers all new hub sources in one bulk operation', async () => {
+    const result = await loadHubSources('hub-a', [
+      makeHubSource({ id: 's1', url: 'https://github.com/org/one' }),
+      makeHubSource({ id: 's2', url: 'https://github.com/org/two' }),
+      makeHubSource({ id: 's3', url: 'https://github.com/org/three' })
+    ], ports);
+
+    expect(result).toEqual({ added: 3, updated: 0, skipped: 0 });
+    expect(ports.addSources).toHaveBeenCalledTimes(1);
+    expect(ports.addSources).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({ name: 'Source 1' })
+    ]));
+    expect(ports.addSource).not.toHaveBeenCalled();
   });
 
   it('skips disabled sources', async () => {
@@ -167,6 +188,7 @@ describe('loadHubSources', () => {
   });
 
   it('continues loading remaining sources when one addSource call fails', async () => {
+    ports.addSources = undefined;
     ports.addSource = vi.fn()
       .mockResolvedValueOnce(undefined)
       .mockRejectedValueOnce(new Error('Source validation failed: HTTP 404'))

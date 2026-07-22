@@ -13,6 +13,26 @@
       "id": "testFile",
       "type": "promptString",
       "description": "Test file path relative to apps/vscode-extension (e.g. test/services/telemetry-service.test.ts)"
+    },
+    {
+      "id": "lintFiles",
+      "type": "promptString",
+      "description": "Whitespace-separated workspace-relative files to lint (e.g. packages/app/src/foo.ts apps/vscode-extension/src/bar.ts)"
+    },
+    {
+      "id": "extensionTestFiles",
+      "type": "promptString",
+      "description": "Whitespace-separated test paths relative to apps/vscode-extension (e.g. test/services/foo.test.ts test/storage/bar.test.ts)"
+    },
+    {
+      "id": "packageDirectory",
+      "type": "promptString",
+      "description": "Package directory relative to the workspace (e.g. packages/app)"
+    },
+    {
+      "id": "packageTestFiles",
+      "type": "promptString",
+      "description": "Whitespace-separated Vitest file paths relative to the selected package (e.g. test/registry/foo.test.ts)"
     }
   ],
   "tasks": [
@@ -95,6 +115,17 @@
     },
     {
       "type": "shell",
+      "label": "pnpm: lint files",
+      "command": "pnpm exec eslint ${input:lintFiles}",
+      "problemMatcher": ["$eslint-stylish"],
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "type": "shell",
       "label": "pnpm: test:unit",
       "command": "pnpm",
       "args": ["run", "test:unit"],
@@ -137,6 +168,28 @@
       "label": "pnpm: test:one",
       "command": "pnpm",
       "args": ["-C", "apps/vscode-extension", "run", "test:one", "--", "${input:testFile}"],
+      "problemMatcher": [],
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "type": "shell",
+      "label": "pnpm: test extension files",
+      "command": "pnpm -C apps/vscode-extension run test:one -- ${input:extensionTestFiles}",
+      "problemMatcher": [],
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "type": "shell",
+      "label": "pnpm: test package files",
+      "command": "pnpm -C ${input:packageDirectory} exec vitest run ${input:packageTestFiles}",
       "problemMatcher": [],
       "group": "test",
       "presentation": {

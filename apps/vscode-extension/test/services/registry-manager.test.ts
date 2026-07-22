@@ -663,6 +663,68 @@ suite('RegistryManager - Source Management', () => {
     assert.ok(factoryStub.called, 'Adapter factory should be called');
     assert.ok(mockAdapter.validate.called, 'Adapter validation should be called');
   });
+
+  test('should register a trusted source without remote validation', async () => {
+    const trustedSource: RegistrySource = {
+      id: 'trusted-source',
+      name: 'Trusted Hub Source',
+      type: 'github',
+      url: 'https://github.com/example/trusted',
+      enabled: true,
+      priority: 0
+    };
+
+    mockStorage.addSource.resolves();
+    mockStorage.getSources.resolves([trustedSource]);
+
+    const mockAdapter = {
+      validate: sandbox.stub().rejects(new Error('Remote validation should not run')),
+      fetchBundles: sandbox.stub().resolves([])
+    };
+    sandbox.stub(InfraAdapterFactory, 'createRegistryAdapter').returns(mockAdapter as any);
+
+    await manager.addSource(trustedSource, { validate: false });
+
+    const sources = await manager.listSources();
+    assert.ok(sources.some((source) => source.id === trustedSource.id), 'Trusted source should be registered');
+    assert.strictEqual(mockAdapter.validate.callCount, 0, 'Trusted source should not be remotely validated');
+  });
+
+  test('should register trusted sources in one storage operation', async () => {
+    const trustedSources: RegistrySource[] = [
+      {
+        id: 'trusted-source-1',
+        name: 'Trusted Hub Source 1',
+        type: 'github',
+        url: 'https://github.com/example/one',
+        enabled: true,
+        priority: 0
+      },
+      {
+        id: 'trusted-source-2',
+        name: 'Trusted Hub Source 2',
+        type: 'github',
+        url: 'https://github.com/example/two',
+        enabled: true,
+        priority: 1
+      }
+    ];
+
+    mockStorage.addSources.resolves();
+    mockStorage.getSources.resolves(trustedSources);
+
+    const validate = sandbox.stub().rejects(new Error('Remote validation should not run'));
+    sandbox.stub(InfraAdapterFactory, 'createRegistryAdapter').returns({
+      validate,
+      fetchBundles: sandbox.stub().resolves([])
+    } as any);
+
+    await manager.addSources(trustedSources, { validate: false });
+
+    assert.ok(mockStorage.addSources.calledOnceWith(trustedSources), 'Sources should be persisted together');
+    assert.strictEqual(validate.callCount, 0, 'Trusted sources should not be remotely validated');
+    assert.strictEqual((await manager.listSources()).length, 2, 'All trusted sources should be registered');
+  });
 });
 
 suite('RegistryManager - Version Change Installation', () => {

@@ -635,15 +635,26 @@ suite('Hub Source Loading - SourceId Format', () => {
   class MockRegistryManager {
     private sources: RegistrySource[] = [];
     public addSourceCalls: RegistrySource[] = [];
+    public addSourceOptions: ({ validate?: boolean } | undefined)[] = [];
+    public addSourcesCalls = 0;
     public updateSourceCalls: { id: string; updates: Partial<RegistrySource> }[] = [];
 
     public listSources(): Promise<RegistrySource[]> {
       return Promise.resolve([...this.sources]);
     }
 
-    public addSource(source: RegistrySource): Promise<void> {
+    public addSource(source: RegistrySource, options?: { validate?: boolean }): Promise<void> {
       this.sources.push(source);
       this.addSourceCalls.push(source);
+      this.addSourceOptions.push(options);
+      return Promise.resolve();
+    }
+
+    public addSources(sources: RegistrySource[], options?: { validate?: boolean }): Promise<void> {
+      this.sources.push(...sources);
+      this.addSourceCalls.push(...sources);
+      this.addSourceOptions.push(...sources.map(() => options));
+      this.addSourcesCalls++;
       return Promise.resolve();
     }
 
@@ -659,6 +670,8 @@ suite('Hub Source Loading - SourceId Format', () => {
     public reset(): void {
       this.sources = [];
       this.addSourceCalls = [];
+      this.addSourceOptions = [];
+      this.addSourcesCalls = 0;
       this.updateSourceCalls = [];
     }
 
@@ -754,6 +767,17 @@ suite('Hub Source Loading - SourceId Format', () => {
           `Source ID "${source.id}" should NOT start with 'hub-' (legacy format)`
         );
       }
+    });
+
+    test('loadHubSources() should register schema-validated hub sources without remote validation', async () => {
+      await hubManager.importHub(localRef, 'trusted-hub');
+
+      assert.ok(mockRegistry.addSourceOptions.length > 0, 'Hub sources should be registered');
+      assert.ok(
+        mockRegistry.addSourceOptions.every((options) => options?.validate === false),
+        'Hub source registration should skip remote validation'
+      );
+      assert.strictEqual(mockRegistry.addSourcesCalls, 1, 'Hub sources should be registered in one batch');
     });
   });
 

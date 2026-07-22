@@ -80,10 +80,9 @@ export function findDuplicateSource(
 /**
  * Sync a hub's declared sources into the registry.
  *
- * Per-source `addSource` failures (e.g. a private repo returning 404)
- * are caught, logged, and skipped rather than failing the whole
- * operation — a hub with one bad source should still get its other
- * sources loaded. `listSources`/`updateSource` failures are not
+ * New sources are registered in one operation when the port supports
+ * batching; otherwise per-source `addSource` failures are caught,
+ * logged, and skipped. `listSources`/`updateSource` failures are not
  * caught here; they propagate to the caller.
  * @param hubId Hub identifier the sources belong to.
  * @param hubSources Sources declared in the hub's config.
@@ -108,6 +107,7 @@ export async function loadHubSources(
   let added = 0;
   let updated = 0;
   let skipped = 0;
+  const sourcesToAdd: RegistrySource[] = [];
 
   for (const hubSource of hubSources) {
     if (!hubSource.enabled) {
@@ -175,13 +175,29 @@ export async function loadHubSources(
       hubId
     };
 
+    sourcesToAdd.push(registrySource);
+    existingSources.push(registrySource);
+  }
+
+  if (ports.addSources && sourcesToAdd.length > 0) {
     try {
-      await ports.addSource(registrySource);
-      added++;
+      await ports.addSources(sourcesToAdd);
+      added += sourcesToAdd.length;
     } catch (sourceError) {
       const err = sourceError instanceof Error ? sourceError : new Error(String(sourceError));
-      log('warn', `Failed to add hub source ${sourceId} (${hubSource.name}): ${err.message}`, err);
-      skipped++;
+      log('warn', `Failed to add ${sourcesToAdd.length} hub sources: ${err.message}`, err);
+      skipped += sourcesToAdd.length;
+    }
+  } else {
+    for (const source of sourcesToAdd) {
+      try {
+        await ports.addSource(source);
+        added++;
+      } catch (sourceError) {
+        const err = sourceError instanceof Error ? sourceError : new Error(String(sourceError));
+        log('warn', `Failed to add hub source ${source.id} (${source.name}): ${err.message}`, err);
+        skipped++;
+      }
     }
   }
 

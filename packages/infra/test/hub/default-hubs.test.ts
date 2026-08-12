@@ -4,6 +4,7 @@
  */
 import type {
   HubReference,
+  LogEvent,
 } from '@ai-primitives-hub/core';
 import {
   beforeEach,
@@ -36,6 +37,28 @@ describe('default hubs configuration', () => {
 
   it('offers at least one enabled hub', () => {
     expect(getEnabledDefaultHubs().length).toBeGreaterThan(0);
+  });
+
+  it('reports the selected source once when initializing the cache', () => {
+    const logs: LogEvent[] = [];
+
+    getDefaultHubs((event) => logs.push(event));
+    getDefaultHubs((event) => logs.push(event));
+
+    expect(logs).toEqual([{
+      level: 'debug',
+      message: 'Loaded 2 default hub(s) from bundled default-hubs.json.'
+    }]);
+  });
+
+  it('provides all required fields for every bundled hub', () => {
+    for (const hub of getDefaultHubs()) {
+      expect(hub.name).toBeTruthy();
+      expect(hub.description).toBeTruthy();
+      expect(hub.icon).toBeTruthy();
+      expect(hub.reference.type).toBeTruthy();
+      expect(hub.reference.location).toBeTruthy();
+    }
   });
 
   it('marks exactly one hub as recommended so the selection is not order-dependent', () => {

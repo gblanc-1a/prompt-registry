@@ -52,7 +52,7 @@ pnpm lint
 | `github-actions/validate-collections/` | Reusable GitHub Action for validating collections in CI |
 | `docs/` | User, author, and contributor documentation |
 | `website/` | Docusaurus documentation site |
-| `packages/infra/config/` | Default hubs configuration |
+| `packages/infra/src/config/` | Default hubs configuration |
 
 ## 🏗️ Architecture
 
@@ -69,7 +69,7 @@ flowchart TD
     APP --> CORE[packages/core]
     APP --> INF[packages/infra]
     INF --> CORE
-    INF --> AD[Adapters<br/>GitHub / Local / APM / Skills / Awesome Copilot]
+    INF --> AD[Adapters<br/>GitHub / Local / APM / Skills / Awesome Copilot / Azure DevOps]
 ```
 
 For extension details, see the [Contributor Architecture Guide](./docs/contributor-guide/architecture.md).

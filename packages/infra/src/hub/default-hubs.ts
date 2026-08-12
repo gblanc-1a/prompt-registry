@@ -7,7 +7,7 @@
  * for accessibility before being activated.
  *
  * The JSON configuration is statically imported so all delivery formats use
- * the same primary source, with a hardcoded fallback for invalid config.
+ * the same primary source, with a hardcoded fallback for an invalid or an empty config.
  */
 import type {
   HubReference,
@@ -52,7 +52,11 @@ const HARDCODED_DEFAULT_HUBS: DefaultHubConfig[] = [
 ];
 
 function loadDefaultHubs(onLog?: OnLogEvent): DefaultHubConfig[] {
-  return resolveDefaultHubs(rawDefaultHubs.defaultHubs, HARDCODED_DEFAULT_HUBS, onLog);
+  return resolveDefaultHubs(
+    rawDefaultHubs.defaultHubs as DefaultHubConfig[],
+    HARDCODED_DEFAULT_HUBS,
+    onLog
+  );
 }
 
 let cachedHubs: DefaultHubConfig[] | null = null;

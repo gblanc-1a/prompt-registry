@@ -54,7 +54,7 @@ describe('default hubs configuration', () => {
     }]);
   });
 
-  it('prefers a valid bundled configuration over the hardcoded fallback', () => {
+  it('prefers the bundled configuration over the hardcoded fallback', () => {
     const logs: LogEvent[] = [];
     const configuredHubs = [{
       name: 'Configured Hub',
@@ -76,7 +76,7 @@ describe('default hubs configuration', () => {
     }]);
   });
 
-  it('uses the hardcoded defaults when the bundled configuration is malformed', () => {
+  it('uses the hardcoded defaults when the bundled configuration is empty', () => {
     const logs: LogEvent[] = [];
     const fallbackHubs = [{
       name: 'Fallback Hub',
@@ -85,11 +85,21 @@ describe('default hubs configuration', () => {
       reference: reference()
     }];
 
-    expect(resolveDefaultHubs([{}], fallbackHubs, (event) => logs.push(event))).toBe(fallbackHubs);
+    expect(resolveDefaultHubs([], fallbackHubs, (event) => logs.push(event))).toBe(fallbackHubs);
     expect(logs).toEqual([{
       level: 'warn',
-      message: 'Bundled default-hubs.json is empty or invalid; loaded 1 hardcoded default hub(s).'
+      message: 'Bundled default-hubs.json is empty; loaded 1 hardcoded default hub(s).'
     }]);
+  });
+
+  it('provides all required fields for every bundled hub', () => {
+    for (const hub of getDefaultHubs()) {
+      expect(hub.name).toBeTruthy();
+      expect(hub.description).toBeTruthy();
+      expect(hub.icon).toBeTruthy();
+      expect(hub.reference.type).toBeTruthy();
+      expect(hub.reference.location).toBeTruthy();
+    }
   });
 
   it('marks exactly one hub as recommended so the selection is not order-dependent', () => {

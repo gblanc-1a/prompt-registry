@@ -5,12 +5,12 @@ both delivery layers: the VS Code extension and the CLI. It is statically
 imported by [`default-hubs.ts`](../hub/default-hubs.ts), so TypeScript, webpack,
 and esbuild include the same configuration in every distribution format. A
 hardcoded copy is retained as a fallback if the imported configuration is
-missing, empty, or malformed.
+empty.
 
 ## How it works
 
-1. `getDefaultHubs()` returns the statically imported configuration when valid,
-   otherwise it uses the hardcoded fallback.
+1. `getDefaultHubs()` returns the statically imported configuration when it has
+   entries, otherwise it uses the hardcoded fallback.
 2. Each enabled hub is verified for accessibility during first-run
    (`verifyHubAvailability`); an account with no access to a default hub is an
    expected condition, not an error.

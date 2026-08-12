@@ -7,21 +7,23 @@
  * for accessibility before being activated.
  *
  * The JSON configuration is statically imported so all delivery formats use
- * the same primary source, with a hardcoded fallback for an invalid or an empty config.
+ * the same primary source, with a hardcoded fallback for an empty config.
  */
 import type {
   HubReference,
   OnLogEvent,
 } from '@ai-primitives-hub/core';
 import rawDefaultHubs from '../config/default-hubs.json';
-import {
-  type DefaultHubConfig,
-  resolveDefaultHubs,
-} from './default-hubs-config';
 
-export type {
-  DefaultHubConfig,
-} from './default-hubs-config';
+export interface DefaultHubConfig {
+  name: string;
+  description: string;
+  icon: string;
+  codicon?: string;
+  reference: HubReference;
+  recommended?: boolean;
+  enabled?: boolean;
+}
 
 const HARDCODED_DEFAULT_HUBS: DefaultHubConfig[] = [
   {
@@ -52,11 +54,17 @@ const HARDCODED_DEFAULT_HUBS: DefaultHubConfig[] = [
 ];
 
 function loadDefaultHubs(onLog?: OnLogEvent): DefaultHubConfig[] {
-  return resolveDefaultHubs(
-    rawDefaultHubs.defaultHubs as DefaultHubConfig[],
-    HARDCODED_DEFAULT_HUBS,
-    onLog
-  );
+  const configuredHubs = rawDefaultHubs.defaultHubs as DefaultHubConfig[];
+  const hubs = configuredHubs.length > 0 ? configuredHubs : HARDCODED_DEFAULT_HUBS;
+
+  onLog?.({
+    level: configuredHubs.length > 0 ? 'debug' : 'warn',
+    message: configuredHubs.length > 0
+      ? `Loaded ${String(hubs.length)} default hub(s) from bundled default-hubs.json.`
+      : `Bundled default-hubs.json is empty; loaded ${String(hubs.length)} hardcoded default hub(s).`
+  });
+
+  return hubs;
 }
 
 let cachedHubs: DefaultHubConfig[] | null = null;

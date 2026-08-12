@@ -4,6 +4,7 @@
  */
 import type {
   HubReference,
+  LogEvent,
 } from '@ai-primitives-hub/core';
 import {
   beforeEach,
@@ -19,6 +20,9 @@ import {
   isDefaultHub,
   isRecommendedDefaultHub,
 } from '../../src/hub/default-hubs';
+import {
+  resolveDefaultHubs,
+} from '../../src/hub/default-hubs-config';
 
 function reference(overrides: Partial<HubReference> = {}): HubReference {
   return {
@@ -36,6 +40,56 @@ describe('default hubs configuration', () => {
 
   it('offers at least one enabled hub', () => {
     expect(getEnabledDefaultHubs().length).toBeGreaterThan(0);
+  });
+
+  it('reports the selected source once when initializing the cache', () => {
+    const logs: LogEvent[] = [];
+
+    getDefaultHubs((event) => logs.push(event));
+    getDefaultHubs((event) => logs.push(event));
+
+    expect(logs).toEqual([{
+      level: 'debug',
+      message: 'Loaded 2 default hub(s) from bundled default-hubs.json.'
+    }]);
+  });
+
+  it('prefers a valid bundled configuration over the hardcoded fallback', () => {
+    const logs: LogEvent[] = [];
+    const configuredHubs = [{
+      name: 'Configured Hub',
+      description: 'Configured description',
+      icon: 'configured',
+      reference: reference()
+    }];
+    const fallbackHubs = [{
+      name: 'Fallback Hub',
+      description: 'Fallback description',
+      icon: 'fallback',
+      reference: reference()
+    }];
+
+    expect(resolveDefaultHubs(configuredHubs, fallbackHubs, (event) => logs.push(event))).toBe(configuredHubs);
+    expect(logs).toEqual([{
+      level: 'debug',
+      message: 'Loaded 1 default hub(s) from bundled default-hubs.json.'
+    }]);
+  });
+
+  it('uses the hardcoded defaults when the bundled configuration is malformed', () => {
+    const logs: LogEvent[] = [];
+    const fallbackHubs = [{
+      name: 'Fallback Hub',
+      description: 'Fallback description',
+      icon: 'fallback',
+      reference: reference()
+    }];
+
+    expect(resolveDefaultHubs([{}], fallbackHubs, (event) => logs.push(event))).toBe(fallbackHubs);
+    expect(logs).toEqual([{
+      level: 'warn',
+      message: 'Bundled default-hubs.json is empty or invalid; loaded 1 hardcoded default hub(s).'
+    }]);
   });
 
   it('marks exactly one hub as recommended so the selection is not order-dependent', () => {

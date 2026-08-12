@@ -1419,7 +1419,7 @@ export class PromptRegistryExtension {
     const hubManager = this.hubManager!;
 
     // Get enabled default hubs and verify their availability
-    const defaultHubs = getEnabledDefaultHubs();
+    const defaultHubs = getEnabledDefaultHubs((event) => this.logger[event.level](event.message));
     // Verify each hub in parallel but preserve order
     this.logger.info('Verifying default hubs...');
     const verificationResults = await Promise.all(defaultHubs.map(async (hub) => {

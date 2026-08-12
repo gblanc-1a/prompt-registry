@@ -169,7 +169,7 @@ See [Author Guide: Collection Schema](../../author-guide/collection-schema.md) f
 ### Default Hubs Schema
 
 **Location:** `schemas/default-hubs-config.schema.json`  
-**Validates:** Default hub configurations (`packages/infra/config/default-hubs.json`) for first-run setup, shared by the extension and the CLI
+**Validates:** Default hub configurations (`packages/infra/src/config/default-hubs.json`) for first-run setup, shared by the extension and the CLI
 
 **Required fields:**
 - `defaultHubs` — Array of hub options

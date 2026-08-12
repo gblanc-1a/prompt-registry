@@ -6,50 +6,23 @@
  * during first-time installation. Each hub configuration is verified
  * for accessibility before being activated.
  *
- * Configurations can be:
- * 1. Defined in code (HARDCODED_DEFAULT_HUBS constant)
- * 2. Loaded from default-hubs.json (if available in packages/infra/config/)
+ * The JSON configuration is statically imported so all delivery formats use
+ * the same primary source, with a hardcoded fallback for invalid config.
  */
-import * as fs from 'node:fs';
-import * as path from 'node:path';
 import type {
   HubReference,
+  OnLogEvent,
 } from '@ai-primitives-hub/core';
+import rawDefaultHubs from '../config/default-hubs.json';
+import {
+  type DefaultHubConfig,
+  resolveDefaultHubs,
+} from './default-hubs-config';
 
-export interface DefaultHubConfig {
-  /** Display name for the hub. */
-  name: string;
+export type {
+  DefaultHubConfig,
+} from './default-hubs-config';
 
-  /** Description shown in the selector. */
-  description: string;
-
-  /** Icon identifier for plain-text hosts (CLI): emoji or text. */
-  icon: string;
-
-  /** VS Code codicon name (without `$()`), used by the extension's selector. */
-  codicon?: string;
-
-  /** Hub reference configuration. */
-  reference: HubReference;
-
-  /** Whether this is the recommended default. */
-  recommended?: boolean;
-
-  /** Whether to show this hub in first-run selector. */
-  enabled?: boolean;
-}
-
-/**
- * Default hubs offered during installation (hardcoded fallback).
- *
- * These hubs will be:
- * 1. Verified for accessibility (URL reachable).
- * 2. Shown in the first-run hub selector.
- * 3. Imported with proper authentication if selected.
- *
- * Exactly one entry carries `recommended: true` — `getRecommendedHub()`
- * returns the first match, so more than one would make it order-dependent.
- */
 const HARDCODED_DEFAULT_HUBS: DefaultHubConfig[] = [
   {
     name: 'Amadeus',
@@ -78,51 +51,27 @@ const HARDCODED_DEFAULT_HUBS: DefaultHubConfig[] = [
   }
 ];
 
+function loadDefaultHubs(onLog?: OnLogEvent): DefaultHubConfig[] {
+  return resolveDefaultHubs(rawDefaultHubs.defaultHubs, HARDCODED_DEFAULT_HUBS, onLog);
+}
+
 let cachedHubs: DefaultHubConfig[] | null = null;
 
 /**
- * Load default hubs from JSON configuration file (if available).
- * Falls back to hardcoded configuration.
+ * Get all default hubs and optionally report which source populated the cache.
+ * @param onLog - Receives the source-selection log event on cache initialization.
  */
-function loadDefaultHubs(): DefaultHubConfig[] | null {
-  if (cachedHubs) {
-    return cachedHubs;
-  }
-
-  try {
-    // Try to load from JSON file in packages/infra/config/. `__dirname` is
-    // available at runtime because this package compiles to CommonJS.
-    const configPath = path.join(__dirname, '..', '..', 'config', 'default-hubs.json');
-    if (fs.existsSync(configPath)) {
-      const content = fs.readFileSync(configPath, 'utf8');
-      const config = JSON.parse(content) as { defaultHubs?: DefaultHubConfig[] };
-      if (config.defaultHubs && Array.isArray(config.defaultHubs)) {
-        cachedHubs = config.defaultHubs;
-        return cachedHubs;
-      }
-    }
-  } catch {
-    // Silently fall back to hardcoded defaults.
-  }
-
-  // Fallback to hardcoded defaults.
-  cachedHubs = HARDCODED_DEFAULT_HUBS;
+export function getDefaultHubs(onLog?: OnLogEvent): DefaultHubConfig[] {
+  cachedHubs ??= loadDefaultHubs(onLog);
   return cachedHubs;
 }
 
 /**
- * Get all default hubs (loaded from JSON or hardcoded).
- */
-export function getDefaultHubs(): DefaultHubConfig[] {
-  const hubs = loadDefaultHubs();
-  return hubs || HARDCODED_DEFAULT_HUBS;
-}
-
-/**
  * Get all enabled default hubs.
+ * @param onLog - Receives the source-selection log event on cache initialization.
  */
-export function getEnabledDefaultHubs(): DefaultHubConfig[] {
-  return getDefaultHubs().filter((hub) => hub.enabled !== false);
+export function getEnabledDefaultHubs(onLog?: OnLogEvent): DefaultHubConfig[] {
+  return getDefaultHubs(onLog).filter((hub) => hub.enabled !== false);
 }
 
 /**
@@ -171,7 +120,7 @@ export function findDefaultHub(name: string): DefaultHubConfig | undefined {
 }
 
 /**
- * Clear the cached hubs (for testing purposes).
+ * Clear the cached hubs.
  */
 export function clearCache(): void {
   cachedHubs = null;

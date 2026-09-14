@@ -1,0 +1,13 @@
+{
+  "stage_slug": "feasibility",
+  "space": "default",
+  "intent": "260914-unified-installation",
+  "selections": [
+    {
+      "candidate_id": "c1",
+      "heading": "Interpretations",
+      "text": "treated XDG storage as the shared application boundary; the CLI already separates cached bundles and durable installation records from target runtime output, so `~/.copilot` and `~/.kiro` remain target roots rather than registry roots.",
+      "scope": "project"
+    }
+  ]
+}

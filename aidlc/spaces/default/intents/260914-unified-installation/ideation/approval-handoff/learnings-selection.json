@@ -1,0 +1,15 @@
+{
+  "stage_slug": "approval-handoff",
+  "space": "default",
+  "intent": "260914-unified-installation",
+  "selections": [
+    {
+      "candidate_id": "c1",
+      "type": "learning",
+      "scope": "project",
+      "heading": "Interpretations",
+      "text": "Treat transparent migration as approved scope with a design gate: automatic legacy cleanup remains disabled until the completion state, interruption recovery, and duplicate comparison rules are defined and tested.",
+      "source": "orchestrator"
+    }
+  ]
+}

@@ -66,3 +66,7 @@
 
 <!-- Project-specific corrections from human feedback. -->
 <!-- Format: NEVER/ALWAYS [behavior] (learned [date]) -->
+
+## Interpretations
+- treated XDG storage as the shared application boundary; the CLI already separates cached bundles and durable installation records from target runtime output, so `~/.copilot` and `~/.kiro` remain target roots rather than registry roots. (learned 2026-09-14) <!-- cid:260914-unified-installation:feasibility:5ee78cf39a5074b9d0e001f216aa6bf476b96179757de5db684fcf199422755c -->
+- Treat transparent migration as approved scope with a design gate: automatic legacy cleanup remains disabled until the completion state, interruption recovery, and duplicate comparison rules are defined and tested. (learned 2026-09-14) <!-- cid:260914-unified-installation:approval-handoff:29832c1008c1d57283820ae1912c204b0ab56f1f9edd783d0fe6de37f053e638 -->

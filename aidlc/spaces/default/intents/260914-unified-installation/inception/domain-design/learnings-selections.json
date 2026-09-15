@@ -1,0 +1,23 @@
+{
+  "stage_slug": "domain-design",
+  "space": "default",
+  "intent": "260914-unified-installation",
+  "selections": [
+      {
+        "candidate_id": "c1",
+        "type": "learning",
+        "scope": "project",
+        "heading": "Corrections",
+        "text": "Keep shared installation and migration policy in packages; CLI and VS Code remain delivery adapters.",
+        "source": "orchestrator"
+      },
+    {
+      "candidate_id": "c3",
+      "type": "learning",
+      "scope": "project",
+      "heading": "Corrections",
+      "text": "Separate normal lifecycle execution from migration reconciliation to keep install, update, and uninstall behavior reusable while containing activation-specific comparison and conflict handling.",
+      "source": "orchestrator"
+    }
+  ]
+}

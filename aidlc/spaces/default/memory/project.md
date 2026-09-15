@@ -67,6 +67,12 @@
 <!-- Project-specific corrections from human feedback. -->
 <!-- Format: NEVER/ALWAYS [behavior] (learned [date]) -->
 
+- Plan small, reviewable pull-request boundaries from requirements analysis onward. (learned 2026-09-14) <!-- cid:260914-unified-installation:requirements-analysis:4932876efbcd74ee95751370148e9082dde696701c95dc2fb9aa8a5e3f004eee -->
+
+- Separate normal lifecycle execution from migration reconciliation to keep install, update, and uninstall behavior reusable while containing activation-specific comparison and conflict handling. (learned 2026-09-15) <!-- cid:260914-unified-installation:domain-design:8c2d4feb9e127f45ba30eb642e76c27bb44523ecd62cc9b51575d84d86ac5e77 -->
+
+- Keep shared installation and migration policy in packages; CLI and VS Code remain delivery adapters. (learned 2026-09-15) <!-- cid:260914-unified-installation:domain-design:f36970facc3e64bc41b17e4fb2624cf745f5b85c133ee0ef9e8843f65aa831ae -->
+
 ## Interpretations
 - treated XDG storage as the shared application boundary; the CLI already separates cached bundles and durable installation records from target runtime output, so `~/.copilot` and `~/.kiro` remain target roots rather than registry roots. (learned 2026-09-14) <!-- cid:260914-unified-installation:feasibility:5ee78cf39a5074b9d0e001f216aa6bf476b96179757de5db684fcf199422755c -->
 - Treat transparent migration as approved scope with a design gate: automatic legacy cleanup remains disabled until the completion state, interruption recovery, and duplicate comparison rules are defined and tested. (learned 2026-09-14) <!-- cid:260914-unified-installation:approval-handoff:29832c1008c1d57283820ae1912c204b0ab56f1f9edd783d0fe6de37f053e638 -->

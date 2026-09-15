@@ -1,0 +1,91 @@
+{
+
+  "stage": "domain-design",
+  "upstream_ids": [
+    "FR1",
+    "FR1.1",
+    "FR1.2",
+    "FR1.3",
+    "FR2",
+    "FR2.1",
+    "FR2.2",
+    "FR3",
+    "FR3.1",
+    "FR3.2",
+    "FR3.3",
+    "FR3.4",
+    "FR3.5",
+    "FR3.6",
+    "FR3.7",
+    "FR3.8",
+    "FR4",
+    "FR4.1",
+    "NFR1",
+    "NFR1.1",
+    "NFR2",
+    "NFR3",
+    "NFR4"
+  ],
+  "coverage": [
+    { "id": "FR1", "status": "OK", "target": "InstallationLifecycle" },
+    { "id": "FR1.1", "status": "OK", "target": "ManifestGovernance" },
+    { "id": "FR1.2", "status": "OK", "target": "ManifestGovernance" },
+    { "id": "FR1.3", "status": "OK", "target": "InstallationLifecycle" },
+    { "id": "FR2", "status": "OK", "target": "TargetRouting" },
+    { "id": "FR2.1", "status": "OK", "target": "InstallationRegistry" },
+    { "id": "FR2.2", "status": "OK", "target": "InstallationRegistry" },
+    { "id": "FR3", "status": "OK", "target": "ExtensionMigrationCoordinator" },
+    { "id": "FR3.1", "status": "OK", "target": "ExtensionMigrationCoordinator" },
+    { "id": "FR3.2", "status": "OK", "target": "ExtensionMigrationCoordinator" },
+    { "id": "FR3.3", "status": "OK", "target": "ExtensionMigrationCoordinator" },
+    { "id": "FR3.4", "status": "OK", "target": "ExtensionMigrationCoordinator" },
+    { "id": "FR3.5", "status": "OK", "target": "ExtensionMigrationCoordinator" },
+    { "id": "FR3.6", "status": "OK", "target": "ExtensionMigrationCoordinator" },
+    { "id": "FR3.7", "status": "OK", "target": "ExtensionMigrationCoordinator" },
+    { "id": "FR3.8", "status": "OK", "target": "ExtensionMigrationCoordinator" },
+    { "id": "FR4", "status": "OK", "target": "InstallationLifecycle; ADR-004 Compatibility Through Thin Adapters" },
+    {
+      "id": "FR4.1",
+      "status": "Deferred",
+      "target": "Delivery Planning",
+      "reason": "Pull-request boundaries, dependency ordering, and the test matrix are explicitly owned by the subsequent Delivery Planning stage."
+    },
+    { "id": "NFR1", "status": "OK", "target": "ManifestGovernance and InstallationLifecycle; ADR-001 Shared Managed Installation Lifecycle" },
+    {
+      "id": "NFR1.1",
+      "status": "Partial",
+      "target": "ExtensionMigrationCoordinator and TargetArtifactStore; ADR-003 Temporary Extension-Owned Activation Migration",
+      "reason": "Path containment, symlink safety, byte-for-byte comparison, and post-cleanup verification are assigned; R-02 remains open for the atomic or journaled destructive-cleanup boundary."
+    },
+    { "id": "NFR2", "status": "OK", "target": "ExtensionMigrationCoordinator; ADR-003 Temporary Extension-Owned Activation Migration" },
+    { "id": "NFR3", "status": "OK", "target": "InstallationLifecycle; ADR-001 Shared Managed Installation Lifecycle" },
+    { "id": "NFR4", "status": "OK", "target": "ExtensionMigrationCoordinator; ADR-003 Temporary Extension-Owned Activation Migration" }
+  ],
+  "reverse": [
+    {
+      "id": "ManagedInstallation",
+      "status": "OK",
+      "target": "FR1.3, FR2.1, FR2.2"
+    },
+    {
+      "id": "ExtensionMigrationCoordinator",
+      "status": "OK",
+      "target": "FR3, FR3.1, FR3.2, FR3.3, FR3.4, FR3.5, FR3.6, FR3.7, FR3.8"
+    },
+    {
+      "id": "ManifestGovernance",
+      "status": "OK",
+      "target": "NFR1"
+    },
+    {
+      "id": "InstallationLifecycle",
+      "status": "OK",
+      "target": "NFR1, NFR3"
+    },
+    {
+      "id": "ExtensionMigrationCoordinator",
+      "status": "Partial",
+      "target": "NFR1.1, NFR2, NFR4"
+    }
+  ]
+}

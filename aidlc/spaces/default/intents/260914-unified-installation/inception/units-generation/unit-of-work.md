@@ -23,6 +23,9 @@
 
 - Define core domain entities and ports for governed manifests, installation
   addresses, managed installations, and managed artifacts.
+- Own the shared `MigrationCleanupJournal` port, schema, transition semantics,
+  and persistence boundary used to make destructive cleanup restart-safe. U1
+  does not discover extension-internal legacy paths or decide migration policy.
 - Implement shared infrastructure adapters for binary-safe archive reads,
   layout-derived destinations, XDG and repository records, and contained target
   artifact writes.
@@ -52,9 +55,19 @@
   commands run and associate each one with exactly one target and scope.
 - Reconcile legacy content through U1 while treating target content as
   authoritative and requiring explicit overwrite consent for conflicts.
-- Verify identity and bytes before cleanup, preserve data on failure or
-  ambiguity, and report restartable current-run outcomes without durable
-  migration outcome state.
+- Own the bounded VS Code extension exception for legacy-root discovery,
+  association, reconciliation, and cleanup because only the extension can
+  resolve and identify files under its internal storage path.
+- Invoke the U1-owned `MigrationCleanupJournal` contract to record prepared,
+  target-verified, legacy-delete-pending, and committed cleanup states; resume
+  interrupted operations only after rechecking current target and legacy bytes.
+- U4 owns the migration transaction orchestration and extension-root
+  association, but does not define a second journal schema or persistence
+  implementation. The journal is a safety-progress contract, not durable
+  user-facing migration outcome state.
+- Preserve data on failure or ambiguity and report restartable current-run
+  outcomes without turning the journal into durable user-facing migration
+  outcome state.
 
 ## Constraints and Notes
 
@@ -63,7 +76,7 @@
 | U1 | Preserve Clean Architecture dependency direction: core defines rules and ports, infra implements I/O, app orchestrates. Validate a single root `deployment-manifest.yml`, archive containment, governed integrity, destination containment, binary content, and read-back before success. |
 | U2 | No CLI-specific target-write path or rigid archive subdirectory may remain. The adapter may translate CLI inputs and output, but must not reproduce lifecycle policy. |
 | U3 | Follow the extension migration strategy: new behavior belongs in shared packages and services become thin delegators. Do not have the extension cache content merely to reopen it for an independent target sync. |
-| U4 | Mark compatibility code for later extraction with `@migration-cleanup(name)`. Never overwrite target content without affirmative user input; never delete legacy data before current identity, all managed bytes, and post-cleanup absence are verified. |
+| U4 | Mark compatibility code for later extraction with `@migration-cleanup(name)`. Keep the extension-only exception limited to legacy internal-path discovery and reconciliation; call U1 for normal target writes. Never overwrite target content without affirmative user input; never delete legacy data before current identity, all managed bytes, journal state, and post-cleanup absence are verified. |
 
 ## Acceptance Boundaries
 
@@ -75,4 +88,7 @@
 - U4 is complete when activation-time migration is safe, deterministic,
   restartable, and leaves legacy content intact for every unsafe, ambiguous,
   declined, or failed transition.
+
+The U1-owned journal contract and U4-owned extension migration orchestration are
+separate responsibilities and must remain separately testable.
 

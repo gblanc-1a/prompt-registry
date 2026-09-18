@@ -30,15 +30,16 @@
     { "id": "FR2.2", "status": "OK", "target": "U1" },
     { "id": "FR3", "status": "OK", "target": "U4" },
     { "id": "FR3.1", "status": "OK", "target": "U4" },
-    { "id": "FR3.2", "status": "OK", "target": "U4" },
-    { "id": "FR3.3", "status": "OK", "target": "U4" },
-    { "id": "FR3.4", "status": "OK", "target": "U4" },
+    { "id": "FR3.2", "status": "OK", "target": "U4", "reason": "U4 owns extension-internal legacy discovery and transaction orchestration; U1 owns the shared journal contract and persistence boundary, and the journal is safety progress rather than user-facing outcome state." },
+    { "id": "FR3.3", "status": "OK", "target": "U4", "reason": "U4 owns the extension interaction and explicit overwrite decision while U1 performs target writes." },
+    { "id": "FR3.4", "status": "OK", "target": "U4", "reason": "U4 reopens journaled cleanup and derives retry outcomes from current source and target state." },
     { "id": "FR3.5", "status": "OK", "target": "U4" },
-    { "id": "FR3.6", "status": "OK", "target": "U4" },
-    { "id": "FR3.7", "status": "OK", "target": "U4" },
-    { "id": "FR3.8", "status": "OK", "target": "U4" },
+    { "id": "FR3.6", "status": "OK", "target": "U4", "reason": "U4 coordinates extension-root transfer and journaled cleanup through U1." },
+    { "id": "FR3.7", "status": "OK", "target": "U4", "reason": "U4 owns repository association at activation while U1 preserves scope isolation." },
+    { "id": "FR3.8", "status": "OK", "target": "U4", "reason": "U4 owns deterministic mapping from extension legacy metadata to target and scope." },
     { "id": "FR4", "status": "OK", "target": "U2" },
     { "id": "FR4.1", "status": "OK", "target": "U1" }
-  ]
+  ],
+  "design_note": "U1 owns the shared MigrationCleanupJournal contract and persistence boundary; U4 owns extension-internal migration orchestration and invokes U1."
 }
 

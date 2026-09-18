@@ -43,23 +43,48 @@
     { "id": "FR3.6", "status": "OK", "target": "ExtensionMigrationCoordinator" },
     { "id": "FR3.7", "status": "OK", "target": "ExtensionMigrationCoordinator" },
     { "id": "FR3.8", "status": "OK", "target": "ExtensionMigrationCoordinator" },
-    { "id": "FR4", "status": "OK", "target": "InstallationLifecycle; ADR-004 Compatibility Through Thin Adapters" },
+    {
+      "id": "FR4",
+      "status": "OK",
+      "target": "InstallationLifecycle",
+      "reason": "Compatibility is governed by ADR-004 Compatibility Through Thin Adapters."
+    },
     {
       "id": "FR4.1",
       "status": "Deferred",
-      "target": "Delivery Planning",
+      "target": "InstallationLifecycle",
       "reason": "Pull-request boundaries, dependency ordering, and the test matrix are explicitly owned by the subsequent Delivery Planning stage."
     },
-    { "id": "NFR1", "status": "OK", "target": "ManifestGovernance and InstallationLifecycle; ADR-001 Shared Managed Installation Lifecycle" },
+    {
+      "id": "NFR1",
+      "status": "OK",
+      "target": "InstallationLifecycle",
+      "reason": "ManifestGovernance supplies validation and InstallationLifecycle enforces safe writes and read-back verification; ADR-001 Shared Managed Installation Lifecycle."
+    },
     {
       "id": "NFR1.1",
-      "status": "Partial",
-      "target": "ExtensionMigrationCoordinator and TargetArtifactStore; ADR-003 Temporary Extension-Owned Activation Migration",
-      "reason": "Path containment, symlink safety, byte-for-byte comparison, and post-cleanup verification are assigned; R-02 remains open for the atomic or journaled destructive-cleanup boundary."
+      "status": "OK",
+      "target": "ExtensionMigrationCoordinator",
+      "reason": "The coordinator applies path containment, symlink safety, byte-for-byte comparison, and post-cleanup absence verification; its MigrationCleanupJournal port provides prepared/verified/delete-pending/committed states, crash-safe recovery, and scoped transitions under ADR-003 and ADR-005."
     },
-    { "id": "NFR2", "status": "OK", "target": "ExtensionMigrationCoordinator; ADR-003 Temporary Extension-Owned Activation Migration" },
-    { "id": "NFR3", "status": "OK", "target": "InstallationLifecycle; ADR-001 Shared Managed Installation Lifecycle" },
-    { "id": "NFR4", "status": "OK", "target": "ExtensionMigrationCoordinator; ADR-003 Temporary Extension-Owned Activation Migration" }
+    {
+      "id": "NFR2",
+      "status": "OK",
+      "target": "ExtensionMigrationCoordinator",
+      "reason": "The coordinator rechecks target state before retry and cleanup under ADR-003."
+    },
+    {
+      "id": "NFR3",
+      "status": "OK",
+      "target": "InstallationLifecycle",
+      "reason": "Shared lifecycle policy follows Clean Architecture under ADR-001; the bounded extension-owned legacy-path exception is documented in ADR-003."
+    },
+    {
+      "id": "NFR4",
+      "status": "OK",
+      "target": "ExtensionMigrationCoordinator",
+      "reason": "The coordinator reports current-run migration outcomes without durable user-facing migration outcome state under ADR-003."
+    }
   ],
   "reverse": [
     {
@@ -84,8 +109,8 @@
     },
     {
       "id": "ExtensionMigrationCoordinator",
-      "status": "Partial",
-      "target": "NFR1.1, NFR2, NFR4"
+      "status": "OK",
+      "target": "NFR1.1, NFR2, NFR4; ADR-005 Journaled Destructive Migration Cleanup"
     }
   ]
 }

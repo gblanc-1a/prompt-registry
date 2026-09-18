@@ -159,8 +159,9 @@ long-term source of installation policy.
   place target layouts, archive access, filesystem operations, registry
   persistence, and notifications behind ports.
 - Trace every approved non-functional requirement to its responsible component
-  and ADR. Keep `NFR1.1` partial while the atomic or journaled cleanup concern
-  remains open.
+  and ADR. `NFR1.1` is covered by `ExtensionMigrationCoordinator`,
+  `MigrationCleanupJournal`, ADR-003, and ADR-005 through journaled,
+  restart-safe destructive cleanup.
 - Defer `FR4.1` pull-request sequencing and its test matrix to Delivery
   Planning rather than representing it as migration-coordinator behavior.
 
@@ -170,10 +171,3 @@ Does this all look correct before I generate the artifact?
 - Request changes
 
 [Answer]: Looks correct
-
-## Requested Changes Feedback
-
-- Address R-01 by adding coverage entries for `NFR1`, `NFR1.1`, `NFR2`,
-  `NFR3`, and `NFR4`, naming the responsible component and ADR. Preserve the
-  open R-02 cleanup concern as partial coverage for `NFR1.1`.
-- Address R-03 by marking `FR4.1` deferred to Delivery Planning.

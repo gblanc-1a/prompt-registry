@@ -124,16 +124,26 @@ components:
     entities: []
 
   - name: ExtensionMigrationCoordinator
-    summary: Temporarily coordinates activation-time migration of legacy extension installations.
+    summary: Temporarily coordinates activation-time migration of legacy extension installations under a bounded NFR3 exception.
     behaviour: >
       Runs before extension bundle commands, deterministically associates legacy
       records with one target and scope, checks the authoritative target before
       any transfer, and uses the shared lifecycle for transfer. It deletes legacy
       artifacts only after identity, byte-for-byte target, and post-cleanup
-      verification; conflicts and retry-required outcomes preserve legacy data.
+      verification. Destructive cleanup is represented by a journaled operation
+      with explicit prepared, target-verified, legacy-delete-pending, and
+      committed states; recovery resumes from the journal without treating an
+      interrupted delete as complete. Conflicts and retry-required outcomes
+      preserve legacy data. The journal records safety progress only and is not
+      a user-facing migration outcome registry. A committed journal entry is
+      retained only long enough to support audit and recovery cleanup.
+      This extension-owned boundary is limited to legacy extension-path
+      discovery, association, reconciliation, and cleanup; normal installation
+      policy remains in shared packages.
     responsibilities:
       - Legacy installation association and reconciliation
       - Authoritative-target comparison and verified duplicate cleanup
+      - Journaled cleanup transitions and interrupted-operation recovery
       - Conflict, overwrite, retry, and run-summary coordination
       - Temporary extension-owned migration policy marked for later extraction
     depends_on:
@@ -157,6 +167,9 @@ components:
       - name: MigrationInteraction
         kind: other
         purpose: Presents VS Code notifications and obtains explicit overwrite decisions.
+      - name: MigrationCleanupJournal
+        kind: other
+        purpose: Atomically records cleanup intent, per-artifact verification, deletion progress, and committed completion for restart recovery.
     entities:
       - name: LegacyInstallationCandidate
         identifier: legacyRecordId
@@ -190,7 +203,7 @@ flowchart LR
 | TargetRouting | Target/scope/item-kind destination resolution | None | InstallationLifecycle, ExtensionMigrationCoordinator | InstallationAddress |
 | InstallationRegistry | Isolated installation and artifact records | None | InstallationLifecycle, ExtensionMigrationCoordinator | ManagedInstallation, ManagedArtifact |
 | InstallationLifecycle | Shared install, update, and uninstall | ManifestGovernance, TargetRouting, InstallationRegistry | ExtensionMigrationCoordinator | None |
-| ExtensionMigrationCoordinator | Activation-time legacy migration compatibility | ManifestGovernance, TargetRouting, InstallationRegistry, InstallationLifecycle | None | LegacyInstallationCandidate |
+| ExtensionMigrationCoordinator | Activation-time legacy migration compatibility, including journaled cleanup recovery, under a bounded NFR3 exception | ManifestGovernance, TargetRouting, InstallationRegistry, InstallationLifecycle | None | LegacyInstallationCandidate |
 
 ## Entity Ownership
 
@@ -214,6 +227,7 @@ flowchart LR
 | InstallationLifecycle | TargetArtifactStore | other | Contained target writes, reads, and removals |
 | ExtensionMigrationCoordinator | LegacyExtensionStore | other | Verified legacy extension storage access |
 | ExtensionMigrationCoordinator | MigrationInteraction | other | VS Code conflict notification and explicit overwrite decision |
+| ExtensionMigrationCoordinator | MigrationCleanupJournal | other | Restart-safe cleanup intent, progress, and commit records |
 
 ## Rationale
 

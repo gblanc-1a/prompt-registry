@@ -12,4 +12,4 @@
 
 ## Open questions
 <!-- example: 2026-05-29T10:14:32Z — confirm the retention window with compliance before the next stage hardens the schema -->
-- 2026-09-15T14:31:59Z — the advisory review identified six contract details that remain open before implementation: U3/U4 call direction, complete shared type definitions, operation-specific result payloads, activation deadline and readiness behavior, filesystem retry and interruption semantics, and repository identity invariants.
+- 2026-09-15T15:02:15Z — the Inception phase check remains blocked by domain-design traceability marking NFR1.1 Partial for the atomic or journaled destructive-cleanup boundary; Delivery Planning artifacts are complete, but Construction must wait for the owning design to resolve and regenerate traceability.

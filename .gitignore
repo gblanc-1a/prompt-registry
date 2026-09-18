@@ -139,7 +139,6 @@ carry-overs/*
 repo-for-test/
 research/
 
-
 # Temporary development files
 *_SUMMARY.md
 *_GUIDE.md
@@ -188,6 +187,7 @@ elastic-start-local/
 .kiro/
 tools/
 
+
 # BEGIN AI-DLC:gitignore
 # Logs
 logs
@@ -220,10 +220,9 @@ dist-ssr
 # method, registry, state, AUDIT (per-clone shards), artifacts — is committed.
 #
 # Per-user session cursors — ignored (two teammates legitimately point at
-# different spaces/intents at once; committing them would dirty the tree on
-# every /aidlc and have teammates fight over the cursor on each switch).
+# different spaces/intents at once; committing them would turn per-user
+# navigation into shared state and cause conflicts on intent creation and cursor switches).
 aidlc/active-space
-aidlc/.aidlc-active-space-*.tmp
 aidlc/spaces/*/intents/active-intent
 #
 # Machine-local runtime / derived — ignored (regenerated per machine).
@@ -237,12 +236,20 @@ aidlc/.aidlc-unit-participant
 aidlc/.aidlc-claim-registry.json
 aidlc/.aidlc-unit-releases/
 aidlc/.aidlc-unit-merges/
+# Atomic active-space create staging (normally unlinked immediately).
+aidlc/.aidlc-active-space-*.tmp
+# Per-turn roll-forward guard (Kiro): a turn counter + a read-only/nav latch the
+# userPromptSubmit seam stamps and the engine done-guard / preToolUse backstop
+# read. Per-machine runtime, never shared truth.
+aidlc/.aidlc-turn-counter
+aidlc/.aidlc-readonly-latch
 # Per-conversation session→intent map (resume rebind, P8): per-user runtime
-# state keyed by the harness session id, never shared truth.
+# state keyed by Claude Code session_id, never shared truth.
 aidlc/.aidlc-sessions/
 aidlc/spaces/*/intents/.aidlc-*
-# Engine-shaped sensor caches at any depth, mirroring the #646 fingerprint glob;
-# also covers legacy pre-2.6.94 trees without ignoring every .aidlc-sensors leaf.
+# Framework state at any depth, including the bare space intents root and
+# package-local record trees; keep unrelated application dot folders visible.
+**/aidlc/spaces/*/intents/**/.aidlc-engine/
 **/aidlc/spaces/*/intents/**/.aidlc-sensors/
 # DocumentKB staged-transaction scratch: `onboard` stages a document into
 # `.journal/<txn-id>/` and renames it into place under the audit lock. Per-clone
@@ -271,4 +278,5 @@ aidlc/diagnostics/
 # which was proven to corrupt the multi-line audit blocks) ·
 # aidlc/spaces/*/intents/*/<phase>/<stage>/*.md (artifacts + diary).
 # END AI-DLC:gitignore
+
 aidlc.settings.local.json

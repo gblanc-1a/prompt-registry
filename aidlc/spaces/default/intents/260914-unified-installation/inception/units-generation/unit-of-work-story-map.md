@@ -33,7 +33,7 @@ directory.
 | --- | --- | --- |
 | Shared normal lifecycle | U1, U2, U3 | U1 owns behavior; U2 and U3 prove their entry points delegate to it. |
 | Target/scope and storage isolation | U1, U2, U3, U4 | U1 supplies identity/routing contracts; adapters supply selected delivery context without changing policy. |
-| Migration safety and recovery | U1, U4 | U1 enforces contained, verified operations; U4 coordinates current-state comparison, consent, and reporting. |
+| Migration safety and recovery | U1, U4 | U1 owns the shared journal contract and persistence boundary plus contained, verified operations; U4 owns extension-internal legacy-root discovery, current-state comparison, consent, transaction orchestration, and reporting. |
 | Compatibility evidence and reviewable delivery | U1, U2, U3, U4 | Each unit has a bounded responsibility and focused observable evidence; Delivery Planning owns pull-request sequencing. |
 
 ## Coverage Verification
@@ -45,4 +45,11 @@ directory.
   delegation, and U4 owns all migration behavior.
 - Cross-cutting entries identify shared behavior without changing the primary
   accountable unit.
+
+U4's migration stories include extension-internal legacy-root discovery,
+journaled cleanup recovery, and preservation of legacy content when target
+authority or verification is unavailable.
+
+The story map treats journal persistence as U1 infrastructure and migration
+transaction orchestration as U4 behavior.
 

@@ -73,6 +73,8 @@
 
 - Keep shared installation and migration policy in packages; CLI and VS Code remain delivery adapters. (learned 2026-09-15) <!-- cid:260914-unified-installation:domain-design:f36970facc3e64bc41b17e4fb2624cf745f5b85c133ee0ef9e8843f65aa831ae -->
 
+- When user-stories are skipped for a scope, Units Generation traces by FR IDs and the `traceability` sensor reports an advisory pass:false because its story-map matcher only recognizes USx.y IDs; treat this as a known sensor/scope limitation, not an authoring defect, as long as every FR maps to a declared unit. (learned 2026-09-16) <!-- cid:260914-unified-installation:units-generation:be5c370e643523e934099a2db47e9110d32a9945c282547e608cde3b58cf8413 -->
+
 ## Interpretations
 - treated XDG storage as the shared application boundary; the CLI already separates cached bundles and durable installation records from target runtime output, so `~/.copilot` and `~/.kiro` remain target roots rather than registry roots. (learned 2026-09-14) <!-- cid:260914-unified-installation:feasibility:5ee78cf39a5074b9d0e001f216aa6bf476b96179757de5db684fcf199422755c -->
 - Treat transparent migration as approved scope with a design gate: automatic legacy cleanup remains disabled until the completion state, interruption recovery, and duplicate comparison rules are defined and tested. (learned 2026-09-14) <!-- cid:260914-unified-installation:approval-handoff:29832c1008c1d57283820ae1912c204b0ab56f1f9edd783d0fe6de37f053e638 -->

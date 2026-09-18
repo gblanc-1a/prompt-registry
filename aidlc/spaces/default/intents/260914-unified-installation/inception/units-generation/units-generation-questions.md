@@ -107,8 +107,11 @@ extension compatibility code and must not introduce a second lifecycle.
    - Add temporary, explicitly tagged extension compatibility code that runs
      before bundle commands and reconciles legacy content through the shared
      lifecycle.
-   - Preserve authoritative target content, require explicit overwrite consent,
-     and delete legacy artifacts only after identity, byte, and cleanup checks.
+   - Keep U4 bounded to extension-internal legacy-root discovery and
+     reconciliation because only the extension can resolve that path and its
+     ownership. Preserve authoritative target content, require explicit
+     overwrite consent, and use U1's journaled cleanup contract before deleting
+     legacy artifacts.
 
 **Dependency topology:** `U1 -> U2`, `U1 -> U3`, and `U1 + U3 -> U4`.
 Delivery Planning will sequence pull requests and define the complete test

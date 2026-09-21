@@ -75,6 +75,8 @@
 
 - When user-stories are skipped for a scope, Units Generation traces by FR IDs and the `traceability` sensor reports an advisory pass:false because its story-map matcher only recognizes USx.y IDs; treat this as a known sensor/scope limitation, not an authoring defect, as long as every FR maps to a declared unit. (learned 2026-09-16) <!-- cid:260914-unified-installation:units-generation:be5c370e643523e934099a2db47e9110d32a9945c282547e608cde3b58cf8413 -->
 
+- Decompose large units into component-level, independently reviewable pull requests, and split destructive work (such as migration file deletion) into its own separately-reviewed PR. (learned 2026-09-18) <!-- cid:260914-unified-installation:delivery-planning:c01965f37866bbd7bd57524f76136185d83ef30a6c2780ccf8ff8f86833f0b8d -->
+
 ## Interpretations
 - treated XDG storage as the shared application boundary; the CLI already separates cached bundles and durable installation records from target runtime output, so `~/.copilot` and `~/.kiro` remain target roots rather than registry roots. (learned 2026-09-14) <!-- cid:260914-unified-installation:feasibility:5ee78cf39a5074b9d0e001f216aa6bf476b96179757de5db684fcf199422755c -->
 - Treat transparent migration as approved scope with a design gate: automatic legacy cleanup remains disabled until the completion state, interruption recovery, and duplicate comparison rules are defined and tested. (learned 2026-09-14) <!-- cid:260914-unified-installation:approval-handoff:29832c1008c1d57283820ae1912c204b0ab56f1f9edd783d0fe6de37f053e638 -->

@@ -1,0 +1,41 @@
+{
+  "stage": "functional-design",
+  "unit": "shared-installation-foundation",
+  "upstream_ids": [
+    "FR1",
+    "FR1.1",
+    "FR1.2",
+    "FR1.3",
+    "FR2",
+    "FR2.1",
+    "FR2.2",
+    "FR3.7",
+    "FR3.8",
+    "FR4.1",
+    "NFR1",
+    "NFR1.1",
+    "NFR2",
+    "NFR3",
+    "NFR4"
+  ],
+  "coverage": [
+    { "id": "FR1",     "status": "OK", "target": "BR2.1, BR3.4" },
+    { "id": "FR1.1",   "status": "OK", "target": "BR1.1, BR1.3, BR1.4" },
+    { "id": "FR1.2",   "status": "OK", "target": "BR1.2, BR1.5" },
+    { "id": "FR1.3",   "status": "OK", "target": "BR3.3, BR3.5, BR4.2, BR4.3, BR4.4, BR4.5" },
+    { "id": "FR2",     "status": "OK", "target": "BR2.1, BR2.2" },
+    { "id": "FR2.1",   "status": "OK", "target": "BR3.1, BR3.4" },
+    { "id": "FR2.2",   "status": "OK", "target": "BR2.3, BR3.1, BR3.2, BR4.5" },
+    { "id": "FR3.7",   "status": "OK", "target": "BR6.1, BR6.2" },
+    { "id": "FR3.8",   "status": "OK", "target": "BR3.2, BR6.1" },
+    { "id": "FR4.1",   "status": "N/A", "target": "delivery sequencing; owned by delivery-planning" },
+    { "id": "NFR1",    "status": "OK", "target": "BR1.3, BR1.4, BR3.5, BR4.1, BR4.6" },
+    { "id": "NFR1.1",  "status": "OK", "target": "BR2.2, BR4.6, BR5.1, BR5.2, BR5.4" },
+    { "id": "NFR2",    "status": "OK", "target": "BR5.5" },
+    { "id": "NFR3",    "status": "N/A", "target": "architecture conformance; enforced by dependency-direction guardrails, not by a functional rule" },
+    { "id": "NFR4",    "status": "OK", "target": "BR4.4, BR5.1, BR5.4" }
+  ],
+  "reverse": [
+    { "id": "BR6.2", "status": "N/A", "target": "offline-behaviour guard implied by FR3.7 and ASM3; no direct FR authors it" }
+  ]
+}

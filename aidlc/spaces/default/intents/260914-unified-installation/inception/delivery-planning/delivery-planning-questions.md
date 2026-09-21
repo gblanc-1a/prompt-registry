@@ -3,100 +3,102 @@
 ## Sources
 
 - `requirements.md` defines the shared lifecycle, migration safety, compatibility,
-  and reviewable-delivery requirements.
-- `components.md` defines the shared installation and migration components.
-- `unit-of-work.md` defines U1 through U4 and their implementation boundaries.
-- `unit-of-work-dependency.md` defines the dependency DAG: U2 and U3 depend on
-  U1, and U4 depends on U1 and U3.
-- `contract-summary.md` defines the repository-internal TypeScript boundaries,
-  typed lifecycle outcomes, and unresolved implementation questions.
+  and reviewable-delivery requirements (notably FR4.1: a design pull request
+  followed by small, independently reviewable implementation pull requests).
+- `components.md` defines the shared installation and migration components
+  (ManifestGovernance, TargetRouting, InstallationRegistry, InstallationLifecycle,
+  ExtensionMigrationCoordinator, and the MigrationCleanupJournal port).
+- `unit-of-work.md` defines U1 (shared foundation, Large), U2 (CLI adapter),
+  U3 (VS Code adapter), and U4 (activation migration, Large).
+- `unit-of-work-dependency.md` defines the dependency graph: U2 and U3 depend on
+  U1; U4 depends on U1 and U3.
+- `contract-summary.md` defines the four repository-internal TypeScript boundary
+  contracts and their typed lifecycle outcomes.
 
-## Q1. Which delivery heuristic should determine the order of the planned build passes?
+## Context: decisions carried forward from the earlier planning pass
 
-A build pass is one bounded implementation slice that ends with a demonstrable,
-tested result. The dependency graph requires U1 before U2/U3 and U3 before U4;
-this question chooses the economic reason for selecting the first slice within
-those constraints.
+We planned this stage once before, then went back to Domain Design to close the
+migration-cleanup safety gap (the journaled destructive-cleanup boundary, now
+designed via the `MigrationCleanupJournal` port). That fix is in place, so this
+pass plans against the resolved design. The sequencing decisions you already
+made still look sound and I am carrying them forward unless you change them:
 
-- A. Risk-first: prove the shared lifecycle, filesystem safety, and migration recovery risks as early as possible.
-- B. Value-first: deliver the CLI and VS Code user-visible adoption as early as possible.
-- C. Thin end-to-end slice first: connect the smallest path through U1, one delivery adapter, and the relevant verification boundary before expanding coverage.
-- D. Weighted scoring: rank slices using value, urgency, risk reduction, and job size.
+- Build order is risk-first: the shared installation foundation (U1) first,
+  then the CLI and VS Code adapters, then the activation-time migration last.
+- The CLI adapter (U2) and the VS Code adapter (U3) both sit on top of U1 and
+  can proceed once U1's contracts are stable.
+- No external team, API, or approval window blocks the work; it is all inside
+  this repository.
+- Construction runs here in one session with the normal approval at each stage
+  (no separate unit-owning teams).
+
+These questions focus on the one thing that most needs your judgment: how to cut
+the work into small, independently reviewable pull requests — the outcome you
+asked for repeatedly.
+
+## Q1. How small should the implementation pull requests be?
+
+A **pull request (PR)** here is one reviewable change you merge on its own. U1
+(shared foundation) and U4 (migration) are the two large Units. The choice is
+how finely to split them so no single PR is hard to review.
+
+- A. Component-level PRs: split each large Unit along its architectural components — e.g. U1 becomes separate PRs for manifest validation, target/scope routing, the installation registry, the install/update/uninstall lifecycle, and the target file-writer; U4 becomes separate PRs for legacy discovery and association, verified transfer, journaled cleanup, and conflict/consent handling. Adapters (U2, U3) stay one PR each.
+- B. Unit-level PRs: one implementation PR per Unit (four PRs total plus the design PR).
+- C. Behavior-slice PRs: cut across components by capability — e.g. "install works end to end," then "update/uninstall with preservation," then "migration transfer," then "migration cleanup" — each slice touching whatever layers it needs.
+- D. Another decomposition; describe it.
 - X. Other (please specify)
 
-[Answer]: A. Risk-first: start with U1's shared lifecycle correctness, including the highest-risk filesystem and contract behavior, while proving a minimal happy-path install. (2026-09-15T14:55:57Z; **Mode:** chat)
+[Answer]: A. Component-level PRs: split each large Unit along its architectural components (U1 into manifest validation, target/scope routing, registry, lifecycle, and file-writer PRs; U4 into legacy discovery/association, verified transfer, journaled cleanup, and conflict/consent PRs); adapters U2 and U3 stay one PR each. (2026-09-18T15:56:48Z; **Mode:** guided)
 
-## Q2. How should the four Units of Work be grouped into planned build passes?
+## Q2. Should a design pull request come first, before any implementation PR?
 
-The planned passes may differ from the runtime dependency batches, but every pass
-must preserve the U1/U2/U3/U4 dependency constraints and have a reviewable
-Definition of Done.
+FR4.1 calls for a design PR before implementation PRs. A design-first PR would
+lock the four boundary contracts and the shared TypeScript type/port layout
+(the open items Contract Design flagged) so the later implementation PRs stay
+small and stable.
 
-- A. One pass per Unit: U1, then U2 and U3 separately, then U4.
-- B. U1 as a foundation pass, U2 and U3 together as an adapter pass, then U4 as a migration pass.
-- C. A thin end-to-end pass first, followed by focused hardening passes for the remaining Units.
-- D. Another grouping across Units; describe the grouping and why it is reviewable.
+- A. Yes — a design/ADR PR first that fixes the shared contracts, type/port file layout, and the migration-cleanup journal states, then implementation PRs build on it.
+- B. No separate design PR — fold the contract/type decisions into the first implementation PR (U1 foundation).
+- C. Other (please specify)
+
+[Answer]: A. Yes — a design/ADR PR first that fixes the shared contracts, type/port file layout, and the migration-cleanup journal states, then implementation PRs build on it. (2026-09-18T15:56:48Z; **Mode:** guided)
+
+## Q3. Should the CLI adapter and VS Code adapter be separate, parallel-eligible PRs?
+
+U2 (CLI) and U3 (VS Code) both depend only on U1 and not on each other, so once
+U1 is in place they can be reviewed and merged independently.
+
+- A. Keep them as two separate PRs that may proceed in parallel after U1, with a shared check that both entry points behave identically.
+- B. Serialize them: land the CLI adapter first, then apply what we learn to the VS Code adapter.
+- C. Combine both adapters into one PR.
 - X. Other (please specify)
 
-[Answer]: B. Use a foundation pass for U1, an adapter pass for U2 and U3, and a separate migration pass for U4. (2026-09-15T14:55:57Z; **Mode:** chat)
+[Answer]: B. Serialize: land the CLI adapter first, then apply what we learn to the VS Code adapter. (2026-09-18T15:56:48Z; **Mode:** guided)
 
-## Q3. Should U2 CLI adoption and U3 VS Code adoption be developed concurrently?
+## Q4. Should the destructive migration cleanup be isolated in its own gated PR?
 
-Both adapters depend on U1 but do not depend directly on each other. The answer
-sets the delivery coordination stance; it does not permit implementation before
-the shared U1 contracts are usable.
+The riskiest change is deleting a user's legacy extension files after a verified
+transfer. Isolating that behind its own PR (and its own review) keeps the
+non-destructive transfer reviewable on its own and contains the blast radius.
 
-- A. Parallel after U1 contracts stabilize: develop U2 and U3 concurrently with shared integration checkpoints.
-- B. Sequential: complete U2 first, then use its integration experience to guide U3.
-- C. Mostly parallel, with a short shared checkpoint before either adapter is considered complete.
+- A. Yes — the non-destructive transfer (copy to the new location and verify) ships in one PR, and the destructive cleanup (journaled delete of the legacy copy) ships in a separate, separately reviewed PR.
+- B. Keep the full migration (transfer plus verified cleanup) in one PR.
+- C. Other (please specify)
+
+[Answer]: A. Yes — the non-destructive transfer (copy to the new location and verify) ships in one PR, and the destructive cleanup (journaled delete of the legacy copy) ships in a separate, separately reviewed PR. (2026-09-18T15:56:48Z; **Mode:** guided)
+
+## Q5. Are the carried-forward sequencing and staffing decisions still correct?
+
+This confirms the items listed in the context above so they are recorded for
+this pass.
+
+- A. Yes — keep risk-first order (U1 foundation, then U2/U3 adapters, then U4 migration), no external blockers, and build here in one session with the normal per-stage approval.
+- B. Mostly, but I want to change one thing (describe it).
+- C. No — I want a different sequencing or staffing approach (describe it).
 - X. Other (please specify)
 
-[Answer]: C. Develop U2 and U3 mostly in parallel after U1 contracts stabilize, with a shared checkpoint for lifecycle parity, typed result mapping, and integration tests. (2026-09-15T14:55:57Z; **Mode:** chat)
+[Answer]: A. Yes — keep risk-first order (U1 foundation, then U2/U3 adapters, then U4 migration), no external blockers, and build here in one session with the normal per-stage approval. (Refined by Q3: the CLI adapter lands before the VS Code adapter rather than in parallel.) (2026-09-18T15:56:48Z; **Mode:** guided)
 
-## Q4. What should receive the earliest focused risk treatment?
-
-The current design has known risk around byte-safe filesystem cleanup, typed
-result completeness, repository identity, and activation-time migration
-readiness. Selecting the priority determines what the first pass must prove and
-what may remain as a documented follow-up.
-
-- A. Shared lifecycle correctness: manifest validation, routing, registry isolation, safe writes, update, and uninstall.
-- B. Migration safety: target authority, explicit overwrite consent, verified cleanup, restartability, and repository association.
-- C. Adapter compatibility: preserving CLI and VS Code workflows while removing duplicate lifecycle policy.
-- D. Contract completeness: resolving the review findings before implementation, including result payloads and activation readiness.
-- X. Other (please specify)
-
-[Answer]: A. Prioritize shared lifecycle correctness: manifest validation, routing, registry isolation, safe writes, update, and uninstall; resolve contract completeness as an entry criterion. (2026-09-15T14:55:57Z; **Mode:** chat)
-
-## Q5. Are there external dependencies or approval windows that can block delivery?
-
-The implementation is expected to remain inside this repository, with the CLI
-and VS Code extension as consumers of shared packages. Record any dependency
-that could delay a planned build pass, including its owner, expected timing,
-blocked pass, and fallback if it slips.
-
-- A. No external dependency or approval window; all work is repository-contained and AI-executable.
-- B. Existing repository or package ownership decisions need an internal review before implementation.
-- C. VS Code activation, extension packaging, or release constraints may block migration work.
-- D. Another dependency exists; describe its owner, timing, blocked pass, and fallback.
-- X. Other (please specify)
-
-[Answer]: A. No external dependency or approval window; all work is repository-contained and AI-executable, with internal review and packaging checks treated as delivery checkpoints. (2026-09-15T14:55:57Z; **Mode:** chat)
-
-## Q6. How should Construction be staffed and gated?
-
-Construction can be run as one in-session sequence with a human approval after
-each stage, or as several unit-owning teams only when the work is organized
-unit-by-unit. A team-owned plan also needs a choice about whether approval is
-requested after every stage or once after the unit's design and code are done.
-
-- A. Build every Unit here in one session, with approval checkpoints as the workflow reaches them.
-- B. Use separate teams for Units, organize Construction unit-by-unit, and approve after each stage.
-- C. Use separate teams for Units, organize Construction unit-by-unit, and approve once at the end of each Unit.
-- D. Use a different staffing or checkpoint model; describe it.
-- X. Other (please specify)
-
-[Answer]: A. Build every Unit here in one session with approval checkpoints as the workflow reaches them, using the default stage-major Construction iteration. (2026-09-15T14:55:57Z; **Mode:** chat)
 
 ## Consolidated Summary Confirmation
 

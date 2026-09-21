@@ -1,0 +1,23 @@
+{
+  "stage": "functional-design",
+  "unit": "cli-manifest-adoption",
+  "upstream_ids": [
+    "FR1",
+    "FR1.1",
+    "FR1.2",
+    "FR2",
+    "FR2.1",
+    "FR2.2",
+    "FR4"
+  ],
+  "coverage": [
+    { "id": "FR1",    "status": "OK", "target": "BR1.1, BR1.2" },
+    { "id": "FR1.1",  "status": "OK", "target": "BR1.1, BR2.1" },
+    { "id": "FR1.2",  "status": "OK", "target": "BR1.1" },
+    { "id": "FR2",    "status": "OK", "target": "BR1.1, BR6.1" },
+    { "id": "FR2.1",  "status": "OK", "target": "BR3.1, BR3.2, BR3.3, BR3.4, BR6.1" },
+    { "id": "FR2.2",  "status": "OK", "target": "BR3.3" },
+    { "id": "FR4",    "status": "OK", "target": "BR2.1, BR4.1, BR4.2, BR4.3, BR5.1, BR5.2, BR5.3, BR6.1" }
+  ],
+  "reverse": []
+}

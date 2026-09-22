@@ -240,7 +240,8 @@ aidlc/.aidlc-unit-merges/
 aidlc/.aidlc-active-space-*.tmp
 # Per-turn roll-forward guard (Kiro): a turn counter + a read-only/nav latch the
 # userPromptSubmit seam stamps and the engine done-guard / preToolUse backstop
-# read. Per-machine runtime, never shared truth.
+# read. Per-machine runtime, never shared truth. (Inert on Kiro IDE, which has no
+# userPromptSubmit/preToolUse seam — kept for parity with the Kiro CLI tree.)
 aidlc/.aidlc-turn-counter
 aidlc/.aidlc-readonly-latch
 # Per-conversation session→intent map (resume rebind, P8): per-user runtime

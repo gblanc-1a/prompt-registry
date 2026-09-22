@@ -31,5 +31,8 @@
     "typescript",
     "json",
     "yaml"
+  ],
+  "kiroAgent.trustedCommands": [
+    "aidlc engine *"
   ]
 }

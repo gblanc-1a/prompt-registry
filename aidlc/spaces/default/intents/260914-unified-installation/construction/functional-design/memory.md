@@ -79,6 +79,10 @@
 - 2026-09-21T15:18:00Z — Whole unit tagged @migration-cleanup(activation-migration) for wholesale removal once migration is universally complete (Q6=B), unlike U1's finer-grained tagging intent.
 <!-- aidlc-wave-memory:activation-migration-compatibility:453f2a9aa65949ce7decc6e403594111bdf00e9aca2320eb083f846ef40c8b33 -->
 
+
+- 2026-09-22T14:11:12Z — The revision that resolved R-01 through R-12 reached its approval gate without an independent second look. Both review passes of this attempt (`3c0fc53f9e11caf4`) closed as incomplete-attempt NOT-READY fallbacks rather than real verdicts: iteration 1 spent its `--retry-pending` allowance and was recorded as the bounded fallback at 08:53:13Z, and iteration 2 was requested at 08:53:21Z, spent its retry at 09:26:18Z, and the session ended before any dispatch returned a review file. On resume the retry was correctly refused as already spent, so iteration 2 was closed with the bounded fallback and the adversarial budget (`reviewer_max_iterations: 2`) is exhausted. The revised artifact bytes are unchanged since the request fingerprint `sha256:c2764e2f…`, so the receipt is current and not stale — what is missing is review substance, not receipt validity. A Request Changes at the gate is the only route that restores a fresh review budget for these bytes.
+<!-- aidlc-wave-memory:shared-installation-foundation:d4fff85d042c1d7aa9ec92ea18af29bf677a57a11313996da2c9157d06c9fc9e -->
+
 ## Tradeoffs
 <!-- example: 2026-05-29T10:14:32Z — picked TDD over BDD this run; the team is unit-first and the domain is well-understood -->
 

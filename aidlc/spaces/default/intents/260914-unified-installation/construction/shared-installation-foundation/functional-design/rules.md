@@ -2,7 +2,7 @@
 
 Rule identifiers use the `BR{group}.{seq}` format. Groups: 1 governance, 2
 routing, 3 registry, 4 lifecycle, 5 journal, 6 reconciliation. The YAML block
-below is the source of truth; a summary table follows it.
+below is the source of truth; a summary table follows it. Thirty rules.
 
 ```yaml
 rules:
@@ -203,10 +203,13 @@ rules:
     applies_to: LifecycleOutcome
     trigger: Update completion.
     logic: >
-      IF preservation occurred under BR4.2 AND every other write was verified
+      IF preservation occurred under BR4.2 or BR4.7 AND every other write was verified
       THEN return a success outcome carrying the list of preserved artifacts
-      ELSE preserved content is not reported through the success outcome.
-    violation: A preserved-content outcome must be reserved for operations that could not proceed.
+      ELSE the outcome carries no preserved list.
+    violation: >
+      A successful update that preserved one or more artifacts but returned an
+      outcome without them is a rule violation: the caller cannot then tell the
+      user which content was retained.
     source: FR1.3
 
   - id: BR4.5
@@ -233,6 +236,48 @@ rules:
     violation: A successful outcome may not be returned while any removal is unverified.
     source: NFR1, NFR1.1
 
+  - id: BR4.7
+    statement: A still-named artifact whose bytes no longer match its fingerprint is never overwritten without explicit consent.
+    category: policy
+    applies_to: ManagedArtifact
+    trigger: >
+      Install or update, for any destination that a prior managed artifact
+      record already covers and the incoming manifest still names. Evaluated
+      before the first write of the operation, not after it.
+    logic: >
+      IF a prior managed artifact exists at the destination
+      AND its current bytes differ from its recorded fingerprint
+      AND no explicit overwrite consent accompanies the request
+      THEN write nothing at that destination, leave the artifact managed with
+      its original fingerprint, and return a conflict outcome identifying the
+      bundle and the artifact
+      ELSE write and verify the artifact normally.
+      This extends FR1.3's preservation principle from omitted artifacts to
+      still-named ones, and matches the authoritative-target stance the
+      migration requirements take for target content.
+    violation: >
+      Overwriting locally changed content that the lifecycle still manages is a
+      rule violation, and install and update may not answer this case
+      differently.
+    source: FR1.3, NFR1.1
+
+  - id: BR4.8
+    statement: The preserved-content outcome is reserved for an operation that could not proceed.
+    category: policy
+    applies_to: LifecycleOutcome
+    trigger: Outcome selection at the end of any lifecycle operation.
+    logic: >
+      IF the operation completed its requested writes and removals, preserving
+      some artifacts along the way
+      THEN return success carrying the preserved list under BR4.4
+      ELSE, when preservation left the requested change unachievable, return
+      preserved-content.
+    violation: >
+      Returning preserved-content for an operation that did complete, or
+      success for one that could not proceed, misreports the outcome to the
+      delivery adapter.
+    source: FR1.3, NFR4
+
   - id: BR5.1
     statement: A cleanup journal entry describes one in-flight destructive operation, never outcomes.
     category: constraint
@@ -243,7 +288,7 @@ rules:
       THEN the entry records only progress-through-states
       ELSE no entry is created.
     violation: The entry must not carry user-facing outcome content or long-lived history.
-    source: NFR1.1, FR3.4, FR3.5, NFR4
+    source: NFR1.1, NFR4
 
   - id: BR5.2
     statement: A journal state change is durable before the filesystem action it authorises.
@@ -279,7 +324,7 @@ rules:
       THEN delete it as the final step of the same operation
       ELSE the operation is incomplete.
     violation: A surviving entry would make the journal durable outcome state.
-    source: NFR1.1, FR3.4, FR3.5, NFR4
+    source: NFR1.1, NFR4
 
   - id: BR5.5
     statement: Resuming a journal entry re-reads current bytes before authorising a destructive action.
@@ -292,6 +337,43 @@ rules:
       ELSE the deletion is refused until verification succeeds.
     violation: A stale verification claim from a prior run is never sufficient authority.
     source: NFR2
+
+  - id: BR5.6
+    statement: First-pass target verification precedes any deletion authority.
+    category: validation
+    applies_to: CleanupJournalEntry
+    trigger: >
+      The prepared-to-target-verified transition, on the operation's first pass
+      through a journal entry.
+    logic: >
+      IF every artifact the entry expects at the target is present AND its
+      current bytes are byte-identical to the fingerprint recorded for the
+      corresponding managed artifact
+      THEN persist the transition to target-verified
+      ELSE leave the entry in prepared and authorise no deletion.
+    violation: >
+      Advancing to target-verified while any expected target artifact is absent
+      or different would grant deletion authority the target content does not
+      support.
+    source: NFR1.1, NFR2
+
+  - id: BR5.7
+    statement: Every legacy path is contained within the entry's verified legacy source root.
+    category: validation
+    applies_to: CleanupJournalEntry
+    trigger: >
+      Journal entry creation, and every comparison, verification, or deletion
+      touching a legacy path.
+    logic: >
+      IF the legacy path resolves inside the entry's legacy source root after
+      symbolic-link resolution AND contains no parent-traversal segment
+      THEN the path may be compared, verified, or deleted
+      ELSE return a safety-blocked outcome and perform no filesystem action on it.
+    violation: >
+      A legacy path escaping its source root, or reachable only through an
+      unsafe symbolic link, is refused unconditionally — the same containment
+      bar BR2.2 sets for destinations.
+    source: NFR1.1
 
   - id: BR6.1
     statement: Identity derivation is offline; redirect resolution is a separate reconciliation-only step.
@@ -338,13 +420,17 @@ rules:
 | BR4.1 | Success requires every write to be read-back verified. | validation | NFR1 |
 | BR4.2 | Preserve, never delete, locally changed omitted artifacts. | policy | FR1.3 |
 | BR4.3 | A preserved artifact leaves the managed set. | constraint | FR1.3 |
-| BR4.4 | Success carries preserved artifacts; preserved-content is reserved for stalled operations. | policy | FR1.3 |
+| BR4.4 | A successful update reports the artifacts it preserved. | policy | FR1.3 |
 | BR4.5 | Uninstall touches only still-managed artifacts. | constraint | FR1.3, FR2.2 |
 | BR4.6 | Success requires every removal to be verified absent. | validation | NFR1, NFR1.1 |
-| BR5.1 | The journal describes operations in flight, not outcomes. | constraint | NFR1.1, FR3.4, FR3.5, NFR4 |
+| BR4.7 | A still-named, locally changed artifact is never overwritten without consent. | policy | FR1.3, NFR1.1 |
+| BR4.8 | preserved-content is reserved for an operation that could not proceed. | policy | FR1.3, NFR4 |
+| BR5.1 | The journal describes operations in flight, not outcomes. | constraint | NFR1.1, NFR4 |
 | BR5.2 | State transitions are durable before their filesystem actions. | constraint | NFR1.1 |
 | BR5.3 | The journal references registry data rather than copying it. | constraint | NFR1.1 |
-| BR5.4 | Committed entries are deleted in the same operation. | constraint | NFR1.1, FR3.4, FR3.5, NFR4 |
+| BR5.4 | Committed entries are deleted in the same operation. | constraint | NFR1.1, NFR4 |
 | BR5.5 | Resuming re-verifies current bytes. | constraint | NFR2 |
+| BR5.6 | First-pass target verification precedes any deletion authority. | validation | NFR1.1, NFR2 |
+| BR5.7 | Every legacy path stays inside its verified legacy source root. | validation | NFR1.1 |
 | BR6.1 | Derivation is offline; redirect resolution goes through a reconciliation port. | constraint | FR3.7, FR3.8 |
 | BR6.2 | Redirect resolution is skipped when the network is unavailable. | policy | FR3.7, ASM3 |

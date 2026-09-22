@@ -27,7 +27,7 @@ installs in the extension registry. Legacy installations are what that left behi
 - C. Both: use records as the primary list and reconcile against a scan of the legacy directory, reporting any filesystem content with no record and any record with no content.
 - X. Other (please specify)
 
-[Answer]:
+[Answer]: X - You should care not about what is in the cache but about which symlink (or copy) are actually existing in the current target of the extension. Because cache could be present but symlink could have been deleted.
 
 ## Q2. How is the migration scheduled relative to activation and bundle commands?
 
@@ -42,7 +42,7 @@ treats failure as non-fatal.
 - C. Run migration inline but time-boxed: attempt within a bounded window, and any installation not reached in time is left for the next activation to retry, with commands gated until the window closes.
 - X. Other (please specify)
 
-[Answer]:
+[Answer]: X - Keep it as simple as possible it should be fast what is the simplest solution ?
 
 ## Q3. Reconcile the state-free requirement with the extension's existing migration tracking.
 
@@ -57,7 +57,7 @@ installation "has no further work" only because its legacy source is absent.
 - C. Keep per-installation completion in `MigrationRegistry` for speed, and treat FR3.4's "no durable state" as satisfied because `globalState` is extension-local rather than a migration-outcome file.
 - X. Other (please specify)
 
-[Answer]:
+[Answer]: Do not use `MigrationRegistry` per installation at all. Each eligible activation re-derives every installation's state from current legacy+target content; "done" means the legacy source is gone (consumed by verified cleanup), not a recorded flag. The journal is the only persistence, and it exists only while a destructive operation is in flight.
 
 ## Q4. What data determines the deterministic target and scope association (FR3.8)?
 
@@ -71,7 +71,7 @@ selection or an implicit default. Ambiguous or unsupported data means skip-and-r
 - C. Both: use the association table as authoritative and use the physical location as a cross-check, skipping when they disagree.
 - X. Other (please specify)
 
-[Answer]:
+[Answer]: Migrate bundle associated to the current IDE only. For example if we are in Kiro only bundle installed at user level in the globalStorage should be migrated and only if symlink are targeting them from the installation place. Same for vscode or vscode insiders
 
 ## Q5. How is repository-scope legacy content associated with a workspace (FR3.7)?
 
@@ -86,7 +86,7 @@ reconciliation port for redirects.
 - C. Match on workspace root path only, ignoring remote-URL identity, so a moved or renamed repository is treated as a new one.
 - X. Other (please specify)
 
-[Answer]:
+[Answer]: X. Migration should only affect element installed at user level so it should not be associated to any workspace, since those installed at repository level should be handled via lockfile and we do not care about the temporary cache.
 
 ## Q6. What is the `@migration-cleanup` extraction boundary for this unit?
 
@@ -101,4 +101,116 @@ what is durable shared surface.
 - C. Tag the legacy-internal concerns (as A) and additionally record a follow-up to generalise the journal to ordinary uninstall, so the tag set names both what is removed and what is promoted.
 - X. Other (please specify)
 
-[Answer]:
+[Answer]: B. Tag the entire U4 unit as `@migration-cleanup(activation-migration)`, so the whole activation-migration path is removed wholesale once migration is universally complete.
+
+
+## Q7. Follow-up to Q2 — the simplest fast scheduling
+
+You asked for the simplest fast solution. Given Q3 (state-free, re-derived from
+disk each activation), the migration is a **no-op in the common case**: once an
+installation has been migrated its legacy source is gone, so re-derivation finds
+nothing to do and returns immediately. That makes the simplest option also the
+fast one.
+
+Proposed: run inspection-and-migration **inline during activation, before command
+handlers are registered**, non-fatal (a failure preserves legacy data and never
+blocks activation), with **no time-box** — because after the first successful run
+there is nothing left to scan. Defer any measured latency bound to NFR
+Requirements (the next stage). This is option A from Q2, chosen as the simplest.
+
+- A. Yes — inline, before command handlers, non-fatal, no time-box; the common case is a no-op so it stays fast.
+- B. No — I want the background-gated or time-boxed variant after all (say which).
+- X. Other (please specify)
+
+[Answer]: A
+
+## Q8. Confirm dropping repository-scope migration (overrides FR3.7)
+
+Your Q5 answer scopes migration to user-level content only, on the grounds that
+repository-scope installs live in the committed lockfile and need no migration from
+the temporary cache. That is a deliberate **override of FR3.7**, which as written
+requires repository-scope migration parity (discover a legacy repo-scope install,
+associate it to a unique open workspace, and apply the same transfer/cleanup rules).
+
+I will encode "repository-scope migration is out of scope; repository installs are
+carried by the committed lockfile and never migrated from the extension cache" and
+record it as a requirements deviation to raise at the stage gate — unless you'd
+rather keep FR3.7.
+
+- A. Confirmed — drop repository-scope migration; user-level only. Record the FR3.7 deviation for the gate.
+- B. Keep FR3.7 — repository-scope migration stays in U4 as the requirement specifies.
+- X. Other (please specify)
+
+[Answer]: A
+
+## Q9. Confirm the FR3.8 association simplification
+
+Your Q4 answer replaces the versioned association table (over provenance and item
+kinds) with a much simpler rule: migrate only bundles for the **current IDE the
+extension is running as** (vscode, vscode-insiders, kiro, …), at **user scope**,
+and **only where the target install place still has a live symlink or copy** into
+the legacy cache. Discovery (Q1) is driven by those live target links, not by cache
+contents or records.
+
+This is simpler and matches how the extension actually installs (confirmed: skills
+are symlinked into the target, cache alone is not "installed"). It reinterprets
+FR3.8's "versioned migration mapping over the legacy record's attributes" as "the
+current running target + user scope," which I will record as a deviation for the
+gate.
+
+- A. Confirmed — associate to the current IDE + user scope, discover from live target links, skip anything else. Record the FR3.8 reinterpretation for the gate.
+- B. Keep the versioned association table as FR3.8 specifies.
+- X. Other (please specify)
+
+[Answer]: A
+
+
+## Consolidated Summary Confirmation
+
+These are the decisions I will build the U4 design artifacts from. Two of them
+narrow the approved requirements and are recorded as deviations to raise at the
+stage gate.
+
+- **Discovery (Q1)** — driven by what is actually deployed at the current target,
+  not by cache contents or records. U4 inspects the target install place for live
+  symlinks (or copies) that resolve into the legacy extension cache; a bundle with
+  no live target link has nothing to migrate even if cache bytes remain. The cache
+  is evidence of the source, never proof of an install.
+- **Scheduling (Q2, Q7)** — inline during activation, before command handlers are
+  registered, so no bundle command runs before migration is attempted. Non-fatal:
+  a failure preserves legacy data and never blocks activation. No time-box; once an
+  installation is migrated its legacy source is gone, so later activations
+  re-derive nothing and return immediately. Any measured latency bound is deferred
+  to NFR Requirements.
+- **State-free (Q3)** — no per-installation tracking in `MigrationRegistry` or any
+  durable outcome store. Each eligible activation re-derives every installation's
+  state from the legacy source and current target content; "no further work" means
+  the legacy source is absent (consumed by verified cleanup). U1's cleanup journal
+  is the only persistence and exists only while a destructive cleanup is in flight.
+- **Association (Q4, Q9)** — migrate only bundles for the **current IDE the
+  extension is running as** (e.g. vscode, vscode-insiders, kiro), at **user scope**,
+  and only where the target install place still has a live symlink/copy into the
+  legacy cache. This replaces FR3.8's versioned attribute-mapping table with
+  "current running target + user scope," and matches how the extension actually
+  installs. **Recorded deviation from FR3.8** (versioned association table) for the
+  gate.
+- **Repository scope (Q5, Q8)** — **out of scope.** Repository-scope installs are
+  carried by the committed repository lockfile and are never migrated from the
+  extension cache. **Recorded deviation from FR3.7** (repository-scope migration
+  parity) for the gate.
+- **Cleanup boundary (Q6)** — the entire U4 unit is tagged
+  `@migration-cleanup(activation-migration)` for wholesale removal once migration
+  is universally complete.
+- **Unchanged, inherited from U1 and the requirements** — every target write and
+  the transfer go through U1's shared lifecycle and `MigrationCleanupJournal`
+  contract; target content is authoritative and overwrite needs explicit user
+  consent (the shared `OverwriteDecision`); legacy deletion requires identity +
+  byte verification then post-delete absence; and unsafe, ambiguous, declined, or
+  failed transitions preserve legacy data and report from the current run.
+
+Does this all look correct before I generate the artifact?
+
+- Looks correct
+- Request changes
+
+[Answer]: Looks correct

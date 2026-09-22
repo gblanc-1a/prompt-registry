@@ -1,0 +1,35 @@
+{
+  "stage": "functional-design",
+  "unit": "activation-migration-compatibility",
+  "upstream_ids": [
+    "FR3",
+    "FR3.1",
+    "FR3.2",
+    "FR3.3",
+    "FR3.4",
+    "FR3.5",
+    "FR3.6",
+    "FR3.7",
+    "FR3.8",
+    "NFR1.1",
+    "NFR2",
+    "NFR4"
+  ],
+  "coverage": [
+    { "id": "FR3",    "status": "OK", "target": "BR1.1, BR2.4, BR3.1" },
+    { "id": "FR3.1",  "status": "OK", "target": "BR4.2" },
+    { "id": "FR3.2",  "status": "OK", "target": "BR1.3, BR5.1, BR5.2" },
+    { "id": "FR3.3",  "status": "OK", "target": "BR4.2, BR4.3, BR6.2" },
+    { "id": "FR3.4",  "status": "OK", "target": "BR3.2, BR3.3, BR5.4" },
+    { "id": "FR3.5",  "status": "OK", "target": "BR6.1, BR6.2" },
+    { "id": "FR3.6",  "status": "OK", "target": "BR1.3, BR4.1, BR5.2" },
+    { "id": "FR3.7",  "status": "N/A", "target": "repository-scope migration out of scope; repository installs are carried by the committed lockfile and never migrated from the extension cache (recorded FR3.7 deviation, confirmed at Q8)" },
+    { "id": "FR3.8",  "status": "OK", "target": "BR2.1, BR2.3, BR2.4" },
+    { "id": "NFR1.1", "status": "OK", "target": "BR1.2, BR5.1, BR5.2, BR5.3" },
+    { "id": "NFR2",   "status": "OK", "target": "BR3.2, BR5.4" },
+    { "id": "NFR4",   "status": "OK", "target": "BR3.3, BR6.1" }
+  ],
+  "reverse": [
+    { "id": "BR2.2", "status": "N/A", "target": "repository-scope exclusion; embodies the recorded FR3.7 deviation, so no acceptance criterion authors it" }
+  ]
+}

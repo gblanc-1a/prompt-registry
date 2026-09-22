@@ -1,0 +1,21 @@
+{
+  "stage_slug": "functional-design",
+  "space": "default",
+  "intent": "260914-unified-installation",
+  "selections": [
+    {
+      "candidate_id": "c14",
+      "type": "learning",
+      "scope": "project",
+      "heading": "Corrections",
+      "text": "When `aidlc engine review-brief <verb>` fails through the managed launcher with \"aidlc-review-brief.ts does not export main(argv)\", run it as `bun .kiro/tools/aidlc.ts engine review-brief <verb> ...` instead; the tool does export main(argv) and the route is registered, so the defect is in the managed launcher layer, not the workflow or the tool. A permanent fix needs a framework release."
+    },
+    {
+      "candidate_id": "c8",
+      "type": "learning",
+      "scope": "project",
+      "heading": "Corrections",
+      "text": "In this repo the CLI `apply` and `profile activate` commands are multi-target profile activation (compose over the shared single-bundle lifecycle across every configured target), not single-bundle install; model them as composition that delegates each (bundle, target) write to the shared lifecycle, never as `install`."
+    }
+  ]
+}

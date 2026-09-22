@@ -77,6 +77,10 @@
 
 - Decompose large units into component-level, independently reviewable pull requests, and split destructive work (such as migration file deletion) into its own separately-reviewed PR. (learned 2026-09-18) <!-- cid:260914-unified-installation:delivery-planning:c01965f37866bbd7bd57524f76136185d83ef30a6c2780ccf8ff8f86833f0b8d -->
 
+- When `aidlc engine review-brief <verb>` fails through the managed launcher with "aidlc-review-brief.ts does not export main(argv)", run it as `bun .kiro/tools/aidlc.ts engine review-brief <verb> ...` instead; the tool does export main(argv) and the route is registered, so the defect is in the managed launcher layer, not the workflow or the tool. A permanent fix needs a framework release. (learned 2026-09-21) <!-- cid:260914-unified-installation:functional-design:de6539274d3af38b8e59b3985f4121c55d1da46ce22a1158004f14ca895ca9de -->
+
+- In this repo the CLI `apply` and `profile activate` commands are multi-target profile activation (compose over the shared single-bundle lifecycle across every configured target), not single-bundle install; model them as composition that delegates each (bundle, target) write to the shared lifecycle, never as `install`. (learned 2026-09-21) <!-- cid:260914-unified-installation:functional-design:f2a587f5135bd2809ba4b62890016b548604af6845d20debda9d531a202896e8 -->
+
 ## Interpretations
 - treated XDG storage as the shared application boundary; the CLI already separates cached bundles and durable installation records from target runtime output, so `~/.copilot` and `~/.kiro` remain target roots rather than registry roots. (learned 2026-09-14) <!-- cid:260914-unified-installation:feasibility:5ee78cf39a5074b9d0e001f216aa6bf476b96179757de5db684fcf199422755c -->
 - Treat transparent migration as approved scope with a design gate: automatic legacy cleanup remains disabled until the completion state, interruption recovery, and duplicate comparison rules are defined and tested. (learned 2026-09-14) <!-- cid:260914-unified-installation:approval-handoff:29832c1008c1d57283820ae1912c204b0ab56f1f9edd783d0fe6de37f053e638 -->

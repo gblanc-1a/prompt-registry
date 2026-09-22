@@ -10,6 +10,12 @@ entities:
     description: >
       The validated root manifest that authorises an installation. A bundle is
       installable only when exactly one of these is found at the archive root.
+      Upstream naming note: Domain Design's component catalogue calls this
+      entity `BundleManifest` and assigns it to `ManifestGovernance`. It is
+      named `GovernedBundleManifest` here because this model distinguishes the
+      raw manifest read from the archive from the validated form that has
+      passed BR1.1 through BR1.4; only the validated form ever reaches routing
+      or the registry. The two names denote the same owned entity.
     attributes:
       - name: bundleId
         type: identifier
@@ -328,7 +334,10 @@ entities:
       - name: legacySourceRoot
         type: path
         required: true
-        constraints: The verified root containing the legacy content; every legacy path must resolve inside it.
+        constraints: >
+          The verified root containing the legacy content. Every legacy path
+          must resolve inside it after symbolic-link resolution; BR5.7 enforces
+          this and refuses any escaping path with a safety-blocked outcome.
       - name: updatedAt
         type: timestamp
         required: true
@@ -402,11 +411,81 @@ entities:
     constraints:
       - A successful outcome is returned only after every write and removal in the operation was verified.
       - Preserved content is reported on the outcome rather than persisted as separate state.
+
+  - name: MigrationTransferOutcome
+    description: >
+      The result of one `transferThroughLifecycle` call. A distinct union from
+      `LifecycleOutcome` because the migration boundary has outcomes the normal
+      lifecycle does not — a legacy copy that is already a verified duplicate,
+      and a legacy installation deliberately left alone. Contract Design names
+      this type `MigrationTransferResult`; the two names denote the same union.
+    attributes:
+      - name: kind
+        type: enum
+        required: true
+        allowed_values:
+          - transferred
+          - verified-duplicate
+          - preserved-conflict
+          - retry-required
+          - skipped
+          - safety-blocked
+        constraints: >
+          Every exit of the migration transfer workflow returns one of these
+          values. A `LifecycleOutcome.kind` raised by an inner lifecycle call is
+          mapped to its member here and never returned directly.
+      - name: transferredArtifacts
+        type: list of reference
+        required: false
+        constraints: Present on `transferred`; the managed artifacts now verified at the target.
+      - name: detail
+        type: string
+        required: false
+        constraints: >
+          Identifies the affected bundle and artifact. Required on
+          `preserved-conflict`, `retry-required`, `skipped`, and
+          `safety-blocked` so the caller can report which installation is
+          affected and why.
+    constraints:
+      - Legacy content is intact for every kind except `transferred`, where it becomes eligible for journaled cleanup.
+      - No durable per-installation migration state is created to produce this value.
+    relationships:
+      - to: LifecycleOutcome
+        cardinality: one-to-one
+        direction: maps-from
+
+  - name: ArtifactVerificationResult
+    description: >
+      The result of one `verifyManagedArtifacts` call: whether each expected
+      target artifact is present and byte-identical to the fingerprint the
+      registry recorded. This is the shared evidence behind U4's
+      verified-duplicate decision, its pre-deletion byte comparison, and the
+      journal's first-pass and resumption checks.
+    attributes:
+      - name: allVerified
+        type: boolean
+        required: true
+        constraints: True only when every requested artifact verified as present-identical.
+      - name: artifactVerdicts
+        type: list of enum
+        required: true
+        allowed_values: [present-identical, present-different, absent, safety-blocked]
+        constraints: One verdict per requested artifact, each naming its destination path.
+      - name: detail
+        type: string
+        required: false
+    constraints:
+      - The verdicts describe bytes read during this call; a verdict is never carried across operations as standing authority.
+      - A `safety-blocked` verdict on any artifact prevents `allVerified` regardless of the other verdicts.
+    relationships:
+      - to: ManagedArtifact
+        cardinality: one-to-many
+        direction: references
 ```
 
 ## Summary
 
-Eleven entities across four groups.
+Fifteen entities across four groups.
 
 **Bundle governance** — `GovernedBundleManifest` with its `ManifestItem` set,
 `ArchiveFileRecord` set, and `BundleProvenance`. The split between items and
@@ -414,12 +493,16 @@ file records is the load-bearing detail: items carry routing identity (path,
 kind) while file records carry integrity (size, digest) and the role that
 decides whether a file is ever written. Only an `installable` file is a write
 candidate; `metadata` and `ignored` files stay in the archive deliberately.
+Domain Design calls the first entity `BundleManifest`; the name here marks the
+validated form, and the entity is the same one.
 
 **Addressing** — `SupportedTarget`, `InstallationScope`, `RepositoryIdentity`,
 and the resolved `InstallationAddress`. Destinations are derived from target,
 scope, and item kind, so no runtime root is embedded in lifecycle policy.
 Repository identity is derivable offline, which keeps installation working with
-no network.
+no network. `RepositoryIdentity` is an addition to the upstream component
+catalogue; the functional specification records it as a boundary change with its
+rationale.
 
 **Managed state** — `ManagedInstallation` and its `ManagedArtifact` set. One
 logical record, two persistence locations: shared application data for user
@@ -427,9 +510,13 @@ scope, the repository's own lockfile for repository scope. The artifact
 fingerprint covers the bytes as written, which is what lets the lifecycle tell
 its own content from content the user has edited.
 
-**Operations** — `CleanupJournalEntry` with `CleanupArtifactProgress`, and
-`LifecycleOutcome`. The journal is deliberately not shaped like the registry
-record: the registry describes steady state and outlives every operation, while
-the journal describes one destructive operation in flight and is deleted when it
-commits. It references registry-owned fingerprints rather than copying them, so
-there is one source of truth for what is managed.
+**Operations** — `CleanupJournalEntry` with `CleanupArtifactProgress`,
+`LifecycleOutcome`, `MigrationTransferOutcome`, and
+`ArtifactVerificationResult`. The journal is deliberately not shaped like the
+registry record: the registry describes steady state and outlives every
+operation, while the journal describes one destructive operation in flight and
+is deleted when it commits. It references registry-owned fingerprints rather
+than copying them, so there is one source of truth for what is managed. The two
+result unions are kept separate on purpose — the normal lifecycle has no
+`verified-duplicate` or `skipped` outcome, and the migration boundary must not
+inherit outcome kinds it cannot honour.

@@ -44,6 +44,14 @@
 - 2026-09-21T14:48:00Z — Conflict handling keeps decision in the shared layer and interaction in the adapter: shared lifecycle returns `conflict` writing nothing, extension prompts, re-invokes with an explicit overwriteDecision. Review (R-01) tightened this to reuse the SINGLE OverwriteDecision concept the migration path (U1→U4 contract, FR3.3) already defines, so the foundation repair grows one overwrite mechanism, not two parallel ones.
 <!-- aidlc-wave-memory:vscode-shared-lifecycle-adoption:9d2b8bb0de48ddc265ef7762b949fe0e926928b4ad6d6b9caec8b8c1fc3b63cc -->
 
+
+- 2026-09-21T15:18:00Z — U4 scope was narrowed sharply by the human: migrate only the CURRENT IDE the extension runs as (vscode/vscode-insiders/kiro), at USER scope, discovered from LIVE TARGET LINKS (symlink or copy) that resolve into the legacy cache — not from cache contents or records. The cache proves the source, never the install. Confirmed the extension actually symlinks skills into the target (bundle-installer symlink() with copy fallback), so the model is accurate.
+<!-- aidlc-wave-memory:activation-migration-compatibility:13d0c1ba7231ecbf5de5f82cc95d00cc70fc224251e4c9aaf9485409087405c8 -->
+
+
+- 2026-09-21T15:18:00Z — State-free is absolute (Q3=A): no MigrationRegistry per-installation flag, no durable outcome store. Each activation re-derives from disk; "done" = legacy source gone. U1's cleanup journal is the only persistence and only while a destructive op is in flight. Scheduling (Q7=A) is inline-before-command-handlers, non-fatal, no time-box — the common case is a no-op so it stays fast.
+<!-- aidlc-wave-memory:activation-migration-compatibility:e37c34c639f9c0e810c299bfab3388ab7983fe14db6b466eebdc8190b5d55191 -->
+
 ## Deviations
 <!-- example: 2026-05-29T10:14:32Z — skipped the optional caching layer the stage prose suggested; the dataset is small enough that it adds risk -->
 
@@ -63,6 +71,14 @@
 - 2026-09-21T14:48:00Z — Two shared-foundation deltas recorded rather than resolved here (same discipline as U2): (delta A) normal install/update must detect pre-existing target content, return `conflict` writing nothing, and accept the shared OverwriteDecision — U1's install workflow does not; (delta B) source resolution/download on the shared request — same delta U2 recorded. Both must close in the U1 repair at the stage decision.
 <!-- aidlc-wave-memory:vscode-shared-lifecycle-adoption:5c8394afce9f10db1efe5e3e104bfb77bda88b893e29a241262c289543cbb0c2 -->
 
+
+- 2026-09-21T15:18:00Z — TWO human-confirmed requirement deviations, recorded in functional-spec "Requirement deviations" and traceability, to raise at the stage gate: (FR3.7) repository-scope migration DROPPED — repo installs are carried by the committed lockfile, never migrated from the cache (Q8=A); (FR3.8) versioned association table REINTERPRETED as "current IDE + user scope + live target link" (Q9=A). BR2.2 embodies the FR3.7 exclusion and sits in traceability reverse; FR3.7 row is N/A with reason.
+<!-- aidlc-wave-memory:activation-migration-compatibility:873947f992e540e3e6199fc178252301b1cc2e200a04e486f5c6701192115a63 -->
+
+
+- 2026-09-21T15:18:00Z — Whole unit tagged @migration-cleanup(activation-migration) for wholesale removal once migration is universally complete (Q6=B), unlike U1's finer-grained tagging intent.
+<!-- aidlc-wave-memory:activation-migration-compatibility:453f2a9aa65949ce7decc6e403594111bdf00e9aca2320eb083f846ef40c8b33 -->
+
 ## Tradeoffs
 <!-- example: 2026-05-29T10:14:32Z — picked TDD over BDD this run; the team is unit-first and the domain is well-understood -->
 
@@ -73,6 +89,14 @@
 
 - 2026-09-21T14:48:00Z — Legacy extension-record import (Q3=A): the extension's InstalledBundle carries no explicit target (implied by installPath) and no repository identity, so the shared key can't be built directly. Review (R-02) added BR3.5 mirroring U2's BR3.4 — resolve target from hint/installPath else the single configured target whose layout holds the files, resolve repo identity from the record's workspace, skip-and-report ambiguity rather than guess.
 <!-- aidlc-wave-memory:vscode-shared-lifecycle-adoption:5da6060b5ac4c6a858667c977da9741c6161fb8738338f106b2773cc6df52650 -->
+
+
+- 2026-09-21T15:18:00Z — Review (R-01, Critical) caught that a symlinked target reads byte-identical through the link, so the naive verified-duplicate path would delete the cache and strand a broken symlink. Fixed with BR1.3: a symlink target is always MATERIALIZED via U1 (real files written) before cache+symlink cleanup; only an identical COPY is a true verified duplicate. Copy-form legacySourceRoot located by bundle id against the cache layout, absent → leave copy in place with no cleanup.
+<!-- aidlc-wave-memory:activation-migration-compatibility:ea1e140b1b745a7465f371e993826874a67373a0d2e09727f359182254b602d8 -->
+
+
+- 2026-09-21T15:18:00Z — Shares U3's delta A: depends on the single shared OverwriteDecision (confirmed|declined|unavailable), not a migration-only overwrite mechanism (BR4.3). To close in the U1 repair at the stage decision.
+<!-- aidlc-wave-memory:activation-migration-compatibility:2bc29b5709fdce17c67d689ca4fb7fb50bca042a17a01d59a66acdef4b475ac1 -->
 
 ## Open questions
 <!-- example: 2026-05-29T10:14:32Z — confirm the retention window with compliance before the next stage hardens the schema -->

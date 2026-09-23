@@ -84,19 +84,65 @@ Append an entry when any of the following happens:
 
 Rules for the log:
 
-- **Append, never rewrite.** Add a new dated entry under `## Friction entries`;
-  leave earlier entries intact even when they now look obvious or resolved.
-- One entry per distinct problem. Include: what you ran, what you expected, what
-  happened, the cost (turns and rough token burn), and the narrowest fix you can name.
-- Prefer verbatim error text and exact command lines over paraphrase — the point
-  of this file is that someone can reproduce and fix the defect.
-- If an entry has a workaround, say so explicitly, and say whether the workaround
-  is safe to repeat or is a one-off.
-- Mark an entry `Status: recurring` when you hit something already logged, and add
-  the new occurrence date rather than opening a duplicate entry.
-- Workflow-affecting learnings still go through the AI-DLC `§13` learnings ritual
-  when it is offered; this file is the engineering-defect channel, not a substitute
-  for that gate.
+- **Append, never rewrite.** Add a new dated issue draft under `## Issue drafts`;
+  leave earlier issue IDs intact even when they are resolved or duplicated.
+- Write each entry as a concise, GitHub-ready issue draft for
+  `awslabs/aidlc-workflows`; do not submit it unless the user explicitly asks.
+- Use the stable heading `### AIDLC-ISSUE-NNN — <title>` and include only:
+  **Status**, **Area**, **Observed**, **Expected**, **Impact**, and short evidence
+  references (exact command/error plus audit, artifact, or review path).
+- Put every candidate remedy under `#### Proposed fixes` as a distinct,
+  stable `AIDLC-P-NNN` item. Each proposal must be actionable and testable.
+- Keep the report concise: state the reproducible fact and its consequence;
+  link or point to raw evidence instead of duplicating long audit logs or tool output.
+- For a recurrence, reference the original issue ID and add only the new evidence;
+  do not restate the whole issue.
+- If a workaround exists, state whether it is safe to repeat. Workflow-affecting
+  learnings still go through the AI-DLC `§13` ritual; this file is the engineering-
+  defect channel, not a substitute for that gate.
+
+## Resuming an AI-DLC workflow — do this, not the hand-driven loop
+
+Resuming with a bare `/aidlc --resume` forces the conductor to hand-drive the
+engine's steering-delivery loop (`next --resume` → read `continue_token` →
+`continue <token>` → repeat until a terminal directive). In this project that
+loop has two traps that silently burn tool calls and context — see
+[AIDLC-ISSUE-006](AIDLC-FEEDBACK.md). Avoid both by using the one-shot helper.
+
+**Resume in one command** (then read the file it wrote):
+
+```bash
+scripts/aidlc-resume.sh > /tmp/aidlc-resume.txt 2>&1   # forwards any next flags, e.g. --stage <slug>
+```
+
+The **last** directive block in that file (`=== directive N (<kind>) ===`) is the
+terminal directive to act on — normally `run-stage`, or `ask` / `done` /
+`parked` / `error`. Because the memory rule bundle is already injected as
+workspace steering here, you do not need the redelivered `load-steering` parts
+to proceed; act on the terminal directive per the skill's forwarding loop.
+
+Redirect to a file and read it: the tool sometimes exits `130` (SIGINT) and
+tears down the calling shell *after* writing its output, so a bare run can look
+like a failure while the file is complete. A non-zero exit here is not a resume
+failure — check the file.
+
+**Non-negotiable rules the helper encodes** (apply them for any manual call too):
+
+- **Drive the engine through `bun`, not the managed launcher.** Use
+  `bun .kiro/tools/aidlc.ts engine orchestrate …`. The `aidlc` launcher
+  intermittently exits `130` and, inside a shell loop, tears the loop down
+  mid-chain. (Same launcher-layer defect already recorded for `review-brief` in
+  `aidlc/spaces/default/memory/project.md`.)
+- **`orchestrate continue` takes a POSITIONAL token.** Run
+  `... orchestrate continue "<token>"`. Never `--token "<token>"` — the parser
+  then sees two args and returns the misleading `"Invalid steering continuation
+  token: … cannot be loaded from where they left off"`, which looks like token
+  staleness. It is not: it is the wrong argument shape. Do **not** react to that
+  message by re-running `next` (that redelivers the whole rule bundle and burns
+  context).
+
+Neither `next` nor `continue` mutates workflow state — they are read-only
+transport — so the helper is safe to re-run.
 
 ## References
 

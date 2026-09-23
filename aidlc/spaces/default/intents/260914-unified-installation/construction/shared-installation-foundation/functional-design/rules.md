@@ -2,7 +2,7 @@
 
 Rule identifiers use the `BR{group}.{seq}` format. Groups: 1 governance, 2
 routing, 3 registry, 4 lifecycle, 5 journal, 6 reconciliation. The YAML block
-below is the source of truth; a summary table follows it. Thirty rules.
+below is the source of truth; a summary table follows it. Thirty-eight rules.
 
 ```yaml
 rules:
@@ -31,16 +31,20 @@ rules:
     source: FR1.2
 
   - id: BR1.3
-    statement: An installable file is verified against its file-record digest before any target write.
+    statement: The root manifest items[] inventory is authoritative, and an optional per-item hash is verified when present.
     category: validation
-    applies_to: ArchiveFileRecord
-    trigger: Bundle validation for an installable file.
+    applies_to: ManifestItem
+    trigger: Bundle validation for an installable item.
     logic: >
-      IF the file's role is installable
-      THEN recompute the file's digest and require an exact match with the file-record digest
-      ELSE the file is not a write candidate.
-    violation: Return validation-error and write nothing.
-    source: FR1.1, NFR1
+      IF the root deployment-manifest.yml items[] inventory supplies an
+      archive-relative path and kind for an installable item
+      THEN the item is governed. IF that item also supplies contentHash,
+      recompute the referenced archive bytes and require an exact match before
+      any target write. IF contentHash is absent, accept the governed item,
+      read its actual archive bytes binary-safely, and rely on required
+      byte-for-byte target read-back verification after the write.
+    violation: A present hash mismatch returns validation-error and writes nothing; a missing optional hash alone does not reject the bundle.
+    source: FR1.1, FR1.2, NFR1
 
   - id: BR1.4
     statement: Archive containment and safe paths are enforced before validation trusts an entry.
@@ -124,7 +128,7 @@ rules:
       THEN the identity is the normalised form of that URL
       ELSE the identity is the absolute workspace root path.
     violation: A network call may not participate in derivation.
-    source: FR2.2, FR3.8
+    source: FR2.2
 
   - id: BR3.3
     statement: A managed artifact's fingerprint covers the bytes as written to the target.
@@ -375,38 +379,171 @@ rules:
       bar BR2.2 sets for destinations.
     source: NFR1.1
 
-  - id: BR6.1
-    statement: Identity derivation is offline; redirect resolution is a separate reconciliation-only step.
-    category: constraint
-    applies_to: RepositoryIdentity
-    trigger: A stored record matches no open workspace.
+  - id: BR5.8
+    statement: An open request naming a different legacy source root than the live entry grants no authority.
+    category: validation
+    applies_to: CleanupJournalEntry
+    trigger: openCleanupJournalEntry for an installation key that already has a live entry.
     logic: >
-      IF a stored record's identity value matches no open workspace
-      THEN request redirect resolution through the injected reconciliation port and, when a redirect confirms the old identity now points at the current one, re-key the record
-      ELSE leave the record untouched.
-    violation: The shared foundation may not take a direct network dependency; reconciliation must go through the port.
-    source: FR3.7, FR3.8
+      IF a live entry exists for the key AND its legacySourceRoot equals the
+      request's THEN return the persisted entry as resumed
+      ELSE IF a live entry exists with a different legacySourceRoot
+      THEN return source-root-mismatch, granting no deletion authority and
+      changing no state
+      ELSE create a new entry in prepared and return created.
+    violation: >
+      Returning the existing entry for a different legacy root would hand
+      deletion authority for one root to a transaction operating on another.
+    source: NFR1.1, NFR2
 
-  - id: BR6.2
-    statement: Redirect resolution is skipped when the reconciliation port cannot reach the network.
+  - id: BR5.9
+    statement: Journal access is exclusive per installation key.
+    category: constraint
+    applies_to: CleanupJournalEntry
+    trigger: Any journal operation while another holder is active for the same key.
+    logic: >
+      IF another holder already has this installation key's entry
+      THEN return retryable-failure
+      ELSE grant the caller exclusive access for the operation.
+    violation: >
+      Two concurrent extension hosts sharing one entry could both believe they
+      hold deletion authority for the same artifacts.
+    source: NFR1.1, NFR2
+
+  - id: BR5.10
+    statement: Repeated transitions into legacy-delete-pending are the per-artifact durability mechanism.
+    category: constraint
+    applies_to: CleanupJournalEntry
+    trigger: Each per-artifact deletion step of a cleanup operation.
+    logic: >
+      IF the entry is in legacy-delete-pending AND another artifact's progress
+      must become durable
+      THEN record a further transition to the same state carrying the updated
+      progress set
+      ELSE advance only along the legal forward transitions.
+    violation: >
+      Treating a same-state transition as illegal would leave per-artifact
+      deletion progress undurable across an interruption.
+    source: NFR1.1, NFR2
+
+  - id: BR5.11
+    statement: An entry may be abandoned only before deletion has begun.
+    category: constraint
+    applies_to: CleanupJournalEntry
+    trigger: closeCleanupJournalEntry with the abandoned disposition.
+    logic: >
+      IF the entry is in prepared or target-verified
+      THEN release it; legacy content is intact and nothing was deleted
+      ELSE IF the entry is in legacy-delete-pending
+      THEN refuse with validation-error: the operation must reach committed
+      through post-deletion absence verification under BR4.6
+      ELSE a committed entry is deleted normally under BR5.4.
+    violation: >
+      Abandoning mid-deletion would discard the record of an in-flight destructive
+      operation and skip its absence verification.
+    source: NFR1.1, NFR2
+
+  - id: BR6.1
+    statement: Repository identity reconciliation re-keys a record only on exactly one confirmed redirect.
     category: policy
     applies_to: RepositoryIdentity
-    trigger: Redirect resolution requested under BR6.1.
+    trigger: reconcileRepositoryIdentity for a repository-scope record.
     logic: >
-      IF the reconciliation port reports network unavailable
-      THEN leave the stored record untouched and return without a match
-      ELSE proceed with the redirect check.
-    violation: Offline behavior may not block on a network call or invent a match.
-    source: FR3.7, ASM3
+      IF a record exists for the stored identity AND a RepositoryRedirectPort was
+      supplied AND exactly one supplied candidate returns redirect-confirmed
+      THEN persist the record under the confirmed identity's key and remove the
+      old key in the same operation
+      ELSE return skipped and leave the stored record untouched.
+    violation: >
+      Re-keying on zero, ambiguous, or unconfirmed evidence would move a record
+      onto the wrong repository's key.
+    source: FR2.2, FR3.7, NFR3
+
+  - id: BR6.2
+    statement: U1 performs no network call; the redirect capability is injected and optional.
+    category: constraint
+    applies_to: RepositoryIdentity
+    trigger: Identity derivation and reconciliation.
+    logic: >
+      IF a redirect must be resolved
+      THEN call the injected RepositoryRedirectPort supplied by the delivery
+      adapter; an absent port or an unavailable verdict returns skipped
+      ELSE derive identity locally under BR3.2 with no network access.
+    violation: >
+      A network call inside U1, or treating an unavailable port as an error
+      rather than a skip, would make the shared foundation network-dependent.
+    source: FR2.2, NFR3
+
+  - id: BR6.3
+    statement: The caller supplies candidate identities; U1 enumerates none.
+    category: constraint
+    applies_to: RepositoryIdentity
+    trigger: reconcileRepositoryIdentity request validation.
+    logic: >
+      IF the request supplies at least one candidate identity
+      THEN evaluate those candidates only
+      ELSE return skipped; U1 does not inspect open workspaces or infer a
+      candidate of its own.
+    violation: Inferring a candidate would put workspace enumeration policy inside the shared foundation.
+    source: FR2.2, NFR3
+
+  - id: BR6.4
+    statement: Ambiguous redirect confirmation is a skip, never a guess.
+    category: policy
+    applies_to: RepositoryIdentity
+    trigger: More than one candidate returns redirect-confirmed.
+    logic: >
+      IF more than one candidate is confirmed
+      THEN return skipped and leave the record untouched
+      ELSE proceed only on the single confirmed candidate.
+    violation: Choosing between two confirmed candidates would silently bind a record to the wrong repository.
+    source: FR2.2, NFR3
+
+  - id: BR6.5
+    statement: Re-keying moves the record without duplicating it or touching artifacts.
+    category: constraint
+    applies_to: ManagedInstallation
+    trigger: A confirmed re-key under BR6.1.
+    logic: >
+      IF the record is re-keyed
+      THEN persist it under the new key and remove the old key within the same
+      operation, leaving every managed artifact and fingerprint unchanged
+      ELSE the original record remains the only record.
+    violation: >
+      Leaving both keys would create two records for one installation; altering
+      artifacts would imply target content moved, which it did not.
+    source: FR2.1, FR2.2
+
+  - id: BR6.6
+    statement: Reconciliation applies to shared-registry records only and never migrates legacy content.
+    category: constraint
+    applies_to: ManagedInstallation
+    trigger: Every reconciliation request.
+    logic: >
+      IF the subject is a shared-registry managed installation
+      THEN reconciliation may re-key it under BR6.1
+      ELSE the request is out of scope: reconciliation never transfers,
+      overwrites, or deletes a legacy installation, and FR3.7's
+      skip-when-no-workspace-matches rule remains authoritative for legacy
+      migration candidates.
+    violation: >
+      Re-keying a legacy migration candidate would migrate an installation FR3.7
+      requires to be skipped and reported.
+    source: FR3.7, NFR3
 ```
 
-## Summary
+## Rule groups
+
+The YAML above is authoritative. This index is a readable grouping of the same
+rules and adds no independent decision logic.
+
+## Governance and routing
 
 | id | statement | category | source |
 | --- | --- | --- | --- |
 | BR1.1 | Exactly one root deployment manifest is required. | validation | FR1.1 |
 | BR1.2 | Every non-manifest archive file has one file record. | validation | FR1.2 |
-| BR1.3 | Installable file digests are verified before any write. | validation | FR1.1, NFR1 |
+| BR1.3 | `items[]` is authoritative; an optional item hash is verified when present. | validation | FR1.1, FR1.2, NFR1 |
 | BR1.4 | Archive containment and safe paths are enforced. | validation | FR1.1, NFR1 |
 | BR1.5 | Only installable-roled items are write candidates. | constraint | FR1.2 |
 | BR2.1 | Destinations resolve from target, scope, and item kind alone. | constraint | FR2 |
@@ -432,5 +569,13 @@ rules:
 | BR5.5 | Resuming re-verifies current bytes. | constraint | NFR2 |
 | BR5.6 | First-pass target verification precedes any deletion authority. | validation | NFR1.1, NFR2 |
 | BR5.7 | Every legacy path stays inside its verified legacy source root. | validation | NFR1.1 |
-| BR6.1 | Derivation is offline; redirect resolution goes through a reconciliation port. | constraint | FR3.7, FR3.8 |
-| BR6.2 | Redirect resolution is skipped when the network is unavailable. | policy | FR3.7, ASM3 |
+| BR5.8 | A different legacy source root on an open request grants no authority. | validation | NFR1.1, NFR2 |
+| BR5.9 | Journal access is exclusive per installation key. | constraint | NFR1.1, NFR2 |
+| BR5.10 | Same-state transitions carry per-artifact deletion durability. | constraint | NFR1.1, NFR2 |
+| BR5.11 | An entry may be abandoned only before deletion has begun. | constraint | NFR1.1, NFR2 |
+| BR6.1 | Re-key only on exactly one confirmed redirect. | policy | FR2.2, FR3.7, NFR3 |
+| BR6.2 | U1 makes no network call; the redirect port is injected and optional. | constraint | FR2.2, NFR3 |
+| BR6.3 | The caller supplies candidate identities; U1 enumerates none. | constraint | FR2.2, NFR3 |
+| BR6.4 | Ambiguous confirmation is a skip, never a guess. | policy | FR2.2, NFR3 |
+| BR6.5 | Re-keying moves the record without duplicating it or touching artifacts. | constraint | FR2.1, FR2.2 |
+| BR6.6 | Reconciliation covers shared-registry records only; FR3.7 governs legacy candidates. | constraint | FR3.7, NFR3 |

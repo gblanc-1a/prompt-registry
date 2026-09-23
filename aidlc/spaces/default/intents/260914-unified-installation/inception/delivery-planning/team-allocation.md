@@ -18,10 +18,10 @@ introduced.
 | Bolt | Unit(s) / PRs | Primary owner | Supporting perspective | Working mode | Approval point |
 | --- | --- | --- | --- | --- | --- |
 | Bolt 0: Shared design | U1 design — PR 0 | `aidlc-architect-agent` | `aidlc-delivery-agent` for sequencing | One in-session mob | Design PR review |
-| Bolt 1: Shared foundation | U1 — PRs 1–6 | `aidlc-developer-agent` | `aidlc-architect-agent` for contracts, boundaries, journal contract | One in-session mob | Each active Construction stage; each PR review |
-| Bolt 2: CLI adapter | U2 — PR 7 | `aidlc-developer-agent` | `aidlc-architect-agent` for thin-adapter conformance | One in-session mob | Each active Construction stage; PR review |
-| Bolt 3: VS Code adapter | U3 — PR 8 | `aidlc-developer-agent` | `aidlc-architect-agent` for parity check | One in-session mob after U2 | Each active Construction stage; PR review |
-| Bolt 4: Activation migration | U4 — PRs 9–13 | `aidlc-developer-agent` | `aidlc-architect-agent` for migration safety, journal use, readiness boundary | One in-session mob after U3 | Each active Construction stage; PR review, with the destructive-cleanup PR reviewed on its own |
+| Bolt 1: Shared foundation | U1 — PRs 1–7 | `aidlc-developer-agent` | `aidlc-architect-agent` for contracts, boundaries, journal contract, offline reconciliation | One in-session mob | Each active Construction stage; each PR review |
+| Bolt 2: CLI adapter | U2 — PR 8 | `aidlc-developer-agent` | `aidlc-architect-agent` for thin-adapter conformance | One in-session mob | Each active Construction stage; PR review |
+| Bolt 3: VS Code adapter | U3 — PR 9 | `aidlc-developer-agent` | `aidlc-architect-agent` for parity check and redirect-port wiring | One in-session mob after U2 | Each active Construction stage; PR review |
+| Bolt 4: Activation migration | U4 — PRs 10–14 | `aidlc-developer-agent` | `aidlc-architect-agent` for migration safety, journal use, readiness boundary | One in-session mob after U3 | Each active Construction stage; PR review, with the destructive-cleanup PR reviewed on its own |
 
 ## Responsibilities
 
@@ -51,7 +51,7 @@ introduced.
 
 - **Design merged:** the design PR (contracts, types, journal states) merges
   before any implementation PR.
-- **Foundation ready:** U1 PRs 1–6 land before adapter work.
+- **Foundation ready:** U1 PRs 1–7 land before adapter work.
 - **Adapter parity:** compare CLI and VS Code behavior for install, update,
   uninstall, target/scope isolation, and typed outcomes at PR 8.
 - **Migration readiness:** do not begin U4 until U3 command readiness and the

@@ -17,7 +17,8 @@ generated from `entities.md`, and a business-rules summary generated from
 - **Migration coordinator** — U4 during activation. Calls the shared
   lifecycle for transfer and drives the cleanup journal.
 - **Injected ports** — manifest governance, target routing, installation
-  registry (two adapters), target artifact store, and a reconciliation port.
+  registry (two adapters), target artifact store, the cleanup journal, and the
+  optional repository-redirect capability supplied by the VS Code adapter.
 
 ## Ports and boundaries
 
@@ -38,20 +39,35 @@ throughout, matching Contract Design's contract 3.
   Neither adapter reaches into the other's storage.
 - `TargetArtifactStorePort` — writes, reads, and removes target artifacts with
   containment and symbolic-link safety.
-- `MigrationCleanupJournalPort` — appends and reads journal entries and their
-  per-artifact progress. Migration is its only caller; the contract is
-  shaped so nothing about the entry is structurally migration-specific.
-- `RepositoryIdentityReconciliationPort` — resolves a redirect between a
-  stored identity value and a current one. Used only during reconciliation.
-  The lifecycle acquires no direct network dependency.
+- `MigrationCleanupJournalPort` — U1 owns the data model, transitions, and
+  persistence boundary as required by the unit definition; U4 owns the migration
+  transaction that drives it. Contract 3 declares this port and its four
+  operations, so U4 drives the state machine through a real boundary while U1
+  guarantees each transition is durable before the action it authorises.
+- `RepositoryRedirectPort` — an **injected, optional** capability supplied by the
+  VS Code delivery adapter (U3), never by U1 and never by the CLI. Its single
+  operation `resolveRedirect(query)` → `RedirectResolution`
+  (`redirect-confirmed` | `no-redirect` | `unavailable`) is the only network call
+  anywhere in this unit's behaviour, and U1 never performs it itself: an absent
+  or `unavailable` port means reconciliation is skipped. This keeps every U1
+  workflow offline-testable.
 
-The shared foundation exposes two operations beyond install, update, and
-uninstall, both required by Contract Design's contract 3:
+The shared foundation exposes these Contract 3 operations beyond install,
+update, and uninstall:
 
-- `transferThroughLifecycle(request)` → `MigrationTransferOutcome` — the
-  migration transfer workflow below.
-- `verifyManagedArtifacts(request)` → `ArtifactVerificationResult` — the
-  verification workflow below.
+- `transferThroughLifecycle(request)` → `MigrationTransferOutcome`.
+- `verifyManagedArtifacts(request)` → `ArtifactVerificationResult`.
+- `openCleanupJournalEntry(request)` → `CleanupJournalEntryResult`.
+- `recordCleanupTransition(request)` → `CleanupJournalEntryResult`.
+- `readCleanupJournalEntry(key)` → `CleanupJournalEntryResult`.
+- `closeCleanupJournalEntry(request)` → `CleanupJournalCloseResult`.
+- `reconcileRepositoryIdentity(request)` → `RepositoryReconciliationResult`.
+
+`applyGovernedArtifacts` is deliberately **not** in that list. It is the
+internal write-verify-record primitive the install, update, and migration
+transfer workflows share; it is reached only through
+`InstallationLifecyclePort` and is never exposed to U4 as a callable migration
+operation.
 
 Normal lifecycle operations return the shared result vocabulary from Contract
 Design as `LifecycleOutcome.kind`: `success`, `validation-error`, `conflict`,
@@ -59,20 +75,32 @@ Design as `LifecycleOutcome.kind`: `success`, `validation-error`, `conflict`,
 transfer boundary returns the separate `MigrationTransferOutcome` union.
 Programmer defects are outside both unions.
 
-## Boundary changes against upstream
+## Upstream boundary
 
-Two elements of this design are additions to the upstream component catalogue
-and contract summary. They are recorded here rather than left implicit, and each
-needs the matching upstream edit before Code Generation relies on it.
+Contract 3 is the governing U1-to-U4 boundary. Its declared shared ports are
+`ManifestGovernancePort`, `TargetRoutingPort`, `InstallationRegistryPort`,
+`InstallationLifecyclePort`, `TargetArtifactStorePort`, and
+`MigrationCleanupJournalPort`, plus the injected `RepositoryRedirectPort` that
+U3 supplies. Every capability this unit's definition assigns to U1 now has a
+declared operation behind it, so nothing in this design is deferred for want of
+a contract shape.
 
-| Addition | Absent from | Why it is needed | Follow-up |
-| --- | --- | --- | --- |
-| `RepositoryIdentity` entity | `components.md` defines no such entity | BR3.1 makes repository identity part of the managed installation key, and FR2.2 requires two repositories' records never to collide. Without a modelled identity the key is underspecified for repository scope. | Add the entity to `ManifestGovernance`'s peer set under `InstallationRegistry` ownership in the component catalogue. |
-| `RepositoryIdentityReconciliationPort` | contract 3 lists five `shared_ports` without it | The recorded answer to this stage's Q7 follow-up chose network redirect resolution when a stored record matches no open workspace, then re-key. Derivation must stay offline (BR3.2), so the network call has to live behind an injected port rather than inside the foundation. | Add the port to contract 3's `shared_ports` with its `resolveRedirect` operation and the three-value result. |
+Two capabilities were unimplementable in the previous pass and are specified
+here because Contract 3 was amended to declare them:
 
-Both additions are confined to repository-identity handling. Neither changes the
-lifecycle result semantics, the ownership split between U1 and its adapters, or
-any other declared boundary.
+- **The cleanup journal.** The unit definition makes U1 the owner of the
+  journal's schema, transitions, and persistence boundary, and requires U4 to
+  drive it. The four journal operations are now declared, so the state machine
+  below is a real U1 workflow rather than a described-but-uncallable one.
+- **Repository-rename reconciliation.** The confirmed decision — resolve the
+  redirect when a stored record matches no open workspace, confirm the old URL
+  now points at the current one, then re-key — is implementable without giving
+  U1 a network dependency, because the network half is the injected
+  `RepositoryRedirectPort` and the re-key half is U1's own
+  `reconcileRepositoryIdentity` registry operation.
+
+U4's legacy association and summary ownership remain unchanged, and U1 remains
+the only normal target-write lifecycle.
 
 ## Fingerprinting model
 
@@ -121,7 +149,9 @@ supported target, the installation scope, and an optional overwrite consent.
    `conflict` identifying the bundle and the affected artifacts. This check
    precedes every write in the operation, so a locally changed file is never
    overwritten and then reported.
-6. **Write and verify each artifact.**
+6. **Write and verify each artifact.** Steps 6 and 7 together are the internal
+   `applyGovernedArtifacts` primitive, which update and the migration transfer
+   workflow both reuse so there is exactly one governed write path.
    1. For a binary payload write the archive bytes verbatim.
    2. For a text payload apply the transformer, then write the encoded content.
    3. Read the written bytes back and compare against the intended sequence.
@@ -152,8 +182,9 @@ locally changed artifact the new manifest still names (BR4.7).
    and those artifacts. This is install step 5, reached by the same rule, so the
    two workflows cannot diverge on the case.
 4. **Write the remaining items.** For every still-managed identical item — and,
-   when consent was given, every changed one — run install step 6 with the
-   transformed sequence and refresh the fingerprint on a successful write.
+   when consent was given, every changed one — invoke `applyGovernedArtifacts`
+   (install steps 6 and 7) with the transformed sequence and refresh the
+   fingerprint on a successful write.
 5. **Handle omitted artifacts under BR4.2.** For every prior artifact the new
    manifest omits:
    - When current bytes match the fingerprint, remove the artifact (BR4.6),
@@ -200,26 +231,59 @@ lifecycle call's result is mapped to a member of that union at the boundary.
    `skipped` with the association reason. When a resolved path escapes its
    destination root (BR2.2), or a legacy path escapes its source root (BR5.7),
    return `safety-blocked`.
-3. **Check the authoritative target.** Call `verifyManagedArtifacts` for the
-   artifacts a fresh install would write. Then:
-   - `allVerified` — every expected artifact is present and byte-identical:
-     return `verified-duplicate` and let U4 drive journaled cleanup.
-   - any `present-different` verdict, with no overwrite consent in the request:
-     return `preserved-conflict` identifying the bundle and artifact, and let U4
-     request explicit consent. Target content is untouched (BR4.7).
-   - any `safety-blocked` verdict: return `safety-blocked`.
-   - every verdict `absent`: the destination is empty; continue to step 4.
-4. **Perform a verified install.** With an empty destination, or with consent
-   recorded in the request, run the install workflow from step 5. Map its
-   result:
+3. **Check the authoritative target.** Call `verifyManagedArtifacts` using the
+   existing Contract 3 `VerificationRequest` and re-read every destination.
+   Then select one deterministic branch:
+   - `allVerified` — every expected artifact is `present-identical`: return
+     `verified-duplicate`; U4 may start cleanup only after its required
+     journaled verification sequence.
+   - any `safety-blocked` verdict: return `safety-blocked`; preserve legacy
+     content and do not request overwrite consent.
+   - any `present-different`: without `overwriteDecision: confirmed`, return
+     `preserved-conflict`; with confirmation, continue to step 4 only after a
+     fresh verification still finds no safety block.
+   - a mix of `present-identical` and `absent`, with no differing artifact:
+     this is a **partial target**. Return `preserved-conflict` identifying the
+     present and missing artifacts; write nothing and preserve legacy content.
+     U4 may request explicit overwrite consent to complete this target only
+     when the fresh verification still has that same safe mixture. A declined
+     or unavailable decision remains `preserved-conflict`.
+   - every verdict `absent`: continue to step 4 without consent.
+4. **Perform a verified install through the inner lifecycle primitive.** With an
+   empty destination, or with a confirmed decision permitted by step 3, invoke
+   the internal primitive **`applyGovernedArtifacts`** — the same governed
+   write-verify-record sequence install steps 6 and 7 define, reached through the
+   declared `InstallationLifecyclePort`. It is an internal primitive, not a
+   Contract 3 operation: `transferThroughLifecycle` is the only migration
+   entry point U4 can call, and it never calls itself.
+
+   `applyGovernedArtifacts` takes the governed item set resolved in step 1, the
+   destinations resolved in step 2, the installation key for the legacy bundle's
+   identity at the resolved target and scope, and the overwrite consent (absent
+   for an empty destination; `confirmed` only on the step 3 branch that permits
+   it). For each governed installable item it writes the payload binary-safely
+   under BR3.3, reads the written bytes back and compares them against the
+   intended sequence (BR4.1), computes the fingerprint over that same sequence,
+   and admits the artifact to the `ManagedInstallation` only after its write
+   verified (BR3.5). It returns a `LifecycleOutcome`. It performs no legacy
+   deletion — cleanup is the journal's separate, later concern.
+
+   Map the returned `LifecycleOutcome.kind` to a `MigrationTransferOutcome`
+   member at this boundary:
    - `success` → `transferred`, carrying the verified artifacts.
    - `retryable-failure` → `retry-required`.
    - `conflict` → `preserved-conflict`.
    - `safety-blocked` → `safety-blocked`.
    - `validation-error` → `skipped`.
-5. **Return the outcome.** U4 maps the value into its own summary. No durable
-   per-installation migration state is created here, and legacy content is
-   intact for every kind except `transferred`.
+   - `preserved-content` → `preserved-conflict`, because a transfer that
+     preservation left unachievable leaves both locations intact.
+   A partial target is never eligible for legacy cleanup merely because consent
+   was requested or transfer was attempted: U4 begins cleanup only after the
+   resulting `transferred` value and a new full target verification establish
+   every expected artifact as present and byte-identical.
+5. **Return the outcome.** U4 maps the value into its current-run summary. No
+   durable per-installation migration state is created here, and legacy content
+   is intact for every kind except `transferred`.
 
 ## Managed-artifact verification workflow (support contract for U4)
 
@@ -252,7 +316,48 @@ is identified by its destination path and the fingerprint expected for it.
    only. A caller may not carry them forward as standing authority for a later
    destructive action — BR5.5 requires a fresh call at resumption.
 
-## Cleanup journal state machine
+## Cleanup journal workflow (support contract for U4)
+
+U4 drives the journal through four declared operations; U1 owns durability. Each
+returns a `CleanupJournalEntryResult` (`created` | `resumed` | `absent` |
+`source-root-mismatch` | `validation-error` | `retryable-failure` |
+`safety-blocked`), except the close operation, which returns a
+`CleanupJournalCloseResult` (`closed` | `absent` | `retryable-failure`).
+
+1. **`openCleanupJournalEntry(request)`** — open or resume the single entry for
+   an installation key. The request names the key, the verified
+   `legacySourceRoot`, and the per-artifact progress set. With no live entry,
+   create one in `prepared` and return `created`. With a live entry whose
+   `legacySourceRoot` matches, return `resumed` carrying the persisted entry so
+   U4 continues where it stopped. With a live entry naming a **different**
+   legacy source root, return `source-root-mismatch` and grant no authority: two
+   legacy roots resolving to one installation key is ambiguous, and returning
+   the existing entry would hand deletion authority for one root to a
+   transaction operating on another (BR5.8). Access is exclusive per
+   installation key; a second concurrent holder receives `retryable-failure`
+   rather than a shared entry (BR5.9).
+2. **`recordCleanupTransition(request)`** — advance the entry, persisting before
+   the filesystem action the new state authorises (BR5.2). Legal advances are
+   `prepared` → `target-verified` (only on full first-pass verification, BR5.6),
+   `target-verified` → `legacy-delete-pending`, and `legacy-delete-pending` →
+   `committed` (only once no managed legacy artifact remains, BR4.6). A repeated
+   transition to `legacy-delete-pending` is permitted and expected: it is how
+   per-artifact deletion progress becomes durable one artifact at a time
+   (BR5.10). Any other transition returns `validation-error`.
+3. **`readCleanupJournalEntry(key)`** — read the current entry for resumption,
+   returning `absent` when none is live. Reading grants no authority: a
+   persisted `verified-identical` progress record is never sufficient to delete,
+   and a resumed entry re-verifies through `verifyManagedArtifacts` immediately
+   before each delete (BR5.5).
+4. **`closeCleanupJournalEntry(request)`** — delete a `committed` entry as the
+   final step of its operation (BR5.4), or release an abandoned one.
+   `abandoned` is permitted only from `prepared` or `target-verified`, where no
+   deletion has begun and legacy content is intact; abandoning from
+   `legacy-delete-pending` is refused with `validation-error`, because deletion
+   is already in flight and must reach `committed` through post-deletion absence
+   verification (BR5.11).
+
+### State machine
 
 The journal describes one destructive operation in flight. It references
 registry-owned identity and fingerprints (BR5.3) rather than copying
@@ -270,8 +375,9 @@ stateDiagram-v2
     prepared --> target_verified: every expected target artifact present and identical (BR5.6)
     target_verified --> legacy_delete_pending: deletion authorised
     legacy_delete_pending --> committed: no managed legacy artifact remains (BR4.6)
-    prepared --> [*]: abandoned; legacy content intact
-    target_verified --> [*]: abandoned; legacy content intact
+    legacy_delete_pending --> legacy_delete_pending: per-artifact delete progress (BR5.10)
+    prepared --> [*]: abandoned permitted; legacy content intact (BR5.11)
+    target_verified --> [*]: abandoned permitted; legacy content intact (BR5.11)
     committed --> [*]: entry deleted in the same operation (BR5.4)
 ```
 
@@ -289,22 +395,53 @@ Text fallback:
 - Advance to `committed` after every legacy artifact is gone and the delete
   was verified absent (BR4.6).
 - Delete the entry as the final step of the operation (BR5.4).
-- From `prepared` or `target_verified` the entry may terminate without
-  progressing; legacy content is intact and the record continues to point at
-  the legacy source until the next eligible attempt.
+- From `prepared` or `target_verified` the entry may terminate as `abandoned`;
+  legacy content is intact and the record continues to point at the legacy
+  source until the next eligible attempt. From `legacy_delete_pending` it may
+  not: deletion is in flight, so the entry must reach `committed` through
+  post-deletion absence verification (BR5.11).
+- Repeated transitions into `legacy_delete_pending` are the durability
+  mechanism for per-artifact deletion progress, not an error (BR5.10).
 
-## Repository identity reconciliation
+## Repository identity reconciliation workflow
 
-Reconciliation runs only when a stored record's identity value matches no
-open workspace.
+Local derivation of a repository identity remains limited to the normalized
+canonical remote URL or, when no remote exists, the absolute workspace root
+(BR3.2), and it never consults the network. Reconciliation is the one place a
+stored identity may change, and it is a separate, caller-driven operation.
 
-- The shared foundation calls `RepositoryIdentityReconciliationPort.resolveRedirect(storedIdentity, candidateWorkspaces)`.
-- The port returns one of `matched(newIdentityValue)`, `no-match`, or
-  `network-unavailable`. On `matched` the record is re-keyed to the new
-  identity value in a single registry write (BR6.1). On `no-match` the record
-  is untouched. On `network-unavailable` the record is untouched (BR6.2).
-- Identity derivation itself never consults the port (BR3.2, BR6.1). Every
-  install-time and update-time identity value is derived from local sources.
+Entry point: `reconcileRepositoryIdentity(request)` where the request names the
+`storedIdentity`, the `candidateIdentities` the caller believes may now be the
+same repository, and the bundle, target, and scope that complete the record key.
+
+1. **Validate the request.** The scope must be `repository` and at least one
+   candidate must be supplied. An empty candidate list returns `skipped`: U1
+   enumerates no workspaces and infers no candidate of its own (BR6.3).
+2. **Resolve the record.** Read the `ManagedInstallation` for the stored
+   identity at this bundle, target, and scope. When no record exists, return
+   `skipped`.
+3. **Ask the injected port, once per candidate.** When no
+   `RepositoryRedirectPort` was supplied, return `skipped` without any network
+   attempt. Otherwise call `resolveRedirect(storedIdentity, candidate)` for each
+   candidate and collect the verdicts. An `unavailable` verdict is the offline
+   case: return `skipped` and leave the record untouched (BR6.2).
+4. **Require exactly one confirmation.** Re-keying happens only when precisely
+   one candidate returns `redirect-confirmed`. Zero confirmations, or more than
+   one, returns `skipped` — two repositories claiming the same predecessor is
+   ambiguous, and guessing would move a record onto the wrong key (BR6.4).
+5. **Re-key the record.** Persist the record under the installation key derived
+   from the confirmed identity, through the scope-appropriate adapter (BR3.4),
+   and remove the old key in the same operation so no duplicate remains
+   (BR6.5). Managed artifacts and their fingerprints are unchanged: the target
+   content did not move, only the record's identity.
+6. **Return the outcome.** `rekeyed` names the old and new identity.
+   `validation-error` covers a malformed request, and `retryable-failure` a
+   persistence failure that left the original record in place.
+
+This operation re-keys shared-registry records only. It never transfers,
+overwrites, or deletes a legacy installation, and FR3.7's
+skip-when-no-workspace-matches rule remains authoritative for legacy migration
+candidates (BR6.6).
 
 ## Result semantics
 
@@ -325,7 +462,7 @@ open workspace.
 | --- | --- | --- |
 | `transferred` | Governed legacy content is installed and verified at the resolved target; legacy content is now eligible for journaled cleanup. | `success` |
 | `verified-duplicate` | Every expected target artifact is already present and byte-identical; nothing was written. | `allVerified` verification result |
-| `preserved-conflict` | Target content differs and no consent was given; both locations are intact. | `conflict`, or a `present-different` verdict |
+| `preserved-conflict` | Target content differs **or the target is partially populated** and no eligible confirmed overwrite decision was supplied; both locations remain intact. | `conflict`, a `present-different` verdict, or the partial-target branch |
 | `retry-required` | A write or verification did not succeed; legacy content is intact and the transfer may be retried. | `retryable-failure` |
 | `skipped` | The legacy source is not governed, or maps to no supported target layout; nothing was touched. | `validation-error`, unresolvable routing |
 | `safety-blocked` | A destination or legacy path failed containment or symlink safety (BR2.2, BR5.7). | `safety-blocked` |
@@ -334,6 +471,35 @@ open workspace.
 per-artifact verdicts (`present-identical`, `present-different`, `absent`,
 `safety-blocked`) and the `allVerified` aggregate. It is evidence, not an
 operation outcome, and authorises nothing by itself.
+
+`CleanupJournalEntryResult.kind`, returned by the three entry-returning journal
+operations:
+
+| kind | Meaning in U1 |
+| --- | --- |
+| `created` | A new entry was opened in `prepared` for this installation key. |
+| `resumed` | A live entry for this key and legacy source root was returned so the caller continues where it stopped. Reading grants no deletion authority (BR5.5). |
+| `absent` | No live entry exists. Returned by read and close only; open never returns it. |
+| `source-root-mismatch` | A live entry names a different `legacySourceRoot` than the request. No authority is granted (BR5.8). |
+| `validation-error` | The request or the requested transition is illegal, including an `abandoned` close from `legacy-delete-pending` (BR5.11). |
+| `retryable-failure` | Persistence failed, or another holder has this key exclusively (BR5.9). |
+| `safety-blocked` | A legacy path escaped its verified source root (BR5.7). |
+
+`CleanupJournalCloseResult.kind` is `closed`, `absent`, or `retryable-failure`.
+
+`RepositoryReconciliationResult.kind`, returned by
+`reconcileRepositoryIdentity`:
+
+| kind | Meaning in U1 |
+| --- | --- |
+| `rekeyed` | Exactly one candidate was confirmed; the record now lives under the new identity's key and the old key is gone (BR6.5). |
+| `skipped` | No record, no candidates, no confirmation, more than one confirmation, or no usable redirect port. The stored record is untouched (BR6.2, BR6.3, BR6.4). |
+| `validation-error` | The request was malformed, or the scope was not `repository`. |
+| `retryable-failure` | Persistence failed; the original record remains in place. |
+
+`RedirectResolution` is the injected port's own value — `redirect-confirmed`,
+`no-redirect`, or `unavailable` — and is evidence for step 4 above, never an
+outcome U4 receives.
 
 ## Derived views
 
@@ -408,6 +574,18 @@ classDiagram
       allVerified
       artifactVerdicts
     }
+    class CleanupJournalEntryResult {
+      kind
+    }
+    class CleanupJournalCloseResult {
+      kind
+    }
+    class RepositoryReconciliationResult {
+      kind
+      previousIdentity
+      newIdentity
+      skipReason
+    }
 
     GovernedBundleManifest "1" o-- "many" ManifestItem : owns
     GovernedBundleManifest "1" o-- "many" ArchiveFileRecord : owns
@@ -421,6 +599,9 @@ classDiagram
     CleanupJournalEntry "1" o-- "many" CleanupArtifactProgress : owns
     MigrationTransferOutcome --> LifecycleOutcome : maps from
     ArtifactVerificationResult --> ManagedArtifact : references
+    CleanupJournalEntryResult --> CleanupJournalEntry : references
+    RepositoryReconciliationResult --> ManagedInstallation : references
+    RepositoryReconciliationResult --> RepositoryIdentity : references
 ```
 
 Text fallback: manifest governance owns items, file records, and provenance;
@@ -429,7 +610,10 @@ a target and a scope. `ManagedInstallation` owns its artifacts and references a
 repository identity when repository-scope. A cleanup journal entry references
 one installation and owns its per-artifact progress records. The migration
 transfer outcome maps from a lifecycle outcome at the U4 boundary, and the
-verification result references the managed artifacts it checked.
+verification result references the managed artifacts it checked. The journal
+result union references the entry it carries, and the reconciliation result
+references the installation it re-keyed together with the identities it moved
+between.
 
 ### Business rules summary (derived from `rules.md`)
 
@@ -439,5 +623,5 @@ verification result references the managed artifacts it checked.
 | 2 Routing | Destination resolution and isolation | BR2.1 destinations from target, scope, kind; BR2.2 destinations inside their root; BR2.3 target and scope isolation. |
 | 3 Registry | Record shape, identity, and persistence | BR3.1 identity by bundle/target/scope/repository; BR3.2 offline identity derivation; BR3.3 fingerprint the bytes as written; BR3.4 two adapters, one schema. |
 | 4 Lifecycle | Install, update, uninstall behaviour | BR4.1 verify writes; BR4.2 preserve locally changed omitted artifacts; BR4.4 successful update carries the preserved list; BR4.6 verify removals; BR4.7 never overwrite a still-named changed artifact without consent; BR4.8 preserved-content is for stalled operations only. |
-| 5 Journal | Restart-safe destructive cleanup | BR5.1 in-flight only; BR5.2 durable-before-action; BR5.4 committed entries do not outlive their operation; BR5.5 resumption re-verifies; BR5.6 first-pass verification precedes deletion authority; BR5.7 legacy paths stay inside their source root. |
-| 6 Reconciliation | Identity across repository renames | BR6.1 offline derivation, port-driven reconciliation; BR6.2 skip on network unavailable. |
+| 5 Journal | Restart-safe destructive cleanup | BR5.1 in-flight only; BR5.2 durable-before-action; BR5.4 committed entries do not outlive their operation; BR5.5 resumption re-verifies; BR5.6 first-pass verification precedes deletion authority; BR5.7 legacy paths stay inside their source root; BR5.8 a mismatched source root grants no authority; BR5.9 exclusive access per installation key; BR5.10 same-state transitions carry per-artifact durability; BR5.11 abandon only before deletion begins. |
+| 6 Reconciliation | Identity across repository renames | BR6.1 re-key only on exactly one confirmed redirect; BR6.2 no network call in U1, injected optional port, skip when unavailable; BR6.3 caller supplies candidates; BR6.4 ambiguity is a skip; BR6.5 re-key moves the record without duplicating it; BR6.6 FR3.7 stays authoritative for legacy candidates. |

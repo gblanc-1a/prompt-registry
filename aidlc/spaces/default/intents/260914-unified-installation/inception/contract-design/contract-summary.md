@@ -21,7 +21,7 @@ The contracts are derived from:
 | --- | --- | --- | --- | --- |
 | 1 | U1 Shared installation foundation | U2 CLI manifest adoption | Synchronous in-process TypeScript schemas and ports | U1 |
 | 2 | U1 Shared installation foundation | U3 VS Code shared-lifecycle adoption | Synchronous in-process TypeScript schemas and ports | U1 |
-| 3 | U1 Shared installation foundation | U4 Activation migration compatibility | Synchronous in-process lifecycle, governance, routing, registry, and artifact-store ports | U1 for shared lifecycle contracts; U4 for temporary migration interaction contracts |
+| 3 | U1 Shared installation foundation | U4 Activation migration compatibility | Synchronous in-process lifecycle, governance, routing, registry, artifact-store, and cleanup-journal ports | U1 for shared lifecycle, journal, and reconciliation contracts; U4 for temporary migration interaction contracts |
 | 4 | U3 VS Code shared-lifecycle adoption | U4 Activation migration compatibility | Synchronous activation and command-readiness boundary | U3 for readiness composition; U4 for migration outcomes and temporary interaction contracts |
 
 ## Contract 1: U1 to U2 shared lifecycle
@@ -133,6 +133,36 @@ registry, lifecycle, and target-artifact contracts to transfer or compare
 content. U4 supplies temporary migration interaction behavior and maps its
 results into the extension summary.
 
+U1 also owns the `MigrationCleanupJournal` port, schema, transition semantics,
+and persistence boundary, as required by the unit definition. U4 drives the
+cleanup transaction through that port; U1 guarantees each transition is durable
+before the filesystem action it authorises. The journal describes one
+destructive operation in flight and is deleted when that operation commits, so
+it is never a durable per-installation reporting record.
+
+Repository-rename reconciliation is likewise callable rather than implied. U1's
+own identity derivation stays offline (no network call inside the shared core),
+so the network capability is an injected port and re-keying a record is a
+U1-owned registry operation.
+
+Two placement notes, because both were ambiguous before this amendment:
+
+- **Where the redirect port is wired.** `RepositoryRedirectPort` is supplied by
+  U3 only, and reconciliation is reachable solely through the activation
+  migration boundary. The VS Code extension host is the composition root: it
+  constructs the port and passes it with the rest of U1's injected ports when it
+  drives U4. U2 supplies no such port and Contract 1 declares none, so the CLI
+  never reaches this operation.
+- **Where the journal lives.** `components.md` models
+  `MigrationCleanupJournal` as an external dependency of the U4 coordinator.
+  `unit-of-work.md` supersedes that placement: the port, schema, transition
+  semantics, and persistence boundary are U1's, and U4 owns only the transaction
+  that drives them. Code Generation follows `unit-of-work.md`.
+
+`ArtifactFingerprint` is the shared name for the value `components.md` calls
+`ManagedArtifact.installedHash`; it covers the exact byte sequence written to
+the target.
+
 ```shared-schema
 contract: u1-to-u4-migration-support
 protocol: synchronous-in-process-typescript
@@ -144,6 +174,16 @@ shared_ports:
   - InstallationRegistryPort
   - InstallationLifecyclePort
   - TargetArtifactStorePort
+  - MigrationCleanupJournalPort
+owner:
+  shared-lifecycle-journal-and-reconciliation: U1
+  migration-policy-and-interaction: U4
+injected_ports:
+  - name: RepositoryRedirectPort
+    supplied_by: [U3]
+    purpose: Optional network capability used only to confirm a repository rename; absent or unavailable means reconciliation is skipped.
+    operations:
+      - resolveRedirect: RepositoryRedirectQuery -> RedirectResolution
 operations:
   - name: validateGovernedBundle
     input: GovernedBundleSource
@@ -160,6 +200,21 @@ operations:
   - name: verifyManagedArtifacts
     input: VerificationRequest
     output: VerificationResult
+  - name: openCleanupJournalEntry
+    input: CleanupJournalOpenRequest
+    output: CleanupJournalEntryResult
+  - name: recordCleanupTransition
+    input: CleanupTransitionRequest
+    output: CleanupJournalEntryResult
+  - name: readCleanupJournalEntry
+    input: InstallationKey
+    output: CleanupJournalEntryResult
+  - name: closeCleanupJournalEntry
+    input: CleanupJournalCloseRequest
+    output: CleanupJournalCloseResult
+  - name: reconcileRepositoryIdentity
+    input: RepositoryReconciliationRequest
+    output: RepositoryReconciliationResult
 schemas:
   MigrationTransferRequest:
     required: [source, target, scope, bundleIdentity]
@@ -180,12 +235,105 @@ schemas:
       - safety-blocked
   OverwriteDecision:
     values: [confirmed, declined, unavailable]
+  CleanupJournalOpenRequest:
+    required: [installationKey, legacySourceRoot, artifacts]
+    fields:
+      installationKey: InstallationKey
+      legacySourceRoot: LegacySourceRoot
+      artifacts: CleanupArtifactProgress[]
+  CleanupTransitionRequest:
+    required: [installationKey, targetState]
+    fields:
+      installationKey: InstallationKey
+      targetState: CleanupJournalState
+      artifacts: CleanupArtifactProgress[]?
+  CleanupJournalCloseRequest:
+    required: [installationKey, disposition]
+    fields:
+      installationKey: InstallationKey
+      disposition: CleanupJournalDisposition
+  CleanupJournalState:
+    values: [prepared, target-verified, legacy-delete-pending, committed]
+  CleanupJournalDisposition:
+    values: [committed, abandoned]
+  CleanupJournalEntry:
+    required: [installationKey, state, legacySourceRoot, artifacts, updatedAt]
+    fields:
+      installationKey: InstallationKey
+      state: CleanupJournalState
+      legacySourceRoot: LegacySourceRoot
+      artifacts: CleanupArtifactProgress[]
+      updatedAt: Timestamp
+  CleanupArtifactProgress:
+    required: [legacyPath, expectedTargetPath, progressState]
+    fields:
+      legacyPath: LegacyPath
+      expectedTargetPath: DestinationPath
+      expectedFingerprint: ArtifactFingerprint?
+      progressState: CleanupArtifactState
+  CleanupArtifactState:
+    values: [pending, verified-identical, deleted, preserved]
+  CleanupJournalEntryResult:
+    discriminant: kind
+    kinds:
+      - created
+      - resumed
+      - absent
+      - source-root-mismatch
+      - validation-error
+      - retryable-failure
+      - safety-blocked
+    notes:
+      - created and resumed are returned by openCleanupJournalEntry and recordCleanupTransition; absent is returned only by readCleanupJournalEntry and closeCleanupJournalEntry.
+      - source-root-mismatch is returned when a persisted entry for this installation key names a different legacySourceRoot than the request.
+  CleanupJournalCloseResult:
+    discriminant: kind
+    kinds:
+      - closed
+      - absent
+      - retryable-failure
+  RepositoryRedirectQuery:
+    required: [storedIdentity, candidateIdentity]
+    fields:
+      storedIdentity: RepositoryIdentity
+      candidateIdentity: RepositoryIdentity
+  RepositoryReconciliationRequest:
+    required: [storedIdentity, candidateIdentities, bundleId, target, scope]
+    fields:
+      storedIdentity: RepositoryIdentity
+      candidateIdentities: RepositoryIdentity[]
+      bundleId: BundleId
+      target: SupportedTarget
+      scope: InstallationScope
+    notes:
+      - The caller supplies the candidate current identities; U1 does not enumerate workspaces.
+      - Zero candidates, or more than one confirmed redirect, resolves to skipped.
+  RepositoryReconciliationResult:
+    discriminant: kind
+    kinds:
+      - rekeyed
+      - skipped
+      - validation-error
+      - retryable-failure
+  RedirectResolution:
+    values: [redirect-confirmed, no-redirect, unavailable]
 invariants:
   - U4 cannot bypass ManifestGovernance, TargetRouting, InstallationRegistry, or InstallationLifecycle.
   - Existing target content remains authoritative until explicit overwrite consent.
   - Legacy deletion requires identity verification, byte-for-byte managed-content verification, and post-cleanup absence verification.
   - Ambiguous association, failed verification, declined consent, and unsafe paths preserve legacy content.
   - No durable per-installation migration success, failure, or conflict record is created solely for reporting.
+  - U1 owns journal persistence and transition durability; U4 owns the cleanup transaction that drives it. A transition is durable before the filesystem action it authorises.
+  - A journal entry exists only while its destructive operation is in flight; a committed entry is deleted as the final step of that operation.
+  - A resumed entry re-verifies target bytes through verifyManagedArtifacts before any deletion; a persisted verification claim is never sufficient authority.
+  - Every legacy path in an entry stays inside that entry's verified legacy source root.
+  - Journal access is exclusive per installation key; a second concurrent holder receives retryable-failure rather than a shared entry.
+  - An open request whose legacySourceRoot differs from the persisted entry returns source-root-mismatch and grants no deletion authority.
+  - Repeated recordCleanupTransition calls to legacy-delete-pending are permitted; same-state transition records are how per-artifact deletion progress becomes durable.
+  - abandoned is permitted only from prepared or target-verified. An entry in legacy-delete-pending must reach committed through post-deletion absence verification, because deletion is already in flight.
+  - reconcileRepositoryIdentity re-keys U1 shared-registry ManagedInstallation records only. It never transfers, overwrites, or deletes a legacy installation candidate; FR3.7's skip-when-no-workspace-matches criterion remains authoritative for those.
+  - reconcileRepositoryIdentity re-keys a record only when RepositoryRedirectPort returns redirect-confirmed for exactly one candidate; no-redirect, unavailable, zero candidates, and multiple confirmations all resolve to skipped and leave the stored record untouched.
+  - U1 performs no network call to derive an identity; the redirect capability is injected by the delivery adapter and is optional.
 ```
 
 ## Contract 4: U3 to U4 activation and command readiness
@@ -273,8 +421,12 @@ delivery-specific exceptions.
 ## Ownership and compatibility rules
 
 - U1 owns shared lifecycle schemas, discriminated result types, and ports for
-  manifest governance, target routing, installation registry, lifecycle, and
-  target artifact storage.
+  manifest governance, target routing, installation registry, lifecycle,
+  target artifact storage, and migration cleanup journalling. U1 also owns the
+  `reconcileRepositoryIdentity` registry operation.
+- The `RepositoryRedirectPort` is an injected capability, not a U1
+  responsibility: U2 and U3 supply it, and U1 treats an absent or `unavailable`
+  port as "skip reconciliation" rather than an error.
 - U2 owns CLI input and output translation. It does not fork U1 schemas or
   lifecycle policy.
 - U3 owns VS Code command composition, activation sequencing, readiness
@@ -300,7 +452,7 @@ delivery-specific exceptions.
 | Contract | Question | Blocks |
 | --- | --- | --- |
 | U1 to U2 and U1 to U3 | What exact TypeScript file and export layout should hold the shared schemas and ports? | Code Generation for U1, U2, and U3 |
-| U1 to U4 | What exact byte-comparison and cleanup journal algorithm proves identity, managed-content equality, and post-cleanup absence? | Detailed U4 implementation and its safety tests |
+| U1 to U4 | What exact byte-comparison and cleanup journal algorithm proves identity, managed-content equality, and post-cleanup absence? The journal port, states, and durability rules are now contractual; the remaining question is the concrete comparison algorithm. | Detailed U4 implementation and its safety tests |
 | U3 to U4 | What activation-time latency budget and cancellation behavior keeps migration bounded before bundle commands become available? | NFR Requirements and U4 implementation |
 | U3 to U4 | Which migration outcomes permit `ready-with-preserved-outcomes` versus requiring a later activation retry before command readiness? | Functional Design and U3 command gating |
 

@@ -160,6 +160,38 @@ These are the decisions I will build the U1 design artifacts from.
 7. **Manifest entry validity (Q6)** — archive path and kind are required; a
    per-item hash is verified when present and its absence is accepted.
 
+The seven decisions above are unchanged and still authoritative. Two defects
+found in the last review of this unit are being fixed in this pass, and one of
+them required an upstream change that has now landed:
+
+8. **The journal and the redirect reconciliation are now callable (closes
+   review finding R-01).** The previous pass had to declare both
+   unimplementable: the unit definition mandates that U1 own the
+   `MigrationCleanupJournal`, and decision 4 above requires redirect
+   reconciliation, but Contract 3 declared no operation for either. Contract
+   Design has been re-entered and amended, so Contract 3 now declares
+   `MigrationCleanupJournalPort` (`openCleanupJournalEntry`,
+   `recordCleanupTransition`, `readCleanupJournalEntry`,
+   `closeCleanupJournalEntry`) plus the injected `RepositoryRedirectPort`
+   (`resolveRedirect`) and U1's own `reconcileRepositoryIdentity`. This design
+   will therefore express both as real U1 workflows instead of deferred
+   constraints, and the rules that recorded the deferral (BR6.1, BR6.2) are
+   rewritten to state the implementable behaviour: re-key only on a single
+   confirmed redirect against a caller-supplied candidate list, and skip on zero
+   candidates, multiple confirmations, or an unavailable port. FR3.7's
+   skip-when-no-workspace-matches rule stays authoritative for legacy migration
+   candidates.
+9. **The migration transfer step will call a real inner primitive (closes
+   review finding R-06).** The previous spec's migration transfer step 4
+   directed `transferThroughLifecycle` to call `transferThroughLifecycle` with
+   the same request — a self-call with no terminating condition, which no
+   implementer can build. This pass replaces it with a named internal
+   install-lifecycle primitive that performs the governed write, read-back
+   verification, and registry update (the same sequence install steps 6 and 7
+   already define, through the declared `InstallationLifecyclePort`), and maps
+   its `LifecycleOutcome` to a `MigrationTransferOutcome` member at the
+   boundary. No undeclared Contract 3 operation is exposed.
+
 Does this all look correct before I generate the artifact?
 
 - Looks correct

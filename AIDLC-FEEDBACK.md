@@ -1,90 +1,138 @@
-# AIDLC Feedback
+# AI-DLC Framework Feedback — Issue Drafts
 
-This log records reproducible friction in the AI-DLC workflow, hooks, and related tooling. Entries are append-only.
+Draft issues for [`awslabs/aidlc-workflows`](https://github.com/awslabs/aidlc-workflows). They are **not submitted**. Evidence remains in this workspace; these drafts state the reproducible problem and proposed fix concisely.
 
-## Friction entries
+## Issue drafts
 
-### 2026-09-22 — Functional Design review recovery deadlock on resume
+### AIDLC-ISSUE-001 — Incomplete reviews consume the review budget and can deadlock a wave
 
-- **Status:** open
-- **Workflow:** `260914-unified-installation`
-- **Affected stage / unit:** `functional-design` / `shared-installation-foundation`
-- **Observed state:** The workflow is in revision 9. `aidlc-state.md` reports `functional-design` as `[R]`, with `functional-design` still active and `nfr-requirements` next.
+- **AI-DLC:** `2.9.0` (runtime `2.9.0`)
+- **Harness:** Kiro IDE
+- **Status:** open · **Area:** review orchestration / wave execution
+- **Observed:** A reviewer that produces no review body or findings consumes its sole retry and becomes an empty `NOT-READY` receipt. After two such receipts, the wave returns `review_state: "NOT-READY"` and `completion_required: true`, but `unit complete --wave` refuses.
+- **Expected:** Infrastructure failure must remain distinct from an artifact verdict; the next directive must expose an executable recovery.
+- **Impact:** Functional Design became non-progressing despite revised artifacts; repeated resumes consumed more than a dozen framework calls.
+- **Evidence:** Audit `ncelrnd1524-8b5d79f53367.md` lines 11528–12060; empty review records under `.aidlc-engine/reviews/functional-design/units/shared-installation-foundation/3c0fc53f9e11caf4/`.
 
-#### What happened
+#### Proposed fixes
 
-The Functional Design unit was revised to address the twelve findings from the prior review. The revised artifacts are present, but the required adversarial review never produced a substantive review result:
+- **AIDLC-P-001:** Add `review-incomplete` / `review-unavailable` states; never encode an unavailable review as `NOT-READY`.
+- **AIDLC-P-002:** Do not consume an iteration or retry when reviewer capability, dispatch, or review-file creation fails before substantive execution.
+- **AIDLC-P-003:** Require a review record to be durably readable at the returned `reviewFile` path before emitting `REVIEW_REQUESTED` completion.
+- **AIDLC-P-004:** Emit a typed recovery action (`retry after environment repair`, `redo with artifact reuse`, or `human risk decision`) when incomplete-review recovery is exhausted.
 
-1. Review iteration 1 was requested for artifact fingerprint `sha256:c2764e2f88db5825b7ce21055a641414666529eb67f1d92c0b8197e66cbef292` with request ID `review:1bf1cad49223a9dfe368dfa731db4f6d`.
-2. Its sole `--retry-pending` retry was spent. A later retry correctly refused with:
-   ```text
-   Refusing review retry for "functional-design": REVIEW_REQUESTED iteration 1 already used its one pending-request retry. Do not dispatch it again; record the bounded incomplete-review NOT-READY fallback or start the next permitted review iteration.
-   ```
-3. The fallback created `.aidlc-engine/reviews/functional-design/units/shared-installation-foundation/3c0fc53f9e11caf4/1.json`, whose `body` is empty and whose `findings` array is empty, but whose verdict is `NOT-READY`.
-4. The same sequence repeated for review iteration 2, request ID `review:aa00be2a414ade0c41be11174b126e19`. Its fallback record is also an empty `NOT-READY` result.
-5. With the two-pass adversarial budget exhausted, the engine re-emitted a wave directive with `build_required: false`, `completion_required: true`, and `review_state: "NOT-READY"`. Attempting the required completion command then refused:
-   ```text
-   aidlc engine state unit complete --wave --stage "functional-design" --unit "shared-installation-foundation"
+### AIDLC-ISSUE-002 — Redo recovery reveals required checkpoints only after the jump
 
-   Refusing wave completion for unit "shared-installation-foundation" of "functional-design": the engine does not currently expose that entry as build-complete, review-settled, and awaiting its completion receipt.
-   ```
+- **AI-DLC:** `2.9.0` (runtime `2.9.0`)
+- **Harness:** Kiro IDE
+- **Status:** open · **Area:** recovery routing
+- **Observed:** An engine-approved redo of `functional-design` succeeded, but the next call failed with `SUMMARY_RECEIPT_MISSING`; the required summary confirmation was not disclosed before the jump.
+- **Expected:** A recovery route should disclose every mandatory post-jump checkpoint before the user commits.
+- **Impact:** One unnecessary state transition and human turn before a fresh review could start.
+- **Evidence:** `aidlc engine orchestrate next --stage functional-design` issued the redo command; the following `next` emitted `SUMMARY_RECEIPT_MISSING`.
 
-The result is a circular state: the unit cannot be completed because it is not exposed as review-settled, yet no review retry is permitted and the directive does not provide a recovery or repair action. Each resume replays expensive framework setup and reaches the same state.
+#### Proposed fixes
 
-#### Evidence
+- **AIDLC-P-005:** Preflight summary authorization and other checkpoint prerequisites when constructing a redo route.
+- **AIDLC-P-006:** Offer a combined redo-and-reconfirm flow that preserves the mandatory human confirmation boundary but avoids a discovery round trip.
 
-- Audit: `aidlc/spaces/default/intents/260914-unified-installation/audit/ncelrnd1524-8b5d79f53367.md`
-  - iteration 1 request and retry: lines 11528–11559
-  - iteration 1 retry refusal and fallback completion: lines 11688–11706
-  - iteration 2 request and retry: lines 11716–11762
-  - iteration 2 retry refusal and fallback completion: lines 12011–12029
-  - wave completion refusal: lines 12058–12060
-- Fallback review records:
-  - `aidlc/spaces/default/intents/260914-unified-installation/.aidlc-engine/reviews/functional-design/units/shared-installation-foundation/3c0fc53f9e11caf4/1.json`
-  - `aidlc/spaces/default/intents/260914-unified-installation/.aidlc-engine/reviews/functional-design/units/shared-installation-foundation/3c0fc53f9e11caf4/2.json`
-- Both records have an empty `body` and no findings, so they are evidence of an incomplete review attempt rather than a completed design assessment.
+### AIDLC-ISSUE-003 — Exhausted substantive review with an upstream dependency loops instead of escalating
 
-#### Root cause
+- **AI-DLC:** `2.9.0` (runtime `2.9.0`)
+- **Harness:** Kiro IDE
+- **Status:** open · **Area:** wave execution / stage escalation
+- **Observed:** A fresh attempt completed two substantive reviews. The final review retained critical findings requiring a Contract Design change, but the engine re-emitted `build_required: false`, `completion_required: true`, and `review_state: "NOT-READY"`. Completion is known to refuse and a third review is disallowed.
+- **Expected:** A terminal capped review whose findings require an upstream artifact should stop unit execution and name the engine-approved upstream revision route.
+- **Impact:** Full rule/context delivery is repeated without a legal transition.
+- **Evidence:** Review `c4e8430ed1f89649/2.review.md`; post-review Functional Design directive; `AIDLC-FEEDBACK.md` prior recurrence evidence.
 
-This is not a design-artifact failure. It is an unreconciled workflow-state failure caused by three defects interacting:
+#### Proposed fixes
 
-1. **Reviewer execution failure is treated as a review outcome.** A review worker that cannot produce the mandated review file consumes the one retry and later becomes an empty `NOT-READY` fallback. The system loses the distinction between “the artifact failed review” and “the review infrastructure did not run.”
-2. **Wave settlement does not handle terminal incomplete-review fallbacks.** The engine exposes `review_state: "NOT-READY"` but does not expose the matching lead-repair, human-decision, or fresh-review route. It then refuses the only completion command the directive implies.
-3. **Resume repeatedly performs heavyweight setup before revealing the same dead-end.** The orchestrator reloads the full two-part active rule bundle and large inline context set before it can determine that no legal state transition exists. Continuation tokens also become stale whenever incidental state changes occur, requiring another full `next`/rule-delivery pass.
+- **AIDLC-P-007:** Emit `review_state: "escalation-required"` instead of `completion_required: true` for a capped unresolved review.
+- **AIDLC-P-008:** Include the owning upstream stage and an engine-issued backward-jump command in that escalation directive.
+- **AIDLC-P-009:** Make wave completion refuse at directive generation time, not after the client executes an implied-but-invalid command.
 
-#### Cost
+### AIDLC-ISSUE-004 — Review validation surfaces are not reliably executable or diagnosable
 
-- **User impact:** the construction workflow does not advance past Functional Design despite revised artifacts being available.
-- **Interaction cost:** more than a dozen framework-only tool turns were spent attempting review retries, reading state, reconstructing directives, handling stale continuation tokens, and attempting wave completion.
-- **Context cost:** each retry/resume reloaded roughly 25 KB of rules plus 23 inline context files; this consumed a substantial amount of context without improving the unit state.
+- **AI-DLC:** `2.9.0` (runtime `2.9.0`)
+- **Harness:** Kiro IDE
+- **Status:** open · **Area:** sensors / reviewer UX
+- **Observed:** Stage declarations name validation surfaces but do not provide invocations. Sensor discovery required trial-and-error; later read-only validation calls returned exit `130` with no JSON or diagnostic.
+- **Expected:** Reviewers can run each declared validation through a documented command with structured pass, fail, or unavailable output.
+- **Impact:** Review results could not include authoritative sensor evidence and required unnecessary framework exploration.
+- **Evidence:** Functional Design review `c4e8430ed1f89649/2.review.md`; audit evidence for sensor-command discovery in this session.
 
-#### Safe immediate recovery
+#### Proposed fixes
 
-Do not force the unit complete, edit workflow state files directly, or fabricate a review record. The clean escape must create a fresh, reviewable attempt.
+- **AIDLC-P-010:** Include exact read-only validation commands in each review dispatch brief.
+- **AIDLC-P-011:** Make every sensor command support `--help` and print a complete usage line when arguments are missing.
+- **AIDLC-P-012:** Reserve exit `130` for interruption; return JSON such as `{ "status": "unavailable", "reason": "…" }` for unsupported or unconfigured validation.
 
-1. Preserve the revised Functional Design artifacts; do not change them merely to force a fingerprint mismatch.
-2. Request a human-approved redo of `functional-design` through the public route (`/aidlc --stage functional-design`) and execute only the exact jump command returned by the orchestrator. This should establish a new stage attempt and fresh review budget while retaining/reusing the already revised artifacts through the engine’s artifact-reuse path.
-3. Before any new review request, verify that the architecture reviewer can read the supplied paths and write the provided review-file path. If tool access is unavailable, stop immediately with a typed recovery choice; do not spend the review request or its retry.
-4. If the redo route does not return an executable recovery action, stop automated retries. The framework needs state-tool repair support; editing `aidlc-state.md`, audit rows, or review receipts manually would weaken the audit trail and may create a more difficult inconsistency.
+### AIDLC-ISSUE-005 — Resume redelivers unchanged rule bundles before reporting a known blocker
 
-**Workaround safety:** The redo path is safe only when the engine itself prints and validates the jump. It is not safe to call state lifecycle commands directly or to hand-edit state/audit files.
+- **AI-DLC:** `2.9.0` (runtime `2.9.0`)
+- **Harness:** Kiro IDE
+- **Status:** open · **Area:** session resume / context efficiency
+- **Observed:** Resuming the blocked unit repeatedly transfers the same two-part rule bundle (~25 KB) and 23 inline context paths before returning the same non-actionable wave state. Continuation tokens become stale after incidental state changes.
+- **Expected:** Resume should identify a known blocker before heavyweight context delivery and reuse unchanged bundle state.
+- **Impact:** Excess token use and tool turns without project progress.
+- **Evidence:** Repeated `load-steering` directives for Functional Design in the active audit/session sequence.
 
-#### Proposed framework improvements
+#### Proposed fixes
 
-1. **Classify review failures separately from review verdicts.** Add a terminal `review-unavailable` / `review-incomplete` status that cannot masquerade as an empty `NOT-READY` review. The status should preserve the cause (no reviewer tool access, timeout, malformed file, write failure).
-2. **Return a typed recovery directive after exhausted incomplete reviews.** When no substantive review exists, emit one of: `retry with repaired reviewer environment`, `redo stage with artifact reuse`, or `present human risk decision`. Never emit a wave entry that completion will reject.
-3. **Make wave state internally consistent.** If a wave directive exposes `completion_required: true`, its completion command must be executable. Otherwise expose `build_required: true` with a repair brief, or a typed `ask`/guard-recovery action. Include the precise missing condition in the directive rather than requiring a failed completion command to discover it.
-4. **Preflight reviewer capabilities before `REVIEW_REQUESTED`.** Validate that the selected Kiro reviewer has read access to required artifacts and write access to the generated review file. A platform-level capability failure must not spend an iteration or pending-request retry.
-5. **Support resumable review dispatch.** Persist a compact request snapshot and worker health outcome. On session resume, reattach/retry a review that never started without creating a new request or exhausting the one retry; only an actual reviewer run should consume the retry.
-6. **Provide a compact resume snapshot.** Add an `aidlc engine resume --json` response containing current stage, unit/wave entry, blocker classification, legal next commands, previous failed command, and a bounded evidence summary. This lets a new session decide in one call instead of replaying all rules and reading audit history.
-7. **Use rule-bundle caching/delta delivery.** Bind the bundle hash to the session and return only changed rule fragments after the first successful load. Do not make opaque continuation tokens the only way to retain the loaded bundle; token invalidation should return a compact restart directive, not force the entire bundle to be transferred again.
-8. **Expose a single “why blocked” surface.** `aidlc engine orchestrate next` should report a machine-readable blocker such as `review_incomplete_budget_exhausted` and the engine-approved recovery command. This avoids protocol archaeology across audit, review JSON, state, and directive payloads.
-9. **Make launcher fallbacks first-class.** The managed route for `aidlc engine review-brief ...` previously failed with `aidlc-review-brief.ts does not export main(argv)` while `bun .kiro/tools/aidlc.ts engine review-brief ...` worked. The launcher should use the registered tool implementation directly, or print the supported fallback as structured recovery metadata rather than requiring a user/project-specific learned workaround.
+- **AIDLC-P-013:** Add a compact `aidlc engine resume --json` response with blocker code, current unit, legal actions, and failed command summary.
+- **AIDLC-P-014:** Cache rule bundles by hash for a session and deliver only deltas after the first successful load.
+- **AIDLC-P-015:** On invalidated continuation, return a compact restart directive rather than forcing full rule delivery.
 
-#### Acceptance criteria for the fix
+### AIDLC-ISSUE-006 — Resume is a hand-driven multi-call loop with two silent traps that burn context
 
-- A reviewer that cannot access its inputs or output path consumes **zero** review iterations and **zero** pending-request retries.
-- An empty fallback review cannot block a wave without the engine exposing an executable recovery action.
-- A resumed deadlocked unit reaches a typed recovery directive in one `next` call, without full rule/context redelivery.
-- The repair path establishes a fresh attempt and review budget without hand-editing state or audit evidence.
-- The unit either completes successfully or produces a clear, human-owned decision point; it never repeats the same directive plus a command that deterministically refuses.
+- **AI-DLC:** `2.9.0` (runtime `2.9.0`)
+- **Harness:** Kiro IDE
+- **Status:** open · **Area:** session resume / CLI ergonomics · **Related:** AIDLC-ISSUE-004, AIDLC-ISSUE-005
+- **Date:** 2026-09-22
+- **Observed:** `/aidlc --resume` forces the conductor to hand-drive the steering-delivery loop (`orchestrate next --resume` → read `continue_token` → `orchestrate continue <token>` → repeat until `run-stage`). Two traps make each resume cost many tool calls and a lot of context:
+  1. **Launcher raises SIGINT (exit `130`) intermittently.** The managed `aidlc` launcher frequently exits `130` even for `aidlc --version`, and when it is driven inside a shell loop the SIGINT tears the loop down mid-chain, so a scripted `next`→`continue`→`continue` resume cannot complete through the launcher. Output is often produced before the signal, but the non-zero exit and loop teardown make the flow look broken. Running the tool directly — `bun .kiro/tools/aidlc.ts engine orchestrate …` — is consistently clean (exit `0`) and completes the chain. (This is the same launcher-layer defect already recorded for `review-brief` in `memory/project.md`.)
+  2. **`continue` takes a POSITIONAL token; `--token` is silently rejected with a misleading error.** `handleContinue` reads `args[0]` and guards on `args.length !== 1`. Invoking `orchestrate continue --token "<t>"` yields `args = ["--token", "<t>"]` (length 2), so the guard fires and returns `"Invalid steering continuation token: this stage's rules cannot be loaded from where they left off. Run a fresh next to restart delivery from part 1."` The message points at token staleness / state drift, so the natural (wrong) reaction is to re-run `next` — which redelivers the full multi-part rule bundle again (see ISSUE-005) and burns more context. The correct call is positional: `orchestrate continue "<t>"`.
+- **Expected:** Resuming a workflow should take one command and return the terminal directive without the client re-implementing the steering loop, and an invalid-token error should distinguish "wrong argument shape" from "stale token" so it does not induce a needless full `next` restart.
+- **Impact:** Every resume in this project has cost many framework round trips and a large fraction of the context window before any project work resumed; the misleading error repeatedly triggered a full-bundle `next` restart.
+- **Evidence:** `.kiro/tools/aidlc-orchestrate.ts` `handleContinue` (positional `args[0]`, `args.length !== 1` guard, error string near the "cannot be loaded from where they left off" literal); this session reproduced the `--token` rejection and the `bun` vs launcher exit-code difference; `scripts/aidlc-resume.sh` (added this session) completes the full chain to `run-stage` in one invocation via bun + positional tokens.
+
+#### Design rationale (added 2026-09-22)
+
+The multistep steering loop with per-part tokens is not accidental output fragmentation — it is deliberate state-validation defense. Each `continue` token encodes `(stage, workflow_state_hash, bundle_hash, route, part_N)` and validates on every call. Between parts 1→2→3, the engine detects if state/rules changed (user edited state file, external mutation, etc.) and rejects the token. This catches state drift between parts.
+
+However, this defensive design assumes a human conductor might hand-edit state files between parts. AI workflows will not. For AI resumption, this validation is unnecessary overhead: the agent is deterministic, won't mutate state mid-loop, and the framework could validate state once at loop start, batch parts server-side, and return only the terminal directive + bundle reference (see AIDLC-P-016).
+
+#### Proposed fixes
+
+- **AIDLC-P-016:** Ship an `aidlc engine orchestrate resume` (or `next --resume --drain`) that runs the whole steering-delivery loop server-side and returns the single terminal directive (`run-stage`/`ask`/`done`/`parked`/`error`) plus the already-delivered rule bundle, so the client never hand-drives `continue`. This trades the per-part state-validation surface (appropriate for humans) for AI-optimized single-call resumption (validate state once at loop entry, batch parts server-side).
+- **AIDLC-P-017:** Accept `--token <t>` as an alias for the positional token in `orchestrate continue`, or reject unknown flags explicitly instead of folding them into the "stale token" path.
+- **AIDLC-P-018:** Make the invalid-token error distinguish causes — wrong argument shape vs. failed MAC vs. state-hash drift vs. route-hash drift — and only the genuine-staleness cases should advise a fresh `next`.
+- **AIDLC-P-019:** Fix the launcher so it never exits `130` on success (reserve `130` for real interruption), and ensure it does not deliver SIGINT to its process group at teardown, so scripted multi-call loops survive.
+
+### AIDLC-ISSUE-007 — Approval-gate hook instructs the agent to acknowledge the gate "as a human"
+
+- **AI-DLC:** `2.9.0` (runtime `2.9.0`)
+- **Harness:** Kiro IDE
+- **Status:** open · **Area:** approval gates / hooks · **Date:** 2026-09-22
+- **Observed:** After `orchestrate report --stage contract-design --result awaiting-approval` opened the gate, a `PreToolUse` hook blocked **every** subsequent tool call (including a read of the report's own output file) with: "An approval gate is open and no human has acted since it opened. The gate requires a typed human turn before any tool call proceeds. Acknowledge the gate as a human, then continue." The human had already typed their approval, but *before* the gate opened, so the hook's "since it opened" window was empty. Taken literally, the remedy it names — the agent acknowledging the gate *as a human* — is the impersonation the gate exists to prevent, and it directly contradicts the framework's own rule that an approval is never recorded on the human's behalf.
+- **Expected:** A gate hook should never instruct the agent to supply the human turn. It should say what is blocked and stop, leaving the agent to end its turn and re-present the gate. The wording should also distinguish "no human turn recorded yet" from "the human answered before the gate was mechanically opened".
+- **Impact:** The only compliant path is to discard the user's already-given approval, re-present the gate, and ask them to retype the same answer — one wasted human round trip per gate whenever the approval arrives in the same turn that opens the gate. An agent that follows the hook's wording literally would silently self-approve.
+- **Evidence:** `report --result awaiting-approval` for `contract-design` in this session, then two consecutive intercepted calls (`read_file /tmp/rep1.txt`, then the `report --result approved` shell call), both returning the quoted `HOOK_INSTRUCTION`; the approval only committed after the user retyped `1`.
+
+#### Proposed fixes
+
+- **AIDLC-P-020:** Reword the hook so it never asks the agent to act as the human: state that the gate is open and awaiting a human decision, and instruct the agent to end its turn and re-present the choices.
+- **AIDLC-P-021:** Accept a human gate answer recorded in the same turn that opens the gate (compare against the last human message rather than only events strictly after the gate timestamp), so a decision given up front is not discarded.
+- **AIDLC-P-022:** Narrow the block to gate-resolving actions (`report --result approved|rejected`) instead of all tool calls; reading a file or inspecting state cannot resolve a gate and should not be blocked.
+- **AIDLC-P-023:** Have the hook name the exact compliant next step (re-present the gate and stop) so the remedy is unambiguous.
+
+## Acceptance criteria
+
+- A reviewer infrastructure failure consumes zero review budget and returns a typed recovery action.
+- A wave directive never advertises completion when its completion command will refuse.
+- A terminal review requiring an upstream change exposes the approved escalation route in one response.
+- Every declared validation surface has a documented, read-only command and structured outcome.
+- Resume identifies a known blocker without redelivering unchanged context.
+- Resume completes in one command and returns the terminal directive; an invalid-token error names its cause and never falsely advises a full `next` restart; the CLI never exits `130` on success.
+- No hook ever instructs the agent to supply, acknowledge, or stand in for a human turn; gate blocks apply only to gate-resolving actions.

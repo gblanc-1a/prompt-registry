@@ -100,6 +100,27 @@ this pass.
 [Answer]: A. Yes — keep risk-first order (U1 foundation, then U2/U3 adapters, then U4 migration), no external blockers, and build here in one session with the normal per-stage approval. (Refined by Q3: the CLI adapter lands before the VS Code adapter rather than in parallel.) (2026-09-18T15:56:48Z; **Mode:** guided)
 
 
+## Q6. Where should the repository-rename reconciliation work land in the PR sequence?
+
+Contract Design was amended after this stage last ran, to close a gap the
+Functional Design review found: Contract 3 now declares the U1-owned
+`MigrationCleanupJournalPort` (four typed operations, already covered by PR 6 and
+PR 11) **and** a capability that has no PR yet — repository-rename
+reconciliation. That capability has two halves in two different Units: U1 owns
+the `reconcileRepositoryIdentity` registry operation that re-keys a record, and
+U3 supplies the injected `RepositoryRedirectPort` that performs the one network
+check. U1 stays offline-only; when the port is absent or unavailable the
+reconciliation is skipped.
+
+Per your component-level decision (Q1), the choice is how to cut this.
+
+- A. Add a dedicated U1 PR in Bolt 1 for `reconcileRepositoryIdentity` (offline re-keying against a supplied candidate list, with the skip rules), and have Bolt 3's extension PR supply the `RepositoryRedirectPort`. The existing PR 13 keeps FR3.7 repository-scope migration parity as its own concern.
+- B. Fold `reconcileRepositoryIdentity` into the existing registry PR (PR 3) and the port into Bolt 3's PR 8, adding no new PR.
+- C. Defer the whole reconciliation capability to Bolt 4 and handle it inside PR 13 alongside repository-scope parity.
+- X. Other (please specify)
+
+[Answer]: A. Add a dedicated U1 PR in Bolt 1 for `reconcileRepositoryIdentity` (offline re-keying against a supplied candidate list, with the skip rules), and have Bolt 3's extension PR supply the `RepositoryRedirectPort`. PR 13 keeps FR3.7 repository-scope migration parity as its own concern.
+
 ## Consolidated Summary Confirmation
 
 - Looks correct

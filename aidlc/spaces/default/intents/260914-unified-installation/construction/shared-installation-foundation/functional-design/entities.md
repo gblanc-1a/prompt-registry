@@ -69,6 +69,17 @@ entities:
         type: enum
         required: true
         constraints: Drawn from the canonical primitive vocabulary; determines the destination subtree.
+      - name: contentHash
+        type: digest
+        required: false
+        constraints: >
+          Optional per-item integrity assertion from the authoritative root
+          deployment-manifest.yml items[] inventory. When present, it is a
+          SHA-256 over the referenced archive bytes and must match before a
+          target write. When absent, the governed item remains installable:
+          archive membership, archive-relative path, and kind still come from
+          items[], and byte-for-byte target read-back verifies the actual
+          archive bytes written.
       - name: name
         type: string
         required: false
@@ -109,11 +120,17 @@ entities:
         constraints: Exact uncompressed byte length.
       - name: contentDigest
         type: digest
-        required: true
-        constraints: SHA-256 over the archive bytes, in canonical prefixed lowercase hexadecimal form.
+        required: false
+        constraints: >
+          Derived from the optional ManifestItem.contentHash assertion. When a
+          hash is supplied, it is verified against archive bytes before a
+          write. When absent, this record records no independent digest and
+          the accepted no-hash path relies on items[] governance plus required
+          target read-back verification of the actual archive bytes.
     constraints:
       - Every archive file except the root manifest has exactly one record.
       - A file present in the archive with no record, or a record with no file, rejects the bundle.
+      - The root deployment-manifest.yml `items[]` inventory is authoritative for governed installable membership, path, and kind; a missing optional per-item hash is not an inventory failure.
     relationships:
       - to: GovernedBundleManifest
         cardinality: many-to-one
@@ -206,7 +223,8 @@ entities:
           available during an offline install.
     constraints:
       - At least one of the canonical remote URL or the workspace root path must be present.
-      - Derivation never consults the network; only reconciliation may resolve a redirect.
+      - Derivation never consults the network (BR3.2); only reconciliation may resolve a redirect, and only through the injected adapter-supplied port (BR6.2).
+      - A stored identity changes only through reconcileRepositoryIdentity on exactly one confirmed redirect (BR6.1); U1 never infers a candidate itself (BR6.3).
     relationships:
       - to: ManagedInstallation
         cardinality: one-to-many
@@ -331,6 +349,10 @@ entities:
         type: enum
         required: true
         allowed_values: [prepared, target-verified, legacy-delete-pending, committed]
+        constraints: >
+          Advances only along the legal forward transitions; a repeated
+          transition into legacy-delete-pending is permitted and is how
+          per-artifact deletion progress becomes durable (BR5.10).
       - name: legacySourceRoot
         type: path
         required: true
@@ -368,12 +390,21 @@ entities:
         required: true
       - name: expectedFingerprint
         type: digest
-        required: true
-        constraints: References the fingerprint held by the corresponding managed artifact.
+        required: false
+        constraints: >
+          References the fingerprint held by the corresponding managed artifact.
+          Optional because the journal references registry-owned fingerprints
+          rather than copying them (BR5.3); when absent, the expected value is
+          read from the managed artifact at verification time.
       - name: progressState
         type: enum
         required: true
-        allowed_values: [pending, verified-identical, deleted, absent-after-delete, preserved]
+        allowed_values: [pending, verified-identical, deleted, preserved]
+        constraints: >
+          Matches the Contract 3 CleanupArtifactState vocabulary exactly. There
+          is no separate post-deletion state: BR4.6 requires absence to be
+          verified before `deleted` is recorded at all, so a recorded `deleted`
+          already means "removed and verified absent".
     constraints:
       - Deletion is attempted only from the verified-identical state.
       - A preserved entry records that the artifact was intentionally retained and must never be retried as a deletion.
@@ -454,6 +485,93 @@ entities:
         cardinality: one-to-one
         direction: maps-from
 
+  - name: CleanupJournalEntryResult
+    description: >
+      The result of `openCleanupJournalEntry`, `recordCleanupTransition`, and
+      `readCleanupJournalEntry`. Distinct from the lifecycle unions because the
+      journal boundary has outcomes the lifecycle does not — resuming a live
+      entry, finding none, and refusing a mismatched legacy source root.
+    attributes:
+      - name: kind
+        type: enum
+        required: true
+        allowed_values:
+          - created
+          - resumed
+          - absent
+          - source-root-mismatch
+          - validation-error
+          - retryable-failure
+          - safety-blocked
+        constraints: >
+          `created` and `resumed` come from open and transition calls; `absent`
+          is returned only by read and close, never by open.
+      - name: entry
+        type: reference
+        required: false
+        constraints: Present on `created` and `resumed`; the live journal entry with its progress set.
+      - name: detail
+        type: string
+        required: false
+        constraints: >
+          Required on `source-root-mismatch` (naming both roots),
+          `validation-error`, and `retryable-failure` so the caller can tell an
+          illegal transition from a contended key.
+    constraints:
+      - No kind other than `created` or `resumed` grants any deletion authority.
+      - A `resumed` entry still re-verifies current bytes before a destructive action (BR5.5).
+    relationships:
+      - to: CleanupJournalEntry
+        cardinality: one-to-one
+        direction: references
+
+  - name: CleanupJournalCloseResult
+    description: The result of `closeCleanupJournalEntry`, whether committed or abandoned.
+    attributes:
+      - name: kind
+        type: enum
+        required: true
+        allowed_values: [closed, absent, retryable-failure]
+      - name: detail
+        type: string
+        required: false
+    constraints:
+      - An `abandoned` disposition is legal only from prepared or target-verified; from legacy-delete-pending the close is refused as a validation error (BR5.11).
+
+  - name: RepositoryReconciliationResult
+    description: >
+      The result of `reconcileRepositoryIdentity`. Re-keying is deliberately
+      conservative: anything short of exactly one confirmed redirect is a skip
+      that leaves the stored record untouched.
+    attributes:
+      - name: kind
+        type: enum
+        required: true
+        allowed_values: [rekeyed, skipped, validation-error, retryable-failure]
+      - name: previousIdentity
+        type: reference
+        required: false
+        constraints: Present on `rekeyed`; the identity the record was keyed under before.
+      - name: newIdentity
+        type: reference
+        required: false
+        constraints: Present on `rekeyed`; the confirmed identity the record now uses.
+      - name: skipReason
+        type: enum
+        required: false
+        allowed_values: [no-record, no-candidates, no-confirmation, ambiguous-confirmation, redirect-unavailable, no-redirect-port]
+        constraints: Required on `skipped` so the caller can distinguish offline from ambiguous.
+    constraints:
+      - Managed artifacts and their fingerprints are never altered by reconciliation; only the record's key changes (BR6.5).
+      - A skip is never an error: it is the expected outcome offline and whenever evidence is not unambiguous.
+    relationships:
+      - to: ManagedInstallation
+        cardinality: one-to-one
+        direction: references
+      - to: RepositoryIdentity
+        cardinality: many-to-one
+        direction: references
+
   - name: ArtifactVerificationResult
     description: >
       The result of one `verifyManagedArtifacts` call: whether each expected
@@ -483,11 +601,12 @@ entities:
         direction: references
 ```
 
-## Summary
+## Entity groups
 
-Fifteen entities across four groups.
+The model contains eighteen entities across four groups. The groups below are derived from the YAML source of truth above; they do
+not add independent fields or relationships.
 
-**Bundle governance** — `GovernedBundleManifest` with its `ManifestItem` set,
+## Bundle governance — `GovernedBundleManifest` with its `ManifestItem` set,
 `ArchiveFileRecord` set, and `BundleProvenance`. The split between items and
 file records is the load-bearing detail: items carry routing identity (path,
 kind) while file records carry integrity (size, digest) and the role that
@@ -511,8 +630,15 @@ fingerprint covers the bytes as written, which is what lets the lifecycle tell
 its own content from content the user has edited.
 
 **Operations** — `CleanupJournalEntry` with `CleanupArtifactProgress`,
-`LifecycleOutcome`, `MigrationTransferOutcome`, and
-`ArtifactVerificationResult`. The journal is deliberately not shaped like the
+`LifecycleOutcome`, `MigrationTransferOutcome`, `ArtifactVerificationResult`,
+and the three boundary result unions `CleanupJournalEntryResult`,
+`CleanupJournalCloseResult`, and `RepositoryReconciliationResult`. The journal
+result union is kept separate from the lifecycle unions for the same reason the
+migration union is: it carries outcomes the lifecycle has no vocabulary for —
+resuming a live entry, finding none, and refusing a mismatched legacy source
+root. `RepositoryReconciliationResult` treats every ambiguous or offline case as
+`skipped` with a reason rather than an error, because leaving a record untouched
+is the correct conservative outcome. The journal is deliberately not shaped like the
 registry record: the registry describes steady state and outlives every
 operation, while the journal describes one destructive operation in flight and
 is deleted when it commits. It references registry-owned fingerprints rather

@@ -81,6 +81,10 @@
 
 - In this repo the CLI `apply` and `profile activate` commands are multi-target profile activation (compose over the shared single-bundle lifecycle across every configured target), not single-bundle install; model them as composition that delegates each (bundle, target) write to the shared lifecycle, never as `install`. (learned 2026-09-21) <!-- cid:260914-unified-installation:functional-design:f2a587f5135bd2809ba4b62890016b548604af6845d20debda9d531a202896e8 -->
 
+- When a unit's mandated responsibility (per Units Generation) has no corresponding operation in the governing contract, fix the contract at Contract Design rather than declaring the responsibility unimplementable in the downstream design. (learned 2026-09-23) <!-- cid:260914-unified-installation:contract-design:3847557c136f20cce7bfc9ad50c378d280313f70e9c32db2bf3755c4de909524 -->
+
+- When a capability spans two units and one half needs an external capability (network, IO), ship the pure half as its own reviewable PR and inject the external half from the delivery adapter, so the core stays offline-testable. (learned 2026-09-23) <!-- cid:260914-unified-installation:delivery-planning:f6aff3fcada6aac2182e4023491658b4fe30b40fa5dedf8540260ed56cceaca8 -->
+
 ## Interpretations
 - treated XDG storage as the shared application boundary; the CLI already separates cached bundles and durable installation records from target runtime output, so `~/.copilot` and `~/.kiro` remain target roots rather than registry roots. (learned 2026-09-14) <!-- cid:260914-unified-installation:feasibility:5ee78cf39a5074b9d0e001f216aa6bf476b96179757de5db684fcf199422755c -->
 - Treat transparent migration as approved scope with a design gate: automatic legacy cleanup remains disabled until the completion state, interruption recovery, and duplicate comparison rules are defined and tested. (learned 2026-09-14) <!-- cid:260914-unified-installation:approval-handoff:29832c1008c1d57283820ae1912c204b0ab56f1f9edd783d0fe6de37f053e638 -->

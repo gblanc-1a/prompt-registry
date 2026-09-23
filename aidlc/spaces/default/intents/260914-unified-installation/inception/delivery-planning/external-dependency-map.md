@@ -8,11 +8,18 @@ workspace packages, and the intermediate layers are not published as independent
 packages. Every pull request in the plan can be built, reviewed, and merged
 within this repository's normal workflow.
 
+One outbound network touch exists in the shipped behaviour, and it blocks
+nothing: the repository-rename redirect check. It is reached only through the
+injected `RepositoryRedirectPort` that U3 supplies, it fires only when a stored
+record matches no open workspace, and an absent or unreachable host degrades to
+"skip and leave the record untouched" rather than an error. U1 itself performs no
+network call, so every U1 pull request is reviewable and testable offline.
+
 ## External Dependencies
 
 | Dependency | Owner | Timing | Blocks | Fallback |
 | --- | --- | --- | --- | --- |
-| None identified | Not applicable | Not applicable | None | Continue with repository-local implementation and tests |
+| Git remote reachability for the repository-rename redirect check | The user's own git host (only touched through the injected `RepositoryRedirectPort`) | At activation, only when a stored record matches no open workspace | Nothing — it is optional by contract | The port returns `unavailable`, reconciliation is skipped, and the stored record is left untouched |
 
 ## Internal Checkpoints
 
@@ -20,12 +27,13 @@ These are delivery controls, not external dependencies:
 
 | Checkpoint | Consuming PR(s) | Evidence |
 | --- | --- | --- |
-| Design PR merged | PRs 1–13 | Shared contracts, type/port layout, and journal states fixed before implementation |
-| U1 foundation ready | PRs 7, 8 | Manifest governance, routing, registry, install/update/uninstall, and the shared journal contract landed and green |
-| CLI/VS Code parity | PR 8 | Equivalent install, update, uninstall, isolation, and typed-outcome behavior through both adapters |
+| Design PR merged | PRs 1–14 | Shared contracts, type/port layout, journal states, and the journal/reconciliation signatures fixed before implementation |
+| U1 foundation ready | PRs 8, 9 | Manifest governance, routing, registry, install/update/uninstall, the shared journal contract, and offline reconciliation landed and green |
+| CLI/VS Code parity | PR 9 | Equivalent install, update, uninstall, isolation, and typed-outcome behavior through both adapters |
+| Redirect port wired | PR 9 | The extension composition root supplies `RepositoryRedirectPort`, making PR 7's reconciliation reachable; absent-port behaviour still skips cleanly |
 | Inception traceability check | Construction transition | No unresolved traceability findings (NFR1.1 now resolved) |
-| Extension packaging & activation checks | PRs 9–13 | Activation runs migration before bundle commands, the migration summary is visible, packaging stays green |
-| Destructive-cleanup gate | PR 11 | Full byte verification and post-cleanup absence proven; PR reviewed on its own before merge |
+| Extension packaging & activation checks | PRs 10–14 | Activation runs migration before bundle commands, the migration summary is visible, packaging stays green |
+| Destructive-cleanup gate | PR 12 | Full byte verification and post-cleanup absence proven; PR reviewed on its own before merge |
 
 ## Assumptions
 

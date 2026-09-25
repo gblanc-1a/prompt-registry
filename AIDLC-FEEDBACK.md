@@ -375,3 +375,63 @@ However, this defensive design assumes a human conductor might hand-edit state f
 - **AIDLC-P-060:** Move the `review-brief review` call ahead of `report --result awaiting-approval` in `SKILL.md`'s completion sequence, or exempt `review-brief` (read-only) from the gate-blocking `PreToolUse` matcher.
 - **AIDLC-P-061:** Restrict the gate-blocking hook to gate-resolving actions only (as AIDLC-ISSUE-007's acceptance criterion already asks), so read-only presentation tooling and output reads are never blocked.
 - **AIDLC-P-062:** Introduce a non-terminal `committed` (or reuse `print`) directive for report acknowledgements that advance state, and reserve `done` for actual workflow/single-stage completion.
+
+### AIDLC-ISSUE-031 — A batched non-gate question cannot be logged per question: the second `log answer` is refused
+
+- **AI-DLC:** `2.9.0` (runtime `2.9.0`)
+- **Area:** stage protocol §3 (non-gate question logging) vs the human-presence guard in `aidlc-log.ts answer`
+- **Observed:** `stage-protocol.md` §3 pairs each structured question with its own
+  `log decision` → `log answer` receipt, and the Kiro question-rendering annex explicitly
+  permits batching ("at most ~4 questions per message"). Following both, I recorded two
+  `DECISION_RECORDED` rows for a two-question follow-up batch (`Q2a`, `Q3a`), presented both
+  in one message, and the human answered both in one reply. The first
+  `log answer --stage nfr-requirements --unit shared-installation-foundation` succeeded; the
+  second was refused with `{"error":"Cannot record this answer because no new human reply has
+  arrived for the question. Wait for the human to type an answer, then try again."}`. The reply
+  had arrived — it answered both questions — but it was one human turn, and the first `answer`
+  consumed it.
+- **Expected:** either (a) the protocol states that a batch of questions gets exactly one
+  `decision`/`answer` pair covering the batch, so two decisions for one presented batch is the
+  authoring error; or (b) the guard allows one `answer` per outstanding `DECISION_RECORDED`
+  within the same human turn, since the turn genuinely answered each of them. Today the two
+  documents point one way and the guard the other, and the refusal text asserts something
+  factually untrue about the conversation ("no new human reply has arrived").
+- **Impact:** the second question's choice has no `QUESTION_ANSWERED` row. The questions file
+  still records it, and the later summary-confirmation receipt digests the whole file, so
+  traceability survives — but the audit ledger under-describes a decision the human actually
+  made, and the agent is pushed toward either padding turns (asking one question per message)
+  or silently dropping receipts. The refusal also reads as a state error rather than an
+  authoring constraint, which invites a retry loop.
+- **Evidence:** `bun .kiro/tools/aidlc.ts engine log answer --stage nfr-requirements --unit
+  "shared-installation-foundation" --details "Q3a: A - atomic rename everywhere"` → the error
+  above, immediately after the same command for `Q2a` returned
+  `{"emitted":"QUESTION_ANSWERED","stage":"nfr-requirements"}`. Questions file carrying both
+  committed answers:
+  `aidlc/spaces/default/intents/260914-unified-installation/construction/shared-installation-foundation/nfr-requirements/nfr-requirements-questions.md`.
+
+#### Proposed fixes
+
+- **AIDLC-P-063:** State the batching contract explicitly in §3: one `decision`/`answer` pair per
+  *presented batch*, not per question, with the `--details` value naming every question and its
+  exact chosen label. Then a two-question batch is one decision row, and the guard is never hit.
+- **AIDLC-P-064:** Alternatively, let the presence guard satisfy every `DECISION_RECORDED` that is
+  still unanswered at the time of the human turn, so a genuinely multi-answer reply can be
+  recorded question by question.
+- **AIDLC-P-065:** Reword the refusal so it names the real condition — the human turn was already
+  consumed by a prior receipt — instead of claiming no reply arrived. The same wording problem is
+  recorded for the gate hook in AIDLC-P-021.
+
+### AIDLC-ISSUE-032 — A READY review with an empty findings table is rejected by the review recorder
+
+- **Status:** Open
+- **Area:** reviewer protocol / review-record parser
+- **Observed:** The iteration-2 reviewer returned `READY` and wrote the prescribed `### Findings` table with one no-findings row whose ID was `—`. `aidlc engine log review ... --verdict READY` then refused it: `invalid finding ID "—"`. The reviewer protocol requires a findings table but does not define a valid empty-table representation accepted by the recorder.
+- **Expected:** A reviewer that finds no issues can write a valid READY review and have its terminal receipt recorded without manufacturing a fake finding or triggering fallback recovery.
+- **Impact:** A successful review is treated as malformed after its sole retry was spent on a prior timeout. The normal completion path is blocked despite a valid substantive outcome, forcing a NOT-READY fallback that falsely represents review availability.
+- **Evidence:** `aidlc/spaces/default/intents/260914-unified-installation/.aidlc-engine/reviews/nfr-requirements/units/cli-manifest-adoption/c32cb885cf59f263/2.review.md`; command `bun .kiro/tools/aidlc.ts engine log review --stage nfr-requirements --unit cli-manifest-adoption --reviewer aidlc-architecture-reviewer-agent --iteration 2 --verdict READY` → `invalid finding ID "—"`.
+
+#### Proposed fixes
+
+- **AIDLC-P-066:** Define one canonical empty-findings representation (for example an empty table body or a `None` sentinel) in the reviewer template and accept it in the review parser for `READY` verdicts.
+- **AIDLC-P-067:** Validate the reviewer output against the same grammar before the reviewer returns, so an invalid no-findings row is repaired before the terminal receipt attempt.
+- **AIDLC-P-068:** Improve the refusal to name the expected empty-findings form and distinguish a structurally malformed empty review from a substantive invalid finding ID.

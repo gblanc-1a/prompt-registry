@@ -1,0 +1,24 @@
+{
+  "stage": "nfr-requirements",
+  "unit": "vscode-shared-lifecycle-adoption",
+  "upstream_ids": ["NFR1", "NFR1.1", "NFR2", "NFR3", "NFR4"],
+  "coverage": [
+    { "id": "NFR1", "status": "OK", "target": "NFR1.2, NFR1.3, NFR1.4" },
+    { "id": "NFR1.1", "status": "OK", "target": "NFR1.1.1" },
+    { "id": "NFR2", "status": "Deferred", "target": "NFR2.1 requires a U1 cancellation input/result boundary" },
+    { "id": "NFR3", "status": "OK", "target": "NFR3.1" },
+    { "id": "NFR4", "status": "Deferred", "target": "NFR4.1 functional/contract revision, NFR4.2 U1 source resolution, NFR4.3 shared projection, NFR4.4 U1/U4 reconciliation API" }
+  ],
+  "reverse": [
+    { "id": "NFR1.2", "status": "OK", "target": "NFR1" },
+    { "id": "NFR1.3", "status": "OK", "target": "NFR1" },
+    { "id": "NFR1.4", "status": "OK", "target": "NFR1" },
+    { "id": "NFR1.1.1", "status": "OK", "target": "NFR1.1" },
+    { "id": "NFR2.1", "status": "Deferred", "target": "Blocked pending U1 cancellation contract" },
+    { "id": "NFR3.1", "status": "OK", "target": "NFR3" },
+    { "id": "NFR4.1", "status": "Deferred", "target": "Blocked pending functional/contract revision for manual conflict guidance" },
+    { "id": "NFR4.2", "status": "Deferred", "target": "Blocked pending U1 source-resolution contract" },
+    { "id": "NFR4.3", "status": "OK", "target": "NFR4" },
+    { "id": "NFR4.4", "status": "Deferred", "target": "Blocked pending U1/U4 reconciliation API" }
+  ]
+}

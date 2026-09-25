@@ -1,0 +1,24 @@
+{
+  "stage": "nfr-requirements",
+  "unit": "cli-manifest-adoption",
+  "upstream_ids": ["NFR1", "NFR1.1", "NFR2", "NFR3", "NFR4"],
+  "coverage": [
+    { "id": "NFR1", "status": "OK", "target": "NFR1.2, NFR1.3, NFR1.4, NFR1.5" },
+    { "id": "NFR1.1", "status": "OK", "target": "NFR1.1.1" },
+    { "id": "NFR2", "status": "OK", "target": "NFR2.1" },
+    { "id": "NFR3", "status": "OK", "target": "NFR3.1" },
+    { "id": "NFR4", "status": "Deferred", "target": "NFR1.5, NFR4.1, NFR4.2, NFR4.3; NFR4.1 requires a U1 safe conflict-detail surface and NFR4.2 requires a U1 import/reconciliation API" }
+  ],
+  "reverse": [
+    { "id": "NFR1.2", "status": "OK", "target": "NFR1" },
+    { "id": "NFR1.3", "status": "OK", "target": "NFR1" },
+    { "id": "NFR1.4", "status": "OK", "target": "NFR1" },
+    { "id": "NFR1.5", "status": "OK", "target": "NFR1, NFR4" },
+    { "id": "NFR1.1.1", "status": "OK", "target": "NFR1.1" },
+    { "id": "NFR2.1", "status": "OK", "target": "NFR2" },
+    { "id": "NFR3.1", "status": "OK", "target": "NFR3" },
+    { "id": "NFR4.1", "status": "Deferred", "target": "Blocked pending a U1-owned safe conflict-detail surface" },
+    { "id": "NFR4.2", "status": "Deferred", "target": "Blocked pending a U1-owned import/reconciliation API and persistence boundary" },
+    { "id": "NFR4.3", "status": "OK", "target": "NFR4" }
+  ]
+}

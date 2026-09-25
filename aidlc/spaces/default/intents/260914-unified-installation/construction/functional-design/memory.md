@@ -2,6 +2,9 @@
 > This file is kept up to date automatically while the stage runs. Add observations at the review step, not by editing here directly.
 
 ## Interpretations
+- 2026-09-23T14:00:00Z — Aligned the functional workflow with Contract 3 hand-off ordering: U1 atomically detaches the ceding record before pending materialization, persists full recovery evidence, and alone restores or finalizes it. Added BR3.6 reverse traceability and the DestinationOwnershipClaim derived relationship so the design’s source and views agree.
+- 2026-09-23T13:45:00Z — The final Contract 3 amendment resolves the claim-recovery gap by putting immutable journal identity, generation-bound evidence, durable destination claims, and rollback resolution inside U1. Migration stays a caller of those controls: a conflict preserves legacy content; it never gives U4 a direct target-write escape hatch.
+- 2026-09-23T12:55:00Z — Reconciled U1 Functional Design with the approved Contract 3 amendments: token-gated transition verification, registry-wide target/scope destination ownership, and explicit managed-installation identity fields. The amendments preserve U1 as the enforcement boundary while U4 remains the cleanup-transaction coordinator.
 <!-- example: 2026-05-29T10:14:32Z — chose REST over GraphQL; the consuming team only needs CRUD, revisit if subscriptions land -->
 
 
@@ -51,6 +54,18 @@
 
 - 2026-09-21T15:18:00Z — State-free is absolute (Q3=A): no MigrationRegistry per-installation flag, no durable outcome store. Each activation re-derives from disk; "done" = legacy source gone. U1's cleanup journal is the only persistence and only while a destructive op is in flight. Scheduling (Q7=A) is inline-before-command-handlers, non-fatal, no time-box — the common case is a no-op so it stays fast.
 <!-- aidlc-wave-memory:activation-migration-compatibility:e37c34c639f9c0e810c299bfab3388ab7983fe14db6b466eebdc8190b5d55191 -->
+
+
+- 2026-09-24T10:05:00Z — Applied the iteration-3 fixes at the human's direction knowing no review budget remained to verify them: completed R-03 (the two present-tense commit-mode claims in entities.md are now conditional), added the `(gap 1, open)` / `(gap 2, open)` marker convention so uninstall step 3, the whole init workflow, status steps 2-3, and the `success` result row no longer read as buildable (R-15), and narrowed gap 2 to the preserved-artifact payload only (R-16) — `queryDestinationOwnership` is declared in Contract 1 and supplies the conflict destination path and owning identity, so `CliConflictDetail` now sources them there and types the owner as `ManagedInstallationIdentity`. These edits are unverified by any reviewer; the unit settles on an invalidated receipt and every finding rides to the stage gate.
+<!-- aidlc-wave-memory:cli-manifest-adoption:8fcc084c5142599c44d2399603986d5770ed1c8d278d2af196838e761eb491ad -->
+
+
+- 2026-09-23T18:05:00Z — Second review exhausted the adversarial budget with three findings needing a shared surface the contract does not declare: no adapter-facing registry read/write (so uninstall's identity lookup, init's lockfile write, and status's record read are unimplementable), no payload on the result union (so conflict and preserved-file reporting has nothing to read), and profile's record access unspecified. At the human's direction these are recorded as carried-forward gaps rather than reopening Contract Design; only the unit's self-inconsistencies were repaired. The Boundary paragraph stays binding, so the three workflows are explicitly marked not implementable until the gaps close.
+<!-- aidlc-wave-memory:cli-manifest-adoption:10fdc4cd09feae0cd3ecfa89ae3db386b17abd15683bfd36226150884837c308 -->
+
+
+- 2026-09-23T15:40:00Z — Re-aligned U2 with the amended shared foundation: its recorded source-resolution delta is closed by U1 owning resolution/download/validation, legacy import now maps onto explicit target and scope identity, and every CLI-triggered write observes U1's durable destination-ownership claim. U2 reports a per-bundle conflict outcome instead of gaining any target-write or claim-recovery path.
+<!-- aidlc-wave-memory:cli-manifest-adoption:31c64457cac325c74a82e766e2fa0ab0fad085bc555a9a839a0fe0c0542340c7 -->
 
 ## Deviations
 <!-- example: 2026-05-29T10:14:32Z — skipped the optional caching layer the stage prose suggested; the dataset is small enough that it adds risk -->

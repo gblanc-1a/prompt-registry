@@ -2,6 +2,9 @@
 > This file is kept up to date automatically while the stage runs. Add observations at the review step, not by editing here directly.
 
 ## Interpretations
+- 2026-09-23T13:10:00Z — Contract amendment closes the second Functional Design review: journal evidence now binds to an immutable entry ID plus generation, destination ownership becomes a durable atomic claim with recovery states, and migration transfer uses the same claim protocol instead of a weaker migration exception.
+- 2026-09-23T08:55:00Z — R-01 enforced via a token model (Q8=B) rather than U1 re-verifying inside the transition: U4 supplies a VerificationResultToken minted by verifyManagedArtifacts, and U1 rejects the target-verified transition unless the token binds the exact journal entry, artifact set, and a fresh current-read. Keeps U4 driving the state machine while U1 still gates deletion authority on live evidence.
+- 2026-09-23T08:55:00Z — R-02 closed by adding a registry-wide destination-ownership invariant plus a target/scope-scoped collision query (Q9=A); a cross-installation destination conflict returns conflict unless an explicit ownership hand-off token is supplied, and record+artifact updates are atomic. R-03 closed by making target and scope required ManagedInstallation identity attributes (Q10=A).
 <!-- example: 2026-05-29T10:14:32Z — chose REST over GraphQL; the consuming team only needs CRUD, revisit if subscriptions land -->
 
 ## Deviations

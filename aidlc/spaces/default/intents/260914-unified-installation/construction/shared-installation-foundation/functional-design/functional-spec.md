@@ -625,3 +625,171 @@ between.
 | 4 Lifecycle | Install, update, uninstall behaviour | BR4.1 verify writes; BR4.2 preserve locally changed omitted artifacts; BR4.4 successful update carries the preserved list; BR4.6 verify removals; BR4.7 never overwrite a still-named changed artifact without consent; BR4.8 preserved-content is for stalled operations only. |
 | 5 Journal | Restart-safe destructive cleanup | BR5.1 in-flight only; BR5.2 durable-before-action; BR5.4 committed entries do not outlive their operation; BR5.5 resumption re-verifies; BR5.6 first-pass verification precedes deletion authority; BR5.7 legacy paths stay inside their source root; BR5.8 a mismatched source root grants no authority; BR5.9 exclusive access per installation key; BR5.10 same-state transitions carry per-artifact durability; BR5.11 abandon only before deletion begins. |
 | 6 Reconciliation | Identity across repository renames | BR6.1 re-key only on exactly one confirmed redirect; BR6.2 no network call in U1, injected optional port, skip when unavailable; BR6.3 caller supplies candidates; BR6.4 ambiguity is a skip; BR6.5 re-key moves the record without duplicating it; BR6.6 FR3.7 stays authoritative for legacy candidates. |
+## Contract-alignment amendments
+
+This section supersedes any earlier workflow wording that does not express the
+Contract 3 amendments approved after the prior Functional Design pass.
+
+### Managed-installation identity and destination ownership
+
+`ManagedInstallation` stores `bundleId`, `target`, `scope`, and optional
+`repositoryIdentity` as explicit typed identity attributes. `installationKey`
+is a derived lookup value over those fields rather than the only representation
+of them. User-scope and repository-scope persistence retain their existing
+separate adapters; the explicit fields make collision checks, audit records,
+and recovery deterministic without an adapter parsing the key.
+
+Before the shared lifecycle writes any governed destination, it executes
+`queryDestinationOwnership(destinationPaths, target, scope)` against the
+registry-wide managed-artifact inventory.
+
+1. When no other installation owns a destination, the normal write/verify/record
+   flow proceeds.
+2. When the selected installation already owns the destination, the existing
+   local-change and overwrite-consent rules apply.
+3. When a different installation owns the destination, return `conflict` and
+   write nothing unless the request carries a matching
+   `DestinationOwnershipHandoff` naming that exact destination and ceding
+   installation.
+4. A valid hand-off atomically removes the destination from the ceding
+   installation's managed-artifact set and records the read-back-verified write
+   under the acquiring installation. If either record update cannot commit, the
+   operation returns `retryable-failure` and neither installation receives a
+   partial ownership change.
+
+This check is part of the shared U1 lifecycle, not a CLI or VS Code adapter
+policy, so neither delivery surface can silently overwrite another managed
+installation's content.
+
+### Token-gated cleanup verification
+
+`verifyManagedArtifacts` returns per-artifact current-byte verdicts and, only
+when every requested artifact is present and byte-identical, mints a
+`VerificationResultToken`. The token binds the installation key, journal entry,
+complete expected artifact/fingerprint set, observed-read version, issuance
+time, and an integrity signature.
+
+To record `prepared -> target-verified`, U4 supplies that token to
+`recordCleanupTransition`. U1 then validates all of the following before it
+persists the transition:
+
+1. The token is structurally valid, unaltered, and belongs to the same
+   installation key and live journal entry.
+2. The token's artifact/fingerprint set exactly equals the entry's full expected
+   cleanup set; subset, expanded, or altered sets are rejected.
+3. The token remains current: U1 re-reads every expected target artifact and
+   confirms its bytes still match the bound fingerprint, with containment and
+   symlink checks applied.
+
+An absent, stale, altered, mismatched, or no-longer-current token leaves the
+entry in `prepared` and returns `validation-error` or `safety-blocked`; it
+never grants deletion authority. The existing resumed-cleanup rule remains
+stricter: every delete also rechecks current target and legacy bytes immediately
+before the filesystem action.
+## Final Contract 3 generation and claim-recovery amendment
+
+This section supersedes the earlier contract-alignment amendment where the two
+differ. It is the authoritative workflow for generation-bound cleanup evidence
+and destination-claim recovery.
+
+### Generation-bound verification workflow
+
+When U1 creates `CleanupJournalEntry`, it mints an immutable `entryId` and sets
+`generation` to `1`. It increments the generation whenever the authoritative
+state or artifact-progress set changes. `verifyManagedArtifacts` accepts the
+entry ID and live generation, then issues a `VerificationResultToken` only when
+the full expected set is present and byte-identical.
+
+1. U4 requests `prepared -> target-verified` with the entry ID, expected
+   generation, and token.
+2. U1 rejects the request unless the live entry ID and generation exactly match,
+   the token covers the entry's complete expected fingerprint set, and the token
+   has not already authorized a transition.
+3. U1 re-reads every target artifact with containment and symlink checks. Any
+   mismatch, absence, unsafe path, closed entry, changed generation, or replay
+   returns `validation-error` or `safety-blocked`; the entry remains unchanged.
+4. Only a complete fresh pass persists `target-verified`; U1 increments the
+   entry generation, consuming the token. Later cleanup operations must obtain
+   evidence for the new live generation.
+
+### Destination-claim and materialization workflow
+
+For every normal or migration write, U1 uses a durable
+`DestinationOwnershipClaim` keyed by `(target, scope, destinationPath)`.
+
+1. **Claim transaction.** In one registry transaction U1 loads the live claim,
+   validates the selected installation and any `DestinationOwnershipHandoff`,
+   records the acquiring and ceding installation identities, prior managed-
+   artifact linkage, intended fingerprint, and claim generation, then enters
+   `pending-materialization`. A competing request sees the live claim and does
+   not write.
+2. **Materialize.** U1 writes only while holding the pending claim, applies
+   containment and binary-write rules, and read-backs the intended bytes.
+3. **Finalize.** On successful read-back, U1 atomically records the managed
+   artifact under the acquiring installation, removes it from the ceding
+   installation when this is a hand-off, and changes the claim to `finalized`.
+4. **Recover.** A failed or interrupted materialization enters
+   `rollback-required` without releasing the claim. Only U1 may resolve it:
+   - if a fresh read proves the intended bytes were written, it finalizes as in
+     step 3;
+   - if target materialization did not occur, it atomically restores the ceding
+     record and prior-artifact linkage when present, then releases or returns
+     the claim to `claimed`;
+   - if bytes cannot be safely classified, it retains the recovery evidence and
+     returns a preserved retry outcome. No competing writer, migration cleanup,
+     or legacy deletion may proceed while the state remains unresolved.
+
+### Migration transfer parity
+
+`transferThroughLifecycle` executes the same claim transaction. A migration
+request may supply `DestinationOwnershipHandoff`; when another installation
+owns a destination and the hand-off is absent or invalid, U1 returns
+`preserved-conflict`, writes no target bytes at that destination, and U4 retains
+legacy content for a current-run outcome. U4 never calls a target artifact store
+directly to resolve a claim or rollback-required state.
+## Claim hand-off sequencing correction
+
+This correction supersedes the hand-off timing in the final claim-recovery
+workflow and aligns it with the authoritative Contract 3 claim transaction.
+
+1. **Atomically detach and reserve.** Before target bytes are written, U1's
+   single registry transaction validates the ceding owner and hand-off, removes
+   the destination artifact from the ceding installation's active managed set,
+   and creates the acquiring `pending-materialization` claim. The claim
+   durably records the ceding installation, prior managed-artifact linkage,
+   intended fingerprint, acquiring installation, and generation. No live record
+   describes both installations as owners after this transaction commits.
+2. **Materialize under reservation.** U1 alone writes target bytes while the
+   pending claim is live, then read-backs the intended sequence.
+3. **Finalize.** A successful read-back atomically records the artifact under
+   the acquiring installation and sets the claim to `finalized`.
+4. **Resolve failure or interruption.** If no materialization occurred, U1
+   atomically restores the detached ceding record from the claim's prior-artifact
+   linkage and releases or returns the claim to `claimed`. If a fresh read proves
+   the intended bytes exist, U1 finalizes the acquiring record. If bytes cannot
+   be classified safely, U1 retains `rollback-required` recovery evidence and
+   returns a preserved retry outcome; no lifecycle, migration transfer, or
+   cleanup operation may bypass the unresolved claim.
+
+## Derived entity relationship amendment
+
+The following derived view supplements the original entity diagram with the
+nineteenth entity, `DestinationOwnershipClaim`. The YAML in `entities.md`
+remains the source of truth.
+
+```mermaid
+erDiagram
+  MANAGED_INSTALLATION ||--o{ MANAGED_ARTIFACT : owns
+  MANAGED_INSTALLATION ||--o{ DESTINATION_OWNERSHIP_CLAIM : owns_or_cedes
+  MANAGED_ARTIFACT ||--o| DESTINATION_OWNERSHIP_CLAIM : prior_or_final_artifact
+  SUPPORTED_TARGET ||--o{ DESTINATION_OWNERSHIP_CLAIM : scopes
+  INSTALLATION_SCOPE ||--o{ DESTINATION_OWNERSHIP_CLAIM : scopes
+  CLEANUP_JOURNAL_ENTRY ||--o{ CLEANUP_ARTIFACT_PROGRESS : tracks
+  CLEANUP_JOURNAL_ENTRY }o--|| MANAGED_INSTALLATION : references
+```
+
+Text fallback: `DestinationOwnershipClaim` links a target, scope, destination,
+and acquiring owner to optional ceding-owner and prior-artifact recovery data.
+It is the durable serialisation boundary between `ManagedInstallation` records;
+`CleanupJournalEntry` remains a separate destructive-cleanup progress record.
+The complete entity model therefore contains nineteen entities.

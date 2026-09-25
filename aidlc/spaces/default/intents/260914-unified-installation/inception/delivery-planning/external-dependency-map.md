@@ -42,3 +42,10 @@ These are delivery controls, not external dependencies:
 - No external API or separately released intermediate package must be stabilized.
 - Internal review and CI or packaging checks run within the repository's normal
   workflow.
+## Contract safety delivery controls
+
+Destination-ownership claim recovery is an internal U1 checkpoint, not an
+external dependency. PRs 3, 6, 11, and 12 must demonstrate claim finalization,
+rollback-required recovery, and preserved-conflict behavior before migration
+cleanup can delete a legacy artifact. The optional repository-redirect network
+check remains non-blocking and cannot bypass these controls.

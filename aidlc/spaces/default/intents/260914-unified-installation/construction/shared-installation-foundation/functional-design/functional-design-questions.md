@@ -191,6 +191,28 @@ them required an upstream change that has now landed:
    already define, through the declared `InstallationLifecyclePort`), and maps
    its `LifecycleOutcome` to a `MigrationTransferOutcome` member at the
    boundary. No undeclared Contract 3 operation is exposed.
+10. **The cleanup transition is generation-bound (closes review finding R-01).**
+    `verifyManagedArtifacts` mints a `VerificationResultToken` bound to the
+    immutable journal `entryId`, its exact live `generation`, the complete
+    artifact/fingerprint set, and the observed read. U1 accepts the token for
+    one matching `prepared -> target-verified` attempt only, re-reads the full
+    set before transition, and rejects stale, closed-entry, wrong-generation, or
+    mismatched evidence without granting deletion authority.
+11. **Managed destination ownership is durable and atomic (closes review
+    finding R-02).** U1 owns a `DestinationOwnershipClaim` keyed by target,
+    scope, and destination. One transaction validates or transfers the claim,
+    records pending materialization, and blocks competitors; only read-back
+    verification finalizes ownership. Failed or interrupted work enters a
+    U1-owned recovery state rather than leaving an adapter to invent recovery.
+12. **Installation identity exposes target and scope (closes review finding
+    R-03).** `ManagedInstallation` stores `target` and `scope` as required,
+    typed identity attributes; the installation key derives from those fields
+    rather than requiring adapters to reverse-engineer opaque key contents.
+13. **Migration transfer has claim parity.** `MigrationTransferRequest` carries
+    an optional `DestinationOwnershipHandoff` and always uses the same U1 claim
+    protocol as normal install and update. Without a valid hand-off, it returns
+    `preserved-conflict`, writes no competing destination, and preserves legacy
+    content for U4 to report.
 
 Does this all look correct before I generate the artifact?
 

@@ -234,6 +234,22 @@ These are the decisions I will build the U2 design artifacts from.
   wrapper over install, plus the two framework helpers that resolve lockfile
   paths and targets.
 
+- **Shared-foundation updates carried into this pass.** The shared foundation
+  has since been amended twice, which closes this file's recorded Q4 delta and
+  adds controls U2 consumes without duplicating. Contract 3 and the U1 design now
+  own governed source resolution, download, archive reading, validation, and
+  installation, so the CLI hands over the bundle specification as decided.
+  `ManagedInstallation` exposes required `target` and `scope` attributes, so the
+  legacy user-lockfile import resolves a real identity instead of
+  reverse-engineering an opaque key. Every shared write, including each bundle of
+  a declarative `install --lockfile` run, passes U1's durable
+  target/scope/destination claim: a destination owned by another installation
+  returns `conflict` unless an explicit ownership hand-off is supplied, and U2
+  reports that per-bundle outcome rather than writing target content itself. Exit
+  behaviour is unchanged — only `success` exits zero, including when it carries
+  preserved files, and an ownership `conflict` is one of the non-zero kinds with
+  its own code.
+
 Does this all look correct before I generate the artifact?
 
 - Looks correct

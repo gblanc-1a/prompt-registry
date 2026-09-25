@@ -1,8 +1,16 @@
 # Business Rules — CLI Manifest Adoption (U2)
 
+Sources: `inception/units-generation/unit-of-work.md` (U2's boundary),
+`inception/units-generation/unit-of-work-story-map.md` (assigned requirements),
+`inception/requirements-analysis/requirements.md` (FR1–FR4.1),
+`inception/domain-design/components.md` (shared components), and
+`inception/contract-design/contract-summary.md` (request, result, and ownership
+schemas).
+
 Rule identifiers use the `BR{group}.{seq}` format. Groups: 1 delegation, 2 bundle
 handover, 3 record migration, 4 result and exit mapping, 5 declarative batch, 6
-commit mode. Because U2 is a delivery adapter, most rules are **negative
+commit mode, 8 shared-foundation alignment. Because U2 is a delivery adapter,
+most rules are **negative
 constraints** — they forbid the adapter from reproducing policy that belongs to
 the shared foundation. The YAML block is the source of truth; a summary table
 follows it.
@@ -25,7 +33,7 @@ rules:
     statement: The adapter does not reinterpret a shared result; it maps it.
     category: constraint
     applies_to: CliResultPresentation
-    trigger: Every returned LifecycleOutcome.
+    trigger: Every returned LifecycleResult.
     logic: >
       IF the shared lifecycle returns an outcome kind
       THEN the adapter presents and exit-codes that same kind
@@ -170,7 +178,7 @@ rules:
     source: FR1
 
   - id: BR6.1
-    statement: Commit mode is resolved per invocation and travels on the shared request.
+    statement: Commit mode is resolved per invocation; carrying it to the shared layer awaits open delta 2.
     category: constraint
     applies_to: CommitModeSelection
     trigger: A repository-scope lifecycle command.
@@ -178,8 +186,74 @@ rules:
       IF the command supplies a commit-mode flag
       THEN use it
       ELSE use the target definition's commit mode.
-      Attach the resolved value to the shared lifecycle request.
+      Attach the resolved value to the shared lifecycle request once the shared
+      contract carries a field for it (see open delta 2); until then the resolved
+      value is passed no further and no adapter-side commit-mode behaviour is
+      substituted.
     violation: Acting on commit mode in the adapter — selecting a lockfile file or editing git exclusions — is prohibited; those are shared concerns.
+    source: FR2.1, FR4
+  - id: BR8.1
+    statement: Uninstall resolves its bundle identity from the shared registry before delegating.
+    category: constraint
+    applies_to: CliLifecycleInvocation
+    trigger: An uninstall command naming a bundle by user-typed reference.
+    logic: >
+      IF the user-typed reference matches exactly one managed installation in the
+      shared registry for the selected target, scope, and repository identity
+      THEN use that installation's bundleId on the Contract 1 UninstallRequest
+      ELSE report no-match or ambiguity and exit non-zero without delegating.
+    violation: >
+      Sending an unresolved specification string as bundleId, or deriving a
+      bundle identity by parsing the reference, is prohibited — Contract 1
+      declares no source resolution on uninstall.
+    source: FR1, FR1.3
+  - id: BR8.2
+    statement: Repository-scope requests carry a repository identity derived from the selected working tree.
+    category: constraint
+    applies_to: CliLifecycleInvocation
+    trigger: Any lifecycle command whose scope is repository.
+    logic: >
+      IF the scope is repository
+      THEN derive the repository identity from the selected working tree and set
+      it on the shared request
+      ELSE omit it, as user scope has none.
+    violation: >
+      Omitting the identity on a repository-scope request, or inventing one, is
+      prohibited: Contract 1 isolates registry state by bundle, target, scope,
+      and repository identity.
+    source: FR2.1, FR2.2
+  - id: BR8.3
+    statement: The CLI supplies no destination-ownership hand-off and resolves no claim state.
+    category: constraint
+    applies_to: CliResultPresentation
+    trigger: A shared write that returns a cross-installation ownership conflict.
+    logic: >
+      IF the shared lifecycle reports a destination owned by another installation
+      THEN report the affected bundle, destination path, and owning installation
+      from the shared result and exit with the conflict code
+      ELSE continue normally.
+      Never set destinationOwnershipHandoff, and never act on a claimed,
+      pending-materialization, or rollback-required claim state.
+    violation: >
+      Supplying a hand-off from the CLI, retrying the write, or touching target
+      content to clear a claim is prohibited; ownership transfer and claim
+      recovery belong to the shared foundation.
+    source: FR2.2, FR4
+  - id: BR8.4
+    statement: Every lockfile-touching command in scope reads installation state from the shared registry.
+    category: constraint
+    applies_to: LegacyUserLockfileImport
+    trigger: An in-scope command that reads or writes installation records — init, profile, status, or a lifecycle command.
+    logic: >
+      IF the command reports or records user-scope installation state
+      THEN read it from the shared registry, running the one-time legacy import
+      first when its state is pending
+      ELSE it is out of this unit's scope.
+      A status report distinguishes records already in the shared registry from
+      legacy entries the pending import has not yet reconciled.
+    violation: >
+      Reading or writing the legacy user lockfile as a live record store after
+      import, or reporting installation state from it, is prohibited.
     source: FR2.1, FR4
 ```
 
@@ -200,4 +274,18 @@ rules:
 | BR5.1 | Declarative install expands into ordered single-bundle operations. | constraint | FR1 |
 | BR5.2 | A batch continues after failure and reports every result. | policy | FR1 |
 | BR5.3 | A batch exits non-zero if any member failed. | policy | FR1 |
-| BR6.1 | Commit mode is resolved per invocation and travels on the request. | constraint | FR2.1, FR4 |
+| BR6.1 | Commit mode is resolved per invocation; carrying it on the request depends on open delta 2. | constraint | FR2.1, FR4 |
+| BR8.1 | Uninstall resolves bundle identity from the shared registry before delegating. | constraint | FR1, FR1.3 |
+| BR8.2 | Repository-scope requests carry a derived repository identity. | constraint | FR2.1, FR2.2 |
+| BR8.3 | The CLI supplies no ownership hand-off and resolves no claim state. | constraint | FR2.2, FR4 |
+| BR8.4 | Every in-scope lockfile-touching command reads state from the shared registry. | constraint | FR2.1, FR4 |
+
+## Shared-foundation alignment
+
+Group 8 in the YAML source of truth above carries this unit's alignment with
+`inception/contract-design/contract-summary.md`: BR8.1 resolves an uninstall's
+bundle identity from the shared registry, BR8.2 supplies repository identity on
+repository-scope requests, BR8.3 forbids any CLI-side ownership hand-off or
+claim resolution, and BR8.4 routes every in-scope lockfile-touching command
+through the shared registry. These are negative constraints plus request
+translation; they add no adapter-local lifecycle policy.

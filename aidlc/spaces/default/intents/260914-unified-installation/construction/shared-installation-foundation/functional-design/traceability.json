@@ -1,6 +1,12 @@
 {
   "stage": "functional-design",
   "unit": "shared-installation-foundation",
+  "contract_amendments": [
+    { "finding": "R-01", "target": "BR5.6; entities.md#cleanupjournalentry; functional-spec.md#generation-bound-verification-workflow" },
+    { "finding": "R-02", "target": "BR3.6; entities.md#destinationownershipclaim; functional-spec.md#destination-claim-and-materialization-workflow" },
+    { "finding": "R-03", "target": "entities.md#managedinstallation; BR3.1; functional-spec.md#managed-installation-identity-and-destination-ownership" },
+    { "finding": "R-04", "target": "BR3.6; functional-spec.md#migration-transfer-parity" }
+  ],
   "upstream_ids": [
     "FR1", "FR1.1", "FR1.2", "FR1.3",
     "FR2", "FR2.1", "FR2.2",
@@ -47,6 +53,7 @@
     { "id": "BR3.3", "status": "OK", "target": "FR1.3" },
     { "id": "BR3.4", "status": "OK", "target": "FR1, FR2.1" },
     { "id": "BR3.5", "status": "OK", "target": "FR1.3, NFR1" },
+    { "id": "BR3.6", "status": "OK", "target": "FR2.2, FR3.1, FR3.6, FR3.7, NFR1.1, NFR2" },
     { "id": "BR4.1", "status": "OK", "target": "NFR1" },
     { "id": "BR4.2", "status": "OK", "target": "FR1.3" },
     { "id": "BR4.3", "status": "OK", "target": "FR1.3" },

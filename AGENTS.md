@@ -66,10 +66,12 @@ New domain or use-case logic belongs in `packages/`, not in a delivery layer. Se
 
 ## AIDLC Friction Log — mandatory
 
-Whenever you hit friction with the AI-DLC framework, a hook, or any part of the
-tooling flow, **append the details to [AIDLC-FEEDBACK.md](AIDLC-FEEDBACK.md)**
-at the repository root. This is not optional and it is not deferred to the end
-of a task: record the entry as soon as you have the evidence, then carry on.
+Whenever you hit friction with the AI-DLC framework itself — an `aidlc` engine
+command, a framework hook, a stage protocol, or a sensor — **append the details
+to [AIDLC-FEEDBACK.md](AIDLC-FEEDBACK.md)** at the repository root. This file is
+the engineering-defect channel for `awslabs/aidlc-workflows`. It is not optional
+and it is not deferred to the end of a task: record the entry as soon as you have
+the evidence, then carry on.
 
 Append an entry when any of the following happens:
 
@@ -81,6 +83,21 @@ Append an entry when any of the following happens:
 - session resume costs more than a couple of round trips to re-establish position;
 - you re-read content you already had in context because the tooling gave you no
   cheaper way to get one small value out of it.
+
+**Do not append harness or IDE defects here.** This file is for AI-DLC framework
+defects only. Problems that belong to the **Kiro IDE or its terminal integration**
+— not to the framework — are out of scope, even when you notice them while running
+an `aidlc` command. The clearest example: the Kiro IDE terminal intermittently
+reporting `SIGINT` / exit `130` (or a desynced, empty, or hung terminal) for a
+command that actually completed and produced correct output. That is a Kiro
+terminal-integration issue — reproducible with plain non-AIDLC commands — and it
+belongs in a Kiro IDE bug report, not in `AIDLC-FEEDBACK.md`. When a symptom shows
+up during an `aidlc` command, first decide where the fault is: a wrong result,
+wrong state, or bad refusal from the command is a framework defect and goes here;
+a corrupted exit code, lost output, or hang around an otherwise-correct result is
+a harness defect and does not. For handling exit `130` at runtime, follow the
+global `terminal-sigint-exit-130` steering rule (verify the real result, do not
+blindly retry).
 
 Rules for the log:
 
@@ -106,8 +123,11 @@ Rules for the log:
 Resuming with a bare `/aidlc --resume` forces the conductor to hand-drive the
 engine's steering-delivery loop (`next --resume` → read `continue_token` →
 `continue <token>` → repeat until a terminal directive). In this project that
-loop has two traps that silently burn tool calls and context — see
-[AIDLC-ISSUE-006](AIDLC-FEEDBACK.md). Avoid both by using the one-shot helper.
+loop has a parser trap that silently burns tool calls and context — see
+[AIDLC-ISSUE-006](AIDLC-FEEDBACK.md) — and it runs on the Kiro IDE terminal,
+which intermittently reports a false exit `130` (a harness issue, not a framework
+one — see the global `terminal-sigint-exit-130` steering rule). Avoid both by
+using the one-shot helper.
 
 **Resume in one command** (then read the file it wrote):
 
@@ -121,18 +141,18 @@ terminal directive to act on — normally `run-stage`, or `ask` / `done` /
 workspace steering here, you do not need the redelivered `load-steering` parts
 to proceed; act on the terminal directive per the skill's forwarding loop.
 
-Redirect to a file and read it: the tool sometimes exits `130` (SIGINT) and
-tears down the calling shell *after* writing its output, so a bare run can look
+Redirect to a file and read it: the Kiro IDE terminal sometimes reports exit
+`130` (SIGINT) *after* the command has written its output, so a bare run can look
 like a failure while the file is complete. A non-zero exit here is not a resume
-failure — check the file.
+failure — check the file. This is a Kiro terminal-integration issue, not an
+AI-DLC defect, so **do not log it in `AIDLC-FEEDBACK.md`**.
 
 **Non-negotiable rules the helper encodes** (apply them for any manual call too):
 
 - **Drive the engine through `bun`, not the managed launcher.** Use
-  `bun .kiro/tools/aidlc.ts engine orchestrate …`. The `aidlc` launcher
-  intermittently exits `130` and, inside a shell loop, tears the loop down
-  mid-chain. (Same launcher-layer defect already recorded for `review-brief` in
-  `aidlc/spaces/default/memory/project.md`.)
+  `bun .kiro/tools/aidlc.ts engine orchestrate …`. Driving the two-process
+  `aidlc` launcher through the Kiro IDE terminal widens the false-`130` window
+  described above; the direct `bun` path is more reliable inside a scripted chain.
 - **`orchestrate continue` takes a POSITIONAL token.** Run
   `... orchestrate continue "<token>"`. Never `--token "<token>"` — the parser
   then sees two args and returns the misleading `"Invalid steering continuation

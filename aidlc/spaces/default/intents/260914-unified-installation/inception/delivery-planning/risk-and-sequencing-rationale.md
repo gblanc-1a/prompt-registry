@@ -125,3 +125,14 @@ Construction may begin once the Inception phase check passes. The previously
 open NFR1.1 destructive-cleanup finding is resolved (domain-design traceability
 now records NFR1.1 OK), so `verification/phase-check-inception.md` is expected to
 read PASS for this pass.
+## Final Contract 3 safety refinement
+
+The latest review exposed a race between a destination-ownership query and its
+later write, plus an ambiguous verification token that could outlive the cleanup
+entry it was intended to authorize. These are resolved in the existing sequence,
+not by adding a new Bolt: PR 0 fixes the contract; PR 3 implements the durable
+claim and recovery protocol; PR 6 binds evidence to a journal entry generation;
+PR 11 applies claims to migration transfer; PR 12 consumes the recovery state
+before destructive cleanup. This preserves risk-first sequencing because the
+shared foundation still carries the controls before any adapter or migration
+work can use them.

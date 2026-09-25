@@ -58,3 +58,11 @@ introduced.
   shared transfer path are stable; review the destructive-cleanup PR on its own.
 - **Stage gates:** use the normal workflow approval after each applicable
   Construction stage; no separate team-owned gate is required.
+## Contract safety checkpoint
+
+The architect owns the PR 0 contract review for generation-bound verification
+and claim recovery. The developer owns PRs 3, 6, 11, and 12 implementation and
+focused concurrency/interruption tests. The delivery lead does not schedule the
+U4 destructive cleanup review until the U1 claim recovery and token-validation
+evidence are green. U4 remains a coordinator: it reports a preserved conflict
+and retains legacy data rather than bypassing U1 ownership controls.

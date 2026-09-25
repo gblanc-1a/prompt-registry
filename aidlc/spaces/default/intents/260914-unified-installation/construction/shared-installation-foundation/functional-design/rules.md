@@ -343,22 +343,28 @@ rules:
     source: NFR2
 
   - id: BR5.6
-    statement: First-pass target verification precedes any deletion authority.
+    statement: First-pass target verification is bound to one live journal-entry generation before any deletion authority.
     category: validation
     applies_to: CleanupJournalEntry
     trigger: >
       The prepared-to-target-verified transition, on the operation's first pass
       through a journal entry.
     logic: >
-      IF every artifact the entry expects at the target is present AND its
-      current bytes are byte-identical to the fingerprint recorded for the
-      corresponding managed artifact
-      THEN persist the transition to target-verified
-      ELSE leave the entry in prepared and authorise no deletion.
+      IF U4 supplies a VerificationResultToken minted by verifyManagedArtifacts
+      for this installation key, entryId, live generation, and full artifact set
+      AND U1 validates that the token is unaltered, matches the exact live entry
+      and generation, has not already authorized a transition, and contains the
+      complete expected fingerprint set
+      AND U1 performs a fresh current-byte read whose result still matches every
+      expected target artifact
+      THEN persist the transition to target-verified and increment the entry
+      generation
+      ELSE leave the entry unchanged, return validation-error or safety-blocked
+      as applicable, and authorise no deletion.
     violation: >
-      Advancing to target-verified while any expected target artifact is absent
-      or different would grant deletion authority the target content does not
-      support.
+      Advancing to target-verified on absent, replayed, closed-entry,
+      wrong-generation, stale, altered, mismatched, or no-longer-current evidence
+      would grant deletion authority the target content does not support.
     source: NFR1.1, NFR2
 
   - id: BR5.7
@@ -530,6 +536,30 @@ rules:
       Re-keying a legacy migration candidate would migrate an installation FR3.7
       requires to be skipped and reported.
     source: FR3.7, NFR3
+  - id: BR3.6
+    statement: Destination ownership is atomically claimed before any U1 target write.
+    category: constraint
+    applies_to: DestinationOwnershipClaim
+    trigger: Every install, update, transferThroughLifecycle, or ownership hand-off that materializes a governed destination.
+    logic: >
+      IF U1 receives a target, scope, destination, and acquiring installation
+      THEN one registry transaction validates the live claim and any supplied
+      hand-off, detaches the destination from the ceding installation's active
+      managed set when applicable, and records a pending-materialization claim
+      with ceding identity, prior-artifact linkage, intended fingerprint,
+      acquiring identity, and generation before any target write. Competing
+      writers are blocked. IF target materialization read-back verifies
+      THEN atomically record the acquiring artifact and finalize the claim.
+      ELSE retain rollback-required recovery evidence so U1 alone can finalize
+      from verified bytes, restore the detached ceding record when no
+      materialization occurred, or return a preserved retry outcome.
+    violation: >
+      A delivery adapter, U4 coordinator, or concurrent lifecycle call must not
+      write an unclaimed destination, bypass a pending or rollback-required
+      claim, leave a detached ceding artifact unrecoverable, or leave both
+      installations with a stale claim after a hand-off.
+    source: FR2.2, FR3.1, FR3.6, FR3.7, NFR1.1, NFR2
+
 ```
 
 ## Rule groups

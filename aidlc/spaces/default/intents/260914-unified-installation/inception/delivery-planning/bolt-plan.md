@@ -47,6 +47,13 @@ is demonstrable without pretending the first pass is a complete migration.
     `RepositoryRedirectPort` (`resolveRedirect: RepositoryRedirectQuery ->
     RedirectResolution`) alongside U1's `reconcileRepositoryIdentity`. Resolves
     the open items Contract Design flagged so later PRs stay small and stable.
+    Also locks the three contract elements added in the latest Contract Design
+    pass so the implementation PRs inherit them: the `VerificationResultToken`
+    minted by `verifyManagedArtifacts` and required on the journal's
+    `target-verified` transition (R-01); the registry-wide
+    `queryDestinationOwnership` operation and `DestinationOwnershipHandoff`
+    schema (R-02); and the explicit `target`/`scope` identity attributes on
+    `ManagedInstallation` / `ManagedInstallationIdentity` (R-03).
 - **Definition of Done:** The shared types, ports, result payloads, repository
   identity rule, journal states, and the journal/reconciliation signatures are
   fixed in a merged design PR; no implementation PR begins before it merges.
@@ -68,11 +75,18 @@ is demonstrable without pretending the first pass is a complete migration.
     target + scope + item kind; enforce destination containment; no hardcoded
     runtime root (FR2, FR2.2).
   - **PR 3 — Installation registry & storage ports.** Managed-installation and
-    managed-artifact hash records; user-scope XDG data/cache and repository
-    lockfile persistence through ports (FR2.1, FR2.2).
+    managed-artifact hash records with `target` and `scope` as explicit identity
+    attributes and key derivation from them (R-03); the registry-wide
+    `queryDestinationOwnership` collision query scoped to target and scope, plus
+    the `DestinationOwnershipHandoff` that lets one installation take over a
+    destination another manages, with atomic record/artifact updates (R-02);
+    user-scope XDG data/cache and repository lockfile persistence through ports
+    (FR2.1, FR2.2).
   - **PR 4 — Install lifecycle + artifact store.** Binary-safe write, read-back
-    verification, and the happy-path install through the composed components
-    (FR1, NFR1).
+    verification, and the happy-path install through the composed components,
+    running the `queryDestinationOwnership` collision check before every write so
+    a cross-installation conflict returns `conflict` unless an explicit hand-off
+    is supplied (FR1, NFR1, R-02).
   - **PR 5 — Update & uninstall.** Apply current `items[]`, remove omitted
     artifacts only when bytes match the recorded hash, preserve locally changed
     content, and scope uninstall to managed artifacts (FR1.3).
@@ -165,7 +179,10 @@ is demonstrable without pretending the first pass is a complete migration.
     byte verification, post-cleanup absence check, and restart-safe recovery from
     prepared/target-verified/legacy-delete-pending/committed states, re-verifying
     on resumption rather than trusting a persisted claim (FR3.2, FR3.4, NFR1.1,
-    NFR2). This is the only PR that deletes user files and is reviewed on its own.
+    NFR2). The `prepared -> target-verified` transition passes the
+    `VerificationResultToken` U1 re-validates against a fresh read, so deletion
+    authority is gated on live evidence, not an asserted state (R-01). This is
+    the only PR that deletes user files and is reviewed on its own.
   - **PR 13 — Conflict, consent & run summary.** Conflict notice and explicit
     overwrite decision, deferred-conflict manual-cleanup guidance, and the
     activation-time migration summary with no durable per-installation outcome
@@ -238,3 +255,19 @@ non-destructive transfer (PR 11). -->
   access; the redirect capability is supplied only by the extension.
 - Target, scope, repository, and unmanaged-content isolation is demonstrated by
   focused tests.
+
+## Contract 3 safety amendment delivery mapping
+
+The final Contract 3 amendment does not add a Bolt; it sharpens existing PRs so
+the claim and cleanup-recovery logic stays reviewable in its owning component.
+
+| PR | Added responsibility | Evidence |
+| --- | --- | --- |
+| PR 0 — Design & contracts | Fix `CleanupJournalEntry.entryId`/`generation`, `VerificationResultToken`, `DestinationOwnershipClaim`, pending-materialization/rollback states, and migration hand-off schema. | Schema and transition review before implementation. |
+| PR 3 — Registry & storage ports | Implement the durable target/scope/destination claim transaction, atomic hand-off, pending-materialization record, and recovery outcomes. | Concurrent-claim, hand-off, crash, rollback, and finalization tests. |
+| PR 6 — Shared journal contract | Bind verification requests, tokens, and transitions to an exact live entry generation; reject stale or mismatched evidence. | Token replay, generation-change, closed-entry, and fresh-read rejection tests. |
+| PR 11 — Verified transfer | Route migration writes through the U1 claim protocol and surface `preserved-conflict` without a valid hand-off. | Migration collision retains legacy content and reports the conflict. |
+| PR 12 — Journaled destructive cleanup | Resolve pending or rollback-required claims through U1 before cleanup; use an exact-generation token and fresh full-set read before `target-verified`. | Interruption-recovery and no-delete-without-live-evidence tests. |
+
+No CLI, VS Code, or U4 adapter may substitute an in-memory lock or direct target
+write for these U1-owned controls.

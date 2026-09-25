@@ -47,6 +47,11 @@ operations:
   - name: uninstall
     input: UninstallRequest
     output: LifecycleResult
+  - name: queryDestinationOwnership
+    input: DestinationOwnershipQuery
+    output: DestinationOwnershipResult
+    notes:
+      - The registry-wide collision query (R-02). The lifecycle runs it internally before every write; it is also exposed so an adapter can pre-check a target and scope. It reports every destination among the queried set that a different installation already manages.
 schemas:
   InstallRequest:
     required: [bundle, target, scope]
@@ -55,6 +60,7 @@ schemas:
       target: SupportedTarget
       scope: InstallationScope
       repositoryIdentity: RepositoryIdentity?
+      destinationOwnershipHandoff: DestinationOwnershipHandoff?
   UpdateRequest:
     required: [bundle, target, scope]
     fields:
@@ -62,6 +68,7 @@ schemas:
       target: SupportedTarget
       scope: InstallationScope
       repositoryIdentity: RepositoryIdentity?
+      destinationOwnershipHandoff: DestinationOwnershipHandoff?
   UninstallRequest:
     required: [bundleId, target, scope]
     fields:
@@ -69,6 +76,38 @@ schemas:
       target: SupportedTarget
       scope: InstallationScope
       repositoryIdentity: RepositoryIdentity?
+  ManagedInstallationIdentity:
+    required: [bundleId, target, scope]
+    fields:
+      bundleId: BundleId
+      target: SupportedTarget
+      scope: InstallationScope
+      repositoryIdentity: RepositoryIdentity?
+    notes:
+      - The installation key is derived from these fields; target and scope are explicit identity attributes, not opaque key contents (R-03).
+      - A persistence adapter may leave implicit only what its own storage location already fixes (for example, the repository a lockfile lives in).
+  DestinationOwnershipHandoff:
+    required: [destinationPath, cedingInstallation]
+    fields:
+      destinationPath: DestinationPath
+      cedingInstallation: ManagedInstallationIdentity
+    notes:
+      - The explicit, caller-supplied authority that lets one installation take over a governed destination another installation currently manages.
+      - Without it, a cross-installation destination collision returns conflict; it never silently overwrites.
+  DestinationOwnershipQuery:
+    required: [destinationPaths, target, scope]
+    fields:
+      destinationPaths: DestinationPath[]
+      target: SupportedTarget
+      scope: InstallationScope
+  DestinationOwnershipResult:
+    fields:
+      conflicts: DestinationOwnershipConflict[]
+  DestinationOwnershipConflict:
+    required: [destinationPath, owningInstallation]
+    fields:
+      destinationPath: DestinationPath
+      owningInstallation: ManagedInstallationIdentity
   LifecycleResult:
     discriminant: kind
     kinds:
@@ -81,8 +120,9 @@ schemas:
 invariants:
   - ManifestGovernance validates one root deployment-manifest.yml and canonical items[] before writes.
   - TargetRouting derives destinations from target, scope, and item kind.
-  - InstallationRegistry isolates state by bundle, target, scope, and repository identity.
+  - InstallationRegistry isolates state by bundle, target, scope, and repository identity, and target and scope are explicit identity attributes of ManagedInstallation (R-03).
   - InstallationLifecycle verifies binary writes before returning success.
+  - Registry-wide destination ownership (R-02): before any write, the lifecycle runs a DestinationOwnershipQuery scoped to the resolved target and scope. A destination owned by a different installation returns conflict unless a matching DestinationOwnershipHandoff is supplied; on hand-off, the ceding installation's record and the acquiring installation's record and artifacts update atomically so neither is left with a stale or orphaned managed destination.
   - U2 never adds a CLI-specific target-write path.
 ```
 
@@ -109,6 +149,11 @@ operations:
   - name: uninstall
     input: UninstallRequest
     output: LifecycleResult
+  - name: queryDestinationOwnership
+    input: DestinationOwnershipQuery
+    output: DestinationOwnershipResult
+    notes:
+      - Same registry-wide destination collision query as Contract 1 (R-02); the schemas are the shared U1 types.
 consumer_translation:
   input:
     - VS Code command arguments
@@ -121,7 +166,8 @@ consumer_translation:
 invariants:
   - User-scope shared cache and registry use the shared XDG application-storage ports.
   - Repository-scope records remain in the selected repository.
-  - Target content is isolated by target and scope.
+  - Target content is isolated by target and scope, and target and scope are explicit ManagedInstallation identity attributes (R-03).
+  - The same registry-wide destination-ownership rule (R-02) applies to VS Code installs and updates: a destination owned by a different installation returns conflict unless an explicit DestinationOwnershipHandoff accompanies the request.
   - U3 may compose VS Code behavior but cannot change LifecycleResult semantics.
 ```
 
@@ -200,6 +246,8 @@ operations:
   - name: verifyManagedArtifacts
     input: VerificationRequest
     output: VerificationResult
+    notes:
+      - On an allVerified result it also mints a VerificationResultToken bound to the installation key, the verified artifact set and fingerprints, and the observed read; U4 passes that token back on the target-verified transition (R-01).
   - name: openCleanupJournalEntry
     input: CleanupJournalOpenRequest
     output: CleanupJournalEntryResult
@@ -247,6 +295,21 @@ schemas:
       installationKey: InstallationKey
       targetState: CleanupJournalState
       artifacts: CleanupArtifactProgress[]?
+      verificationToken: VerificationResultToken?
+    notes:
+      - verificationToken is REQUIRED when targetState is target-verified and is otherwise ignored (R-01).
+      - U1 accepts the prepared -> target-verified transition only after it re-validates the token against the exact journal entry, the entry's full artifact set, and a fresh current-read of those bytes; an absent, stale, altered, or mismatched token is rejected with validation-error (or safety-blocked on an unsafe path) and the entry stays in prepared with no deletion authority.
+  VerificationResultToken:
+    required: [installationKey, artifactFingerprints, readVersion, issuedAt, signature]
+    fields:
+      installationKey: InstallationKey
+      artifactFingerprints: ArtifactFingerprint[]
+      readVersion: string
+      issuedAt: Timestamp
+      signature: string
+    notes:
+      - Minted only by verifyManagedArtifacts on an allVerified result, binding the exact installation key, the verified artifact set and their fingerprints, and the read it observed.
+      - It is evidence of one past verification, not standing authority: U1 re-reads current bytes when it validates the token, so a token that no longer matches the live target is rejected.
   CleanupJournalCloseRequest:
     required: [installationKey, disposition]
     fields:
@@ -326,6 +389,7 @@ invariants:
   - U1 owns journal persistence and transition durability; U4 owns the cleanup transaction that drives it. A transition is durable before the filesystem action it authorises.
   - A journal entry exists only while its destructive operation is in flight; a committed entry is deleted as the final step of that operation.
   - A resumed entry re-verifies target bytes through verifyManagedArtifacts before any deletion; a persisted verification claim is never sufficient authority.
+  - The prepared -> target-verified transition is enforceable, not advisory (R-01): recordCleanupTransition requires a VerificationResultToken and re-validates it against the journal entry, its full artifact set, and a fresh current-read before persisting target-verified; U4 cannot assert verification by state alone, and an absent, stale, altered, or mismatched token leaves the entry in prepared with no deletion authority.
   - Every legacy path in an entry stays inside that entry's verified legacy source root.
   - Journal access is exclusive per installation key; a second concurrent holder receives retryable-failure rather than a shared entry.
   - An open request whose legacySourceRoot differs from the persisted entry returns source-root-mismatch and grants no deletion authority.
@@ -423,7 +487,23 @@ delivery-specific exceptions.
 - U1 owns shared lifecycle schemas, discriminated result types, and ports for
   manifest governance, target routing, installation registry, lifecycle,
   target artifact storage, and migration cleanup journalling. U1 also owns the
-  `reconcileRepositoryIdentity` registry operation.
+  `reconcileRepositoryIdentity` and `queryDestinationOwnership` registry
+  operations.
+- `target` and `scope` are explicit identity attributes of `ManagedInstallation`
+  and of the `ManagedInstallationIdentity` schema (R-03). The `installationKey`
+  is derived from those explicit values plus the bundle and repository identity;
+  it is not an opaque token whose contents an adapter must reverse-engineer.
+- U1 enforces registry-wide destination ownership (R-02): before any write it
+  runs `queryDestinationOwnership` scoped to the resolved target and scope, and
+  returns `conflict` for a destination another installation manages unless a
+  matching `DestinationOwnershipHandoff` is supplied. A hand-off updates the
+  ceding and acquiring records and artifacts atomically. This is a U1
+  responsibility; no adapter may bypass it.
+- The journal `prepared -> target-verified` transition is token-gated (R-01):
+  `verifyManagedArtifacts` mints a `VerificationResultToken`, and U1 re-validates
+  that token against the entry, its artifact set, and a fresh read before
+  persisting `target-verified`. U4 drives the state machine but cannot assert
+  verification without live evidence U1 accepts.
 - The `RepositoryRedirectPort` is an injected capability, not a U1
   responsibility: U2 and U3 supply it, and U1 treats an absent or `unavailable`
   port as "skip reconciliation" rather than an error.
@@ -459,3 +539,150 @@ delivery-specific exceptions.
 These questions do not change the approved boundary mechanisms or ownership
 model. They are implementation details to resolve in the downstream design and
 delivery stages.
+## Contract 3 safety amendment — generation-bound cleanup and atomic destination ownership
+
+This amendment is authoritative for Contract 3 and supersedes any earlier
+schema or invariant that omits these fields or permits weaker behavior. It
+keeps U1 as the shared lifecycle and persistence boundary; U4 remains the
+activation-time migration coordinator and does not gain a direct target-write
+path.
+
+```shared-schema
+contract: u1-to-u4-safety-amendment
+extends: u1-to-u4-migration-support
+protocol: synchronous-in-process-typescript
+provider: U1 shared-installation-foundation
+consumer: U4 activation-migration-compatibility
+owner:
+  shared-lifecycle-registry-journal-and-claims: U1
+  migration-policy-interaction-and-current-run-summary: U4
+operations:
+  - name: verifyManagedArtifacts
+    input: VerificationRequest
+    output: VerificationResult
+  - name: recordCleanupTransition
+    input: CleanupTransitionRequest
+    output: CleanupJournalEntryResult
+  - name: queryDestinationOwnership
+    input: DestinationOwnershipQuery
+    output: DestinationOwnershipResult
+  - name: transferThroughLifecycle
+    input: MigrationTransferRequest
+    output: MigrationTransferResult
+schemas:
+  CleanupJournalEntry:
+    required: [entryId, generation, installationKey, state, legacySourceRoot, artifacts, updatedAt]
+    fields:
+      entryId: CleanupJournalEntryId
+      generation: positive-integer
+      installationKey: InstallationKey
+      state: CleanupJournalState
+      legacySourceRoot: LegacySourceRoot
+      artifacts: CleanupArtifactProgress[]
+      updatedAt: Timestamp
+    notes:
+      - U1 mints entryId on creation and increments generation whenever the entry's authoritative state or artifact-progress set changes.
+      - A closed entry cannot be reused. A later cleanup for the same installation receives a new entryId.
+  VerificationRequest:
+    required: [installationKey, journalEntryId, journalGeneration, artifacts]
+    fields:
+      installationKey: InstallationKey
+      journalEntryId: CleanupJournalEntryId
+      journalGeneration: positive-integer
+      artifacts: VerificationArtifact[]
+  VerificationArtifact:
+    required: [destinationPath, expectedFingerprint]
+    fields:
+      destinationPath: DestinationPath
+      expectedFingerprint: ArtifactFingerprint
+  VerificationResult:
+    required: [allVerified, artifactVerdicts]
+    fields:
+      allVerified: boolean
+      artifactVerdicts: ArtifactVerificationVerdict[]
+      verificationToken: VerificationResultToken?
+    notes:
+      - verificationToken is present only when allVerified is true.
+  VerificationResultToken:
+    required: [installationKey, journalEntryId, journalGeneration, artifactFingerprints, readVersion, issuedAt, signature]
+    fields:
+      installationKey: InstallationKey
+      journalEntryId: CleanupJournalEntryId
+      journalGeneration: positive-integer
+      artifactFingerprints: ArtifactFingerprint[]
+      readVersion: string
+      issuedAt: Timestamp
+      signature: string
+    notes:
+      - The token is valid for one prepared-to-target-verified request on the exact live entryId and generation.
+      - It becomes invalid when that transition succeeds, the entry generation changes, the entry closes, the artifact set differs, or U1's fresh read no longer matches.
+  CleanupTransitionRequest:
+    required: [installationKey, journalEntryId, expectedGeneration, targetState]
+    fields:
+      installationKey: InstallationKey
+      journalEntryId: CleanupJournalEntryId
+      expectedGeneration: positive-integer
+      targetState: CleanupJournalState
+      artifacts: CleanupArtifactProgress[]?
+      verificationToken: VerificationResultToken?
+    notes:
+      - verificationToken is required only for prepared-to-target-verified.
+      - U1 rejects an absent, stale, altered, wrong-entry, wrong-generation, subset, or non-current token with validation-error or safety-blocked and leaves the entry unchanged.
+  DestinationOwnershipClaim:
+    required: [claimId, target, scope, destinationPath, owner, generation, state]
+    fields:
+      claimId: DestinationOwnershipClaimId
+      target: SupportedTarget
+      scope: InstallationScope
+      destinationPath: DestinationPath
+      owner: ManagedInstallationIdentity
+      generation: positive-integer
+      state: DestinationOwnershipClaimState
+      pendingMaterialization: PendingMaterialization?
+    notes:
+      - The unique registry key is target + scope + destinationPath.
+  DestinationOwnershipClaimState:
+    values: [claimed, pending-materialization, finalized, rollback-required]
+  DestinationOwnershipHandoff:
+    required: [destinationPath, cedingInstallation]
+    fields:
+      destinationPath: DestinationPath
+      cedingInstallation: ManagedInstallationIdentity
+  DestinationOwnershipQuery:
+    required: [destinationPaths, target, scope]
+    fields:
+      destinationPaths: DestinationPath[]
+      target: SupportedTarget
+      scope: InstallationScope
+  DestinationOwnershipResult:
+    fields:
+      claims: DestinationOwnershipClaim[]
+      conflicts: DestinationOwnershipConflict[]
+  MigrationTransferRequest:
+    required: [source, target, scope, bundleIdentity]
+    fields:
+      source: LegacyInstallationSource
+      target: SupportedTarget
+      scope: InstallationScope
+      bundleIdentity: BundleIdentity
+      overwriteDecision: OverwriteDecision?
+      destinationOwnershipHandoff: DestinationOwnershipHandoff?
+invariants:
+  - For every U1 write path, one durable registry transaction validates the current destination claim, validates any hand-off, and creates or transfers a pending-materialization claim before target bytes are written. A competing writer cannot observe the destination as unowned once that transaction commits.
+  - The target write is bound to the pending claim. U1 finalizes ownership only after containment, binary write, and read-back verification succeed; it records rollback-required on a failed or interrupted materialization so recovery, not a competing writer, resolves the claim.
+  - A hand-off transfers ownership only when the ceding installation currently owns the exact target, scope, and destination. U1 atomically removes the artifact from the ceding record and establishes pending ownership for the acquiring record; neither record may retain a stale shared claim.
+  - transferThroughLifecycle always uses the same claim protocol as install and update. When another installation owns a destination and no valid hand-off is supplied, it returns preserved-conflict, writes nothing at that destination, and leaves legacy content intact for U4 to report.
+  - U4 never calls the artifact store directly to bypass a claim, conflict, or rollback-required state.
+  - A prepared-to-target-verified transition requires a VerificationResultToken whose installation key, entryId, generation, and complete fingerprint set exactly match the live entry. U1 re-reads every target artifact before it persists the transition; the token is evidence, never standing deletion authority.
+```
+
+### Amendment consequences
+
+- The journal token now distinguishes one live cleanup operation from a later
+  operation for the same installation and has explicit validity boundaries.
+- Destination ownership is serialized durably at the registry boundary rather
+  than by adapter convention or an in-memory lock. Crash recovery is explicit
+  through the pending-materialization / rollback-required states.
+- Migration transfer has no weaker exception: it surfaces a preserved conflict
+  when it cannot lawfully acquire a destination, preserving both target and
+  legacy content until a valid hand-off exists.

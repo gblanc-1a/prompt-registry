@@ -275,6 +275,14 @@ entities:
       - name: bundleId
         type: identifier
         required: true
+      - name: target
+        type: reference
+        required: true
+        constraints: Explicit supported-target identity; participates in installation-key derivation and destination-ownership isolation.
+      - name: scope
+        type: reference
+        required: true
+        constraints: Explicit installation-scope identity; participates in installation-key derivation and destination-ownership isolation.
       - name: manifestVersion
         type: string
         required: true
@@ -340,6 +348,15 @@ entities:
       operation in progress, not steady state, and does not outlive the
       operation that created it.
     attributes:
+      - name: entryId
+        type: identifier
+        required: true
+        unique: true
+        constraints: U1 mints once at entry creation; a closed entry ID is never reused for a later cleanup operation.
+      - name: generation
+        type: positive integer
+        required: true
+        constraints: Starts at 1 and increments whenever U1 changes the authoritative entry state or artifact-progress set; verification evidence must match the live generation.
       - name: installationKey
         type: identifier
         required: true
@@ -412,6 +429,60 @@ entities:
       - to: CleanupJournalEntry
         cardinality: many-to-one
         direction: belongs-to
+
+  - name: DestinationOwnershipClaim
+    description: >
+      Durable U1-owned reservation and ownership record for one target, scope,
+      and destination path. It serializes competing lifecycle and migration
+      writes and carries enough state for U1, rather than a delivery adapter, to
+      resolve an interrupted hand-off or materialization.
+    attributes:
+      - name: claimId
+        type: identifier
+        required: true
+        unique: true
+      - name: target
+        type: reference
+        required: true
+      - name: scope
+        type: reference
+        required: true
+      - name: destinationPath
+        type: path
+        required: true
+      - name: ownerInstallation
+        type: reference
+        required: true
+      - name: generation
+        type: positive integer
+        required: true
+      - name: state
+        type: enum
+        required: true
+        allowed_values: [claimed, pending-materialization, finalized, rollback-required]
+      - name: acquiringInstallation
+        type: reference
+        required: false
+      - name: cedingInstallation
+        type: reference
+        required: false
+      - name: priorManagedArtifact
+        type: reference
+        required: false
+      - name: intendedFingerprint
+        type: digest
+        required: false
+    constraints:
+      - The tuple target, scope, destinationPath is unique across live claims.
+      - U1 atomically creates or transfers the claim before target materialization; a competing writer sees claimed or pending-materialization, never an unowned destination.
+      - Only U1 resolves pending-materialization or rollback-required: it finalizes after read-back verification, restores the ceding record on rollback when target bytes were not materialized, or returns a preserved retry outcome while retaining recovery evidence.
+    relationships:
+      - to: ManagedInstallation
+        cardinality: many-to-one
+        direction: references-owner-and-optional-ceding-owner
+      - to: ManagedArtifact
+        cardinality: one-to-one
+        direction: references-prior-or-final-artifact
 
   - name: LifecycleOutcome
     description: >
@@ -603,7 +674,7 @@ entities:
 
 ## Entity groups
 
-The model contains eighteen entities across four groups. The groups below are derived from the YAML source of truth above; they do
+The model contains nineteen entities across four groups. The groups below are derived from the YAML source of truth above; they do
 not add independent fields or relationships.
 
 ## Bundle governance — `GovernedBundleManifest` with its `ManifestItem` set,

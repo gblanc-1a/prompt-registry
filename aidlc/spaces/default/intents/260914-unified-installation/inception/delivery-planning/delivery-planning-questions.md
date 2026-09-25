@@ -123,6 +123,21 @@ Per your component-level decision (Q1), the choice is how to cut this.
 
 ## Consolidated Summary Confirmation
 
+The existing risk-first plan, component-level PR boundaries, serialized adapters,
+and separately reviewed destructive cleanup remain unchanged. This re-run adds
+the latest Contract 3 safety details to the existing PR sequence:
+
+1. **PR 0** locks the journal-entry ID/generation, single-use verification token,
+   durable destination claim, and migration parity schemas.
+2. **PR 3** implements the target/scope/destination ownership claim with
+   pending-materialization and rollback-required recovery state.
+3. **PR 6** owns the generation-bound journal token and transition validation
+   contract.
+4. **PR 12** uses U1's claim recovery and exact-generation token validation
+   before migration cleanup; it remains the isolated destructive PR.
+5. Migration transfer receives the same claim protocol and preserves legacy
+   content on ownership conflict; U4 never gains a direct target-write path.
+
 - Looks correct
 - Request changes
 

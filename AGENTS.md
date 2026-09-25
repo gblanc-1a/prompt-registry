@@ -118,6 +118,93 @@ Rules for the log:
   learnings still go through the AI-DLC `§13` ritual; this file is the engineering-
   defect channel, not a substitute for that gate.
 
+### Transport failures — log to `TRANSPORT-FAILURE.md`
+
+Transport failures are a separate concern from framework defects: they are
+**communication timeouts** between the harness and the model or a tool backend —
+the request hangs and is cut off rather than returning a wrong result. Do not put
+these in `AIDLC-FEEDBACK.md`; **append them to `TRANSPORT-FAILURE.md`** at the
+repository root instead. Like the friction log, this is not optional and not
+deferred: record the entry as soon as the failure occurs, then carry on with the
+task.
+
+Append an entry every time a transport timeout happens — each occurrence gets its
+own line, even for repeats within one task. A transport timeout fires after
+**3 minutes** of no response, so treat each timed-out call as **at least 3 minutes
+of lost time** and use that as the floor for the estimate.
+
+Account for the **full** time lost, not just the 3-minute cutoff:
+
+- **Direct calls:** count 3 minutes per timed-out request, plus any time spent
+  retrying or re-establishing state after it.
+- **Inside subagents:** count the entire time lost within the subagent because of
+  the failure, not just the single timed-out call. A subagent that stalls on a
+  transport timeout can lose all the work it had in flight — the timed-out call
+  (≥3 min), any earlier progress that has to be redone, and the cost of
+  re-dispatching the subagent and rebuilding its context. Sum all of it and
+  attribute the total to that occurrence.
+
+### KPI ledger format (mandatory)
+
+`TRANSPORT-FAILURE.md` is a **single JSONL dataset**: one JSON object per
+transport failure, with no narrative entries and no Markdown code fence around
+the records. A Markdown title and one `## Records (JSONL)` heading may precede
+the dataset; every other non-empty record line must start with `{`. Append new
+records only — do not alter existing event records.
+
+Capture `started_at` immediately before dispatching a direct call or subagent.
+On failure, capture `failed_at` immediately when the harness reports it. This
+makes the primary loss measure the entire elapsed time from start to failure,
+not merely the three-minute timeout threshold.
+
+Every record uses this exact shape (all duration values are integer seconds):
+
+`{"id":"<ISO-8601 timestamp>#<sequence>","started_at":"<ISO-8601 UTC timestamp>|null","failed_at":"<ISO-8601 UTC timestamp>|null","recorded_at":"<ISO-8601 UTC timestamp>","session_id":"<runtime-session-id>|unknown","location_type":"direct|subagent","actor":"<direct-call-or-agent-name>","operation":"<short-kebab-case-operation>","elapsed_from_start_seconds":180,"post_failure_recovery_seconds":0,"redo_seconds":0,"total_loss_seconds":180,"time_basis":"measured|estimated_timeout_floor","recovery":"recovered|redone|unrecovered","notes":"<single-line context>"}`
+
+Rules:
+
+- Emit **one JSON line per transport failure**, including repeated failures in
+  the same task; `id` is unique and stable, using `#1`, `#2`, and so on for
+  occurrences sharing a timestamp.
+- **Always record which agent failed.** `actor` is the exact dispatched agent
+  name on a `subagent` failure (for example `aidlc-architecture-reviewer-agent`),
+  or `direct-call` on the conductor's own call. Never leave it blank and never
+  substitute the harness or model name — the point of the field is to show which
+  agent's transport is unreliable.
+- **Always record which session it failed in.** `session_id` is the AI-DLC
+  runtime session id, read from `aidlc/.aidlc-sessions/.current-session` (the
+  same value the session-start hook prints as `Runtime Session`); on Kiro IDE
+  `aidlc/.aidlc-sessions/.kiro-ide-current-session` holds the same value. Use
+  `unknown` only when no session file exists. Repeated failures within one
+  session share the id, which is what separates a single transport outage from
+  scattered one-off timeouts.
+- For new records, `started_at` and `failed_at` are mandatory and
+  `elapsed_from_start_seconds` is the rounded whole-second difference between
+  them. It must be at least `180` for a timeout. The 180-second floor applies
+  only when an actual duration cannot be measured.
+- For historic records where start/end timestamps were not captured, set both
+  fields to `null`, set `time_basis` to `estimated_timeout_floor`, and set
+  `elapsed_from_start_seconds` to at least `180`. This explicitly preserves an
+  estimate rather than fabricating timestamps.
+- Add retry, state-re-establishment, and context-rebuild time to
+  `post_failure_recovery_seconds`; add work actually repeated to `redo_seconds`;
+  then set `total_loss_seconds` to the exact sum of those three numeric fields.
+  Do not write approximations or unit suffixes in numeric fields.
+- `recovery` means: `recovered` when the same work later completed,
+  `redone` when work was restarted successfully, or `unrecovered` when it
+  remains blocked or was abandoned.
+- Keep `notes` single-line and free of credentials, tokens, and user data.
+- Validate every appended record as JSON before finishing the task. A KPI script
+  can extract records with `grep '^{' TRANSPORT-FAILURE.md` and sum
+  `total_loss_seconds`, `elapsed_from_start_seconds`,
+  `post_failure_recovery_seconds`, or `redo_seconds` by `location_type`,
+  `actor`, `session_id`, `operation`, `time_basis`, or `recovery`.
+- The append-only rule above covers the *event* a record describes. Backfilling a
+  newly mandated identity field (`actor`, `session_id`) onto existing records is
+  the one permitted edit, because it adds provenance without changing what
+  happened; never revise a record's timings, `recovery`, or `notes` after the
+  fact.
+
 ## Resuming an AI-DLC workflow — do this, not the hand-driven loop
 
 Resuming with a bare `/aidlc --resume` forces the conductor to hand-drive the

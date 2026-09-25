@@ -435,3 +435,15 @@ However, this defensive design assumes a human conductor might hand-edit state f
 - **AIDLC-P-066:** Define one canonical empty-findings representation (for example an empty table body or a `None` sentinel) in the reviewer template and accept it in the review parser for `READY` verdicts.
 - **AIDLC-P-067:** Validate the reviewer output against the same grammar before the reviewer returns, so an invalid no-findings row is repaired before the terminal receipt attempt.
 - **AIDLC-P-068:** Improve the refusal to name the expected empty-findings form and distinguish a structurally malformed empty review from a substantive invalid finding ID.
+### AIDLC-ISSUE-033 — Repeated reviewer-dispatch transport failures consume the only retry before a reviewer starts
+
+- **Status:** open (recurrence of AIDLC-ISSUE-029) · **Area:** review orchestration / harness reliability · **Date:** 2026-09-25 · **Related:** AIDLC-ISSUE-001, AIDLC-ISSUE-015, AIDLC-ISSUE-024, AIDLC-ISSUE-029
+- **Observed:** For `nfr-requirements` unit `activation-migration-compatibility`, iteration 2 was requested successfully (`requestId review:f59753946a5c5642c923206c3604d332`). Four reviewer dispatches then failed before reviewer execution with `Sub-agent execution failed: Client network error calling Q`; no `2.review.md` was created. The only `--retry-pending` retry was accepted and a further dispatch failed with the same transport error, leaving an unmatched request whose substantive retry is spent. A later terminal call also timed out while merely listing the empty review directory; that terminal symptom is excluded from this framework issue.
+- **Expected:** A reviewer transport failure before a review file exists must be held as `review-unavailable` and remain safely re-dispatchable after transport recovery; it must not consume the single incomplete-review retry or force a fabricated `NOT-READY` verdict.
+- **Impact:** Changing the chat model may restore reviewer availability, but the framework's recorded state now prevents the requested retry. The prescribed fallback would consume iteration 2 on an unavailable reviewer and encode an infrastructure failure as an artifact verdict, defeating the requested independent re-review of revised NFR artifacts.
+- **Evidence:** `/tmp/aidlc-rr2b.txt` records the accepted retry; `.aidlc-engine/reviews/nfr-requirements/units/activation-migration-compatibility/c32cb885cf59f263/` contains only `1.json`, with no `2.review.md`; the four dispatch errors occurred in this session after the iteration-2 request.
+
+#### Proposed fixes
+
+- **AIDLC-P-069:** Implement AIDLC-P-057/P-058: record a distinct `review-unavailable` state and permit transport-level re-dispatch of an unchanged unmatched request without spending `--retry-pending` or a review iteration.
+- **AIDLC-P-070:** Return a typed recovery directive when the retry is spent by a transport failure, explicitly allowing a human to retry after changing the reviewer environment rather than directing the conductor to a content-level `NOT-READY` fallback.

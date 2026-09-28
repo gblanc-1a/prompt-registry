@@ -14,6 +14,7 @@ export * from './azure-devops-api';
 export * from './process-runner';
 export * from './process-executor';
 export * from './bundle-extractor';
+export * from './manifest-governance';
 export * from './target-writer';
 export * from './layout-config-loader';
 export * from './log-sink';

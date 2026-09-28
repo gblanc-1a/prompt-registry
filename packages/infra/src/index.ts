@@ -13,6 +13,7 @@ export * from './clock';
 export * from './downloaders';
 export * from './extractors';
 export * from './fs';
+export * from './governance';
 export * from './harvest';
 export * from './host-app';
 export * from './http';

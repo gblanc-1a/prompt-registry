@@ -4,3 +4,4 @@
  */
 export * from './handoff-coordinator';
 export * from './user-scope-installation-registry';
+export * from './xdg-cleanup-journal';

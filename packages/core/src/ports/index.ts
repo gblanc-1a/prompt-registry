@@ -18,6 +18,7 @@ export * from './manifest-governance';
 export * from './exclusive-lock';
 export * from './handoff-coordinator';
 export * from './installation-registry';
+export * from './migration-cleanup-journal';
 export * from './path-inspector';
 export * from './target-artifact-store';
 export * from './target-routing';

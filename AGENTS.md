@@ -159,25 +159,13 @@ not merely the three-minute timeout threshold.
 
 Every record uses this exact shape (all duration values are integer seconds):
 
-`{"id":"<ISO-8601 timestamp>#<sequence>","started_at":"<ISO-8601 UTC timestamp>|null","failed_at":"<ISO-8601 UTC timestamp>|null","recorded_at":"<ISO-8601 UTC timestamp>","session_id":"<runtime-session-id>|unknown","location_type":"direct|subagent","actor":"<direct-call-or-agent-name>","operation":"<short-kebab-case-operation>","elapsed_from_start_seconds":180,"post_failure_recovery_seconds":0,"redo_seconds":0,"total_loss_seconds":180,"time_basis":"measured|estimated_timeout_floor","recovery":"recovered|redone|unrecovered","notes":"<single-line context>"}`
+`{"id":"<ISO-8601 timestamp>#<sequence>","started_at":"<ISO-8601 UTC timestamp>|null","failed_at":"<ISO-8601 UTC timestamp>|null","recorded_at":"<ISO-8601 UTC timestamp>","location_type":"direct|subagent","actor":"<direct-call-or-agent-name>","operation":"<short-kebab-case-operation>","elapsed_from_start_seconds":180,"post_failure_recovery_seconds":0,"redo_seconds":0,"total_loss_seconds":180,"time_basis":"measured|estimated_timeout_floor","recovery":"recovered|redone|unrecovered","notes":"<single-line context>"}`
 
 Rules:
 
 - Emit **one JSON line per transport failure**, including repeated failures in
   the same task; `id` is unique and stable, using `#1`, `#2`, and so on for
   occurrences sharing a timestamp.
-- **Always record which agent failed.** `actor` is the exact dispatched agent
-  name on a `subagent` failure (for example `aidlc-architecture-reviewer-agent`),
-  or `direct-call` on the conductor's own call. Never leave it blank and never
-  substitute the harness or model name — the point of the field is to show which
-  agent's transport is unreliable.
-- **Always record which session it failed in.** `session_id` is the AI-DLC
-  runtime session id, read from `aidlc/.aidlc-sessions/.current-session` (the
-  same value the session-start hook prints as `Runtime Session`); on Kiro IDE
-  `aidlc/.aidlc-sessions/.kiro-ide-current-session` holds the same value. Use
-  `unknown` only when no session file exists. Repeated failures within one
-  session share the id, which is what separates a single transport outage from
-  scattered one-off timeouts.
 - For new records, `started_at` and `failed_at` are mandatory and
   `elapsed_from_start_seconds` is the rounded whole-second difference between
   them. It must be at least `180` for a timeout. The 180-second floor applies
@@ -198,35 +186,9 @@ Rules:
   can extract records with `grep '^{' TRANSPORT-FAILURE.md` and sum
   `total_loss_seconds`, `elapsed_from_start_seconds`,
   `post_failure_recovery_seconds`, or `redo_seconds` by `location_type`,
-  `actor`, `session_id`, `operation`, `time_basis`, or `recovery`.
-- The append-only rule above covers the *event* a record describes. Backfilling a
-  newly mandated identity field (`actor`, `session_id`) onto existing records is
-  the one permitted edit, because it adds provenance without changing what
-  happened; never revise a record's timings, `recovery`, or `notes` after the
-  fact.
+  `actor`, `operation`, `time_basis`, or `recovery`.
 
-## Resuming an AI-DLC workflow — do this, not the hand-driven loop
-
-Resuming with a bare `/aidlc --resume` forces the conductor to hand-drive the
-engine's steering-delivery loop (`next --resume` → read `continue_token` →
-`continue <token>` → repeat until a terminal directive). In this project that
-loop has a parser trap that silently burns tool calls and context — see
-[AIDLC-ISSUE-006](AIDLC-FEEDBACK.md) — and it runs on the Kiro IDE terminal,
-which intermittently reports a false exit `130` (a harness issue, not a framework
-one — see the global `terminal-sigint-exit-130` steering rule). Avoid both by
-using the one-shot helper.
-
-**Resume in one command** (then read the file it wrote):
-
-```bash
-scripts/aidlc-resume.sh > /tmp/aidlc-resume.txt 2>&1   # forwards any next flags, e.g. --stage <slug>
-```
-
-The **last** directive block in that file (`=== directive N (<kind>) ===`) is the
-terminal directive to act on — normally `run-stage`, or `ask` / `done` /
-`parked` / `error`. Because the memory rule bundle is already injected as
-workspace steering here, you do not need the redelivered `load-steering` parts
-to proceed; act on the terminal directive per the skill's forwarding loop.
+**How to handle SIGINT 130 command return**:
 
 Redirect to a file and read it: the Kiro IDE terminal sometimes reports exit
 `130` (SIGINT) *after* the command has written its output, so a bare run can look

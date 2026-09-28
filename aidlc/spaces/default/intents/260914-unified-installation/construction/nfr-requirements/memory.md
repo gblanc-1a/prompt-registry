@@ -16,6 +16,14 @@
 - 2026-09-25T13:47:57Z — U3 is a thin VS Code delivery adapter. Its NFR work covers UI presentation, cancellation, AppStorage isolation, and avoiding cache resurrection; target content, overwrite enforcement, source resolution, and registry mutation remain U1-owned responsibilities.
 <!-- aidlc-wave-memory:vscode-shared-lifecycle-adoption:75127f6a9b473c740a007652ce79136ea638dcc6ad9fe2ac8f751f73f186f7f2 -->
 
+
+- 2026-09-25T15:36:35Z — "do not wait for overwrite interaction during activation" resolved as: U4 still requests the shared OverwriteDecision through Contract 4's required interaction port, but never awaits it, so a decision that cannot be produced without waiting resolves as `unavailable`. That makes `preserved-conflict` the only conflict disposition reachable in an activation pass, and NFR4's "presents the overwrite decision" criterion is met by deferred manual guidance rather than a prompt.
+<!-- aidlc-wave-memory:activation-migration-compatibility:1c024bdcac9e4d88eba58b568b86efeb7de470c731000613df4fcfcd7eae86f7 -->
+
+
+- 2026-09-25T14:56:30Z — U4 is disposable compatibility code. Its NFRs center on activation responsiveness, non-fatal safety behavior, state-free current-run reporting, and strict U1-owned transfer/cleanup; it must not gain a second lifecycle or persistent outcome store.
+<!-- aidlc-wave-memory:activation-migration-compatibility:ab3239bb69525545177fc29811f1e564415d25632956aca08e00c6ac20f61e75 -->
+
 ## Deviations
 <!-- example: 2026-05-29T10:14:32Z — skipped the optional caching layer the stage prose suggested; the dataset is small enough that it adds risk -->
 
@@ -23,8 +31,16 @@
 - 2026-09-25T07:54:15Z — Presented the two follow-up questions (Q2a, Q3a) as one batch with two recorded decisions, but only one answer receipt could be written: the human-presence guard treats one reply as one turn and the first `log answer` consumed it. The questions file carries both committed choices and the summary-confirmation receipt digests it, so traceability holds. Logged as AIDLC-ISSUE-031.
 <!-- aidlc-wave-memory:shared-installation-foundation:077bfe38b4440597dc511698a256206d918ac47c16f40c648c431e7bb223312f -->
 
+
+- 2026-09-25T15:36:35Z — the answered activation bound makes functional-spec step 3.1's `confirmed` overwrite branch unreachable from `runActivationMigration`. Recorded as an explicit requirement deviation for the gate rather than silently dropped; the port and shared decision type stay as contracted.
+<!-- aidlc-wave-memory:activation-migration-compatibility:84ad91691e7692f936716a9d71d85cc17735e6e052514be1716144717d505bbd -->
+
 ## Tradeoffs
 <!-- example: 2026-05-29T10:14:32Z — picked TDD over BDD this run; the team is unit-first and the domain is well-understood -->
+
+
+- 2026-09-25T15:36:35Z — the 2s p95 bound confirms assumption ASM3 and has no inception NFR parent, so it carries the ID `ASM3.1` and is recorded outside the NFR coverage table rather than folded under NFR2 (Recovery correctness), whose text has no latency content. Cost: the bound is not itself an `NFRx.y` row, so downstream stages pick it up through NFR2.2, which references it, instead of directly.
+<!-- aidlc-wave-memory:activation-migration-compatibility:1981b8922ab921e8c27e01d122aff736a4e142ec9b196a7b67dc366f40ff86d4 -->
 
 ## Open questions
 <!-- example: 2026-05-29T10:14:32Z — confirm the retention window with compliance before the next stage hardens the schema -->

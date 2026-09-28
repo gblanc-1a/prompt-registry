@@ -7,7 +7,7 @@
 - **Scope**: unified-bundle-installation-migration
 - **Start Date**: 2026-09-14T13:52:26Z
 - **State Version**: 8
-- **Active Agent**: aidlc-architect-agent
+- **Active Agent**: aidlc-developer-agent
 - **Worktree Path**:
 - **Bolt Refs**:
 - **Practices Affirmed Timestamp**:
@@ -28,8 +28,8 @@
 
 ## Execution Plan Summary
 - **Total Stages**: 17
-- **Completed**: 14
-- **In Progress**: nfr-requirements
+- **Completed**: 15
+- **In Progress**: code-generation
 
 ## Runtime State
 - **Revision Count**: 9
@@ -78,10 +78,10 @@
 ### CONSTRUCTION PHASE
 Per unit: [TBD]
 - [x] functional-design — EXECUTE
-- [-] nfr-requirements — EXECUTE
+- [x] nfr-requirements — EXECUTE
 - [ ] nfr-design — SKIP
 - [ ] infrastructure-design — SKIP
-- [ ] code-generation — EXECUTE
+- [-] code-generation — EXECUTE
 - [ ] build-and-test — EXECUTE
 - [ ] ci-pipeline — SKIP
 
@@ -96,12 +96,12 @@ Per unit: [TBD]
 
 ## Current Status
 - **Lifecycle Phase**: CONSTRUCTION
-- **Current Stage**: nfr-requirements
-- **Next Stage**: code-generation
+- **Current Stage**: code-generation
+- **Next Stage**: build-and-test
 - **Status**: Running
-- **Last Updated**: 2026-09-25T14:56:30Z
+- **Last Updated**: 2026-09-28T07:51:03Z
 
 ## Session Resume Point
-- **Last Completed Stage**: functional-design
-- **Next Action**: Execute NFR Requirements
+- **Last Completed Stage**: nfr-requirements
+- **Next Action**: Execute Code Generation
 - **Pending Artifacts**: none

@@ -19,6 +19,7 @@ export * from './exclusive-lock';
 export * from './handoff-coordinator';
 export * from './installation-registry';
 export * from './path-inspector';
+export * from './target-artifact-store';
 export * from './target-routing';
 export * from './target-writer';
 export * from './layout-config-loader';

@@ -65,3 +65,12 @@ export type {
   ReserveDestinationResult,
   ResolveClaimResult,
 } from './destination-claim';
+export {
+  fingerprint,
+  GovernedLifecycle,
+} from './governed-lifecycle';
+export type {
+  GovernedInstallRequest,
+  GovernedLifecyclePorts,
+  OverwriteConsent,
+} from './governed-lifecycle';

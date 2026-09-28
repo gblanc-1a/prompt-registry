@@ -72,5 +72,6 @@ export {
 export type {
   GovernedInstallRequest,
   GovernedLifecyclePorts,
+  GovernedUninstallRequest,
   OverwriteConsent,
 } from './governed-lifecycle';

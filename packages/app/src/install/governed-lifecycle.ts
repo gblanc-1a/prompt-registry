@@ -101,6 +101,16 @@ export interface GovernedInstallRequest {
   readonly expectedVersion?: string;
 }
 
+/**
+ * One uninstall request.
+ */
+export interface GovernedUninstallRequest {
+  readonly bundleId: string;
+  readonly target: Target;
+  readonly scope: InstallationScope;
+  readonly repositoryIdentity?: RepositoryIdentity;
+}
+
 /** A resolved item ready to be written. */
 interface ResolvedItem {
   readonly item: ManifestItem;
@@ -515,6 +525,17 @@ export class GovernedLifecycle {
     }
     await this.ports.registry.put(reconciled.installation);
 
+    if (resolved.length > 0 && applied.written.length === 0 && reconciled.preserved.length > 0) {
+      // Preservation left the requested change unachievable: nothing the manifest
+      // asked for was written, and what is on disk is the user's content. That is
+      // the one case `preserved-content` is for (BR4.8).
+      return {
+        kind: 'preserved-content',
+        preservedArtifacts: reconciled.preserved,
+        detail: `${identity.bundleId}: every requested write was withheld to preserve local content`
+      };
+    }
+
     return {
       kind: 'success',
       writtenArtifacts: applied.written,
@@ -523,6 +544,55 @@ export class GovernedLifecycle {
     };
   }
 
+  /**
+   * Update an installed bundle. A specialisation of install: the same BR4.7 rule
+   * decides a locally changed, still-named artifact, so the two cannot diverge.
+   * @param request Bundle source, target, scope, identity, consent, hand-offs.
+   * @returns The lifecycle outcome.
+   */
+  public async update(request: GovernedInstallRequest): Promise<LifecycleOutcome> {
+    return this.install(request);
+  }
+
+  /**
+   * Uninstall a bundle, removing only artifacts this record still manages.
+   * @param request Bundle id, target, scope, repository identity.
+   * @returns The lifecycle outcome.
+   */
+  public async uninstall(request: GovernedUninstallRequest): Promise<LifecycleOutcome> {
+    const identity: ManagedInstallationIdentity = {
+      bundleId: request.bundleId,
+      target: request.target.name,
+      scope: request.scope,
+      ...(request.repositoryIdentity === undefined
+        ? {}
+        : { repositoryIdentity: request.repositoryIdentity })
+    };
+    const key = deriveInstallationKey(identity);
+    const record = await this.ports.registry.get(key);
+    if (record === null) {
+      return { kind: 'success', removedArtifacts: [] };
+    }
+
+    const removed: ArtifactReference[] = [];
+    let remaining = record;
+    for (const artifact of record.artifacts) {
+      const root = destinationRootOf(artifact.destinationPath);
+      const result = await this.ports.artifacts.removeAndVerifyAbsent(root, artifact.destinationPath);
+      if (result.kind === 'safety-blocked') {
+        return { kind: 'safety-blocked', detail: result.detail };
+      }
+      if (result.kind === 'retryable-failure') {
+        await this.ports.registry.put(remaining);
+        return { kind: 'retryable-failure', detail: result.detail };
+      }
+      removed.push({ destinationPath: artifact.destinationPath });
+      remaining = withoutArtifact(remaining, artifact.destinationPath);
+    }
+
+    await (remaining.artifacts.length === 0 ? this.ports.registry.delete(key) : this.ports.registry.put(remaining));
+    return { kind: 'success', removedArtifacts: removed };
+  }
 }
 
 /**

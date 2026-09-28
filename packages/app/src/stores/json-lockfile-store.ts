@@ -45,8 +45,26 @@ import type {
 export const LOCKFILE_NAME = 'prompt-registry.lock.json';
 /** Lockfile filename for local-only (gitignored) bundle entries. */
 export const LOCAL_LOCKFILE_NAME = 'prompt-registry.local.lock.json';
-/** Schema version written by this store — matches the extension's. */
-export const LOCKFILE_SCHEMA_VERSION = '2.0.0';
+/**
+ * Schema version written by this store.
+ *
+ * `2.1.0` is an **additive** revision of the extension's `2.0.0`: it adds the
+ * per-entry `target` and the managed-artifact fields (`destinationPath`,
+ * `installedFingerprint`, `sizeInBytes`, `itemKind`) the shared lifecycle needs,
+ * and removes nothing. A `2.0.0` reader ignores the new fields, which is why this
+ * is a minor bump rather than a major one: the VS Code extension reads this same
+ * file today, and it adopts the shared lifecycle in a later change.
+ */
+export const LOCKFILE_SCHEMA_VERSION = '2.1.0';
+
+/**
+ * Schema versions this store accepts when reading.
+ *
+ * A `2.0.0` entry is readable but carries no installed fingerprint, so the shared
+ * registry treats its artifacts as **unverifiable** rather than mistaking the
+ * archive-side `checksum` for a fingerprint of the bytes as written (BR3.3).
+ */
+export const READABLE_LOCKFILE_SCHEMA_VERSIONS: readonly string[] = ['2.0.0', '2.1.0'];
 
 /**
  * Commit mode for repository-scoped installations.
@@ -60,13 +78,30 @@ export interface LockfileFileEntry {
   /** Relative path from repository root. */
   path: string;
   /**
-   * SHA256 of the extracted archive bytes for this path (not the
-   * optionally transformed on-disk result). User-modification checks
-   * compare this against the current file; transformed files will
-   * therefore look modified until an `installedChecksum` field is
-   * added (issue #357 Stage 2).
+   * SHA256 of the extracted **archive** bytes for this path — legacy, and
+   * deliberately not a fingerprint of what was written. A transformed file
+   * differs from its archive bytes on disk, so this value cannot answer "has the
+   * user changed this file". {@link installedFingerprint} is what answers that;
+   * this field is retained so `2.0.0` entries round-trip unchanged.
    */
   checksum: string;
+  /**
+   * Absolute destination path the artifact was written to.
+   *
+   * Added in schema `2.1.0`. Absent on a `2.0.0` entry, where only the
+   * bundle-relative `path` was recorded.
+   */
+  destinationPath?: string;
+  /**
+   * SHA-256 over the exact byte sequence written to the target, after any
+   * content transformation (BR3.3). Added in schema `2.1.0`; its absence marks
+   * the artifact as unverifiable rather than unchanged.
+   */
+  installedFingerprint?: string;
+  /** Exact byte length of the written artifact. Added in schema `2.1.0`. */
+  sizeInBytes?: number;
+  /** Canonical primitive kind of the artifact. Added in schema `2.1.0`. */
+  itemKind?: string;
 }
 
 /**
@@ -89,6 +124,16 @@ export interface LockfileBundleEntry {
   commitMode?: RepositoryCommitMode;
   /** Optional checksum of the bundle archive. */
   checksum?: string;
+  /**
+   * Supported-target name this entry was installed for.
+   *
+   * Added in schema `2.1.0`. The lockfile's path implies the scope and the
+   * repository, but **not** the target: one repository can install the same
+   * bundle for several targets, so the target is explicit (BR3.1, R-03). Absent
+   * on a `2.0.0` entry, which is why importing one requires a resolvable target
+   * rather than a guessed default.
+   */
+  target?: string;
   /** List of installed files with their checksums. */
   files: LockfileFileEntry[];
 }
@@ -413,3 +458,24 @@ export const findLockfile = async (
   }
   return null;
 };
+
+/**
+ * Whether this store can read a lockfile's schema version.
+ * @param lock - Parsed lockfile.
+ * @returns True for a version this store understands.
+ */
+export const lockfileSchemaIsReadable = (lock: Lockfile): boolean =>
+  READABLE_LOCKFILE_SCHEMA_VERSIONS.includes(lock.version);
+
+/**
+ * Whether a file entry predates the installed-fingerprint field.
+ *
+ * A legacy entry is readable but **unverifiable**: its `checksum` covers archive
+ * bytes, not the bytes as written, so it cannot decide whether the user has since
+ * edited the file. The shared registry reports such an artifact as unverifiable
+ * rather than treating the archive checksum as a fingerprint (BR3.3).
+ * @param entry - A lockfile file entry.
+ * @returns True when the entry carries no installed fingerprint.
+ */
+export const isUnverifiableFileEntry = (entry: LockfileFileEntry): boolean =>
+  entry.installedFingerprint === undefined || entry.installedFingerprint.length === 0;

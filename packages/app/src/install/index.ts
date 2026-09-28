@@ -56,3 +56,12 @@ export {
   resolveMcpLayoutConfig,
   WORKSPACE_ROOT_TOKEN,
 } from './layout-resolver';
+export {
+  DestinationClaimTransaction,
+} from './destination-claim';
+export type {
+  DestinationClaimPorts,
+  ReserveDestinationRequest,
+  ReserveDestinationResult,
+  ResolveClaimResult,
+} from './destination-claim';

@@ -19,6 +19,7 @@ export * from './host-app';
 export * from './http';
 export * from './hub';
 export * from './process';
+export * from './registry';
 export * from './resolvers';
 export * from './routing';
 export * from './scaffolding';

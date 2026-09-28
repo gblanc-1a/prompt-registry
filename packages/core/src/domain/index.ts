@@ -28,6 +28,7 @@ export * from './install/governed-manifest';
 export * from './install/lifecycle-outcome';
 export * from './install/archive-safety';
 export * from './install/address';
+export * from './install/managed-installation';
 export * from './registry/types';
 export * from './registry/guards';
 export * from './registry/settings';

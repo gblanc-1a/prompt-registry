@@ -75,3 +75,12 @@ export type {
   GovernedUninstallRequest,
   OverwriteConsent,
 } from './governed-lifecycle';
+export {
+  ManagedArtifactVerifier,
+} from './verify-managed-artifacts';
+export type {
+  ExpectedArtifact,
+  VerifyManagedArtifactsOutcome,
+  VerifyManagedArtifactsPorts,
+  VerifyManagedArtifactsRequest,
+} from './verify-managed-artifacts';

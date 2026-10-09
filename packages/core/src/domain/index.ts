@@ -26,6 +26,7 @@ export * from './install/copilot-file-type';
 export * from './install/layout';
 export * from './install/integrity';
 export * from './install/transform';
+export * from './install/placement';
 export * from './registry/types';
 export * from './registry/guards';
 export * from './registry/settings';

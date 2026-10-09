@@ -178,7 +178,7 @@ describe('lockfileVersionErrorMessage', () => {
 
 - [ ] **Step 2: Run it to make sure it fails**
 
-Run: `pnpm -C packages/core test -- lockfile-version`
+Run: `pnpm -C packages/core test lockfile-version`
 Expected: FAIL — `Failed to resolve import "../../../src/domain/install/lockfile-version"`.
 
 - [ ] **Step 3: Write the minimal implementation**
@@ -275,7 +275,7 @@ export * from './install/lockfile-version';
 
 - [ ] **Step 4: Run the core test to verify it passes**
 
-Run: `pnpm -C packages/core test -- lockfile-version`
+Run: `pnpm -C packages/core test lockfile-version`
 Expected: PASS (7 assertions across 6 tests).
 
 - [ ] **Step 5: Write the failing app-store test**
@@ -329,7 +329,7 @@ describe('readLockfile version gate', () => {
 
 - [ ] **Step 6: Run it to verify it fails**
 
-Run: `pnpm -C packages/app test -- json-lockfile-store`
+Run: `pnpm -C packages/app test json-lockfile-store`
 Expected: FAIL — the first test resolves instead of rejecting (today's `readLockfile` is an unchecked cast), and the third writes.
 
 - [ ] **Step 7: Implement the gate in the store**
@@ -697,7 +697,7 @@ describe('invertKindRoutes', () => {
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `pnpm -C packages/core test -- route-kinds`
+Run: `pnpm -C packages/core test route-kinds`
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Write the implementation**
@@ -840,7 +840,7 @@ export * from './primitive/route-kinds';
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `pnpm -C packages/core test -- route-kinds`
+Run: `pnpm -C packages/core test route-kinds`
 Expected: PASS (10 tests).
 
 - [ ] **Step 5: Delete the private copies in `app` and import from `core`**
@@ -859,7 +859,7 @@ Leave `pickRoute`, `normalizeBundlePath` and `copilotTypeToPrimitiveKind` alone 
 
 - [ ] **Step 6: Run the app writer suite to confirm no behavior change**
 
-Run: `pnpm -C packages/app test -- file-tree-writer`
+Run: `pnpm -C packages/app test file-tree-writer`
 Expected: PASS, unchanged count. This is the behavior-neutrality check for the move.
 
 - [ ] **Step 7: Write the every-target × scope inversion guard**
@@ -914,7 +914,7 @@ describe('built-in layout inversion', () => {
 
 - [ ] **Step 8: Run the guard**
 
-Run: `pnpm -C packages/app test -- layout-inversion-guard`
+Run: `pnpm -C packages/app test layout-inversion-guard`
 Expected: PASS for all 22 cells. **If a cell fails, that is a real finding, not a test bug** — §4.3 claims the inversion was verified unambiguous across all 11 targets. Record the failing target/scope and the conflicting outputs in the task's report before changing anything; the fix may belong in `default-layouts.json`, and that is a design question, not a mechanical one.
 
 - [ ] **Step 9: Lint and commit**
@@ -1035,7 +1035,7 @@ describe('destinationNameForKind', () => {
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `pnpm -C packages/core test -- copilot-file-type`
+Run: `pnpm -C packages/core test copilot-file-type`
 Expected: FAIL — `copilotFileTypeForKind is not a function`.
 
 - [ ] **Step 3: Write the implementation**
@@ -1139,7 +1139,7 @@ import type {
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `pnpm -C packages/core test -- copilot-file-type`
+Run: `pnpm -C packages/core test copilot-file-type`
 Expected: PASS (12 tests).
 
 - [ ] **Step 5: Add the Review Focus #3 test — normalized-id collision**
@@ -1273,7 +1273,7 @@ describe('logicalKeyFromLegacyId', () => {
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `pnpm -C packages/core test -- logical-key`
+Run: `pnpm -C packages/core test logical-key`
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Write the implementation**
@@ -1380,7 +1380,7 @@ export * from './bundle/logical-key';
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `pnpm -C packages/core test -- logical-key`
+Run: `pnpm -C packages/core test logical-key`
 Expected: PASS (13 tests).
 
 If the "does not strip a trailing segment that is not a version" case fails, read `VERSION_SUFFIX_REGEX` (`packages/core/src/domain/bundle/identity-matcher.ts:21`) and adjust the **test's** expectation to the regex's actual contract — the regex is production behavior shared with `bundleIdentitiesMatch`, and changing it here would change unrelated matching.
@@ -1502,7 +1502,7 @@ describe('NodeFileSystem.lstat', () => {
 
 - [ ] **Step 3: Run it to verify it fails**
 
-Run: `pnpm -C packages/infra test -- node-filesystem-lstat`
+Run: `pnpm -C packages/infra test node-filesystem-lstat`
 Expected: FAIL — `fs.lstat is not a function`.
 
 - [ ] **Step 4: Extend the port**
@@ -1652,7 +1652,7 @@ describe('isUnifiedDeployEnabled', () => {
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `pnpm -C packages/infra test -- unified-deploy`
+Run: `pnpm -C packages/infra test unified-deploy`
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Write the implementation**
@@ -1715,7 +1715,7 @@ Export it from `packages/infra/src/index.ts`, following the file's existing expo
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `pnpm -C packages/infra test -- unified-deploy`
+Run: `pnpm -C packages/infra test unified-deploy`
 Expected: PASS (4 tests).
 
 - [ ] **Step 5: Commit**
@@ -2084,7 +2084,7 @@ describe('pure record helpers', () => {
 
 - [ ] **Step 3: Run it to verify it fails**
 
-Run: `pnpm -C packages/app test -- lockfile-v3`
+Run: `pnpm -C packages/app test lockfile-v3`
 Expected: FAIL — module not found.
 
 - [ ] **Step 4: Write the implementation**
@@ -2245,7 +2245,7 @@ export const writeLockfileV3Pair = async (
 
 - [ ] **Step 5: Run the test to verify it passes**
 
-Run: `pnpm -C packages/app test -- lockfile-v3 user-config-paths`
+Run: `pnpm -C packages/app test lockfile-v3 user-config-paths`
 Expected: PASS (19 tests).
 
 - [ ] **Step 6: Export and commit**
@@ -2594,7 +2594,7 @@ describe('migrateLockfileIfNeeded', () => {
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `pnpm -C packages/app test -- migrate-lockfile-v3`
+Run: `pnpm -C packages/app test migrate-lockfile-v3`
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Write the implementation**
@@ -2631,7 +2631,7 @@ Step 5 is a second write of the same file by design: the marker — not the pres
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `pnpm -C packages/app test -- migrate-lockfile-v3`
+Run: `pnpm -C packages/app test migrate-lockfile-v3`
 Expected: PASS (19 tests).
 
 - [ ] **Step 5: Lint and commit**
@@ -2850,7 +2850,7 @@ describe('resolveDestinations', () => {
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `pnpm -C packages/core test -- placement`
+Run: `pnpm -C packages/core test placement`
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement `core`'s placement module**
@@ -2897,7 +2897,7 @@ Order matters for the `allowedKinds` test above: filter before the route lookup,
 
 - [ ] **Step 4: Run the core test to verify it passes**
 
-Run: `pnpm -C packages/core test -- placement`
+Run: `pnpm -C packages/core test placement`
 Expected: PASS (11 tests).
 
 - [ ] **Step 5: Write the failing `planDeploy` test**
@@ -3101,7 +3101,7 @@ describe('planDeploy', () => {
 
 - [ ] **Step 6: Run it to verify it fails**
 
-Run: `pnpm -C packages/app test -- deploy/plan`
+Run: `pnpm -C packages/app test deploy/plan`
 Expected: FAIL — module not found.
 
 - [ ] **Step 7: Implement `deploy/types.ts` and `deploy/plan.ts`**
@@ -3121,7 +3121,7 @@ Hashing uses `node:crypto`'s `createHash('sha256')`, matching `checksumFiles` (`
 
 - [ ] **Step 8: Run the test to verify it passes**
 
-Run: `pnpm -C packages/app test -- deploy/plan`
+Run: `pnpm -C packages/app test deploy/plan`
 Expected: PASS (8 tests).
 
 - [ ] **Step 9: Lint and commit**
@@ -3372,7 +3372,7 @@ describe('deployBundle', () => {
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `pnpm -C packages/app test -- deploy/deploy`
+Run: `pnpm -C packages/app test deploy/deploy`
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement `deployBundle`**
@@ -3393,7 +3393,7 @@ The one subtlety: `satisfied` destinations still get a materialization record (t
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `pnpm -C packages/app test -- deploy/deploy`
+Run: `pnpm -C packages/app test deploy/deploy`
 Expected: PASS (12 tests).
 
 - [ ] **Step 5: Lint and commit**
@@ -3596,7 +3596,7 @@ describe('undeployBundle', () => {
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `pnpm -C packages/app test -- deploy/undeploy`
+Run: `pnpm -C packages/app test deploy/undeploy`
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement `undeployBundle`**
@@ -3612,7 +3612,7 @@ Sequence:
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `pnpm -C packages/app test -- deploy/undeploy`
+Run: `pnpm -C packages/app test deploy/undeploy`
 Expected: PASS (9 tests).
 
 - [ ] **Step 5: Lint and commit**
@@ -3751,7 +3751,7 @@ describe('assertUnifiedDeploySupported', () => {
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `pnpm -C packages/cli test -- deploy-wiring`
+Run: `pnpm -C packages/cli test deploy-wiring`
 Expected: FAIL — module not found.
 
 - [ ] **Step 3: Implement the wiring**
@@ -3914,7 +3914,7 @@ describe('install --lockfile with unifiedDeploy', () => {
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `pnpm -C packages/cli test -- install`
+Run: `pnpm -C packages/cli test install`
 Expected: FAIL — the replay throws on the version gate; `--dry-run` rewrites the file.
 
 - [ ] **Step 3: Implement**
@@ -3933,7 +3933,7 @@ Then branch on `unifiedDeployRequested(ctx)`: read through `readLockfileV3Pair`,
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `pnpm -C packages/cli test -- install`
+Run: `pnpm -C packages/cli test install`
 Expected: PASS.
 
 - [ ] **Step 5: Lint and commit**
@@ -4008,7 +4008,7 @@ describe('uninstall with unifiedDeploy', () => {
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `pnpm -C packages/cli test -- uninstall`
+Run: `pnpm -C packages/cli test uninstall`
 Expected: FAIL — the flag-on uninstall reads the v3 file through `readLockfile` and hits the generation mismatch, or removes nothing.
 
 - [ ] **Step 3: Implement**
@@ -4030,7 +4030,7 @@ Apply the same branch in `performAllUninstall`, iterating every key under the ta
 
 - [ ] **Step 4: Run the test to verify it passes**
 
-Run: `pnpm -C packages/cli test -- uninstall`
+Run: `pnpm -C packages/cli test uninstall`
 Expected: PASS.
 
 - [ ] **Step 5: Lint and commit**
@@ -4297,7 +4297,7 @@ describe('unified deploy, CLI user scope, vscode', () => {
 
 - [ ] **Step 3: Run it to verify it fails, then make it pass**
 
-Run: `pnpm -C packages/cli test -- unified-deploy-user-scope`
+Run: `pnpm -C packages/cli test unified-deploy-user-scope`
 Expected: FAIL first; then PASS once the wiring from Tasks 12–14 and the `onEvent` seam are complete. Fix production code, not the assertions — each one restates a numbered spec rule.
 
 - [ ] **Step 4: Start the golden placement matrix**

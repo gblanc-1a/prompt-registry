@@ -5,3 +5,4 @@
  * @module stores
  */
 export * from './json-lockfile-store';
+export * from './lockfile-v3';

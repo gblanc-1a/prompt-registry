@@ -1,0 +1,271 @@
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  emptyDesiredLockfileV3,
+  emptyLocalLockfileV3,
+  LOCKFILE_V3_VERSION,
+  LockfileGenerationMismatchError,
+  readLockfileV3Pair,
+  removeMaterialization,
+  upsertDesiredBundle,
+  upsertMaterialization,
+  writeLockfileV3Pair,
+} from '../../src/stores/lockfile-v3';
+
+const NOW = '2026-10-09T12:00:00.000Z';
+const DEFAULTS = { generatedBy: 'ai-primitives-hub-cli', now: NOW };
+
+const fakeFs = () => {
+  const files = new Map<string, string>();
+  const order: string[] = [];
+  const renames: [string, string][] = [];
+  return {
+    files,
+    order,
+    renames,
+    readFile: async (p: string) => {
+      const value = files.get(p);
+      if (value === undefined) {
+        throw new Error(`ENOENT ${p}`);
+      }
+      return value;
+    },
+    writeFile: async (p: string, contents: string) => {
+      files.set(p, contents);
+    },
+    exists: async (p: string) => files.has(p),
+    mkdir: async () => undefined,
+    remove: async (p: string) => {
+      files.delete(p);
+    },
+    rename: async (from: string, to: string) => {
+      renames.push([from, to]);
+      order.push(to);
+      files.set(to, files.get(from) as string);
+      files.delete(from);
+    }
+  };
+};
+
+/** The same pair shape at either scope; only these two strings differ. */
+const userPaths = {
+  desiredFile: '/cfg/ai-primitives-hub/ai-primitives-hub.lock.json',
+  localFile: '/cfg/ai-primitives-hub/ai-primitives-hub.local.lock.json'
+};
+const repoPaths = {
+  desiredFile: '/work/ai-primitives-hub.lock.json',
+  localFile: '/work/ai-primitives-hub.local.lock.json'
+};
+
+const binding = {
+  targetName: 'my-vscode',
+  targetType: 'vscode' as const,
+  scope: 'user' as const,
+  baseDir: '/home/u/.copilot'
+};
+
+const record = () => ({
+  version: '1.0.0',
+  sourceId: 'src',
+  installedAt: NOW,
+  files: [{ path: 'prompts/hello.prompt.md', installedChecksum: 'a'.repeat(64) }]
+});
+
+describe('empty pair', () => {
+  it('splits the roles: desired carries no generated metadata', () => {
+    const desired = emptyDesiredLockfileV3();
+
+    expect(desired.version).toBe(LOCKFILE_V3_VERSION);
+    expect(desired.bundles).toEqual({});
+    expect(desired.sources).toEqual({});
+    expect('generatedAt' in desired).toBe(false);
+    expect('generatedBy' in desired).toBe(false);
+    expect('targets' in desired).toBe(false);
+  });
+
+  it('splits the roles: local carries materialization and the churn fields', () => {
+    const local = emptyLocalLockfileV3('cli', NOW);
+
+    expect(local.version).toBe(LOCKFILE_V3_VERSION);
+    expect(local.generatedAt).toBe(NOW);
+    expect(local.generatedBy).toBe('cli');
+    expect(local.targets).toEqual({});
+    expect('bundles' in local).toBe(false);
+  });
+});
+
+describe('readLockfileV3Pair', () => {
+  it('returns an empty pair when neither file exists, and reports that', async () => {
+    const { pair, desiredExists, localExists } = await readLockfileV3Pair(userPaths, fakeFs(), DEFAULTS);
+
+    expect(desiredExists).toBe(false);
+    expect(localExists).toBe(false);
+    expect(pair.desired.bundles).toEqual({});
+    expect(pair.local.targets).toEqual({});
+  });
+
+  it('reads a half-present pair — local written, desired not yet (the §8.4 interruption)', async () => {
+    const fs = fakeFs();
+    fs.files.set(userPaths.localFile, JSON.stringify(
+      upsertMaterialization(emptyLocalLockfileV3('cli', NOW), binding, 'src/web-dev', record())
+    ));
+
+    const { pair, desiredExists, localExists } = await readLockfileV3Pair(userPaths, fs, DEFAULTS);
+
+    expect(desiredExists).toBe(false);
+    expect(localExists).toBe(true);
+    expect(pair.local.targets['my-vscode'].bundles['src/web-dev']).toBeDefined();
+  });
+
+  it('refuses a v2 file so the caller migrates instead of misreading it', async () => {
+    const fs = fakeFs();
+    fs.files.set(userPaths.desiredFile, JSON.stringify({ version: '2.0.0', bundles: {}, sources: {} }));
+
+    await expect(readLockfileV3Pair(userPaths, fs, DEFAULTS))
+      .rejects.toThrow(LockfileGenerationMismatchError);
+  });
+
+  it('refuses an unknown major loudly', async () => {
+    const fs = fakeFs();
+    fs.files.set(userPaths.localFile, JSON.stringify({ version: '9.0.0' }));
+
+    await expect(readLockfileV3Pair(userPaths, fs, DEFAULTS))
+      .rejects.toThrow(/newer version of AI Primitives Hub/);
+  });
+
+  it('round-trips a written pair', async () => {
+    const fs = fakeFs();
+    const pair = {
+      desired: upsertDesiredBundle(emptyDesiredLockfileV3(), 'src/web-dev', { version: '1.0.0', sourceId: 'src' }),
+      local: upsertMaterialization(emptyLocalLockfileV3('cli', NOW), binding, 'src/web-dev', record())
+    };
+    await writeLockfileV3Pair(userPaths, pair, fs);
+
+    expect((await readLockfileV3Pair(userPaths, fs, DEFAULTS)).pair).toEqual(pair);
+  });
+});
+
+describe('writeLockfileV3Pair', () => {
+  it('writes the local file before the desired file (§8.4 ordering)', async () => {
+    const fs = fakeFs();
+
+    await writeLockfileV3Pair(userPaths, {
+      desired: emptyDesiredLockfileV3(),
+      local: emptyLocalLockfileV3('cli', NOW)
+    }, fs);
+
+    expect(fs.order).toEqual([userPaths.localFile, userPaths.desiredFile]);
+  });
+
+  it('writes through a unique temp file per write', async () => {
+    const fs = fakeFs();
+    const pair = { desired: emptyDesiredLockfileV3(), local: emptyLocalLockfileV3('cli', NOW) };
+
+    await writeLockfileV3Pair(userPaths, pair, fs);
+    await writeLockfileV3Pair(userPaths, pair, fs);
+
+    const temps = fs.renames.map(([from]) => from);
+    expect(new Set(temps).size).toBe(temps.length);
+    expect(temps[0]).toContain(`${userPaths.localFile}.`);
+  });
+
+  it('refuses a payload that is not 3.0.0, writing nothing', async () => {
+    const fs = fakeFs();
+
+    await expect(writeLockfileV3Pair(userPaths, {
+      desired: { ...emptyDesiredLockfileV3(), version: '2.0.0' },
+      local: emptyLocalLockfileV3('cli', NOW)
+    }, fs)).rejects.toThrow();
+    expect(fs.files.size).toBe(0);
+  });
+
+  it('ends each file with a trailing newline, like the v2 writer', async () => {
+    const fs = fakeFs();
+
+    await writeLockfileV3Pair(userPaths, {
+      desired: emptyDesiredLockfileV3(),
+      local: emptyLocalLockfileV3('cli', NOW)
+    }, fs);
+
+    expect(fs.files.get(userPaths.desiredFile)?.endsWith('}\n')).toBe(true);
+    expect(fs.files.get(userPaths.localFile)?.endsWith('}\n')).toBe(true);
+  });
+
+  it('behaves identically at repository paths — only the destination differs', async () => {
+    const userFs = fakeFs();
+    const repoFs = fakeFs();
+    const pair = {
+      desired: upsertDesiredBundle(emptyDesiredLockfileV3(), 'src/web-dev', { version: '1.0.0', sourceId: 'src' }),
+      local: upsertMaterialization(
+        emptyLocalLockfileV3('cli', NOW),
+        { ...binding, scope: 'repository', baseDir: '/work' },
+        'src/web-dev',
+        record()
+      )
+    };
+
+    await writeLockfileV3Pair(userPaths, pair, userFs);
+    await writeLockfileV3Pair(repoPaths, pair, repoFs);
+
+    expect(repoFs.files.get(repoPaths.desiredFile)).toBe(userFs.files.get(userPaths.desiredFile));
+    expect(repoFs.files.get(repoPaths.localFile)).toBe(userFs.files.get(userPaths.localFile));
+  });
+});
+
+describe('pure record helpers', () => {
+  it('upsertDesiredBundle does not mutate its input', () => {
+    const before = emptyDesiredLockfileV3();
+
+    const after = upsertDesiredBundle(before, 'src/web-dev', { version: '1.0.0', sourceId: 'src' });
+
+    expect(before.bundles).toEqual({});
+    expect(after.bundles['src/web-dev']).toEqual({ version: '1.0.0', sourceId: 'src' });
+  });
+
+  it('a desired entry carries only version, sourceId and optional archiveSha', () => {
+    const lock = upsertDesiredBundle(emptyDesiredLockfileV3(), 'src/web-dev', {
+      version: '1.0.0', sourceId: 'src', archiveSha: 'sha256:deadbeef'
+    });
+
+    expect(Object.keys(lock.bundles['src/web-dev']).toSorted())
+      .toEqual(['archiveSha', 'sourceId', 'version']);
+  });
+
+  it('upsertMaterialization creates the target record on first use', () => {
+    const local = upsertMaterialization(emptyLocalLockfileV3('cli', NOW), binding, 'src/web-dev', record());
+
+    expect(local.targets['my-vscode'].targetType).toBe('vscode');
+    expect(local.targets['my-vscode'].baseDir).toBe('/home/u/.copilot');
+    expect(local.targets['my-vscode'].bundles['src/web-dev'].files).toHaveLength(1);
+  });
+
+  it('carries commitMode only when the caller supplies it', () => {
+    const withoutMode = upsertMaterialization(emptyLocalLockfileV3('cli', NOW), binding, 'k', record());
+    const withMode = upsertMaterialization(
+      emptyLocalLockfileV3('cli', NOW),
+      { ...binding, scope: 'repository', baseDir: '/work', commitMode: 'local-only' },
+      'k',
+      record()
+    );
+
+    expect('commitMode' in withoutMode.targets['my-vscode']).toBe(false);
+    expect(withMode.targets['my-vscode'].commitMode).toBe('local-only');
+  });
+
+  it('removeMaterialization drops the bundle and prunes an emptied target', () => {
+    const seeded = upsertMaterialization(emptyLocalLockfileV3('cli', NOW), binding, 'src/web-dev', record());
+
+    expect(removeMaterialization(seeded, 'my-vscode', 'src/web-dev').targets['my-vscode']).toBeUndefined();
+  });
+
+  it('removeMaterialization keeps a target that still holds another bundle', () => {
+    let local = upsertMaterialization(emptyLocalLockfileV3('cli', NOW), binding, 'src/a', record());
+    local = upsertMaterialization(local, binding, 'src/b', record());
+
+    expect(Object.keys(removeMaterialization(local, 'my-vscode', 'src/a').targets['my-vscode'].bundles))
+      .toEqual(['src/b']);
+  });
+});

@@ -132,5 +132,11 @@ export {
   suggestCommand,
 } from './suggest';
 export {
+  assertUnifiedDeploySupported,
+  buildDeployPorts,
+  buildPlacementContext,
+  unifiedDeployRequested,
+} from '../deploy-wiring';
+export {
   loadInquirer,
 } from './inquirer';

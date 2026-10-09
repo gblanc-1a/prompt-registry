@@ -18,11 +18,15 @@
 import * as path from 'node:path';
 import {
   checksumFiles,
+  deployBundle,
+  type DeployRequest,
+  type DeployResult,
   emptyLockfile,
   FileTreeTargetWriter,
   type Lockfile,
   type LockfileBundleEntry,
   type LockfileSourceEntry,
+  planDeploy,
   readLockfile,
   resolveUserConfigPaths,
   type TargetWriter,
@@ -72,6 +76,14 @@ import {
   TargetStateStore,
   ZipBundleExtractor,
 } from '@ai-primitives-hub/infra';
+import {
+  assertUnifiedDeploySupported,
+  buildDeployPorts,
+  buildPlacementContext,
+  runtimeAssetRootFor,
+  transformerFor,
+  unifiedDeployRequested,
+} from '../deploy-wiring';
 import {
   Command,
   createHubManager,
@@ -268,6 +280,12 @@ export interface InstallOptions {
   /** Dry-run: validate + plan the install but write nothing. */
   dryRun?: boolean;
   /**
+   * Deploy over locally modified files and untracked collisions. Honored
+   * only when `AI_PRIMITIVES_HUB_UNIFIED_DEPLOY` is enabled; inert on the
+   * legacy path.
+   */
+  force?: boolean;
+  /**
    * Comma-separated allowlist of target names this run is permitted
    * to write to. Defense-in-depth for CI; refuses any --target outside
    * the set even if the target is configured.
@@ -354,6 +372,8 @@ export class InstallCommand extends BaseInstallCommand {
         --source <hub-id>       Hub ID to list bundles from (use with --interactive for selection)
         --interactive           Interactive mode: select bundles from a list
         --dry-run               Validate and plan without writing
+        --force                 Deploy over locally modified files and untracked collisions
+                                (only with AI_PRIMITIVES_HUB_UNIFIED_DEPLOY enabled; ignored otherwise)
         --scope <scope>         Installation scope (user or repository)
         --commit-mode <mode>    Commit mode for repository scope
         --verbose               Show detailed progress and error messages
@@ -373,6 +393,7 @@ export class InstallCommand extends BaseInstallCommand {
   public source = Option.String('--source');
   public interactive = Option.Boolean('--interactive', false);
   public dryRun = Option.Boolean('--dry-run');
+  public force = Option.Boolean('--force');
   public scope = Option.String('--scope');
   public commitMode = Option.String('--commit-mode');
   public verbose = Option.Boolean('--verbose', false);
@@ -392,6 +413,7 @@ export class InstallCommand extends BaseInstallCommand {
       target: this.target,
       from: this.from,
       dryRun: this.dryRun,
+      force: this.force,
       source: this.source,
       interactive: this.interactive,
       allowTarget: this.allowTarget,
@@ -842,6 +864,103 @@ function checkAllowTarget(targetName: string, opts: InstallOptions): void {
   }
 }
 
+interface UnifiedInstallArgs {
+  ctx: Context;
+  fmt: OutputFormat;
+  target: Target;
+  dryRun: boolean;
+  force: boolean;
+  request: Omit<DeployRequest, 'force'>;
+  /** Extra keys merged into the output `data` (e.g. remote `source` and `sha256`). */
+  extra?: Record<string, unknown>;
+}
+
+type UnifiedMigration = DeployResult['migration'];
+
+const renderMigration = (migration: UnifiedMigration): string => {
+  if (migration === null) {
+    return '';
+  }
+  const migrated = migration.migrated.length > 0
+    ? `Migrated ${migration.migrated.length} bundle${migration.migrated.length === 1 ? '' : 's'} to lockfile v3.\n`
+    : '';
+  const unmanaged = migration.unmanaged.map(
+    (u) => `Left unmanaged: ${u.key} (${u.reason}).\n`
+  ).join('');
+  return migrated + unmanaged;
+};
+
+/**
+ * Flag-on install: plan (dry-run) or deploy through `app/deploy`, then render
+ * the legacy envelope keys plus `collisions`, `satisfied` and `migration`.
+ * @param args Install arguments.
+ * @returns Exit code.
+ */
+async function runUnifiedInstall(args: UnifiedInstallArgs): Promise<number> {
+  const {
+    ctx, fmt, target, dryRun, force, request, extra
+  } = args;
+  const ports = {
+    ...buildDeployPorts(ctx, { scope: 'user' }),
+    transformer: transformerFor(target)
+  };
+  const bundle = { id: request.bundle.bundleId, version: request.bundle.version };
+
+  if (dryRun) {
+    const plan = await planDeploy({ ...request, force }, ports);
+    formatOutput({
+      ctx,
+      command: 'install',
+      output: fmt,
+      status: 'ok',
+      data: {
+        dryRun: true,
+        target: target.name,
+        bundle,
+        files: [...(request.files?.keys() ?? [])],
+        destinations: plan.destinations.map((d) => d.to),
+        skipped: plan.skipped,
+        collisions: plan.collisions,
+        satisfied: plan.satisfied,
+        drifted: plan.drifted,
+        ...extra
+      },
+      textRenderer: (d) => `Dry run: would install ${d.bundle.id}@${d.bundle.version} `
+        + `(${d.destinations.length} destination${d.destinations.length === 1 ? '' : 's'}, `
+        + `${d.collisions.length} collision${d.collisions.length === 1 ? '' : 's'}, `
+        + `${d.satisfied.length} already satisfied) into target "${d.target}".\n`
+    });
+    return 0;
+  }
+
+  const result = await deployBundle({ ...request, force }, ports);
+  formatOutput({
+    ctx,
+    command: 'install',
+    output: fmt,
+    status: result.collisions.length > 0 ? 'warning' : 'ok',
+    data: {
+      target: target.name,
+      bundle,
+      written: result.written,
+      skipped: result.skipped,
+      lockfile: result.lockfiles.desiredFile,
+      collisions: result.collisions,
+      satisfied: result.satisfied,
+      migration: result.migration,
+      ...extra
+    },
+    warnings: result.collisions.length > 0
+      ? result.collisions.map((c) => `${c.to}: existing untracked file left in place (use --force to overwrite)`)
+      : undefined,
+    textRenderer: (d) => `Installed ${d.bundle.id}@${d.bundle.version} into target "${d.target}" `
+      + `(${d.written.length} written, ${d.skipped.length} skipped, ${d.satisfied.length} already satisfied, `
+      + `${d.collisions.length} collision${d.collisions.length === 1 ? '' : 's'}). `
+      + `Updated ${d.lockfile}.\n${renderMigration(d.migration)}`
+  });
+  return 0;
+}
+
 /**
  * Perform local install from directory.
  * @param opts Install options.
@@ -856,6 +975,7 @@ async function performLocalInstall(
   ctx: Context,
   fmt: OutputFormat
 ): Promise<number> {
+  let unified = false;
   try {
     const effectiveTarget = resolveEffectiveTarget(ctx, target, opts);
     const files = await readLocalBundle(opts.from as string, ctx.fs);
@@ -863,6 +983,29 @@ async function performLocalInstall(
       expectedId: opts.bundle ?? '',
       expectedVersion: undefined
     });
+    unified = unifiedDeployRequested(ctx);
+    if (unified) {
+      assertUnifiedDeploySupported(effectiveTarget);
+      return await runUnifiedInstall({
+        ctx,
+        fmt,
+        target: effectiveTarget,
+        dryRun: opts.dryRun === true,
+        force: opts.force === true,
+        request: {
+          files,
+          bundle: { bundleId: manifest.id, version: manifest.version },
+          source: {
+            sourceId: `local-${path.basename(opts.from as string)}`,
+            type: 'local',
+            url: path.resolve(ctx.cwd(), opts.from as string)
+          },
+          targetName: effectiveTarget.name,
+          runtimeAssetRoot: runtimeAssetRootFor(ctx),
+          placement: await buildPlacementContext(ctx, effectiveTarget)
+        }
+      });
+    }
     if (opts.dryRun === true) {
       formatOutput({
         ctx,
@@ -927,6 +1070,9 @@ async function performLocalInstall(
     });
     return 0;
   } catch (cause) {
+    if (unified && cause instanceof RegistryError) {
+      throw cause;
+    }
     const raw = (cause as { code?: string }).code;
     const code = raw !== undefined && /^(BUNDLE|FS|NETWORK|USAGE|CONFIG)\.[A-Z0-9_]+$/.test(raw)
       ? raw
@@ -1094,6 +1240,40 @@ async function performRemoteInstall(
       expectedId: opts.sourceConfig === undefined ? spec.bundleId : undefined,
       expectedVersion: spec.bundleVersion === 'latest' ? undefined : spec.bundleVersion
     });
+    if (unifiedDeployRequested(ctx)) {
+      assertUnifiedDeploySupported(effectiveTarget);
+      const sourceCollectionsPath = opts.sourceConfig?.config?.collectionsPath;
+      return await runUnifiedInstall({
+        ctx,
+        fmt,
+        target: effectiveTarget,
+        dryRun: opts.dryRun === true,
+        force: opts.force === true,
+        // The planner only accepts extracted `files` today (`bytes` alone is refused,
+        // and both together are rejected), so the already-extracted tree is passed.
+        request: {
+          files,
+          bundle: { bundleId: manifest.id, version: manifest.version },
+          source: {
+            sourceId: installable.ref.sourceId,
+            type: opts.sourceConfig?.type ?? 'github',
+            url: `https://github.com/${repoSlug}`
+          },
+          targetName: effectiveTarget.name,
+          runtimeAssetRoot: runtimeAssetRootFor(ctx),
+          placement: await buildPlacementContext(ctx, effectiveTarget)
+        },
+        extra: {
+          source: {
+            type: 'github',
+            repo: repoSlug,
+            sourceId: installable.ref.sourceId,
+            ...(sourceCollectionsPath ? { collectionsPath: sourceCollectionsPath } : {})
+          },
+          sha256: dl.sha256
+        }
+      });
+    }
     if (opts.dryRun === true) {
       formatOutput({
         ctx,

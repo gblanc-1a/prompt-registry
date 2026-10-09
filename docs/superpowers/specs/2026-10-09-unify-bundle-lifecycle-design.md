@@ -189,6 +189,25 @@ no `{type}-` prefix for `install.ts:1538`'s type sniffing to read.
   on a different machine, without having configured the same sources by the same names.
 - Opening a repository never dirties the working tree.
 
+### Delivery constraints
+
+This is a large refactor, so incremental delivery is a **requirement**, not a scheduling
+preference — it constrains the design. Reader-before-writer ordering in particular cannot be
+retrofitted.
+
+- Every PR leaves `main` releasable. No PR depends on a later one to be correct.
+- Additive first: a new module, port method or reader lands with its tests and **no caller
+  change**, mergeable on its own.
+- Readers precede writers. The v2-compatible reader ships before anything writes v3.
+- One producer per cutover PR (CLI install, CLI update, CLI profile/apply, extension
+  install, …), each carrying the parity test for that producer.
+- Deletions are separate PRs, gated on an entry-point test proving no callers remain.
+- Target roughly 400 changed lines excluding tests and generated files; split rather than
+  exceed.
+
+§11's steps are ordered by dependency; the implementation plan derives the actual PR
+boundaries from them under these rules.
+
 ### Non-goals
 
 - Unifying the source **configuration** models (CLI `targets.yml` + hub config vs the
@@ -591,12 +610,12 @@ different boolean.
 second half is new, and it is what makes removal propagate: A drops a bundle from committed
 desired state, B pulls, and B's files are cleaned on next reconcile.
 
-**The comparison is not bundle-id set subtraction.** The same id can need redeployment
-because its version, source, resolved layout, target root, transformer or `allowedKinds`
-changed. Reconcile compares an **install signature** over those inputs — the same input set
-§4.6 requires `DeployRequest` to carry — and a signature mismatch means redeploy, which
-must remove old-only paths without disturbing paths still claimed by another target
-(§6.6).
+**The comparison is not pure bundle-id set subtraction** — the same id at a different
+version must redeploy. It is kept deliberately narrow: reconcile compares
+**`(bundleId, version, targetType)`**, and a mismatch means redeploy. Layout, transformer
+and `allowedKinds` changes are *not* tracked; a user who changes a layout override re-runs
+install explicitly. Redeploy removes old-only paths without disturbing paths still claimed
+by another target (§6.6).
 
 **Reconcile on workspace open is read-only** — it reports and offers, never acts. Acting
 would write, and writing would trigger the lazy repository migration (§9), producing
@@ -832,11 +851,14 @@ serialized state writes (§8.4), not a counter.
 - Preserve live edits, explicit disabled state, automatic-disable provenance, unrelated
   inputs, and top-level JSONC state.
 - Detect same-name/different-content collisions at the destination.
-- Transfer ownership durably for every bundle and target before retiring a shared sidecar.
-- Retain cleanup and retry ownership for APM, missing-cache and unmanaged records.
-- Serialize physical-config and materialization updates.
-- Define safe stop/resume for malformed or partial JSONC, config write, state write and
-  source deletion failures.
+- Transfer **every** owner in the sidecar in one pass on first touch, then delete it. No
+  per-bundle incremental transfer — a partially transferred sidecar is the dangerous state,
+  so the simplest safe rule is all-or-nothing per config directory.
+- Retain cleanup ownership for APM, missing-cache and unmanaged records.
+- Write the MCP config before its materialization record, so an interruption leaves a
+  tracked-but-unwritten entry rather than an untracked server.
+- On malformed or partial JSONC, stop and report; do not rewrite a file that cannot be
+  parsed.
 - Record actual applied effects after a non-fatal partial failure.
 - Do not treat an old sidecar claim as proof a write succeeded: the `skipOnConflict` option
   populates tracking before a successful merge. The registered installer passes it `false`,
@@ -870,8 +892,9 @@ at the load boundary, or existing configs fail to load entirely. Lockfile replay
 unsupported type currently returns `null` with verbose-only messaging, so "unmanaged with
 one warning" must be implemented, not assumed.
 
-Eighteen tracked Markdown files reference apm (seventeen excluding this design), including
-`docs/user-guide/sources.md` and `docs/author-guide/creating-a-hub.md`.
+Thirteen files under `docs/` reference apm, including `docs/user-guide/sources.md` and
+`docs/author-guide/creating-a-hub.md`. (An earlier count of ten in this spec was wrong — a
+truncated search.)
 
 ## 8. Migration
 
@@ -888,15 +911,15 @@ produces a dangling working-tree change. Rules that follow:
 - **No write-on-read for repository scope.** Opening a workspace reads legacy files in
   place and changes nothing — including the P1/P2 id rewrite, which happens only when
   something else is already being written.
-- **Reconcile on open is read-only** (§5.6) — but read-only reconcile is **not sufficient
-  on its own**. `UpdateScheduler:186` invokes auto-update when enabled, and source-sync
-  can reach real install writes at startup, neither of which goes through reconcile. So
-  repository migration is gated on **trigger provenance**: a write carries whether it
-  originated from an explicit user action, and only a user-initiated write may migrate. A
-  scheduled or sync-initiated write operates through the legacy reader and defers
-  migration. Auto-update currently cannot touch repository records because storage listing
-  excludes them — but shared state changes that population, so the gate must be explicit
-  rather than relying on that accident.
+- **Reconcile on open is read-only** (§5.6), and read-only reconcile alone is not enough:
+  `UpdateScheduler:186` reaches `autoUpdateBundles` when
+  `promptregistry.updateCheck.autoUpdate` is on (it defaults to `false`), so a scheduled
+  write can occur without any user action. The rule is a **call-site** one rather than a
+  flag threaded through the write path: repository migration is invoked **only from the
+  install, uninstall and update command handlers**. Reconcile, the update scheduler and
+  source sync operate through the legacy reader and never migrate. Auto-update also cannot
+  reach repository records today because storage listing excludes them; the call-site rule
+  means that staying true is not load-bearing.
 - **`--dry-run` never migrates**, and must perform no writes through *any* port, including
   cache synthesis, store initialization and auth setup.
 - The repository pair migrates **together, atomically**, on that first write: the new
@@ -954,15 +977,20 @@ bundle cache is global storage for user scope but `context.storageUri` for works
 (`bundle-installer.ts:367`), and direct-skill and `local-skills` installs may have no
 extracted cache manifest at all.
 
-**Path provenance: evidence, not proof.** Testing `join(repoRoot, entry.path)` is a useful
-signal, but a CLI-written *bundle-relative* path can independently exist in the repository
-(a repo with its own `prompts/` directory), so existence does not prove the entry was
-extension-written. And when the path is absent, the new manifest-driven placement function
-will **not** generally reproduce the old CLI destination — old rules were prefix-routed and
-preserved the bundle filename, new rules are kind-routed and rename to the normalized id.
-Recovering old destinations therefore requires keeping a **legacy destination locator**
-that implements the old prefix+filename rules. Where neither locator yields a unique
-answer, the entry is marked ambiguous and left for the user, not guessed.
+**Path provenance: evidence, not proof — and one rule when it runs out.** Testing
+`join(repoRoot, entry.path)` is a useful signal, but a CLI-written *bundle-relative* path
+can independently exist in a repository that has its own `prompts/` directory, so existence
+does not prove the entry was extension-written. And when the path is absent, the new
+manifest-driven placement function will **not** reproduce the old CLI destination — old
+rules were prefix-routed and kept the bundle filename; new rules are kind-routed and rename
+to the normalized id.
+
+No legacy-destination locator is built for this. Given the CLI's negligible adoption,
+reimplementing its old prefix+filename rules to recover orphans is not worth the code. The
+single rule is: **if the destination is not proven, leave the files alone, retain the record
+marked unmanaged, and log it with the bundle name.** That one rule covers every ambiguous
+case — unknown provenance, missing file, unrecoverable source descriptor — instead of a
+taxonomy of them.
 
 **Manifests are not guaranteed available.** Lazy migration does *not* imply the manifest is
 in hand: an uninstall needs only records, a fresh team clone has no cache, a committed
@@ -979,12 +1007,10 @@ opposite of the intent. Rules:
   `installedChecksum` fresh.
 - Entry whose destination is **proven** and whose provenance is **extension**: carry the
   stored hash forward as `installedChecksum` unchanged. Pre-existing drift stays visible.
-- Entry whose provenance is **CLI**: the stored hash is a source-byte hash, so it cannot
-  serve as an on-disk baseline. Record `installedChecksum` from disk and **mark the entry
-  as having an adopted baseline**, so a later drift report can say "baseline adopted at
-  migration" rather than implying the file is pristine.
-- Entry that is ambiguous or whose file is missing: retain the record, mark it unmanaged,
-  report it. Do not rebaseline.
+- Entry whose provenance is **CLI**: the stored hash is a source-byte hash and cannot serve
+  as an on-disk baseline. Record `installedChecksum` from disk, flagged as adopted at
+  migration so a later drift report does not imply the file is pristine.
+- Anything ambiguous: the unmanaged rule above. Do not rebaseline.
 
 **Target assignment is load-bearing, not cosmetic.** Because materialization is keyed by
 target name and reconcile compares per target, a synthetic `legacy-<prefix>` name would be
@@ -1015,11 +1041,13 @@ filesystem transaction**, so every intermediate state must be legal and resumabl
   a per-repository marker written **last**, not by the presence of a materialization record.
 - Never delete legacy truth before the replacement is durably written.
 
-**Concurrent mutation needs more than atomic replacement.** `writeAtomic` prevents torn
-JSON; it does not prevent a lost read-modify-write when the CLI and extension mutate the
-same lockfile concurrently. State mutation needs a lock or an equivalent journal, and
-physical-config updates (MCP) must be serialized against materialization updates — a
-refcount is not concurrency control.
+**Concurrent mutation is an accepted risk, not an engineered one.** `writeAtomic` prevents
+torn JSON but not a lost read-modify-write when the CLI and extension mutate the same
+lockfile at the same moment. No lock or journal is introduced: simultaneous use of both
+tools on one repository is rare, and the failure mode is a lost state entry that the next
+operation re-derives, not corruption. Recorded in §13. The one ordering that still matters
+is that an MCP config write precedes its materialization record, so a crash between them
+leaves a tracked-but-unwritten entry rather than an untracked server.
 
 **Mixed-version clients need a stated write policy.** The rename stops an un-upgraded
 client from acting on a file it misreads, but it does not make a mixed-version repository
@@ -1074,19 +1102,27 @@ Three further gaps:
   treated as non-fatal (`bundle-installer.ts:207`), and update **uninstalls the old bundle
   before the new one succeeds** (`:967`).
 
-**Therefore the design must not claim rollback.** It states instead:
+**Therefore the design must not claim rollback.** Rather than build staging and
+prior-byte snapshots — which would be exactly the "big safety net" this work is meant to
+avoid — it relies on **idempotent redeploy**:
 
-- Deployment proceeds **staged**: write new artifact bytes to a staging location, then
-  promote; capture prior bytes for any path about to be overwritten so promotion is
-  reversible; apply MCP and exclude edits as read-modify-write merges that preserve
-  unrelated entries.
-- On failure, report **actual applied effects** and retry ownership rather than an
-  all-or-nothing result. A partial MCP write is a real state, not an error to be swallowed.
+- A deploy is safe to re-run. A failure mid-way leaves a partially updated installation, and
+  running the same operation again converges it. This is the accepted failure mode.
+- Overwrites happen **last**, after resolve, extract, validate and placement planning have
+  all succeeded, so the common failure causes never reach the point of touching existing
+  files.
+- MCP and `.git/info/exclude` edits are read-modify-write merges that preserve unrelated
+  entries — not for rollback's sake, but because clobbering a shared file is wrong anyway.
+- On failure, report **what was actually applied**. A partial MCP write is a real state, not
+  an error to swallow, and that report is what makes the re-run intelligible.
 - `writeTargetSafely` keeps its current reject-or-throw semantics; unsupported-kind
   filtering happens before it (§4.7).
-- "No backup, no rollback" from §2 is a decision about **not adding** a user-visible backup
-  mechanism. It is not permission to delete irreversible legacy truth or overwrite edited
-  files before a durable success, and it does not override the staging requirement above.
+
+**Accepted risk, recorded in §13:** a failure after the overwrite step can leave an
+installation whose files are mixed between two versions until the operation is re-run.
+Nothing restores the previous bytes. This is a deliberate trade for a far smaller
+implementation, and it matches what both layers already do — the extension's update
+uninstalls the old bundle before the new one succeeds (`bundle-installer.ts:967`).
 
 Order is place → MCP → record, which is a **change** from the extension's current order
 (cache write → MCP → scope sync → record) and is called out as such in §13.
@@ -1134,10 +1170,11 @@ transformers that inspect source prefixes (Kiro agents); WSL home resolution;
 `allowedKinds`.
 
 **Safety** — a `local-skills` install whose parent is a **directory symlink**: assert the
-original source bytes are untouched (§4.8); failure injected after overwrite, mid-skill
-write, MCP config write, desired-state write, local-state write, exclude write, and legacy
-deletion, each asserting applied effects are reported; concurrent CLI/extension mutation of
-one lockfile; restart after every migration interruption point.
+original source bytes are untouched (§4.8). Failure injected at each step (mid-skill write,
+MCP config write, state write, exclude write, legacy deletion), asserting that applied
+effects are reported **and that re-running the same operation converges** — the idempotent
+redeploy contract, not restoration. Concurrent CLI/extension lockfile mutation asserts no
+corrupt JSON, not no lost entry. Restart after every migration interruption point.
 
 **Migration provenance** — a mixed legacy lockfile where a CLI bundle-relative path *also*
 exists in the repository (existence proves nothing); uninstall-triggered migration with no
@@ -1147,7 +1184,8 @@ reported rather than guessed; workspace skills and cache-missing user migration;
 commit/local-only bundles under one target.
 
 **Reconcile** — same bundle id with changed version, source, layout, target root or
-`allowedKinds`, asserting the install signature triggers redeploy; a fresh clone with
+`allowedKinds`: assert that a **version** change redeploys and that layout/transformer/
+`allowedKinds` changes deliberately do **not** (§5.6); a fresh clone with
 committed artifacts and no materialization; pin removal; scope move.
 
 **No-write guarantees** — activation with auto-update enabled asserts no repository
@@ -1165,20 +1203,20 @@ commit-mode commands, skills paths and consumers; resolver deletion must wait fo
 registered consumer; and a v3 writer must not precede a v2 reader. Corrected order:
 
 1. **Correct the factual baseline and name every deliberate behavior change** (§13).
-2. **Specify contracts**: install signature and state identity, physical-destination
-   ownership, transaction and staging, migration provenance, reconciliation.
+2. **Specify contracts**: the `(bundleId, version, targetType)` reconcile key,
+   physical-destination ownership, the migration call-site rule, and the unmanaged rule for
+   anything unproven. Deliberately no transaction or staging contract (§9.2).
 3. **Add primitives behind existing callers**: export and generalize `routeToKind`,
-   canonical→alias naming, the `FileSystem` link-identity capability (§4.8), and a
-   **legacy destination locator** implementing the old prefix+filename rules. No caller
+   canonical→alias naming, and the `FileSystem` link-identity capability (§4.8). No caller
    changes behavior yet.
 4. **Add source and MCP capabilities behind existing entry points**, with parity tests:
    `resolveBundle`, `readBundleFiles`, per-server input predicate, Azure DevOps auth policy.
 5. **Introduce shared state readers and read-only compatibility**: v2 readers for both
    writers' shapes, identity-based source resolution (P2), effective-desired-state
    computation. Still no v3 writes.
-6. **Implement shared deployment with the staging contract**, exercised by tests only.
+6. **Implement shared deployment**, exercised by tests only.
 7. **Cut over every lifecycle producer and consumer** from §3.7 behind a migration gate,
-   including scheduling and trigger provenance.
+   including scheduling, with migration confined to the three command handlers.
 8. **Enable migrations** — eager user, lazy repository — with recovery, interruption and
    concurrent-write tests.
 9. **Delete legacy implementations** only once entry-point tests show no remaining callers.
@@ -1260,6 +1298,24 @@ non-default VS Code profile does not read the default-profile MCP file and that 
 upstream issues are closed as not planned; and that the extension has materially more
 adoption than the CLI. The last one shaped §8.3's default assumption, so it is explicitly
 marked unverified there and is not used to justify any lossy default.
+
+### Accepted risks
+
+An executable-code audit of an earlier draft recommended staging snapshots, trigger
+provenance plumbing, a full install signature, a legacy-destination locator, state locking
+and an ambiguity taxonomy. Its **factual** corrections are all incorporated. Its
+**prescriptions** were deliberately pruned back: this project's stated constraint is to
+simplify and avoid big safety nets, and each item below is a risk accepted in exchange for
+a materially smaller implementation.
+
+| Accepted risk | Mitigation instead of machinery |
+|---|---|
+| A failure after the overwrite step leaves files mixed between two versions; previous bytes are not restored | Idempotent redeploy; overwrites happen last; applied effects are reported (§9.2). Matches today's behavior, where update uninstalls before the new install succeeds |
+| A scheduled auto-update write could migrate a repository | Migration is invoked only from the three command handlers — a call-site rule, not a threaded flag (§8.1) |
+| A layout-override or transformer change does not trigger reconcile | Reconcile compares `(bundleId, version, targetType)` only; a user changing an override re-runs install (§5.6) |
+| Orphaned files from old CLI-written entries are not recovered | Unproven destinations are left alone and reported unmanaged; no old-rules locator is built (§8.3) |
+| Simultaneous CLI and extension writes can lose a state entry | Atomic writes prevent corruption; the next operation re-derives (§8.4) |
+| MCP config backups are no longer created by migration | Read-modify-write merges preserve unrelated entries; nothing is wholesale replaced (§6.7) |
 
 **Acceptance criteria, not established facts:** byte parity between layers, lockfile
 portability across machines, transaction safety, and migration idempotence. Current tests

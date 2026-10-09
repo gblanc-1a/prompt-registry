@@ -4,12 +4,15 @@ import {
   it,
 } from 'vitest';
 import {
+  copilotFileTypeForKind,
+  destinationNameForKind,
   determineFileType,
   getFileExtension,
   getRepositoryTargetDirectory,
   getSkillName,
   getTargetFileName,
   isSkillDirectory,
+  nameShapeForKind,
   normalizePromptId,
 } from '../../../src/domain/install/copilot-file-type';
 
@@ -138,5 +141,81 @@ describe('getSkillName', () => {
 
   it('returns null for a path with no skills/ segment', () => {
     expect(getSkillName('prompts/my-prompt.md')).toBeNull();
+  });
+});
+
+describe('copilotFileTypeForKind', () => {
+  it('maps the four Copilot-suffixed kinds onto their aliases', () => {
+    expect(copilotFileTypeForKind('prompt')).toBe('prompt');
+    expect(copilotFileTypeForKind('instruction')).toBe('instructions');
+    expect(copilotFileTypeForKind('chat-mode')).toBe('chatmode');
+    expect(copilotFileTypeForKind('agent')).toBe('agent');
+    expect(copilotFileTypeForKind('skill')).toBe('skill');
+  });
+
+  it('returns null for a kind with no Copilot alias', () => {
+    expect(copilotFileTypeForKind('hook')).toBeNull();
+    expect(copilotFileTypeForKind('steering')).toBeNull();
+  });
+});
+
+describe('nameShapeForKind', () => {
+  it('classifies every kind into one of the four shapes', () => {
+    expect(nameShapeForKind('prompt')).toBe('copilot-suffixed');
+    expect(nameShapeForKind('skill')).toBe('directory');
+    expect(nameShapeForKind('plugin')).toBe('directory');
+    expect(nameShapeForKind('power')).toBe('directory');
+    expect(nameShapeForKind('hook')).toBe('plain-file');
+    expect(nameShapeForKind('steering')).toBe('plain-file');
+    expect(nameShapeForKind('mcp-server')).toBe('not-placed');
+  });
+});
+
+describe('destinationNameForKind', () => {
+  it('renames a Copilot-suffixed file from the normalized id', () => {
+    expect(destinationNameForKind('prompt', 'create-component', 'anything.md'))
+      .toBe('create-component.prompt.md');
+    expect(destinationNameForKind('instruction', 'ts-standards', 'x.md'))
+      .toBe('ts-standards.instructions.md');
+  });
+
+  it('is a no-op for a well-formed bundle whose id matches its filename stem', () => {
+    expect(destinationNameForKind('prompt', 'create-component', 'create-component.prompt.md'))
+      .toBe('create-component.prompt.md');
+  });
+
+  it('normalizes an id that is not filename-safe', () => {
+    expect(destinationNameForKind('prompt', 'My Prompt/v2', 'x.prompt.md'))
+      .toBe('My-Prompt-v2.prompt.md');
+  });
+
+  it('normalizes a YAML-parsed numeric id', () => {
+    expect(destinationNameForKind('prompt', 42 as unknown as string, 'x.prompt.md'))
+      .toBe('42.prompt.md');
+  });
+
+  it('uses the normalized id as the directory name for a directory kind', () => {
+    expect(destinationNameForKind('skill', 'My Skill', 'skills/my-skill/SKILL.md'))
+      .toBe('My-Skill');
+  });
+
+  it('preserves the source basename for a plain-file kind', () => {
+    expect(destinationNameForKind('hook', 'pre-commit', 'hooks/pre-commit.sh'))
+      .toBe('pre-commit.sh');
+    expect(destinationNameForKind('steering', 'style', 'steering/style.md'))
+      .toBe('style.md');
+  });
+
+  it('returns null for a kind that is never placed as a file', () => {
+    expect(destinationNameForKind('mcp-server', 'srv', 'mcp/srv.json')).toBeNull();
+  });
+});
+
+describe('normalized id collisions (Review Focus 3)', () => {
+  it('two distinct ids can normalize to the same file name', () => {
+    // Not a bug in this function — a fact the planner must detect.
+    // `planDeploy` reports it as a duplicate destination (Task 9).
+    expect(destinationNameForKind('prompt', 'foo.bar', 'a.md'))
+      .toBe(destinationNameForKind('prompt', 'foo-bar', 'b.md'));
   });
 });

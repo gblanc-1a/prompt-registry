@@ -43,6 +43,7 @@ import {
   getTargetFileName,
   normalizePrimitiveKind,
   normalizePromptId,
+  routeToKind,
   verifyWrittenBytes,
 } from '@ai-primitives-hub/core';
 import {
@@ -59,6 +60,12 @@ export type {
 export type {
   TargetWriter,
   TargetWriteResult,
+} from '@ai-primitives-hub/core';
+
+export {
+  invertKindRoutes,
+  ROUTE_PREFIX_KINDS,
+  routeToKind,
 } from '@ai-primitives-hub/core';
 
 export interface WriterFs {
@@ -530,46 +537,6 @@ const normalizeBundlePath = (bundlePath: string): string =>
   bundlePath.startsWith('chatmodes/')
     ? `chat-modes/${bundlePath.slice('chatmodes/'.length)}`
     : bundlePath;
-
-/**
- * Map a layout prefix back to the primitive kind it represents.
- * Used to honor `target.allowedKinds`.
- * @param prefix - Layout prefix (e.g., "prompts/").
- * @returns Kind name without trailing slash.
- */
-const ROUTE_PREFIX_KINDS: Record<string, PrimitiveKind> = {
-  '.kiro/steering/': 'steering',
-  '.kiro/specs/': 'spec',
-  '.claude/commands/': 'command',
-  '.claude/output-styles/': 'output-style',
-  '.cursor/rules/': 'rule',
-  '.cursor/agents/': 'agent',
-  '.cursor/skills/': 'skill',
-  '.cursor/commands/': 'command',
-  '.opencode/tools/': 'tool',
-  '.opencode/commands/': 'command',
-  '.opencode/agents/': 'agent',
-  '.opencode/skills/': 'skill',
-  '.opencode/rules/': 'rule',
-  '.opencode/hooks/': 'hook',
-  '.opencode/plugins/': 'plugin',
-  '.devin/knowledge/': 'knowledge',
-  '.devin/playbooks/': 'playbook',
-  '.devin/powers/': 'power',
-  '.devin/prompts/': 'prompt',
-  '.devin/instructions/': 'instruction',
-  '.devin/agents/': 'agent',
-  '.devin/skills/': 'skill',
-  '.devin/hooks/': 'hook',
-  '.devin/plugins/': 'plugin'
-};
-
-const routeToKind = (prefix: string): PrimitiveKind | null => {
-  const normalizedPrefix = prefix.endsWith('/') ? prefix : `${prefix}/`;
-  return normalizePrimitiveKind(prefix.replace(/\/$/, ''))
-    ?? ROUTE_PREFIX_KINDS[normalizedPrefix]
-    ?? null;
-};
 
 const copilotTypeToPrimitiveKind = (type: CopilotFileType): PrimitiveKind =>
   type === 'instructions' ? 'instruction' : (type === 'chatmode' ? 'chat-mode' : type);

@@ -31,5 +31,6 @@ export * from './registry/settings';
 export * from './hub/types';
 export * from './hub/validate';
 export * from './primitive/types';
+export * from './primitive/route-kinds';
 export * from './skill/validate';
 export * from './mcp';

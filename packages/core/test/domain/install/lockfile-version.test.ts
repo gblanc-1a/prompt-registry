@@ -186,6 +186,32 @@ describe('lockfile 3.x wire-format schema', () => {
       }
     })).toBe(true);
   });
+
+  it('accepts a migrated record carrying legacy-shaped checksums', () => {
+    expect(validate({
+      version: '3.0.0',
+      generatedAt: '2026-10-09T12:00:00.000Z',
+      generatedBy: 'ai-primitives-hub-cli',
+      targets: {
+        unmanaged: {
+          baseDir: '',
+          bundles: {
+            'src/legacy': {
+              version: '1.0.0',
+              sourceId: 'src',
+              installedAt: '2026-10-09T12:00:00.000Z',
+              state: 'unmanaged',
+              unmanagedReason: 'carried from v2',
+              files: [
+                { path: 'a.md', checksum: 'sha256:' + 'a'.repeat(64) },
+                { path: 'b.md', checksum: 'b'.repeat(64), installedChecksum: 'sha256:' + 'c'.repeat(64) }
+              ]
+            }
+          }
+        }
+      }
+    })).toBe(true);
+  });
 });
 
 describe('lockfile wire-format schema', () => {

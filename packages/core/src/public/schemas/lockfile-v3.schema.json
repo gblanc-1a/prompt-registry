@@ -194,13 +194,13 @@
         },
         "checksum": {
           "type": "string",
-          "description": "SHA256 checksum of source bytes (§5.8)",
-          "pattern": "^[a-f0-9]{64}$"
+          "description": "SHA256 checksum of source bytes (§5.8). Accepts legacy prefixed forms for migration.",
+          "pattern": "^([a-z0-9]+:)?[a-f0-9]{64}$"
         },
         "installedChecksum": {
           "type": "string",
-          "description": "SHA256 checksum of the installed file",
-          "pattern": "^[a-f0-9]{64}$"
+          "description": "SHA256 checksum of the installed file. Accepts legacy prefixed forms for migration.",
+          "pattern": "^([a-z0-9]+:)?[a-f0-9]{64}$"
         },
         "adoptedAtMigration": {
           "type": "boolean",

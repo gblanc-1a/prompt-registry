@@ -260,8 +260,9 @@ describe('migrateLockfileIfNeeded', () => {
     };
     fs.files.set(userSources.desiredFile, JSON.stringify(v2));
 
-    // Seed the partial local file with an existing-new record for web-dev
-    // (not derived from v2) and a different target for a different bundle.
+    // Seed the partial local file with:
+    // 1. An existing-new record for web-dev under a real target (with installedChecksum)
+    // 2. An existing-new unmanaged record for third-bundle (with installedChecksum) - regression test
     const partialLocal = {
       version: '3.0.0',
       generatedAt: OPTS.now,
@@ -279,6 +280,19 @@ describe('migrateLockfileIfNeeded', () => {
               files: [{ path: '/real/path/hello.prompt.md', checksum: 'realhash', installedChecksum: 'installedhash' }]
             }
           }
+        },
+        [UNMANAGED_TARGET_KEY]: {
+          baseDir: '',
+          bundles: {
+            'github-abc123/third-bundle': {
+              version: '3.0.0',
+              sourceId: 'github-abc123',
+              installedAt: '2026-03-01T00:00:00.000Z',
+              state: 'unmanaged',
+              unmanagedReason: 'carried from first run',
+              files: [{ path: 'third.md', checksum: 'thirdhash', installedChecksum: 'thirdinstalled' }]
+            }
+          }
         }
       }
     };
@@ -291,8 +305,11 @@ describe('migrateLockfileIfNeeded', () => {
       .toBe('installedhash');
     // Legacy-derived unmanaged copy is removed (de-duplicated per bundle key).
     expect(pair.local.targets[UNMANAGED_TARGET_KEY]?.bundles['github-abc123/web-dev']).toBeUndefined();
-    // other-bundle still exists in unmanaged (not de-duplicated).
+    // other-bundle still exists in unmanaged (legacy-derived, not de-duplicated).
     expect(pair.local.targets[UNMANAGED_TARGET_KEY].bundles['github-abc123/other-bundle']).toBeDefined();
+    // third-bundle survives with its installedChecksum intact (existing-new unmanaged record).
+    expect(pair.local.targets[UNMANAGED_TARGET_KEY].bundles['github-abc123/third-bundle'].files[0].installedChecksum)
+      .toBe('thirdinstalled');
     expect(JSON.parse(fs.files.get(userSources.localFile) as string).migration)
       .toEqual({ lockfileV3: 'complete' });
   });

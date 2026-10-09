@@ -246,8 +246,7 @@ export const migrateLockfileIfNeeded = async (
   // Union: existing-new wins per bundle key (§8.4).
   if (existingLocal && !existingLocal.migration?.lockfileV3) {
     // Migration is incomplete, so union the targets.
-    // Collect all bundle keys from existing-new, then add legacy-derived records
-    // for keys not already present (per bundle key, not per (target, bundle) pair).
+    // Collect all bundle keys from existing-new.
     const existingKeys = new Set<string>();
     for (const targetRecord of Object.values(existingLocal.targets)) {
       for (const bundleKey of Object.keys(targetRecord.bundles)) {
@@ -255,30 +254,24 @@ export const migrateLockfileIfNeeded = async (
       }
     }
 
-    // Merge existing-new targets into the converted pair, preserving their records.
-    for (const [targetName, targetRecord] of Object.entries(existingLocal.targets)) {
-      if (convertedPair.local.targets[targetName]) {
-        // Merge bundles: existing-new wins.
-        for (const [bundleKey, bundleRecord] of Object.entries(targetRecord.bundles)) {
-          convertedPair.local.targets[targetName].bundles[bundleKey] = bundleRecord;
+    // Start with existing-new as the base, then add legacy-derived records
+    // only for keys not already present (de-duplicates per bundle key across targets).
+    const unionedTargets: Record<string, LockfileV3TargetRecord> = { ...existingLocal.targets };
+
+    // Add legacy-derived records that don't duplicate existing-new keys.
+    for (const [targetName, targetRecord] of Object.entries(convertedPair.local.targets)) {
+      for (const [bundleKey, bundleRecord] of Object.entries(targetRecord.bundles)) {
+        if (!existingKeys.has(bundleKey)) {
+          // Ensure the target exists in the union.
+          if (!unionedTargets[targetName]) {
+            unionedTargets[targetName] = { ...targetRecord, bundles: {} };
+          }
+          unionedTargets[targetName].bundles[bundleKey] = bundleRecord;
         }
-      } else {
-        convertedPair.local.targets[targetName] = targetRecord;
       }
     }
 
-    // Remove legacy-derived records for keys that exist in existing-new.
-    for (const [targetName, targetRecord] of Object.entries(convertedPair.local.targets)) {
-      for (const bundleKey of Object.keys(targetRecord.bundles)) {
-        if (existingKeys.has(bundleKey) && targetName === UNMANAGED_TARGET_KEY) {
-          delete targetRecord.bundles[bundleKey];
-        }
-      }
-      // Clean up empty unmanaged target.
-      if (targetName === UNMANAGED_TARGET_KEY && Object.keys(targetRecord.bundles).length === 0) {
-        delete convertedPair.local.targets[UNMANAGED_TARGET_KEY];
-      }
-    }
+    convertedPair.local.targets = unionedTargets;
   }
 
   // Step 3: Write local without marker, then desired.

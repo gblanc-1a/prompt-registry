@@ -10,6 +10,7 @@ import type {
   PlacementDestination,
   PrimitiveKind,
   RepositoryCommitMode,
+  ResourceTransformer,
   TargetLayout,
   TargetType,
 } from '@ai-primitives-hub/core';
@@ -127,14 +128,17 @@ export interface DeployPorts {
   mcpConfigStore?: unknown;
   /** Git exclude manager (slice 5). */
   gitExclude?: unknown;
+  /** Optional resource transformer for text payloads. */
+  transformer?: ResourceTransformer;
+  /** Tool identifier for generated metadata. */
+  generatedBy?: string;
+  /** ISO timestamp for deterministic testing (defaults to wall-clock time). */
+  now?: string;
   /** Event listener (for progress reporting). */
   onEvent?: (event: DeployEvent) => void;
 }
 
 /** Deployment event. */
-export interface DeployEvent {
-  /** Event type. */
-  type: 'plan' | 'write' | 'state' | 'complete' | 'error';
-  /** Event data. */
-  data?: unknown;
-}
+export type DeployEvent =
+  | { kind: 'place'; path: string }
+  | { kind: 'state-write' };

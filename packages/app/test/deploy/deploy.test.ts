@@ -10,6 +10,7 @@ import {
   readPair,
   recordingPorts,
   request,
+  twoItemArchive,
 } from './fixtures';
 
 describe('deployBundle', () => {
@@ -38,7 +39,7 @@ describe('deployBundle', () => {
 
     await deployBundle(request(), ports);
 
-    const { desired, local } = readPair(ports);
+    const { local } = readPair(ports);
     const record = local.targets['my-vscode'].bundles['github-abc123/web-dev'];
     expect(record.files.map((f: { path: string }) => f.path)).toEqual(['prompts/hello.prompt.md']);
   });
@@ -48,7 +49,7 @@ describe('deployBundle', () => {
 
     await deployBundle(request(), ports);
 
-    const { desired, local } = readPair(ports);
+    const { local } = readPair(ports);
     const file = local.targets['my-vscode'].bundles['github-abc123/web-dev'].files[0];
     expect(file.installedChecksum).toMatch(/^[a-f0-9]{64}$/);
     expect(file.checksum).toMatch(/^[a-f0-9]{64}$/);
@@ -67,9 +68,18 @@ describe('deployBundle', () => {
     const recordIndex = ports.calls.indexOf(`rename:${ports.lockfileStore.desiredFile}`);
     const localIndex = ports.calls.indexOf(`rename:${ports.lockfileStore.localFile}`);
     const mcpIndex = ports.calls.findIndex((c) => c.startsWith('mcp:'));
+    const stateWriteIndex = ports.calls.findIndex((c) => c.includes('"kind":"state-write"'));
     expect(localIndex).toBeGreaterThanOrEqual(0);
     expect(recordIndex).toBeGreaterThan(localIndex);
     expect(mcpIndex === -1 || recordIndex < mcpIndex).toBe(true);
+
+    // Strengthen: all place events precede state-write.
+    const placeIndices = ports.calls
+      .map((c, i) => (c.includes('"kind":"place"') ? i : -1))
+      .filter((i) => i >= 0);
+    for (const placeIndex of placeIndices) {
+      expect(placeIndex).toBeLessThan(stateWriteIndex);
+    }
   });
 
   it('skips an untracked pre-existing destination and reports it', async () => {
@@ -105,7 +115,7 @@ describe('deployBundle', () => {
 
     expect(result.satisfied).toEqual(['/home/u/.copilot/prompts/hello.prompt.md']);
     expect(result.collisions).toEqual([]);
-    const { desired, local } = readPair(ports);
+    const { local } = readPair(ports);
     expect(local.targets['my-vscode'].bundles['github-abc123/web-dev'].files).toHaveLength(1);
   });
 
@@ -130,19 +140,18 @@ describe('deployBundle', () => {
   });
 
   it('removes the files it created when a later write fails, and reports what was applied', async () => {
-    const ports = recordingPorts();
-    const archive = request();
-    ports.failWriteAt = 2; // succeed on the first file, fail on the second
+    const ports = recordingPorts({ failWriteAt: 1 }); // Fail on the FIRST file
+    // This is a simpler test: no pre-existing files, just verify cleanup of what was created
 
     await expect(deployBundle({
-      ...archive,
-      files: new Map([
-        ...archive.files,
-        ['prompts/second.prompt.md', new TextEncoder().encode('# Second\n')]
-      ])
+      ...request(),
+      files: twoItemArchive()
     }, ports)).rejects.toThrow();
 
+    // Neither file should exist after rollback (both were newly created)
     expect(ports.files.has('/home/u/.copilot/prompts/hello.prompt.md')).toBe(false);
+    expect(ports.files.has('/home/u/.copilot/prompts/second.prompt.md')).toBe(false);
+    // State write should not have happened.
     expect(ports.files.has(ports.lockfileStore.localFile)).toBe(false);
   });
 

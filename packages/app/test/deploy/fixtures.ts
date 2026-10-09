@@ -3,6 +3,12 @@
  * @module test/deploy/fixtures
  */
 import {
+  createHash,
+} from 'node:crypto';
+import {
+  dump as dumpYaml,
+} from 'js-yaml';
+import {
   createGovernedReleaseArchive,
 } from '../../../core/test/fixtures/release-archives';
 import type {
@@ -66,6 +72,63 @@ export const request = (): DeployRequest => ({
   }
 });
 
+/**
+ * Build a two-item governed release archive for testing rollback.
+ * @returns ExtractedFiles with two prompt items.
+ */
+export function twoItemArchive(): Map<string, Uint8Array> {
+  const encoder = new TextEncoder();
+  const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
+
+  const sourceSnapshotPath = 'metadata/source/collections/governed.collection.yml';
+  const archiveFiles = {
+    'prompts/hello.prompt.md': '# Hello Prompt\n',
+    'prompts/second.prompt.md': '# Second Prompt\n',
+    [sourceSnapshotPath]: 'id: web-dev\n',
+    'README.md': '# Two-item bundle\n',
+    LICENSE: 'License text\n',
+    'ignored/build/cache.pyc': 'cache bytes\n'
+  };
+
+  const fileEntries = Object.entries(archiveFiles).map(([filePath, content]) => ({
+    path: filePath,
+    role: filePath.startsWith('prompts/')
+      ? 'installable'
+      : (filePath.startsWith('ignored/') ? 'ignored' : 'metadata'),
+    size: encoder.encode(content).byteLength,
+    sha256: `sha256:${sha256(content)}`
+  }));
+
+  const manifest = {
+    formatVersion: 1,
+    id: 'web-dev',
+    version: '1.0.0',
+    name: 'Web Dev Bundle',
+    readme: 'README.md',
+    items: [
+      { id: 'hello', path: 'prompts/hello.prompt.md', kind: 'prompt' },
+      { id: 'second', path: 'prompts/second.prompt.md', kind: 'prompt' }
+    ],
+    prompts: [
+      { id: 'hello', file: 'prompts/hello.prompt.md', type: 'prompt' },
+      { id: 'second', file: 'prompts/second.prompt.md', type: 'prompt' }
+    ],
+    provenance: {
+      source: 'https://github.com/example/web-dev',
+      governance: {
+        attestations: [],
+        provenance: { ref: '', url: '', commit: '' }
+      }
+    },
+    files: fileEntries
+  };
+
+  return new Map([
+    ['deployment-manifest.yml', encoder.encode(dumpYaml(manifest, { lineWidth: -1 }))],
+    ...Object.entries(archiveFiles).map(([filePath, content]) => [filePath, encoder.encode(content)] as const)
+  ]);
+}
+
 /** Recording filesystem and ports for testing. */
 export interface RecordingPorts extends DeployPorts {
   files: Map<string, string>;
@@ -84,13 +147,13 @@ export const recordingPorts = (opts?: { now?: string; failWriteAt?: number }): R
   const files = new Map<string, string>();
   const calls: string[] = [];
   const now = opts?.now ?? '2026-10-09T12:00:00.000Z';
-  const failWriteAt = opts?.failWriteAt;
   let writeCount = 0;
 
-  return {
+  // Create the ports object first so we can read its mutable failWriteAt property.
+  const ports: RecordingPorts = {
     files,
     calls,
-    failWriteAt,
+    failWriteAt: opts?.failWriteAt,
     fs: {
       readFile: async (p: string) => {
         const v = files.get(p);
@@ -105,7 +168,7 @@ export const recordingPorts = (opts?: { now?: string; failWriteAt?: number }): R
       stat: async () => ({ isDirectory: false, isFile: true, size: 0, mtimeMs: 0 }),
       writeFile: async (p: string, content: string) => {
         writeCount++;
-        if (failWriteAt !== undefined && writeCount === failWriteAt) {
+        if (ports.failWriteAt !== undefined && writeCount === ports.failWriteAt) {
           throw new Error(`Simulated write failure at call ${writeCount}`);
         }
         calls.push(`writeFile:${p}`);
@@ -113,7 +176,7 @@ export const recordingPorts = (opts?: { now?: string; failWriteAt?: number }): R
       },
       writeFileBytes: async (p: string, bytes: Uint8Array) => {
         writeCount++;
-        if (failWriteAt !== undefined && writeCount === failWriteAt) {
+        if (ports.failWriteAt !== undefined && writeCount === ports.failWriteAt) {
           throw new Error(`Simulated write failure at call ${writeCount}`);
         }
         calls.push(`writeFileBytes:${p}`);
@@ -158,10 +221,14 @@ export const recordingPorts = (opts?: { now?: string; failWriteAt?: number }): R
       localFile: '/home/u/.config/ai-primitives-hub/ai-primitives-hub.local.lock.json',
       legacyFiles: []
     },
+    generatedBy: 'test-harness',
+    now,
     onEvent: (event) => {
       calls.push(`event:${JSON.stringify(event)}`);
     }
   };
+
+  return ports;
 };
 
 /**

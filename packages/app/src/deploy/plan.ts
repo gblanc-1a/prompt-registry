@@ -11,8 +11,10 @@ import {
 import * as posix from 'node:path/posix';
 import type {
   ExtractedFiles,
+  Target,
 } from '@ai-primitives-hub/core';
 import {
+  decodeUtf8Strict,
   getInstallableBundleFiles,
   logicalBundleKey,
   nameShapeForKind,
@@ -145,13 +147,47 @@ export async function planDeploy(
   for (const dest of destinations) {
     const { to, from, kind } = dest;
     const exists = await ports.fs.exists(to);
-    const tracked = trackedFiles.get(to);
     const isDirectory = nameShapeForKind(kind) === 'directory';
+
+    // For directory kinds, check if any tracked file lies under this directory.
+    // For file kinds, check if this exact path is tracked.
+    let tracked: { checksum: string } | undefined;
+    const trackedSubtreeFiles: { path: string; checksum: string }[] = [];
+
+    if (isDirectory) {
+      const dirPrefix = to + '/';
+      for (const [trackedPath, trackedData] of trackedFiles) {
+        if (trackedPath.startsWith(dirPrefix)) {
+          trackedSubtreeFiles.push({ path: trackedPath, checksum: trackedData.checksum });
+        }
+      }
+      if (trackedSubtreeFiles.length > 0) {
+        // Directory is tracked (has tracked files under it).
+        // Use a sentinel to indicate tracking without a specific checksum.
+        tracked = { checksum: '' };
+      }
+    } else {
+      tracked = trackedFiles.get(to);
+    }
 
     if (tracked) {
       // Tracked destination.
       if (exists) {
-        if (!isDirectory) {
+        if (isDirectory) {
+          // Directory kinds: check per-file drift.
+          for (const subtreeFile of trackedSubtreeFiles) {
+            const fileExists = await ports.fs.exists(subtreeFile.path);
+            if (fileExists) {
+              const content = await ports.fs.readFileBytes(subtreeFile.path);
+              const hash = createHash('sha256').update(content).digest('hex');
+              if (hash !== subtreeFile.checksum) {
+                drifted.push(subtreeFile.path);
+              }
+            } else {
+              missing.push(subtreeFile.path);
+            }
+          }
+        } else {
           // Check for drift: compare on-disk hash to installedChecksum.
           const content = await ports.fs.readFileBytes(to);
           const hash = createHash('sha256').update(content).digest('hex');
@@ -160,10 +196,16 @@ export async function planDeploy(
           }
           // Otherwise, the file is tracked and matches — will be overwritten.
         }
-        // Directory kinds: existence check only; per-file drift is Task 10.
       } else {
         // Tracked but missing.
-        missing.push(to);
+        if (isDirectory) {
+          // For directories, mark all subtree files as missing.
+          for (const subtreeFile of trackedSubtreeFiles) {
+            missing.push(subtreeFile.path);
+          }
+        } else {
+          missing.push(to);
+        }
       }
     } else {
       // Untracked destination.
@@ -172,14 +214,39 @@ export async function planDeploy(
           // Directory kinds: present + untracked → collision.
           collisions.push({ to, reason: 'untracked-existing' });
         } else {
-          // File kinds: check if byte-identical.
+          // File kinds: check if byte-identical (after transformation for text).
           const content = await ports.fs.readFileBytes(to);
-          const fileContent = installableFiles.get(from);
-          if (fileContent && arraysEqual(content, fileContent)) {
-            // Satisfied: already on disk with identical bytes.
-            satisfied.push(to);
+          const sourceBytes = installableFiles.get(from);
+          if (sourceBytes) {
+            // Apply transformer if present and the payload is text.
+            let expectedBytes = sourceBytes;
+            const text = decodeUtf8Strict(sourceBytes);
+            if (text !== null && ports.transformer !== undefined) {
+              try {
+                const target: Target = {
+                  name: request.targetName,
+                  type: placement.targetType,
+                  scope: placement.scope
+                };
+                const result = ports.transformer.transform({
+                  target,
+                  filePath: from,
+                  content: text
+                });
+                expectedBytes = new TextEncoder().encode(result.content);
+              } catch {
+                // Transformation failure: compare against untransformed bytes (fail-safe).
+              }
+            }
+            if (arraysEqual(content, expectedBytes)) {
+              // Satisfied: already on disk with identical bytes.
+              satisfied.push(to);
+            } else {
+              // Collision: untracked and different.
+              collisions.push({ to, reason: 'untracked-existing' });
+            }
           } else {
-            // Collision: untracked and different.
+            // Source bytes not found (shouldn't happen): treat as collision.
             collisions.push({ to, reason: 'untracked-existing' });
           }
         }

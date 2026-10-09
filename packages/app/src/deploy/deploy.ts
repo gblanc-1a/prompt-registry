@@ -12,6 +12,10 @@ import {
   createHash,
 } from 'node:crypto';
 import * as path from 'node:path';
+import * as posix from 'node:path/posix';
+import type {
+  Target,
+} from '@ai-primitives-hub/core';
 import {
   decodeUtf8Strict,
   logicalBundleKey,
@@ -54,6 +58,8 @@ export interface DeployResult {
   collisions: { to: string; reason: 'untracked-existing' }[];
   /** Paths that were already satisfied (byte-identical). */
   satisfied: string[];
+  /** Destinations claimed by more than one id. */
+  duplicates: { to: string; ids: string[] }[];
   /** Paths to the lockfiles. */
   lockfiles: LockfileV3Paths;
   /** Migration report (null if no migration occurred). */
@@ -63,16 +69,16 @@ export interface DeployResult {
 /**
  * Deploy a bundle: place files, then record state.
  *
- * Pipeline: plan → check drift → migrate → place → record → MCP → git-exclude.
- * MCP and git-exclude are no-ops in slice 1, but the call order is established
- * now so slice 7 inserts rather than reorders. **Records before any MCP effect**
- * (§6.7, §9.2): a crash between them must leave a tracked entry with no server,
- * never a live server with no owner.
+ * Pipeline: migrate → plan → check drift → place → record → MCP → git-exclude.
+ * Migration runs before plan because plan reads the lockfile, and the pair reader
+ * throws on an un-migrated v2 local file. MCP and git-exclude are no-ops in slice 1,
+ * but the call order is established now so slice 7 inserts rather than reorders.
+ * **Records before any MCP effect** (§6.7, §9.2): a crash between them must leave a
+ * tracked entry with no server, never a live server with no owner.
  *
- * On failure mid-write, removes only the files this call created and reports
- * what was applied. **Does not rollback overwritten bytes** (§9.2) — re-running
- * the same command converges because the planner reports byte-identical untracked
- * files as `satisfied` (§9.3).
+ * On failure mid-write, removes only the files this call created and reports what was
+ * applied. **Does not rollback overwritten bytes** (§9.2) — re-running the same command
+ * converges because the planner reports byte-identical untracked files as `satisfied` (§9.3).
  * @param req - Deployment request.
  * @param ports - Deployment ports (fs, env, lockfileStore, etc.).
  * @returns Deployment result.
@@ -87,8 +93,8 @@ export async function deployBundle(
 
   // 1. Migrate lockfile if needed (before any write, so files are never a v2/v3 hybrid).
   //    This must happen before planDeploy since plan reads the lockfile.
-  const generatedBy = 'ai-primitives-hub-cli';
-  const now = new Date().toISOString();
+  const generatedBy = ports.generatedBy ?? 'ai-primitives-hub';
+  const now = ports.now ?? new Date().toISOString();
   const { pair, report: migration } = await migrateLockfileIfNeeded(
     ports.lockfileStore,
     ports.fs,
@@ -106,8 +112,10 @@ export async function deployBundle(
     });
   }
 
-  // 4. Place files. Track what we write for rollback on failure.
+  // 4. Place files. Track what we write and what we create separately.
+  // `written` is the reported outcome; `created` is what gets cleaned up on failure.
   const written: string[] = [];
+  const created: string[] = [];
   const satisfied: string[] = [];
   const collisions: { to: string; reason: 'untracked-existing' }[] = [];
 
@@ -126,30 +134,51 @@ export async function deployBundle(
     return true;
   });
 
+  // Invariant: req.files is defined because planDeploy already threw if both files and bytes were absent.
+  const files = req.files!;
+
   try {
     for (const dest of toWrite) {
       const shape = nameShapeForKind(dest.kind);
 
       if (shape === 'directory') {
         // Directory kind (skill, plugin, power): copy entire subtree preserving relative paths.
-        await writeDirectoryKind(req, dest, ports, written);
+        await writeDirectoryKind(req, dest, ports, plan, written, created);
       } else {
         // File kind: write single file with optional transformation.
-        await writeFileKind(req, dest, ports, written);
+        await writeFileKind(req, dest, ports, plan, written, created);
       }
     }
 
     // 5. Record state: upsert desired bundle, upsert materialization, write pair.
+    // Skip recording when all destinations were skipped (empty files array would orphan
+    // a re-deploy's existing record).
+    const allDestinations = [...toWrite.map((d) => d.to), ...satisfied];
+
+    if (allDestinations.length === 0) {
+      // All destinations skipped: return early without writing state.
+      return {
+        key,
+        written,
+        skipped: plan.skipped,
+        collisions,
+        satisfied,
+        duplicates: plan.duplicates,
+        lockfiles: ports.lockfileStore,
+        migration
+      };
+    }
+
     const desiredUpdated = upsertDesiredBundle(pair.desired, key, {
       version: bundle.version,
       sourceId: source.sourceId,
       // archiveSha only when bytes came from an immutable remote artifact.
+      // (unreachable in slice 1: planner throws when only bytes is given)
       ...(req.bytes !== undefined && !isLocalSourceType(source.type) ? computeArchiveSha(req.bytes) : {})
     });
 
     // Build materialization record from ALL destinations (not just written),
     // so a retry whose destinations are all satisfied still records state (§9.3).
-    const allDestinations = [...toWrite.map((d) => d.to), ...satisfied];
     const fileRecords: LockfileV3FileEntry[] = [];
 
     for (const dest of plan.destinations) {
@@ -161,14 +190,14 @@ export async function deployBundle(
 
       if (shape === 'directory') {
         // Directory kind: record all files in the subtree, not just the primary file.
-        const sourcePrefix = path.posix.dirname(dest.from) + '/';
-        for (const [bundlePath, bytes] of req.files!) {
+        const sourcePrefix = posix.dirname(dest.from) + '/';
+        for (const [bundlePath, bytes] of files) {
           if (!bundlePath.startsWith(sourcePrefix)) {
             continue;
           }
           const tail = bundlePath.slice(sourcePrefix.length);
-          const outPath = path.join(dest.to, tail);
-          const relativePath = path.relative(placement.baseRoot, outPath);
+          const outPath = posix.join(dest.to, tail);
+          const relativePath = posix.relative(placement.baseRoot, outPath);
 
           // checksum: SHA256 of the archive's extracted bytes.
           const checksum = createHash('sha256').update(bytes).digest('hex');
@@ -185,8 +214,8 @@ export async function deployBundle(
         }
       } else {
         // File kind: record the single file.
-        const relativePath = path.relative(placement.baseRoot, dest.to);
-        const sourceBytes = req.files!.get(dest.from);
+        const relativePath = posix.relative(placement.baseRoot, dest.to);
+        const sourceBytes = files.get(dest.from);
         if (sourceBytes === undefined) {
           continue;
         }
@@ -226,7 +255,7 @@ export async function deployBundle(
     );
 
     // Emit state-write event before writing the pair.
-    ports.onEvent?.({ stage: 'state-write' } as never);
+    ports.onEvent?.({ kind: 'state-write' });
 
     await writeLockfileV3Pair(
       ports.lockfileStore,
@@ -245,12 +274,13 @@ export async function deployBundle(
       skipped: plan.skipped,
       collisions,
       satisfied,
+      duplicates: plan.duplicates,
       lockfiles: ports.lockfileStore,
       migration
     };
   } catch (cause) {
     // On failure, remove only the files this call created (not overwritten bytes, §9.2).
-    for (const filePath of written) {
+    for (const filePath of created) {
       try {
         await ports.fs.remove(filePath);
       } catch {
@@ -284,21 +314,33 @@ export async function redeployBundle(
  * @param dest.to
  * @param dest.kind
  * @param ports - Deployment ports.
- * @param written - Accumulator for written paths.
+ * @param plan - Deployment plan (for tracking what existed before).
+ * @param written - Accumulator for written paths (reported outcome).
+ * @param created - Accumulator for created paths (cleanup target).
  */
 async function writeFileKind(
   req: DeployRequest,
   dest: { from: string; to: string; kind: string },
   ports: DeployPorts,
-  written: string[]
+  plan: ReturnType<typeof planDeploy> extends Promise<infer T> ? T : never,
+  written: string[],
+  created: string[]
 ): Promise<void> {
   const bytes = req.files!.get(dest.from);
   if (bytes === undefined) {
     return;
   }
 
+  // Determine if this file is being created (vs overwritten).
+  // A file is created if it's not in satisfied, collisions, drifted, or missing.
+  const existedBefore =
+    plan.satisfied.includes(dest.to)
+    || plan.collisions.some((c) => c.to === dest.to)
+    || plan.drifted.includes(dest.to)
+    || plan.missing.includes(dest.to);
+
   // Emit place event before write.
-  ports.onEvent?.({ stage: 'place', path: dest.to } as never);
+  ports.onEvent?.({ kind: 'place', path: dest.to });
 
   await ports.fs.mkdir(path.dirname(dest.to), { recursive: true });
 
@@ -309,12 +351,33 @@ async function writeFileKind(
     await ports.fs.writeFileBytes(dest.to, bytes);
     await verifyWrittenBytes(ports.fs, dest.to, bytes);
   } else {
-    // Text payload: write through writeFile (no transformer in slice 1).
-    await ports.fs.writeFile(dest.to, text);
-    await verifyWrittenBytes(ports.fs, dest.to, new TextEncoder().encode(text));
+    // Text payload: apply transformer with fail-safe, then write.
+    let content = text;
+    if (ports.transformer !== undefined) {
+      try {
+        const target: Target = {
+          name: req.targetName,
+          type: req.placement.targetType,
+          scope: req.placement.scope
+        };
+        const result = ports.transformer.transform({
+          target,
+          filePath: dest.from,
+          content
+        });
+        content = result.content;
+      } catch {
+        // Transformation failure: write the untransformed text (fail-safe).
+      }
+    }
+    await ports.fs.writeFile(dest.to, content);
+    await verifyWrittenBytes(ports.fs, dest.to, new TextEncoder().encode(content));
   }
 
   written.push(dest.to);
+  if (!existedBefore) {
+    created.push(dest.to);
+  }
 }
 
 /**
@@ -329,28 +392,36 @@ async function writeFileKind(
  * @param dest.to
  * @param dest.kind
  * @param ports - Deployment ports.
- * @param written - Accumulator for written paths.
+ * @param plan - Deployment plan (for tracking what existed before).
+ * @param written - Accumulator for written paths (reported outcome).
+ * @param created - Accumulator for created paths (cleanup target).
  */
 async function writeDirectoryKind(
   req: DeployRequest,
   dest: { from: string; to: string; kind: string },
   ports: DeployPorts,
-  written: string[]
+  plan: ReturnType<typeof planDeploy> extends Promise<infer T> ? T : never,
+  written: string[],
+  created: string[]
 ): Promise<void> {
   // The destination 'to' is the directory itself.
   // The source 'from' is the primary file (e.g., skills/my-skill/SKILL.md).
   // We need to write all files under the source prefix (skills/my-skill/).
-  const sourcePrefix = path.posix.dirname(dest.from) + '/';
+  const sourcePrefix = posix.dirname(dest.from) + '/';
 
   for (const [bundlePath, bytes] of req.files!) {
     if (!bundlePath.startsWith(sourcePrefix)) {
       continue;
     }
     const tail = bundlePath.slice(sourcePrefix.length);
-    const outPath = path.join(dest.to, tail);
+    const outPath = posix.join(dest.to, tail);
+
+    // For directory kinds, determine per-file whether it existed before.
+    // Check if this specific file path existed (not just the directory).
+    const existedBefore = await ports.fs.exists(outPath);
 
     // Emit place event before write.
-    ports.onEvent?.({ stage: 'place', path: outPath } as never);
+    ports.onEvent?.({ kind: 'place', path: outPath });
 
     await ports.fs.mkdir(path.dirname(outPath), { recursive: true });
 
@@ -359,6 +430,9 @@ async function writeDirectoryKind(
     await verifyWrittenBytes(ports.fs, outPath, bytes);
 
     written.push(outPath);
+    if (!existedBefore) {
+      created.push(outPath);
+    }
   }
 }
 

@@ -34,15 +34,15 @@ import type {
 
 /**
  * Refuse a request whose source descriptor could not be written to the desired
- * lockfile. `url` is required by the type, but a JavaScript caller (or an empty
- * string) can still reach this point, and recording a bundle whose `sourceId`
+ * lockfile. `url` is required by the type, but a JavaScript caller (or an empty or
+ * whitespace-only string) can still reach this point, and recording a bundle whose `sourceId`
  * has no descriptor leaves intent that cannot be replayed (design §5.2). Called
  * before any effect, including migration.
  * @param source - The request's source.
- * @throws {RegistryError} BUNDLE.INVALID_DEPLOY_REQUEST when `url` is absent or empty.
+ * @throws {RegistryError} BUNDLE.INVALID_DEPLOY_REQUEST when `url` is absent, empty or whitespace-only.
  */
 export function assertReplayableSource(source: DeployRequest['source']): void {
-  if (typeof source.url !== 'string' || source.url.length === 0) {
+  if (typeof source.url !== 'string' || source.url.trim().length === 0) {
     throw new RegistryError({
       code: 'BUNDLE.INVALID_DEPLOY_REQUEST',
       message: `Deploy request source "${source.sourceId}" has no url, so its descriptor cannot be recorded in the lockfile`

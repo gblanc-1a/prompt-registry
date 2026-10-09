@@ -405,34 +405,40 @@ describe('deployBundle', () => {
       });
     });
 
-    it('refuses a source with no url before any write, including the migration', async () => {
+    const unusableUrls: [string, string][] = [['empty', ''], ['spaces', '   '], ['tab and newline', '\t\n']];
+    const legacyV2 = JSON.stringify({
+      $schema: 'x', version: '2.0.0', generatedAt: 'x', generatedBy: 'x',
+      bundles: {
+        other: {
+          version: '1.0.0', sourceId: 'github-abc123', sourceType: 'github',
+          installedAt: 'x', files: [{ path: 'prompts/other.prompt.md', checksum: 'h' }]
+        }
+      },
+      sources: { 'github-abc123': { type: 'github', url: 'https://github.com/owner/repo' } }
+    });
+
+    it.each(unusableUrls)('deployBundle refuses a %s url before any write, including the migration', async (_label, url) => {
       const ports = recordingPorts();
-      const legacy = JSON.stringify({
-        $schema: 'x', version: '2.0.0', generatedAt: 'x', generatedBy: 'x',
-        bundles: {
-          other: {
-            version: '1.0.0', sourceId: 'github-abc123', sourceType: 'github',
-            installedAt: 'x', files: [{ path: 'prompts/other.prompt.md', checksum: 'h' }]
-          }
-        },
-        sources: { 'github-abc123': { type: 'github', url: 'https://github.com/owner/repo' } }
-      });
-      ports.files.set(ports.lockfileStore.desiredFile, legacy);
+      ports.files.set(ports.lockfileStore.desiredFile, legacyV2);
       const req = request();
 
-      await expect(deployBundle({ ...req, source: { ...req.source, url: '' } }, ports))
+      await expect(deployBundle({ ...req, source: { ...req.source, url } }, ports))
         .rejects.toMatchObject({ code: 'BUNDLE.INVALID_DEPLOY_REQUEST' });
 
       expect(ports.calls.filter((c) => !c.startsWith('event:'))).toEqual([]);
-      expect([...ports.files.entries()]).toEqual([[ports.lockfileStore.desiredFile, legacy]]);
+      expect([...ports.files.entries()]).toEqual([[ports.lockfileStore.desiredFile, legacyV2]]);
     });
 
-    it('planDeploy refuses a source with no url too, so a dry run reports it', async () => {
+    it.each(unusableUrls)('planDeploy refuses a %s url too, so a dry run reports it, and writes nothing', async (_label, url) => {
       const ports = recordingPorts();
+      ports.files.set(ports.lockfileStore.desiredFile, legacyV2);
       const req = request();
 
-      await expect(planDeploy({ ...req, source: { ...req.source, url: '' } }, ports))
+      await expect(planDeploy({ ...req, source: { ...req.source, url } }, ports))
         .rejects.toMatchObject({ code: 'BUNDLE.INVALID_DEPLOY_REQUEST' });
+
+      expect(ports.calls.filter((c) => !c.startsWith('event:'))).toEqual([]);
+      expect([...ports.files.entries()]).toEqual([[ports.lockfileStore.desiredFile, legacyV2]]);
     });
 
     it('preserves descriptor fields it does not own', async () => {

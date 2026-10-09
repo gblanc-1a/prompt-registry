@@ -1,3 +1,7 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import Ajv from 'ajv';
+import addFormats from 'ajv-formats';
 import {
   describe,
   expect,
@@ -94,6 +98,8 @@ describe('empty pair', () => {
     expect(local.generatedBy).toBe('cli');
     expect(local.targets).toEqual({});
     expect('bundles' in local).toBe(false);
+    expect('sources' in local).toBe(false);
+    expect('$schema' in local).toBe(false);
   });
 });
 
@@ -178,7 +184,7 @@ describe('writeLockfileV3Pair', () => {
     await expect(writeLockfileV3Pair(userPaths, {
       desired: { ...emptyDesiredLockfileV3(), version: '2.0.0' },
       local: emptyLocalLockfileV3('cli', NOW)
-    }, fs)).rejects.toThrow();
+    }, fs)).rejects.toThrow(LockfileGenerationMismatchError);
     expect(fs.files.size).toBe(0);
   });
 
@@ -267,5 +273,55 @@ describe('pure record helpers', () => {
 
     expect(Object.keys(removeMaterialization(local, 'my-vscode', 'src/a').targets['my-vscode'].bundles))
       .toEqual(['src/b']);
+  });
+});
+
+describe('schema conformance', () => {
+  const schemaPath = path.join(__dirname, '../../../core/src/public/schemas/lockfile-v3.schema.json');
+  const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+  const ajv = new Ajv({ allErrors: true, strict: false });
+  addFormats(ajv);
+  const validate = ajv.compile(schema);
+
+  it('empty desired lockfile conforms to schema', () => {
+    const desired = emptyDesiredLockfileV3();
+
+    expect(validate(desired)).toBe(true);
+  });
+
+  it('empty local lockfile conforms to schema', () => {
+    const local = emptyLocalLockfileV3('cli', NOW);
+
+    expect(validate(local)).toBe(true);
+  });
+
+  it('fully populated pair conforms to schema', () => {
+    const desired = upsertDesiredBundle(
+      {
+        ...emptyDesiredLockfileV3(),
+        sources: { src: { type: 'github', url: 'https://github.com/example/repo' } },
+        hubs: { hub1: { name: 'Test Hub', url: 'https://example.com/hub' } },
+        profiles: { profile1: { name: 'Test Profile', bundleIds: ['src/web-dev'] } }
+      },
+      'src/web-dev',
+      { version: '1.0.0', sourceId: 'src', archiveSha: 'sha256:deadbeef' }
+    );
+    const local = upsertMaterialization(
+      emptyLocalLockfileV3('cli', NOW),
+      { ...binding, commitMode: 'commit', scope: 'repository' },
+      'src/web-dev',
+      {
+        ...record(),
+        state: 'unmanaged',
+        unmanagedReason: 'Test',
+        linked: true,
+        mcpConfigPath: 'mcp.json',
+        mcpServers: { server1: {} },
+        complete: true
+      }
+    );
+
+    expect(validate(desired)).toBe(true);
+    expect(validate(local)).toBe(true);
   });
 });

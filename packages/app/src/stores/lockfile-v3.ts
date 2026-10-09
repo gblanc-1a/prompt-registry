@@ -17,7 +17,10 @@
  * Write order is local-then-desired and the pair is not one filesystem
  * transaction (§8.4). Every intermediate state is legal and the reader
  * reports which halves it found, so a caller can resume rather than
- * assume.
+ * assume. The existence flags distinguish "never written" from "both
+ * written", but not "written by an earlier run" — only the local file's
+ * `generatedAt` provides recency, and the desired file has no
+ * counterpart by design.
  * @module stores/lockfile-v3
  */
 import {
@@ -85,8 +88,8 @@ export interface LockfileV3BundleRecord {
   files: LockfileV3FileEntry[];
   /** Path to the MCP config file, if this bundle installed one. */
   mcpConfigPath?: string;
-  /** MCP server names contributed by this bundle. */
-  mcpServers?: string[];
+  /** MCP server configurations contributed by this bundle. */
+  mcpServers?: Record<string, unknown>;
   /** True when all expected files are present and unmodified. */
   complete?: true;
 }
@@ -162,7 +165,7 @@ export type LockfileFsWithRename = LockfileFs & {
 };
 
 /** Target binding for upsert/remove operations. */
-interface TargetBinding {
+export interface TargetBinding {
   targetName: string;
   targetType: TargetType;
   scope: InstallationScope;
@@ -175,6 +178,7 @@ export class LockfileGenerationMismatchError extends Error {
   public readonly code = 'LOCKFILE.GENERATION_MISMATCH';
 
   /**
+   * Construct a generation mismatch error.
    * @param file - Absolute lockfile path.
    * @param found - Major version found on disk.
    * @param expected - Major version the caller required.
@@ -191,6 +195,23 @@ export class LockfileGenerationMismatchError extends Error {
     this.name = 'LockfileGenerationMismatchError';
   }
 }
+
+/**
+ * Assert that a version is v3, throwing the appropriate error if not.
+ * @param file - Absolute lockfile path.
+ * @param version - Version to validate.
+ * @throws {UnsupportedLockfileVersionError} On unreadable version.
+ * @throws {LockfileGenerationMismatchError} On wrong major version.
+ */
+const assertV3Version = (file: string, version: unknown): void => {
+  const verdict = classifyLockfileVersion(version);
+  if (verdict.kind !== 'readable') {
+    throw new UnsupportedLockfileVersionError(file, verdict);
+  }
+  if (verdict.major !== 3) {
+    throw new LockfileGenerationMismatchError(file, verdict.major, 3);
+  }
+};
 
 /**
  * Create an empty desired lockfile.
@@ -224,15 +245,21 @@ const readV3File = async <T>(
   if (!(await fs.exists(file))) {
     return { value: fallback(), existed: false };
   }
-  const parsed = JSON.parse(await fs.readFile(file)) as { version?: unknown };
-  const verdict = classifyLockfileVersion(parsed.version);
-  if (verdict.kind !== 'readable') {
-    throw new UnsupportedLockfileVersionError(file, verdict);
+  const parsed = JSON.parse(await fs.readFile(file)) as { version?: unknown; bundles?: unknown; sources?: unknown; targets?: unknown };
+  assertV3Version(file, parsed.version);
+  // Provide shape defaults for hand-edited files.
+  // Apply defaults only for fields that should exist on this file type.
+  const value = { ...parsed } as T;
+  if ('bundles' in (fallback() as object)) {
+    (value as { bundles?: unknown }).bundles = parsed.bundles ?? {};
   }
-  if (verdict.major !== 3) {
-    throw new LockfileGenerationMismatchError(file, verdict.major, 3);
+  if ('sources' in (fallback() as object)) {
+    (value as { sources?: unknown }).sources = parsed.sources ?? {};
   }
-  return { value: parsed as T, existed: true };
+  if ('targets' in (fallback() as object)) {
+    (value as { targets?: unknown }).targets = parsed.targets ?? {};
+  }
+  return { value, existed: true };
 };
 
 /**
@@ -240,6 +267,8 @@ const readV3File = async <T>(
  * @param paths - Paths to the pair.
  * @param fs - Filesystem adapter.
  * @param defaults - Default values for empty files.
+ * @param defaults.generatedBy
+ * @param defaults.now
  * @returns The pair and existence flags.
  * @throws {UnsupportedLockfileVersionError} On unreadable version.
  * @throws {LockfileGenerationMismatchError} On wrong major version.
@@ -267,10 +296,7 @@ const writeV3File = async (
   payload: { version: string },
   fs: LockfileFsWithRename
 ): Promise<void> => {
-  const verdict = classifyLockfileVersion(payload.version);
-  if (verdict.kind !== 'readable' || verdict.major !== 3) {
-    throw new UnsupportedLockfileVersionError(file, verdict);
-  }
+  assertV3Version(file, payload.version);
   if (fs.mkdir !== undefined) {
     await fs.mkdir(path.dirname(file), { recursive: true });
   }
@@ -281,8 +307,8 @@ const writeV3File = async (
   }
   // Unique per write: two processes must not race on one fixed temp path.
   const temp = `${file}.${randomUUID()}.tmp`;
-  await fs.writeFile(temp, contents);
   try {
+    await fs.writeFile(temp, contents);
     await fs.rename(temp, file);
   } catch (cause) {
     if (fs.remove !== undefined) {
@@ -310,15 +336,8 @@ export const writeLockfileV3Pair = async (
 ): Promise<void> => {
   // Validate both halves before writing either, so a bad desired payload
   // cannot leave a written local file behind.
-  for (const [file, payload] of [
-    [paths.localFile, pair.local],
-    [paths.desiredFile, pair.desired]
-  ] as const) {
-    const verdict = classifyLockfileVersion(payload.version);
-    if (verdict.kind !== 'readable' || verdict.major !== 3) {
-      throw new UnsupportedLockfileVersionError(file, verdict);
-    }
-  }
+  assertV3Version(paths.localFile, pair.local.version);
+  assertV3Version(paths.desiredFile, pair.desired.version);
   // Local first (§8.4 step 1), then desired (step 2).
   await writeV3File(paths.localFile, pair.local, fs);
   await writeV3File(paths.desiredFile, pair.desired, fs);
@@ -378,7 +397,7 @@ export const upsertMaterialization = (
       targetType: binding.targetType,
       scope: binding.scope,
       baseDir: binding.baseDir,
-      ...(binding.commitMode !== undefined ? { commitMode: binding.commitMode } : {}),
+      ...(binding.commitMode === undefined ? {} : { commitMode: binding.commitMode }),
       bundles: { [bundleId]: record }
     };
   return {

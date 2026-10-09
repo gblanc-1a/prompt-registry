@@ -142,3 +142,20 @@ export interface DeployPorts {
 export type DeployEvent =
   | { kind: 'place'; path: string }
   | { kind: 'state-write' };
+
+/** Undeployment request. */
+export interface UndeployRequest {
+  /** Bundle key (sourceId/bundleId). */
+  key: string;
+  /** Bundle identity. */
+  bundle: {
+    /** Bundle ID. */
+    bundleId: string;
+    /** Semantic version. */
+    version: string;
+  };
+  /** Installation scope. */
+  scope: InstallationScope;
+  /** Target name. */
+  targetName: string;
+}

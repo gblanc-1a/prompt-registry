@@ -1,4 +1,7 @@
 import {
+  createHash,
+} from 'node:crypto';
+import {
   describe,
   expect,
   it,
@@ -179,16 +182,36 @@ prompts:
   it('reports drift when a tracked file no longer matches its installedChecksum', async () => {
     // Drift is a materialization fact, so it is read from the local file
     // only — the planner never needs the desired half to answer this.
-    // Use the hash of the source bytes so only the correct comparison passes.
-    const sourceHash = '4dd400c307f4ce1d359cd24c3af26d5ac348a7c3fe0f3fd0beabdf4d582ce67a';
     const files = new Map([
       ['/home/u/.copilot/prompts/hello.prompt.md', '# edited by the user\n'],
-      [LOCAL_FILE, seedLocal([{ path: 'prompts/hello.prompt.md', installedChecksum: sourceHash }])]
+      [LOCAL_FILE, seedLocal([{ path: 'prompts/hello.prompt.md', installedChecksum: 'wrong-hash' }])]
     ]);
 
     const plan = await planDeploy(request(), readOnlyPorts(files));
 
     expect(plan.drifted).toEqual(['/home/u/.copilot/prompts/hello.prompt.md']);
+    expect(plan.collisions).toEqual([]);
+  });
+
+  it('a transformed file matching its installedChecksum is not drift', async () => {
+    // Design §5.8: installedChecksum exists to handle transformed files that
+    // differ from source bytes but match what was actually written. Drift is
+    // computed against installedChecksum, not source bytes.
+    //
+    // This test discriminates the correct implementation from one that compares
+    // on-disk bytes to source: on-disk content differs from source but matches
+    // installedChecksum, so correct implementation reports no drift while wrong
+    // implementation would report drift.
+    const transformedContent = '# Hello Prompt (transformed)\n';
+    const transformedHash = createHash('sha256').update(transformedContent).digest('hex');
+    const files = new Map([
+      ['/home/u/.copilot/prompts/hello.prompt.md', transformedContent],
+      [LOCAL_FILE, seedLocal([{ path: 'prompts/hello.prompt.md', installedChecksum: transformedHash }])]
+    ]);
+
+    const plan = await planDeploy(request(), readOnlyPorts(files));
+
+    expect(plan.drifted).toEqual([]);
     expect(plan.collisions).toEqual([]);
   });
 

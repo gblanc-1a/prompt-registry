@@ -13,6 +13,7 @@ import type {
   DirEntry,
   FileStat,
   FileSystem,
+  LinkStat,
 } from '@ai-primitives-hub/core';
 
 interface InMemoryEntry {
@@ -139,6 +140,21 @@ export class InMemoryFileSystem implements FileSystem {
       return { isDirectory: true, isFile: false, size: 0, mtimeMs: 0 };
     }
     throw new Error(`ENOENT: no such file or directory: ${normalizedPath}`);
+  }
+
+  public async lstat(_path: string): Promise<LinkStat> {
+    throw new Error('lstat not stubbed');
+  }
+
+  public async rename(from: string, to: string): Promise<void> {
+    const normalizedFrom = this.normalizePath(from);
+    const normalizedTo = this.normalizePath(to);
+    const entry = this.files.get(normalizedFrom);
+    if (!entry) {
+      throw new Error(`ENOENT: no such file: ${normalizedFrom}`);
+    }
+    this.files.set(normalizedTo, entry);
+    this.files.delete(normalizedFrom);
   }
 
   public async remove(path: string, opts?: { recursive?: boolean }): Promise<void> {

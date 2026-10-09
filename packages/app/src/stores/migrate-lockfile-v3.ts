@@ -180,10 +180,8 @@ export const findLockfileSource = async (
 
 /**
  * Read the lockfile pair as it stands, for a caller that does not write it back through a
- * migration. A v2 store is previewed in memory (see {@link planLockfileMigration}). When no
- * legacy or desired file exists, the local half is still read on its own: a local-only v3
- * pair is legal (`readLockfileV3Pair` defaults the missing half), and migration has
- * nothing to convert. Never writes.
+ * migration. A v2 store is previewed in memory (see {@link planLockfileMigration}); v3 halves
+ * are read as they stand, so a local-only or desired-only pair is legal. Never writes.
  * @param sources - Paths to the lockfiles.
  * @param fs - Filesystem adapter (read operations only are used).
  * @param options - Generation metadata.
@@ -191,21 +189,13 @@ export const findLockfileSource = async (
  * @param options.now - ISO timestamp.
  * @returns The pair, and the migration preview report (null unless a v2 file was converted).
  * @throws {UnsupportedLockfileVersionError} On unreadable version.
- * @throws {LockfileGenerationMismatchError} On a local file of another schema generation.
+ * @throws {LockfileGenerationMismatchError} On a half of another schema generation.
  */
 export const readLockfilePair = async (
   sources: MigrationSources,
   fs: LockfileFsWithRename,
   options: { generatedBy: string; now: string }
 ): Promise<{ pair: LockfileV3Pair; report: MigrationReport | null }> => {
-  if (await findLockfileSource(sources, fs) === null) {
-    const halves = await readLockfileV3Pair(
-      { desiredFile: sources.desiredFile, localFile: sources.localFile },
-      fs,
-      options
-    );
-    return { pair: halves.pair, report: null };
-  }
   const plan = await planLockfileMigration(sources, fs, options);
   return { pair: plan.pair, report: plan.report };
 };
@@ -232,16 +222,17 @@ export const planLockfileMigration = async (
   // Step 1: Read the raw v2 source — legacyFiles[0] if any exists, else desiredFile.
   const v2Source = await findLockfileSource(sources, fs);
 
-  // Absent → return an empty pair, report: null, no write.
+  // No legacy or desired file → no v2 state to convert. Read the halves as they stand: an
+  // interrupted first deploy leaves a local-only v3 pair (local is written first), and
+  // fabricating an empty pair here would let the next write overwrite it. A truly empty
+  // store reads as empty halves, report null, no write.
   if (!v2Source) {
-    return {
-      pair: {
-        desired: emptyDesiredLockfileV3(),
-        local: emptyLocalLockfileV3(options.generatedBy, options.now)
-      },
-      report: null,
-      pendingWrite: false
-    };
+    const { pair } = await readLockfileV3Pair(
+      { desiredFile: sources.desiredFile, localFile: sources.localFile },
+      fs,
+      { generatedBy: options.generatedBy, now: options.now }
+    );
+    return { pair, report: null, pendingWrite: false };
   }
 
   // Read and classify the version.

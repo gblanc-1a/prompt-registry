@@ -10,13 +10,11 @@
  */
 import * as posix from 'node:path/posix';
 import {
-  readLockfileV3Pair,
   removeDesiredBundle,
   removeMaterialization,
   writeLockfileV3Pair,
 } from '../stores/lockfile-v3';
 import {
-  findLockfileSource,
   migrateLockfileIfNeeded,
 } from '../stores/migrate-lockfile-v3';
 import type {
@@ -115,14 +113,11 @@ export async function undeployBundle(
   //    No triggeredByKey: no bundle is being deployed, so nothing gets fresh paths.
   const generatedBy = ports.generatedBy ?? 'ai-primitives-hub';
   const now = ports.now ?? new Date().toISOString();
-  // With no legacy or desired file there is nothing to migrate, but a local-only v3 pair
-  // is legal and must still be read (migration would hand back an empty pair for it).
-  const { pair, report: migration } = await findLockfileSource(ports.lockfileStore, ports.fs) === null
-    ? {
-      pair: (await readLockfileV3Pair(ports.lockfileStore, ports.fs, { generatedBy, now })).pair,
-      report: null
-    }
-    : await migrateLockfileIfNeeded(ports.lockfileStore, ports.fs, { generatedBy, now });
+  const { pair, report: migration } = await migrateLockfileIfNeeded(
+    ports.lockfileStore,
+    ports.fs,
+    { generatedBy, now }
+  );
 
   // 2. Look up the target and bundle record (own properties only: a target or key named
   //    like an inherited property must not resolve to something on the prototype).

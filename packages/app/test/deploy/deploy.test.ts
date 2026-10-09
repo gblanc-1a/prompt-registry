@@ -461,3 +461,35 @@ describe('deployBundle', () => {
     });
   });
 });
+
+describe('deployBundle after an interrupted first deploy', () => {
+  const writeCount = (calls: string[]): number =>
+    calls.filter((c) => c.startsWith('writeFile:') || c.startsWith('writeFileBytes:')).length;
+
+  it('keeps the first bundle\'s materialization record when the next deploy starts from the local-only pair', async () => {
+    // A clean deploy's last write is the desired file (§8.4: local first, then desired).
+    const probe = recordingPorts();
+    await deployBundle(request(), probe);
+    const ports = recordingPorts({ failWriteAt: writeCount(probe.calls) });
+
+    await expect(deployBundle(request(), ports)).rejects.toThrow(/Simulated write failure/);
+
+    // The injection fired on the desired write: local already holds A's record, desired was never written.
+    expect(ports.files.has(ports.lockfileStore.desiredFile)).toBe(false);
+    const local = JSON.parse(ports.files.get(ports.lockfileStore.localFile) as string) as {
+      targets: Record<string, { bundles: Record<string, unknown> }>;
+    };
+    expect(Object.keys(local.targets['my-vscode'].bundles)).toEqual(['github-abc123/web-dev']);
+
+    ports.failWriteAt = undefined;
+    await deployBundle(skillRequest(), ports);
+
+    const { local: after } = readPair(ports);
+    expect(Object.keys(after.targets['my-vscode'].bundles).toSorted()).toEqual([
+      'github-abc123/skills',
+      'github-abc123/web-dev'
+    ]);
+    expect(after.targets['my-vscode'].bundles['github-abc123/web-dev'].files.map((f) => f.path))
+      .toEqual(['prompts/hello.prompt.md']);
+  });
+});

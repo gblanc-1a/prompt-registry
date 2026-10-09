@@ -178,6 +178,39 @@ describe('convertV2ToPair', () => {
 });
 
 describe('migrateLockfileIfNeeded', () => {
+  it('returns a local-only v3 pair (no desired, no legacy) as it stands, with a null report and no write', async () => {
+    const fs = fakeFs();
+    const local = {
+      version: '3.0.0',
+      generatedAt: '2026-10-09T12:00:00.000Z',
+      generatedBy: 'ai-primitives-hub-cli',
+      migration: { lockfileV3: 'complete' },
+      targets: {
+        'my-vscode': {
+          baseDir: '/home/u/.copilot',
+          bundles: {
+            'github-abc123/web-dev': {
+              version: '1.0.0',
+              sourceId: 'github-abc123',
+              installedAt: '2026-10-09T12:00:00.000Z',
+              files: [{ path: 'prompts/hello.prompt.md' }]
+            }
+          }
+        }
+      }
+    };
+    fs.files.set(userSources.localFile, JSON.stringify(local));
+    const before = [...fs.files.entries()];
+
+    const { pair, report } = await migrateLockfileIfNeeded(userSources, fs, OPTS);
+
+    expect(report).toBeNull();
+    expect(pair.local).toEqual(local);
+    expect(pair.desired.bundles).toEqual({});
+    expect([...fs.files.entries()]).toEqual(before);
+    expect(fs.order).toEqual([]);
+  });
+
   it('returns an empty pair when nothing exists, writing nothing', async () => {
     const fs = fakeFs();
 

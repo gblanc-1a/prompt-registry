@@ -16,9 +16,6 @@ import {
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {
-  NodeFileSystem,
-} from '@ai-primitives-hub/infra';
-import {
   afterEach,
   beforeEach,
   describe,
@@ -34,6 +31,9 @@ import {
 import {
   runCommand,
 } from '../../src/framework';
+import {
+  BoundedFs,
+} from '../fixtures/bounded-fs';
 import {
   writeReleaseArchive,
 } from '../fixtures/release-archives';
@@ -70,8 +70,9 @@ const listTree = async (root: string): Promise<string[]> => {
     return [];
   }
   const entries = await readdir(root, { recursive: true, withFileTypes: true });
+  // Symlinks are leaves, never followed, so an extra link fails equality.
   return entries
-    .filter((entry) => entry.isFile())
+    .filter((entry) => entry.isFile() || entry.isSymbolicLink())
     .map((entry) => path.relative(root, path.join(entry.parentPath, entry.name)).split(path.sep).join(path.posix.sep))
     .toSorted();
 };
@@ -95,7 +96,8 @@ describe('golden placement matrix', () => {
       commandClasses: [TargetAddCommand, InstallCommand],
       context: {
         cwd: home,
-        fs: new NodeFileSystem(),
+        // BoundedFs: config discovery walks upward without a boundary, so hide everything outside the temp directory.
+        fs: new BoundedFs(home),
         env: {
           HOME: home,
           USERPROFILE: home,

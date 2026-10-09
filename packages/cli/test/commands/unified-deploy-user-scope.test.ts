@@ -10,6 +10,9 @@
  * `<workspace>/xdg-config/ai-primitives-hub`.
  */
 import {
+  createHash,
+} from 'node:crypto';
+import {
   lstat,
   mkdir,
   mkdtemp,
@@ -49,6 +52,9 @@ import {
 import {
   runCommand,
 } from '../../src/framework';
+import {
+  BoundedFs,
+} from '../fixtures/bounded-fs';
 import {
   RecordingFs,
 } from '../fixtures/recording-fs';
@@ -113,7 +119,8 @@ const exists = async (file: string): Promise<boolean> => {
 };
 
 /**
- * Recursive, sorted, baseDir-relative POSIX file paths. Callers assert equality, not containment.
+ * Recursive, sorted, baseDir-relative POSIX paths of every leaf: regular files AND symlinks
+ * (listed as leaves, never followed). Callers assert equality, not containment.
  * @param root
  */
 const listTree = async (root: string): Promise<string[]> => {
@@ -122,10 +129,24 @@ const listTree = async (root: string): Promise<string[]> => {
   }
   const entries = await readdir(root, { recursive: true, withFileTypes: true });
   return entries
-    .filter((entry) => entry.isFile())
+    .filter((entry) => entry.isFile() || entry.isSymbolicLink())
     .map((entry) => path.relative(root, path.join(entry.parentPath, entry.name)).split(path.sep).join(path.posix.sep))
     .toSorted();
 };
+
+/**
+ * Installed path → bundle-relative source path, for the slice 1 fixture. The two differ for the
+ * agent (id `reviewer`, file `code-reviewer`) and the instruction (typed `instructions` under `prompts/`).
+ */
+const INSTALLED_FROM_BUNDLE: Record<string, string> = {
+  'agents/reviewer.agent.md': 'agents/code-reviewer.agent.md',
+  'instructions/ts-standards.instructions.md': 'prompts/typescript-standards.instructions.md',
+  'prompts/hello.prompt.md': 'prompts/hello.prompt.md'
+};
+
+const sha256OfFixture = (bundlePath: string): string => createHash('sha256')
+  .update(createSlice1Bundle().get(bundlePath) ?? new Uint8Array())
+  .digest('hex');
 
 describe('unified deploy, CLI user scope, vscode', () => {
   let workspace: string;
@@ -138,7 +159,8 @@ describe('unified deploy, CLI user scope, vscode', () => {
   const runWith = (
     flag: 'on' | 'off',
     argv: string[],
-    fs: NodeFileSystem = new NodeFileSystem()
+    // BoundedFs: config and lockfile discovery walk upward without a boundary, so hide everything outside the workspace.
+    fs: NodeFileSystem = new BoundedFs(workspace)
   ): ReturnType<typeof runCommand> => runCommand(
     argv.map((arg) => (arg === '<bundleDir>' ? bundleDir : arg)),
     {
@@ -217,31 +239,52 @@ describe('unified deploy, CLI user scope, vscode', () => {
     }
   });
 
-  it('keeps README.md out of the target', async () => {
+  it('keeps README.md out of the target, because it is not a manifest placement item', async () => {
     await runFlagOn(INSTALL_ARGV);
 
     expect(await exists(path.join(copilotDir, 'README.md'))).toBe(false);
     expect(await exists(path.join(workspace, 'README.md'))).toBe(false);
-    expect(await listTree(copilotDir)).not.toContain('README.md');
+    expect(await listTree(copilotDir)).toEqual(EXPECTED_TREE);
   });
 
   it('records one desired entry and one materialization record', async () => {
     await runFlagOn(INSTALL_ARGV);
 
-    const desired = await readDesired();
+    const sourceId = `local-${path.basename(bundleDir)}`;
+    const key = `${sourceId}/web-dev`;
+    // The desired half is shareable: exactly these fields, so no `generatedAt`, `generatedBy`,
+    // `targets`, `installedAt`, `baseDir`, `files` or checksums can appear at any depth.
+    expect(await readDesired()).toEqual({
+      $schema: expect.stringContaining('lockfile-v3.schema.json'),
+      version: '3.0.0',
+      bundles: { [key]: { version: '1.0.0', sourceId } },
+      sources: { [sourceId]: { type: 'local', url: bundleDir } }
+    });
+    // The local half is machine state: the same key, with every file's two checksums computed from the fixture.
+    const expectedFiles = EXPECTED_TREE.map((installed) => {
+      const checksum = sha256OfFixture(INSTALLED_FROM_BUNDLE[installed]);
+      return { path: installed, checksum, installedChecksum: checksum };
+    });
     const local = await readLocal();
-    expect(desired.version).toBe('3.0.0');
+    expect(Object.keys(local).toSorted()).toEqual(['generatedAt', 'generatedBy', 'targets', 'version']);
     expect(local.version).toBe('3.0.0');
-    const keys = Object.keys(desired.bundles);
-    expect(keys).toHaveLength(1);
-    // The desired half is shareable: no local identifiers, no timestamps.
-    expect('generatedAt' in desired).toBe(false);
-    expect('targets' in desired).toBe(false);
-    expect(Object.keys(local.targets)).toEqual(['my-vscode']);
-    expect(Object.keys(local.targets['my-vscode'].bundles)).toEqual(keys);
-    const record = local.targets['my-vscode'].bundles[keys[0]];
-    expect(record.files.map((file) => file.path).toSorted()).toEqual(EXPECTED_TREE);
-    expect(record.files.every((file) => file.installedChecksum !== undefined)).toBe(true);
+    expect(local.targets).toEqual({
+      'my-vscode': {
+        targetType: 'vscode',
+        scope: 'user',
+        baseDir: copilotDir,
+        bundles: {
+          [key]: {
+            version: '1.0.0',
+            sourceId,
+            installedAt: expect.any(String),
+            files: expect.any(Array)
+          }
+        }
+      }
+    });
+    const recordedFiles = local.targets['my-vscode'].bundles[key].files;
+    expect(recordedFiles.toSorted((a, b) => a.path.localeCompare(b.path))).toEqual(expectedFiles);
   });
 
   it('uninstall removes exactly those paths and nothing else', async () => {
@@ -309,22 +352,56 @@ describe('unified deploy, CLI user scope, vscode', () => {
     expect(withoutTimestamps(secondLocal)).toEqual(withoutTimestamps(firstLocal));
   });
 
-  it('skips a hand-written destination and summarizes it; --force overwrites', async () => {
-    const collision = path.join(copilotDir, 'prompts', 'hello.prompt.md');
-    await mkdir(path.dirname(collision), { recursive: true });
-    await writeFile(collision, '# hand-written\n', 'utf8');
+  describe('with a hand-written file already at one destination', () => {
+    const HAND_WRITTEN = '# hand-written\n';
+    const COLLIDED = 'prompts/hello.prompt.md';
+    const OTHERS = ['agents/reviewer.agent.md', 'instructions/ts-standards.instructions.md'];
+    let collision: string;
 
-    const skipped = await runFlagOn([...INSTALL_ARGV, '-o', 'json']);
+    const recordedPaths = async (): Promise<string[]> => {
+      const { targets } = await readLocal();
+      return Object.values(targets['my-vscode'].bundles).flatMap((record) => record.files.map((file) => file.path)).toSorted();
+    };
 
-    expect(await readFile(collision, 'utf8')).toBe('# hand-written\n');
-    const { collisions } = parseJson<InstallData>(skipped.stdout).data;
-    expect(collisions).toEqual([{ to: collision, reason: 'untracked-existing' }]);
-    expect(await listTree(copilotDir)).toEqual(EXPECTED_TREE);
+    beforeEach(async () => {
+      collision = path.join(copilotDir, ...COLLIDED.split(path.posix.sep));
+      await mkdir(path.dirname(collision), { recursive: true });
+      await writeFile(collision, HAND_WRITTEN, 'utf8');
+    });
 
-    const forced = await runFlagOn([...INSTALL_ARGV, '--force']);
+    it('skips and summarizes it, installing and recording only the other files', async () => {
+      const skipped = await runFlagOn([...INSTALL_ARGV, '-o', 'json']);
 
-    expect(forced.exitCode).toBe(0);
-    expect(await readFile(collision, 'utf8')).toBe('# Hello\n');
+      // A partial success: exit 0 with a `warning` status and the collision summarized.
+      expect(skipped.exitCode).toBe(0);
+      expect(parseJson<InstallData>(skipped.stdout).status).toBe('warning');
+      expect(parseJson<InstallData>(skipped.stdout).data.collisions).toEqual([{ to: collision, reason: 'untracked-existing' }]);
+      expect(await readFile(collision, 'utf8')).toBe(HAND_WRITTEN);
+      expect(await listTree(copilotDir)).toEqual(EXPECTED_TREE);
+      expect(Object.keys((await readDesired()).bundles)).toHaveLength(1);
+      // The skipped file is user-owned content, so it must not be in the record.
+      expect(await recordedPaths()).toEqual(OTHERS);
+    });
+
+    it('leaves it in place on a later uninstall, because it was never recorded', async () => {
+      await runFlagOn(INSTALL_ARGV);
+
+      const result = await runFlagOn(['uninstall', '--bundle', 'web-dev', '--target', 'my-vscode']);
+
+      expect(result.exitCode).toBe(0);
+      expect(await listTree(copilotDir)).toEqual([COLLIDED]);
+      expect(await readFile(collision, 'utf8')).toBe(HAND_WRITTEN);
+    });
+
+    it('overwrites it and records all three files with --force', async () => {
+      await runFlagOn(INSTALL_ARGV);
+
+      const forced = await runFlagOn([...INSTALL_ARGV, '--force']);
+
+      expect(forced.exitCode).toBe(0);
+      expect(await readFile(collision, 'utf8')).toBe('# Hello\n');
+      expect(await recordedPaths()).toEqual(EXPECTED_TREE);
+    });
   });
 
   /**
@@ -348,6 +425,17 @@ describe('unified deploy, CLI user scope, vscode', () => {
 
   const relativeToCopilot = (file: string): string => path.relative(copilotDir, file).split(path.sep).join(path.posix.sep);
 
+  /** After a retry: both halves are 3.0.0, with one desired entry and one materialization record for it. */
+  const expectConvergedState = async (): Promise<void> => {
+    const desired = await readDesired();
+    const local = await readLocal();
+    expect(desired.version).toBe('3.0.0');
+    expect(local.version).toBe('3.0.0');
+    const keys = Object.keys(desired.bundles);
+    expect(keys).toHaveLength(1);
+    expect(Object.keys(local.targets['my-vscode'].bundles)).toEqual(keys);
+  };
+
   it('converges after a state-write failure that left bytes and no record, with no flag, because the bytes match', async () => {
     const failed = await runFlagOn(INSTALL_ARGV, failingStateWrite(localLockfile, true));
 
@@ -366,8 +454,7 @@ describe('unified deploy, CLI user scope, vscode', () => {
     expect(written).toEqual([]);
     expect(satisfied.map((file) => relativeToCopilot(file)).toSorted()).toEqual(EXPECTED_TREE);
     expect(await listTree(copilotDir)).toEqual(EXPECTED_TREE);
-    expect(Object.keys((await readDesired()).bundles)).toHaveLength(1);
-    expect(Object.keys((await readLocal()).targets['my-vscode'].bundles)).toHaveLength(1);
+    await expectConvergedState();
   });
 
   it('converges after a desired-write failure that left bytes and the local half', async () => {
@@ -385,8 +472,7 @@ describe('unified deploy, CLI user scope, vscode', () => {
     expect(retry.exitCode).toBe(0);
     expect(parseJson<InstallData>(retry.stdout).data.collisions).toEqual([]);
     expect(await listTree(copilotDir)).toEqual(EXPECTED_TREE);
-    expect(Object.keys((await readDesired()).bundles)).toHaveLength(1);
-    expect(Object.keys((await readLocal()).targets['my-vscode'].bundles)).toHaveLength(1);
+    await expectConvergedState();
   });
 
   it('converges after a desired-write failure that rolled the placed files back', async () => {
@@ -402,7 +488,7 @@ describe('unified deploy, CLI user scope, vscode', () => {
 
     expect(retry.exitCode).toBe(0);
     expect(await listTree(copilotDir)).toEqual(EXPECTED_TREE);
-    expect(Object.keys((await readDesired()).bundles)).toHaveLength(1);
+    await expectConvergedState();
   });
 
   it.each([
@@ -429,7 +515,7 @@ describe('unified deploy, CLI user scope, vscode', () => {
     expect(await listTree(copilotDir)).toEqual(treeBefore);
   });
 
-  it('leaves the legacy path byte-identical with the flag off', async () => {
+  it('writes a 2.0.0 desired lockfile and no local half with the flag off', async () => {
     const result = await runFlagOff(INSTALL_ARGV);
 
     expect(result.exitCode).toBe(0);

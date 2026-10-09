@@ -10,7 +10,8 @@
  *  - a path-prefix/manifest-kind mismatch (`prompts/typescript-standards
  *    .instructions.md` typed `instructions`), which prefix routing would
  *    place in `prompts/` and manifest routing places in `instructions/`;
- *  - a `README.md` the layout's skipPaths must keep out of the target.
+ *  - a `README.md` that is not a manifest placement item, so manifest-driven
+ *    placement must keep it out of the target.
  */
 import type {
   ExtractedFiles,

@@ -13,33 +13,59 @@ bugs, duplicated maintenance, and divergent user-visible behavior.
 
 ### 1.1 Observed divergences
 
-**Placement.** Four placement implementations exist:
+**Placement.** Three placement code paths are reached in production, with a fourth
+layout-driven writer shared between two of them:
 
-1. `FileTreeTargetWriter.write()` (CLI) — layout-driven, routes by **bundle path prefix**,
-   keeps bundle filenames.
-2. `FileTreeTargetWriter.writeManifestItems()` (`packages/app`) — layout-driven, routes by
-   **manifest `type`**, renames to `{id}.{ext}`. **Production callers: none.** Tests only.
-3. `RepositoryScopeWriter` (`packages/infra`) — **hardcodes `.github`** and a private
-   type→subdirectory map, ignoring layouts entirely.
-4. Extension `UserScopeService` (symlinks) + `RepositoryScopeService` (copies) —
-   layout-driven, manifest-driven, renaming.
+1. `FileTreeTargetWriter.write()` — prefix-routed, keeps bundle filenames. Reached by the
+   CLI for **all user-scope installs** and for **repository-scope installs on every target
+   except `vscode`, `vscode-insiders` and `copilot-cli`**.
+2. `RepositoryScopeWriter` (`packages/infra`) — hardcodes `.github` and a private
+   type→subdirectory map. Reached by the CLI **only** for those three Copilot-family
+   targets at repository scope (`install.ts:581`, and the matching factories in
+   `update.ts` / `uninstall.ts`).
+3. Extension `UserScopeService` — symlink-or-copy into `~/.copilot/<route>/`, with
+   manifest-driven routing and `{id}.{ext}` renaming done in the service itself.
+4. Extension `RepositoryScopeService` — manifest-driven routing and renaming, then
+   delegates actual placement to **`FileTreeTargetWriter.writeManifestItems()`**
+   (`repository-scope-service.ts:296` for skills, `:344` for ordinary items).
 
+So the manifest-driven writer in `app` is **already a shared production path** for
+extension repository placement. The unification extends its reach; it does not wire up
+something dormant.
+
+**The real placement divergence is prefix-vs-manifest routing, and it is CLI-side.**
 Fixture `apps/vscode-extension/test/fixtures/local-library/web-dev-bundle` declares
-`file: prompts/typescript-standards.instructions.md` with `type: instructions`. Prefix
-routing places it in `prompts/`; manifest routing places it in `instructions/`. The
-extension is correct, the CLI is wrong.
+`file: prompts/typescript-standards.instructions.md` with `type: instructions`. The CLI's
+prefix routing places it under `prompts/`; manifest routing places it under
+`instructions/`. The extension is correct. Note this divergence is **internal to the CLI
+too**: its Copilot repository writer routes by manifest type while its user-scope writer
+routes by prefix, so the same bundle lands differently at the two scopes.
 
-Because `RepositoryScopeWriter` hardcodes `.github`, CLI repository-scope installs for
-`kiro`, `cursor`, `claude-code` and `opencode` land in the wrong directory.
+**Naming diverges independently of routing.** The CLI preserves the bundle filename
+(`source.instructions.md`); the extension writes the normalized manifest id plus the
+Copilot suffix. Old CLI file records therefore cannot be repaired by calling the new
+naming function — a point that constrains migration (§8.3).
 
-**User-scope artifact.** The extension extracts a bundle into
-`globalStorage/bundles/<id>` and creates **symlinks** into `~/.copilot/<route>/`. The CLI
-writes **real files**. The reported symptom — "the extension installs into the hidden VS
-Code folder, the CLI installs properly to `~/.copilot/agents`" — is this.
+**`RepositoryScopeWriter`'s hardcoded `.github` is not a cross-target placement bug.**
+Non-Copilot repository targets never reach it. Its cost is a duplicated, non-layout-driven
+implementation for the three targets that do.
 
-**State.** The extension tracks user-scope installs in `RegistryStorage`/`globalState`;
-the CLI tracks them in `~/.config/ai-primitives-hub/ai-primitives-hub.lock.json`. Neither
-sees the other's installs.
+**User-scope artifact.** The extension's generic path extracts a bundle into a cache and
+creates **symlinks** into `~/.copilot/<route>/`, falling back to copies when content is
+transformed, under WSL, or when `symlink` fails, and **skipping pre-existing regular
+files** as possibly user-owned. The CLI writes real files. The reported symptom — "the
+extension installs into the hidden VS Code folder, the CLI installs properly to
+`~/.copilot/agents`" — is this. Three branches deviate from the generic path and must be
+classified individually before any blanket replacement: workspace-scope installs cache
+under `context.storageUri` rather than global storage (`bundle-installer.ts:367`); skills
+sources write straight to a scope-specific skills directory; and `local-skills` installs
+**symlink a live source directory** rather than an extracted cache
+(`install-registry-bundle.ts:170` → `bundle-installer.ts:1002`).
+
+**State.** The extension records user- and workspace-scope installs as **JSON files**
+through `AppStorage` (`registry-storage.ts:453`), not `globalState` — which holds
+preferences and migration flags. The CLI records them in the XDG user lockfile. Neither
+layer sees the other's installs.
 
 **Fetching.** Two parallel stacks, both in `infra`:
 
@@ -58,7 +84,11 @@ of reality. The CLI cannot install from Azure DevOps or APM sources at all.
 `McpConfigService` (472 lines). `packages/cli/src/commands/{install,uninstall,update}.ts`
 contain **zero** `mcp` references. A bundle declaring `mcpServers` installed via the CLI
 silently gets none. Meanwhile `resolveMcpLayoutConfig` — the layout-driven, per-scope MCP
-file resolver in `app` — has zero production callers.
+file resolver in `app` — is **already reached** from the extension, via
+`McpConfigLocator` (`mcp-config-locator.ts:66`), as are `core`'s `resolveMcpConfigPath`
+and `resolvePathTokens` (`:191`). The MCP gap is therefore not an unwired resolver; it is
+that the CLI's registered install/update/uninstall writers perform **no MCP mutation at
+all**.
 
 **Rules the CLI is missing.** `LockfileManager.detectModifiedFiles()` plus
 `LocalModificationWarningService` warn before an update clobbers local edits; the CLI
@@ -86,10 +116,15 @@ no `{type}-` prefix for `install.ts:1538`'s type sniffing to read.
 
 ### 1.2 Defects found during design, fixed by this work
 
-- **`workspace` scope is indistinguishable from `user` scope.** `ScopeServiceFactory`
-  maps both to `UserScopeService`, and `resolveLayoutFromLayers` routes every
-  non-`repository` scope through the `user` layout branch. A "workspace" install writes to
-  `~/.copilot/` exactly like a user install.
+- **`workspace` scope has the same *destination* as `user` scope, but not the same
+  behavior throughout.** `ScopeServiceFactory` maps both to `UserScopeService` and
+  `resolveLayoutFromLayers` routes every non-`repository` scope through the `user` layout
+  branch, so generic primitive placement is identical. It is **not** identical elsewhere:
+  the bundle cache resolves to `context.storageUri` for workspace
+  (`bundle-installer.ts:367`), workspace skills go to the workspace's own
+  `.copilot/skills`, and MCP maps workspace onto the **repository** config scope
+  (`mcp-config-service.ts:121`). Retiring `workspace` is therefore a deliberate semantic
+  move for those branches, not the removal of a pure duplicate.
 - **Multi-target lockfile collision.** `lockfilePathForTarget`
   (`packages/cli/src/framework/target.ts:101`) returns the same single user lockfile for
   every user-scope target, and entries are keyed `bundles[bundleId]`. Installing one
@@ -97,13 +132,18 @@ no `{type}-` prefix for `install.ts:1538`'s type sniffing to read.
   list, orphaning its files on uninstall. The same collision exists at repository scope
   (`.github` vs `.kiro` under one repo lockfile). The extension never hits it because it
   has exactly one host.
-- **Drift detection is broken for CLI-written lockfiles only.**
+- **Drift detection is broken for CLI-written lockfiles, and incomplete generally.**
   `LockfileFileEntry.checksum`'s documentation — "SHA256 of the extracted archive bytes for
   this path (not the optionally transformed on-disk result). User-modification checks
   compare this against the current file; transformed files will therefore look modified
   until an `installedChecksum` field is added (issue #357 Stage 2)" — describes the CLI's
   behavior only. `detectModifiedFiles` compares the on-disk hash against `entry.checksum`,
-  which is **correct** for extension-written entries and wrong for CLI-written ones.
+  which is **correct** for extension-written entries and wrong for CLI-written ones. Two
+  further gaps: `detectModifiedFiles` reads only the main lockfile, so `local-only`
+  entries are never checked, and `RegistryManager`'s modification check returns early for
+  non-repository scope (`registry-manager.ts:595`), so user-scope edits are never
+  protected at all. A CLI-written entry can also mismatch on *path* before checksum
+  comparison is even reached.
 - **`checkAndOfferMissingSources` offers a remedy it does not implement.** It compares
   lockfile source ids against locally configured ids, prompts "Would you like to add
   them?", and on confirmation does nothing: "Actual addition would be handled by
@@ -112,8 +152,13 @@ no `{type}-` prefix for `install.ts:1538`'s type sniffing to read.
   `entry.sourceId.startsWith('awesome-copilot-')`, misclassifying any name-derived id as
   plain `github` and sending it down the wrong fetch path.
 - **Kind vocabulary gap.** `KIND_TO_ROUTE_KEY` is keyed on the 5-value `CopilotFileType`,
-  so `writeManifestItems` silently `skipped.push()`es every other kind. The layouts route
-  11 more.
+  so `writeManifestItems` silently `skipped.push()`es any other kind. Against the 19
+  canonical `PRIMITIVE_KINDS` that leaves 12 unreachable through it — 11 placeable kinds
+  plus the non-placed `mcp-server`. Since this writer is already the extension's
+  repository placement path (§1.1), that gap is live today, not hypothetical. Note also
+  that `kindRoutes` keys are **source-path prefixes**, not canonical kind names, and that
+  `getTargetFileName` accepts Copilot *aliases* (`instructions`, `chatmode`) rather than
+  canonical kinds and does not normalize the id itself.
 - **Binary-unsafe local sources.** `LocalAdapter`, `LocalAwesomeCopilotAdapter` and
   `LocalSkillsAdapter` each document the same flaw in their own headers: they build a ZIP
   with `archiver` reading each file as text, so binary bundle assets are corrupted and
@@ -154,7 +199,8 @@ no `{type}-` prefix for `install.ts:1538`'s type sniffing to read.
 - Collapsing `InstallPipeline` and the registry use-cases into a single orchestrator.
 - Making `install --lockfile --target` a first-class per-harness workflow. The schema and
   most of the behavior will support it; promoting it is a follow-up.
-- Re-keying `kindRoutes` by canonical kind (see §4.5).
+- Re-keying `kindRoutes` by canonical kind (see §4.7). It is a schema change across 22
+  definitions plus the user and project override files, for no behavior gain.
 
 ### Decisions taken
 
@@ -303,19 +349,53 @@ what to do when `planDeploy` reports drift or a conflict. Nothing else.
 
 ### 3.6 Kept
 
-- `InstallPipeline` remains the CLI's resolve→download driver; its write stage calls
-  `deployBundle`.
-- `installRegistryBundle` / `uninstallInstalledBundle` / `updateRegistryBundle` keep their
-  ports shape. Their `installFromBuffer` / `removeInstallation` port implementations become
-  one-line calls into `deploy`, so the extension's existing orchestration and tests survive.
-  This is a swap of the bottom half, not a rewrite of the top.
 - `--from <dir>` stays a CLI flag that bypasses source resolution: `readLocalBundle` feeds
   `ExtractedFiles` straight into `deploy`. It is a different concept from the `local`
   **source type** and both survive. CLI `local` means "this directory *is* one built
   bundle"; `LocalAdapter` means "this directory *is a source* containing many bundles".
+  The `local` source type has no CLI resolver today — `SourceDispatcher` has no `local`
+  case and imperative install falls back to GitHub — so unifying on `SourceAdapter` adds
+  that capability rather than preserving it.
+
+### 3.7 Cutover inventory — every reached lifecycle producer
+
+`InstallPipeline` is **not** the CLI's driver. `new InstallPipeline` is constructed in
+exactly two places: `bundle-installer.ts:841` (the **extension**) and `app`'s generic
+`installBundle`, which has no callers at all. The CLI's registered `InstallCommand`
+resolves, downloads, extracts, validates, writes and records **inline**, in three separate
+branches. So "keep `InstallPipeline` as the CLI's driver" was backwards, and a cutover
+scoped to `install.ts`/`update.ts`/`uninstall.ts` write blocks would miss most producers.
+
+| Layer | Producer | Note |
+|---|---|---|
+| CLI | `install.ts:853` local, `:952` lockfile replay, `:1029` remote | three independent write+record branches |
+| CLI | `update.ts:502`, `uninstall.ts:228` | own writer-factory selection each |
+| CLI | `profile.ts:409` activation/deactivation, `:482` direct write/record loop | not in the original deletion table |
+| CLI | `apply.ts` | not in the original deletion table |
+| Extension | `BundleInstaller.installFromBuffer` (`:674`, pipeline at `:841`) | MCP and scope sync happen **outside** the pipeline |
+| Extension | `BundleInstaller.uninstall`, `update` (`:967` — uninstalls old before new succeeds) | |
+| Extension | local-skill symlink installer (`:1002`) | links a live source directory |
+| Extension | scope and commit-mode commands (`bundle-scope-commands.ts`) | reach `ScopeConflictResolver` and `updateCommitMode` |
+| Extension | `UpdateScheduler:186` → auto-update | can reach real install writes at startup (§8.1) |
+| Extension | `RegistryManager.getAdapter:390` → `infra-adapter-factory:70` → `createSourceAdapter` | the fetch path to preserve |
+
+Consumers that read the state being replaced, and therefore need rewiring in the same
+slice as the producer they depend on: `LockfileManager`'s watchers and paired readers
+(`:188`) and `getInstalledBundles` (`:1008`), `PromptLoader`'s direct cached-manifest and
+file reads (`:57`), `RegistryStorage`'s installation JSONs (`:453`), the marketplace and
+tree UI, and `profile.ts`'s record loop.
+
+`installRegistryBundle` / `uninstallInstalledBundle` keep their ports shape, and their
+`installFromBuffer` / `removeInstallation` implementations do become thin calls into
+`deploy`. But `updateRegistryBundle` delegates through a **different** update port and
+`:59` picks the *first* installation matching a bundle id — it carries no target
+discriminator, so it is not sufficient once one bundle has materializations for several
+targets. That port changes shape; it is not a one-line swap.
 
 Approximate totals: ~6500 lines deleted (the §3.4 table alone sums to ~6500 before the
-unsized entries), ~2000 relocated, 2 new port methods, 1 new `app` module.
+unsized entries), ~2000 relocated, 2 new port methods, 1 new `app` module. These counts
+measure removal, not coverage: one missed registered producer matters more than several
+thousand deleted lines.
 
 ## 4. Placement and naming
 
@@ -365,27 +445,70 @@ filename stem disagree.
 
 ### 4.5 Repository scope
 
-The layout's `repository` branch supplies `baseDir` (`${workspaceRoot}/.github`,
-`${workspaceRoot}/.kiro`, …), so `RepositoryScopeWriter`'s hardcoded `.github` and its
-private type→subdirectory map both go. Repository installs on kiro, cursor, claude-code
-and opencode start landing correctly.
+The layout's `repository` branch already supplies `baseDir` for non-Copilot targets, and
+the CLI already routes them through `FileTreeTargetWriter` — a runtime probe across all 11
+target types at both scopes confirms `.kiro/steering/`, `.cursor/rules/`,
+`.claude/commands/`, `.opencode/commands/`, `.devin/prompts/` and `.windsurf/rules/`.
+Retiring `RepositoryScopeWriter` therefore **does not relocate those targets**; it removes
+a duplicated, non-layout-driven implementation for `vscode`, `vscode-insiders` and
+`copilot-cli`, and brings them onto manifest routing with the shared naming rule. The
+user-visible change is confined to those three targets plus the CLI's prefix-routed
+user-scope installs.
 
 `target.allowedKinds` filtering is preserved, now comparing canonical kinds directly
 instead of round-tripping through `copilotTypeToPrimitiveKind`.
 
-**Deferred:** once prefix routing is gone, `kindRoutes` keys are consumed only via
-inversion, making the "keys are source prefixes" semantics vestigial. Re-keying by
-canonical kind would be cleaner but is a schema change across 22 definitions plus the
-`~/.config/ai-primitives-hub/layouts.yml` and `./ai-primitives-hub-layouts.yml` override
-files, for no behavior gain.
+### 4.6 Placement inputs must be explicit before it can be called pure
 
-### 4.6 Symlink replacement is a writer requirement
+§5.9's verification-by-re-derivation depends on placement being a pure function. It is a
+function of more than (manifest, targetType, scope): it also depends on the **resolved
+layout layers** (the extension uses built-in resolution, the CLI loads hierarchical user
+and project overrides), `target.path` / `rootPath`, the environment used for `${...}`
+expansion including WSL home resolution, `allowedKinds`, and the active transformer.
+`DeployRequest` must carry all of them, otherwise re-derivation silently diverges from what
+was written. Two consequences:
 
-Today's user-scope destinations are symlinks into the cache, and `writeManifestItems`
-resolves to the **same paths** (same layout, same `{id}.{ext}` naming). `fs.writeFile`
-follows a symlink, so writing through one would overwrite the cached bundle instead of
-replacing the link. The writer must `lstat` and `unlink` an existing symlink before
-writing. This is permanent writer behavior, not migration-only code.
+- Transform decisions are not purely manifest-driven today — some inspect the **source
+  path prefix** (for example Kiro agents). Manifest-driven routing must supply equivalent
+  semantic context, or byte parity is lost for those targets.
+- Governed release manifests express items as canonical `items[]` with `kind`, while
+  legacy manifests use `prompts[]` with `type` plus filename detection. Both formats are
+  reached, so the placement input is "manifest item in either format", not `item.type`.
+
+### 4.7 Implementation prerequisites in the writer
+
+- `routeToKind` and `ROUTE_PREFIX_KINDS` are **private** to `file-tree-writer.ts:571`.
+  Inverting layouts requires exporting and generalizing them deliberately.
+- `getTargetFileName` accepts Copilot **aliases** (`instructions`, `chatmode`) and does not
+  normalize the id. Routing on canonical `PrimitiveKind` needs a canonical→alias mapping
+  plus explicit id normalization at the call site, which is what
+  `RepositoryScopeService` does today outside the writer.
+- `writeTargetSafely` (`install/target-write.ts:36`) **rejects any skipped content** before
+  writing, or rolls back and throws after writing. It is not a warn-and-succeed helper, so
+  the "unsupported kind → warn and skip" policy cannot run through it unchanged. Either
+  unsupported kinds are filtered before the safety check, or that check needs a separate
+  contract. Distinguish three cases explicitly: kind unsupported *by this target*, kind
+  invalid in the manifest, and item excluded by governed inventory filtering.
+- Layout inversion is safe for the enumerated built-ins; **arbitrary user overrides are
+  not covered by that check**. Ambiguity must raise a diagnostic, not resolve by
+  first-entry-wins.
+
+### 4.8 Symlink safety is a port gap, not a one-line guard
+
+Today's user-scope destinations may be symlinks into a cache, and the shared writer
+resolves to the same paths. `fs.writeFile` follows a symlink, so writing through one would
+mutate the cache rather than replace the link. Two problems with the obvious fix:
+
+1. A per-file `lstat`/`unlink` guard is **insufficient**. A `local-skills` install symlinks
+   a *live source directory*; a child path under it `lstat`s as an ordinary file, so a
+   write below that directory mutates the user's real source. The guard must detect a
+   symlinked **parent**, not just a symlinked destination.
+2. `core`'s `FileSystem` port has **no `lstat`, no link identity, and no symlink flag on
+   `stat`**. Shared `app` code therefore cannot implement this guard through the current
+   port at all. A port capability must be added — making the real count three port
+   additions, not two.
+
+Until that capability exists, no slice may replace user-scope symlinks.
 
 ## 5. State
 
@@ -468,6 +591,13 @@ different boolean.
 second half is new, and it is what makes removal propagate: A drops a bundle from committed
 desired state, B pulls, and B's files are cleaned on next reconcile.
 
+**The comparison is not bundle-id set subtraction.** The same id can need redeployment
+because its version, source, resolved layout, target root, transformer or `allowedKinds`
+changed. Reconcile compares an **install signature** over those inputs — the same input set
+§4.6 requires `DeployRequest` to carry — and a signature mismatch means redeploy, which
+must remove old-only paths without disturbing paths still claimed by another target
+(§6.6).
+
 **Reconcile on workspace open is read-only** — it reports and offers, never acts. Acting
 would write, and writing would trigger the lazy repository migration (§9), producing
 exactly the unexpected diff that migration ordering exists to avoid. This matches what
@@ -521,14 +651,20 @@ documented as "Portable: Not tied to user's hub configuration". Manually added s
 
 - **P1** `source-commands.ts:533` uses `generateSourceId(type, url, config)`; the display
   name stays in `name`, where it belongs. Ids become portable by construction.
-- **P2** Sources resolve by **identity** `(type, normalizedUrl, branch, collectionsPath)`,
-  not by id. All four fields are already present in `LockfileSourceEntry` — except
-  `collectionsPath`, which the extension's own type omits entirely and which therefore
-  defaults to `'collections'`, matching what `generateSourceId` already does. Identity
-  matching makes existing non-portable lockfiles work **without rewriting them**, and lets
-  `RepositoryActivationService.checkAndOfferMissingSources` actually resolve instead of
-  logging intent — its handler is currently a stub: "Actual addition would be handled by
-  RegistryManager/HubManager. For now, just log the intent."
+- **P2** Sources resolve by **identity** `(type, normalizedUrl, branch, collectionsPath)`
+  rather than by id, and `checkAndOfferMissingSources`' stub handler is implemented so the
+  dialog actually adds what it offers.
+
+  **P2 cannot universally recover legacy extension rows, and the spec must not promise it.**
+  The extension writes `url: bundle.downloadUrl || bundle.manifestUrl`
+  (`bundle-installer.ts:209`) — a **release-asset or manifest URL**, not the configured
+  repository origin — and records no `branch` or `collectionsPath`. The CLI, by contrast,
+  stores the repository URL. So for GitHub rows written by the extension, normalization and
+  deterministic ids cannot reconstruct origin, branch or collections configuration that was
+  never recorded. Required policy: write full canonical source descriptors for **new**
+  entries; recover legacy descriptors **only where unambiguous**; otherwise retain the row,
+  mark it unmanaged, and report the missing origin metadata. Local-directory sources stay
+  machine- and path-dependent regardless of id determinism.
 - **P3** Delete the type sniffing at `install.ts:1538`
   (`entry.sourceId.startsWith('awesome-copilot-')`), which silently misclassifies a
   name-derived id as plain `github`. Read the required `src.type` from `lock.sources`.
@@ -572,10 +708,18 @@ already substitutes `${[A-Z0-9_]+}` from env, so this is a resolver detail, not 
 change. `resolvePathTokens` throws `UnresolvedPathTokenError` on an unsupplied token, so a
 host that cannot answer fails loudly rather than writing to `/mcp.json`.
 
-Only `vscode` and `vscode-insiders` used the `servers` key; the other nine targets already
-use `mcpServers`, so the fleet becomes uniform. `serversKey` stays in the layout schema —
-data-driven and free, and it preserves room for a future `servers`-keyed target.
-**`supportsInputs` is removed**, its only `true` holder having left.
+Across the 11 targets there are **21** MCP scope entries, not 22 — windsurf has no
+repository config. Four of them use the `servers` key (`vscode` and `vscode-insiders` × two
+scopes) and seventeen already use `mcpServers`, so this change makes the fleet uniform.
+`serversKey` stays in the layout schema — data-driven and free, and it preserves room for a
+future `servers`-keyed target. **`supportsInputs` is removed**; it is `true` on those same
+four entries, and custom overlays are an additional compatibility surface to validate.
+
+**The deprecation premise is external and unverified.** Repository code establishes only
+which paths this project currently writes. That `.vscode/mcp.json` and the user-profile
+`mcp.json` are deprecated, that the portable files are Agent Host-native, and that
+profile-scoped reads behave as described all come from product documentation, not from code.
+§13 records them as cited, versioned compatibility decisions.
 
 Two consequences, both simplifying: no profile-scoped MCP path remains, so
 `McpConfigLocator` is deleted outright rather than reduced, its documented default-profile
@@ -583,64 +727,151 @@ limitation becomes moot, and `detectActiveProfile`/`getActiveProfileName` are de
 the dead code they already are. `${vscodeUserDir}` drops to zero users and retires from
 `core`.
 
-### 6.2 Inputs become detect-and-warn
+### 6.2 Inputs: skipping is a deliberate behavior change
 
-VS Code does not forward servers to Agent Host if they "require interactive input (for
-example, `${input:...}` variables)", and the portable format documents no `inputs`
-section. Keep `collectInputReferences` to detect such servers and skip them with an
-actionable warning. The machinery that existed to make them work — `mergeInputs`,
-`autoDeriveMissingInputs`, `removeOrphanedInputs`, and the "auto-derived" branch of
-`notifyMcpInstallWarnings` — becomes dead and is removed. No `promptForInput` port is
-needed.
+**Today the extension writes the server and warns** when inputs are unsupported. Skipping
+it instead is a deliberate reduction in behavior, not preservation, and it rests on an
+**external, unverified** premise — that Agent Host will not forward input-requiring servers
+and that the portable format has no `inputs` section. Repository code cannot establish
+either; both come from product documentation. §13 records them as versioned compatibility
+decisions.
 
-### 6.3 Relocation
+`collectInputReferences` alone is **not sufficient** to implement the skip: it returns an
+**aggregate** set of references across the whole config, not a per-server verdict, and it
+omits the supported `envFile` mechanism (`core/src/domain/mcp/inputs.ts:59`). A per-server
+predicate must be written, and unmanaged user-authored inputs must be preserved rather than
+pruned.
 
-`McpServerManager` (801) and `McpConfigService` (472), both with zero `vscode.`
-references, move to `app/deploy/mcp` with file IO behind an infra store. Layout and token
-resolution reuse `resolveMcpLayoutConfig` and `core`'s `resolveMcpConfigPath` /
-`resolvePathTokens`, which exist and are tested but have no production callers today.
+`mergeInputs`, `autoDeriveMissingInputs` and `removeOrphanedInputs` are reached today and
+some of their logic already lives in `app`/`core`. They are removed only once the per-server
+predicate and the preserve-unmanaged-inputs rule are in place.
+
+### 6.3 Relocation is more than extracting IO
+
+`McpServerManager` (801 lines) and `McpConfigService` (472) contain no literal `vscode.`
+references, but that is lexical, not architectural: they depend on the VS Code-backed
+logger, the host detector, and `McpConfigLocator` (`mcp-server-manager.ts:14`). Relocation
+must explicitly substitute logger and event sinks, target/host detection, context and root
+and env supply, JSONC formatting, and exclusion handling. Deleting `McpConfigLocator`
+removes a class, not its responsibilities — scope layout selection, token supply,
+legacy-path lookup for migration, directory creation and diagnostics all still need owners
+in the new module.
+
+Layout and token resolution reuse `resolveMcpLayoutConfig` and `core`'s
+`resolveMcpConfigPath` / `resolvePathTokens` — all three already production-reachable via
+the locator, so this changes the caller rather than wiring something dormant.
+
+**`${COPILOT_HOME}` is not resolved today.** The locator's token map does not contain it;
+`resolvePathTokens` throws on an unsupplied token and `expandPath` would substitute an
+empty string. The new module must supply a non-empty value explicitly, with the
+`${HOME}/.copilot` fallback computed by the caller, and must define behavior for empty,
+relative and `~`-prefixed overrides. Note `resolvePathTokens`' loud failure is unrelated to
+server-level `${env:...}` expansion, which substitutes missing values with `''`.
+
+**Durable server assets are missing from `DeployRequest`.** `${bundlePath}/servers/start.js`,
+`envFile`, command arguments, URLs and headers are expanded against the legacy install
+root. Copying only manifest-recognized primitives does not necessarily retain those
+auxiliary files. The request must name a **durable runtime asset root** and keep it alive
+for as long as MCP entries reference it, with user and repository semantics defined
+separately from config-path token resolution.
 
 ### 6.4 Scope vocabulary
 
-`'user' | 'workspace'` → `'user' | 'repository'`, matching `McpConfigScope`.
-`installServers`/`installServersToWorkspace` and
-`uninstallServers`/`uninstallServersFromWorkspace` collapse into one scope-parameterised
-pair. The deliberate no-fallback rule stays: windsurf has no repository MCP file, and
-inheriting the user entry would make a repository install write into `$HOME`.
+`'user' | 'workspace'` → `'user' | 'repository'`, matching `McpConfigScope`. Note the
+existing mapping sends workspace to the **repository** config scope
+(`mcp-config-service.ts:121`), unlike primitive placement which sends it to user — so this
+rename is a semantic decision, not a relabel, and it interacts with the workspace
+retirement (§1.2).
 
-### 6.5 Tracking sidecar retires into the materialization record
+The install/uninstall pairs cannot collapse without resolving real differences: the user
+path uses the bundle root, deduplicates, and attempts re-enablement, while the repository
+path uses the workspace root, handles excludes, and does not deduplicate. Collapsing them
+means choosing one behavior per difference, explicitly.
 
-`readTrackingMetadata`/`writeTrackingMetadata` persist `managedServers` to a sidecar
-beside each `mcp.json` — a second answer to "what did this bundle install". It folds into
-`targets[t].bundles[b].mcpServers` (§5.3). `originalConfig` is dropped: it is recoverable
-from the bundle manifest, and `identity` (the existing `computeServerIdentity` output) is
-all `detectAndDisableDuplicates` compares. Cross-bundle duplicate detection still works by
-iterating materialization records. `mcpConfigPath` records the file actually written, so uninstall
-targets it correctly even after this round changes the layout.
+The no-fallback rule stays: windsurf has no repository MCP file, and inheriting the user
+entry would make a repository install write into `$HOME`.
 
-### 6.6 Shared destinations need a refcount
+### 6.5 Tracking sidecar: ownership transfer, not deletion
 
-`.mcp.json` is now shared by vscode, claude-code and copilot-cli at repository scope, so
-two targets in one repository can write the same prefixed server name to the same file,
-and uninstalling one target would remove a server another still claims. The same hazard
-applies to files wherever two targets' layouts route to one directory.
-`RepositoryScopeService.collectFilesUsedByOtherBundles` already implements this refcount
-for bundle-level overlap; it moves to `app` and widens to cover targets and MCP entries.
+Folding `managedServers` into `targets[t].bundles[b].mcpServers` (§5.3) plus
+`mcpConfigPath` is the right direction, and dropping `originalConfig` is safe in the narrow
+sense that current deduplication does not read it. But the sidecar **cannot be deleted per
+bundle**: its filename is fixed per config directory
+(`mcp-config-locator.ts:198`), so it carries cleanup ownership for **every** bundle sharing
+that directory. Deleting it after transferring one bundle orphans the others.
+
+Two further behavior facts constrain the replacement:
+
+- Duplicate detection computes identities from the **live config**, considers disabled
+  state and iteration order, and includes **unmanaged** entries
+  (`mcp-config-service.ts:290`). Iterating materialization records alone loses unmanaged
+  participants and live edits, so the current config must still be read.
+- The stored identity is lossy — `computeServerIdentity` joins args with `|` and ignores
+  env/`envFile`, so `['a|b']` and `['a','b']` collide, and remote identity ignores headers
+  and transport. Persisting that key would freeze false duplicates into the new state
+  contract. Either compute identities live, or fix the identity function before persisting
+  it.
+
+### 6.6 Shared destinations: refcount is necessary, not sufficient
+
+`.mcp.json` is already shared by `copilot-cli` and `claude-code`; adding `vscode` and
+`vscode-insiders` makes four target types. Kiro and Devin host pairs already share paths
+too, so this is an existing condition the design widens rather than creates.
+
+`collectFilesUsedByOtherBundles` moves to `app` and widens to targets and MCP entries, but
+it is a **deletion-membership guard**: it prevents premature removal. It does not resolve
+two owners needing *different bytes or different config* at the same path, partial updates,
+or concurrent mutation. Those need a conflict verdict surfaced by `planDeploy` and
+serialized state writes (§8.4), not a counter.
+
+### 6.7 Minimum MCP migration contract
+
+- Read old configs and **every** relevant sidecar before new layout lookup hides them.
+- Keep repository MCP changes lazy, including legacy workspace-scope MCP.
+- Distinguish managed owners from unrelated manual entries.
+- Preserve live edits, explicit disabled state, automatic-disable provenance, unrelated
+  inputs, and top-level JSONC state.
+- Detect same-name/different-content collisions at the destination.
+- Transfer ownership durably for every bundle and target before retiring a shared sidecar.
+- Retain cleanup and retry ownership for APM, missing-cache and unmanaged records.
+- Serialize physical-config and materialization updates.
+- Define safe stop/resume for malformed or partial JSONC, config write, state write and
+  source deletion failures.
+- Record actual applied effects after a non-fatal partial failure.
+- Do not treat an old sidecar claim as proof a write succeeded: the `skipOnConflict` option
+  populates tracking before a successful merge. The registered installer passes it `false`,
+  so this is a public-API defect rather than the normal path, but migration reads sidecars
+  written by any caller.
 
 ## 7. Retiring APM
 
 `SourceType` in `packages/core/src/domain/source/types.ts` shrinks from 9 to 7. Removed:
 `ApmAdapter` (650), `LocalApmAdapter` (443), `ApmRuntimeManager` (580), `ApmCliWrapper`
-(284). `ProcessRunner`'s only consumer was `ApmAdapter`, so its wiring leaves
-`create-source-adapter`'s deps and the extension's `infra-adapter-factory`.
+(284). The extension carries an **independent** source union, and the UI source-creation
+flow, factory and exports need coordinated changes.
 
-**Graceful degradation:** an unknown `SourceType` — `apm` or `local-apm` in an existing hub
-config or lockfile — produces one actionable warning naming the source, and the rest of the
-hub loads normally. Installed APM bundles stay on disk, reported as unmanaged. A stale
-entry in a shared hub config must not break every other source in it.
+`ProcessRunner`'s only *execution* consumer is `ApmAdapter`, but the registered CLI
+`hub.ts:675` also constructs and passes `NodeProcessRunner`, so that wiring must be updated
+rather than assumed gone. The separate `ProcessExecutor` port
+(`core/src/ports/process-executor.ts:14`) stays — non-APM authentication, WSL, `gh` and
+proxy execution still use process execution.
 
-Ten documentation files reference apm, including `docs/user-guide/sources.md` and
-`docs/author-guide/creating-a-hub.md`.
+Retiring the adapters does **not** automatically retire APM authoring support: the APM
+validation command and its schema tooling are independently registered. Whether authoring
+support remains is a separate, explicit decision.
+
+**Graceful degradation is not free.** Warn-and-skip is **not** current behavior: source sync
+isolates per-source failures, but `createSourceAdapter` throws on an unknown type and deep
+hub validation reports errors. More importantly, **wire-format enum validation can reject
+the whole config before any skip logic runs** — `schemas/hub-config.schema.json:77` and
+`packages/core/src/public/schemas/lockfile.schema.json:101` both enumerate source types. So
+removing enum members requires a deliberate retired/unknown-value policy in the schemas and
+at the load boundary, or existing configs fail to load entirely. Lockfile replay of an
+unsupported type currently returns `null` with verbose-only messaging, so "unmanaged with
+one warning" must be implemented, not assumed.
+
+Eighteen tracked Markdown files reference apm (seventeen excluding this design), including
+`docs/user-guide/sources.md` and `docs/author-guide/creating-a-hub.md`.
 
 ## 8. Migration
 
@@ -657,8 +888,17 @@ produces a dangling working-tree change. Rules that follow:
 - **No write-on-read for repository scope.** Opening a workspace reads legacy files in
   place and changes nothing — including the P1/P2 id rewrite, which happens only when
   something else is already being written.
-- **Reconcile on open is read-only** (§5.6).
-- **`--dry-run` never migrates.**
+- **Reconcile on open is read-only** (§5.6) — but read-only reconcile is **not sufficient
+  on its own**. `UpdateScheduler:186` invokes auto-update when enabled, and source-sync
+  can reach real install writes at startup, neither of which goes through reconcile. So
+  repository migration is gated on **trigger provenance**: a write carries whether it
+  originated from an explicit user action, and only a user-initiated write may migrate. A
+  scheduled or sync-initiated write operates through the legacy reader and defers
+  migration. Auto-update currently cannot touch repository records because storage listing
+  excludes them — but shared state changes that population, so the gate must be explicit
+  rather than relying on that accident.
+- **`--dry-run` never migrates**, and must perform no writes through *any* port, including
+  cache synthesis, store initialization and auth setup.
 - The repository pair migrates **together, atomically**, on that first write: the new
   committed file is written, the legacy committed file is deleted, and the legacy local
   file is folded into the new local file. The developer commits one coherent diff alongside
@@ -675,80 +915,181 @@ working trees.
 
 ### 8.2 User-scope migration
 
-For each user- or workspace-scope record in `RegistryStorage`:
+Install records are **JSON files** under `AppStorage` (`registry-storage.ts:453`), not
+`globalState` — which holds preferences and migration flags and is not install truth.
 
-1. Read the cached bundle at `globalStorage/bundles/<bundleId>`.
-2. `deployBundle` at user scope for the detected host.
-3. Write the target record to the local side of the XDG lockfile.
-4. Drop the install truth from `globalState`, keeping only UI cache.
+Each record is classified before anything is written, because the generic path is only one
+of four:
 
-Workspace-scope records become user-scope records, since their files are physically in
-`~/.copilot/`. Idempotent: an existing materialization record means done, backed by a
-`MigrationRegistry` flag. One info notification plus a logged summary.
+| Record kind | Cache / source location | Migration |
+|---|---|---|
+| Generic user install | `globalStorage/bundles/<bundleId>` | redeploy from cache, replace links with copies |
+| Generic workspace install | `context.storageUri/bundles/<bundleId>` (`bundle-installer.ts:367`) | redeploy; scope folds to user (a semantic move, §13) |
+| Direct skill install | written straight to a scope-specific skills dir; may have **no** extracted cache manifest | adopt in place; do not redeploy from a cache that does not exist |
+| `local-skills` install | **symlink to a live source directory** (`bundle-installer.ts:1002`) | adopt the link; **never** copy over or write beneath it (§4.8) |
 
-§4.6's symlink-before-write rule is what makes step 2 safe.
+Then, per classified record: redeploy or adopt, write the materialization record to the
+local side of the XDG lockfile, and remove the JSON install record. Workspace **skills**
+live in the workspace's own `.copilot/skills`, so folding workspace to user is a deliberate
+relocation for those and must be reported, not performed silently.
 
-### 8.3 Legacy lockfiles are predominantly extension-written
+A record whose cache or source is missing is **retained and marked unmanaged** with the
+bundle name — never dropped. Idempotent: completion is a per-record marker written last,
+plus the `MigrationRegistry` flag; a materialization record alone does not prove the legacy
+record was removed (§8.4). One info notification plus a logged summary.
 
-The extension has real adoption; the CLI does not. The migration is therefore designed
-around extension semantics as the default and treats CLI-written entries as a detected
-special case — and must handle a single lockfile containing both, which happens whenever
-the extension installed one bundle and the CLI another into the same repository.
-`generatedBy` records only the last writer, so it is **not** a safe discriminator.
+§4.8's link-safety rule is a prerequisite: this step cannot ship before the `FileSystem`
+link-identity capability exists.
 
-**Path resolution — per entry, by existence.** Test `join(repoRoot, entry.path)`. If it
-exists, the path was on-disk (extension-written). If not, re-derive the destination from
-the bundle-relative path through the deterministic placement function and test that
-(CLI-written). Lazy migration guarantees the manifest is in hand, so re-derivation is
-always available.
+### 8.3 Legacy records: provenance must be proven, not assumed
 
-**Checksums — replaced, never interpreted.** Per §5.8 the legacy value's meaning depends on
-the writer and cannot be determined by inspection.
+Most real lockfiles are extension-written, so extension semantics are the default
+assumption — but that is an **external, unverified** premise about relative adoption, and
+it must not be used to justify a lossy default. Every rule below therefore preserves
+ambiguous records instead of converting them into success-shaped "migrated" rows.
 
-- For the bundle whose install/update triggered migration: compute both `checksum` and
+**Where the record lives must be established first.** User- and workspace-scope installs
+are JSON files under `AppStorage` (`registry-storage.ts:453`), not `globalState`. The
+bundle cache is global storage for user scope but `context.storageUri` for workspace scope
+(`bundle-installer.ts:367`), and direct-skill and `local-skills` installs may have no
+extracted cache manifest at all.
+
+**Path provenance: evidence, not proof.** Testing `join(repoRoot, entry.path)` is a useful
+signal, but a CLI-written *bundle-relative* path can independently exist in the repository
+(a repo with its own `prompts/` directory), so existence does not prove the entry was
+extension-written. And when the path is absent, the new manifest-driven placement function
+will **not** generally reproduce the old CLI destination — old rules were prefix-routed and
+preserved the bundle filename, new rules are kind-routed and rename to the normalized id.
+Recovering old destinations therefore requires keeping a **legacy destination locator**
+that implements the old prefix+filename rules. Where neither locator yields a unique
+answer, the entry is marked ambiguous and left for the user, not guessed.
+
+**Manifests are not guaranteed available.** Lazy migration does *not* imply the manifest is
+in hand: an uninstall needs only records, a fresh team clone has no cache, a committed
+desired-state-only lockfile carries no install items, and other bundles in the same file
+are not being fetched. Migration must work from records alone where that is all it has.
+
+**Checksums: preserve known baselines; never silently rebaseline.** The legacy value's
+meaning depends on the writer (§5.8), so it cannot be interpreted blindly — but it also
+must not be discarded wholesale. Rehashing current bytes destroys the one piece of evidence
+that a file was locally modified, and does so for **extension** entries too, which is the
+opposite of the intent. Rules:
+
+- Bundle whose install/update triggered migration: compute `checksum` and
   `installedChecksum` fresh.
-- For every other bundle: set `installedChecksum` to the hash of the **current on-disk
-  file** and omit `checksum`. Current state becomes the drift baseline.
+- Entry whose destination is **proven** and whose provenance is **extension**: carry the
+  stored hash forward as `installedChecksum` unchanged. Pre-existing drift stays visible.
+- Entry whose provenance is **CLI**: the stored hash is a source-byte hash, so it cannot
+  serve as an on-disk baseline. Record `installedChecksum` from disk and **mark the entry
+  as having an adopted baseline**, so a later drift report can say "baseline adopted at
+  migration" rather than implying the file is pristine.
+- Entry that is ambiguous or whose file is missing: retain the record, mark it unmanaged,
+  report it. Do not rebaseline.
 
-This rule is chosen for the dominant case: extension-written entries already store the
-on-disk hash, so adopting current state is **lossless** for them. For the rarer CLI-written
-entries, drift that predates migration is forgiven exactly once — better than carrying a
-value whose meaning we would have to guess.
-
-**Assigning a target to legacy materialization.** Legacy lockfiles carry no target
-dimension, but they came from one host, inferable from the path prefix: `.kiro/` → kiro,
-`.cursor/` → cursor, `.claude/` → claude-code, `.opencode/` → opencode. `.github/` is
-ambiguous between vscode and copilot-cli, resolved by preferring the currently detected
-host when consistent with the prefix, else a synthetic `legacy-<prefix>` target name. A
-wrong label is cosmetic: the record stores explicit paths and the file is never shared.
+**Target assignment is load-bearing, not cosmetic.** Because materialization is keyed by
+target name and reconcile compares per target, a synthetic `legacy-<prefix>` name would be
+invisible to named-target workflows. Path prefixes narrow a host *family* (`.kiro/` → kiro,
+`.cursor/` → cursor, `.claude/` → claude-code, `.opencode/` → opencode) but `.github/` is
+shared by three target types, and user overrides can move roots. Rule: bind to a configured
+target when exactly one matches the resolved destination root; otherwise record the
+materialization as **unmanaged with explicit paths**, which still supports cleanup and
+refcounting but is excluded from reconcile until the user binds it.
 
 **Carried over unchanged:** `version`, `sourceId`, `sourceType`, `installedAt`.
-`commitMode` is implied by which legacy file held the entry and is recorded on the target
-record.
+`commitMode` cannot simply become a target-level field: a single target can today hold both
+committed and `local-only` bundles, so the mode is recorded **per materialized bundle**,
+with the target-level value as a default only.
 
-The CLI's XDG user lockfile is already named `ai-primitives-hub.lock.json`, so it needs no
-rename — only the same shape migration, with bundle-relative paths re-derived identically.
+The CLI's XDG user lockfile already uses the new filename, so it needs only the shape
+migration — with bundle-relative paths resolved through the same locator rules.
 
-### 8.4 MCP and APM
+### 8.4 Atomicity, resume and mixed-version clients
 
-MCP entries move out of `${vscodeUserDir}/mcp.json` and `.vscode/mcp.json` into the
-portable files keyed `mcpServers`, and the tracking sidecar is deleted. APM-sourced records
-stay on disk, flagged unmanaged with one warning naming the bundle.
+A repository migration writes two new files and deletes two legacy ones. That is **not one
+filesystem transaction**, so every intermediate state must be legal and resumable:
 
-No backup and no rollback, by decision. The single non-crash concession: a record whose
-cache is missing cannot be redeployed, so it is reported as unmanaged with the bundle name
-rather than throwing.
+- New files written, legacy not yet deleted → legacy is ignored when the new committed file
+  exists, so a resumed run simply completes the deletion.
+- Materialization written but legacy records not removed → distinct from "done"; the
+  `MigrationRegistry` flag and the record state can diverge, so completion is determined by
+  a per-repository marker written **last**, not by the presence of a materialization record.
+- Never delete legacy truth before the replacement is durably written.
+
+**Concurrent mutation needs more than atomic replacement.** `writeAtomic` prevents torn
+JSON; it does not prevent a lost read-modify-write when the CLI and extension mutate the
+same lockfile concurrently. State mutation needs a lock or an equivalent journal, and
+physical-config updates (MCP) must be serialized against materialization updates — a
+refcount is not concurrency control.
+
+**Mixed-version clients need a stated write policy.** The rename stops an un-upgraded
+client from acting on a file it misreads, but it does not make a mixed-version repository
+safe on its own: an old client can still recreate legacy state and will not see new
+installs. Policy: an upgraded client that finds *both* generations treats the new one as
+authoritative and does not resurrect the legacy file; a repository that has been migrated
+is expected to have its team upgrade, and the migration notification says so.
+
+### 8.5 MCP and APM
+
+MCP entries move out of the legacy destinations into the portable files keyed `mcpServers`.
+This is **not** a simple entry move — see §6.7 for the required ownership-transfer contract,
+including the fact that the tracking sidecar has a fixed filename shared by **every** bundle
+in a config directory, so it cannot be deleted after transferring one bundle.
+
+Repository MCP changes stay **lazy**, including legacy workspace-scope MCP, which currently
+maps onto the *repository* config scope (`mcp-config-service.ts:121`) — so eager
+workspace-to-user migration of primitives must not drag repository MCP state with it.
+
+APM-sourced records are retained on disk and marked unmanaged: skip eager redeploy, stop
+retrying their source, and decide MCP cleanup ownership explicitly rather than leaving
+their servers orphaned.
+
+Current MCP config writes **create backups by default**. Removing that is a deliberate
+safety-net reduction, not a neutral simplification, and is called out in §13.
 
 ## 9. Error handling
 
-`DeployError { code, stage }` with `stage: 'extract' | 'validate' | 'place' | 'mcp' |
-'record'`, mirroring `InstallPipelineError`'s shape so the extension's error mapping and
-the CLI's `RegistryError` codes both keep working.
+### 9.1 Error identity must satisfy two existing contracts, not resemble them
 
-Order is place → MCP → record. A failed record rolls back files and MCP through the
-writer's existing `rollback(written)`. `writeTargetSafely` / `TargetWriteRejectedError`
-and `verifyWrittenBytes` are unchanged. MCP failure stays non-fatal to the bundle install,
-with the existing notification behavior.
+A shape that merely mirrors `InstallPipelineError` preserves neither mapping: the extension
+checks `instanceof InstallPipelineError` (`bundle-installer.ts:894`), and CLI rendering
+recognizes `RegistryError` and calls `toJSON()` on structured failure
+(`cli/src/framework/error.ts:57`). `DeployError` must therefore either implement both
+contracts or be translated at each delivery boundary. Translation at the boundary is the
+cleaner choice and is what this design adopts.
+
+### 9.2 Rollback does not restore overwritten bytes
+
+`FileTreeTargetWriter.rollback` (`file-tree-writer.ts:300`) **deletes written paths**; it
+does not restore prior content, and the repository writer has the same limitation. So a
+failure after overwriting an existing installation currently destroys the previous files.
+Three further gaps:
+
+- The manifest writer can fail **before returning**, so the written-path list the caller
+  would roll back with does not exist yet. Mid-skill partial directory writes are the
+  common case.
+- MCP config edits, `.git/info/exclude` edits and both state files are **outside** that
+  rollback entirely. Deleting a shared MCP config path to "undo" would discard other
+  owners' and the user's own entries.
+- The extension is not transactional today either: lockfile recording failure is caught and
+  treated as non-fatal (`bundle-installer.ts:207`), and update **uninstalls the old bundle
+  before the new one succeeds** (`:967`).
+
+**Therefore the design must not claim rollback.** It states instead:
+
+- Deployment proceeds **staged**: write new artifact bytes to a staging location, then
+  promote; capture prior bytes for any path about to be overwritten so promotion is
+  reversible; apply MCP and exclude edits as read-modify-write merges that preserve
+  unrelated entries.
+- On failure, report **actual applied effects** and retry ownership rather than an
+  all-or-nothing result. A partial MCP write is a real state, not an error to be swallowed.
+- `writeTargetSafely` keeps its current reject-or-throw semantics; unsupported-kind
+  filtering happens before it (§4.7).
+- "No backup, no rollback" from §2 is a decision about **not adding** a user-visible backup
+  mechanism. It is not permission to delete irreversible legacy truth or overwrite edited
+  files before a durable success, and it does not override the staging requirement above.
+
+Order is place → MCP → record, which is a **change** from the extension's current order
+(cache write → MCP → scope sync → record) and is called out as such in §13.
 
 ## 10. Testing
 
@@ -762,43 +1103,89 @@ slice.
 | CLI vs extension byte-identical | Drive `deploy` through both wirings, assert identical tree and both lockfiles. The actual success criterion |
 | Committed file carries no local identifiers | No `targetName`, `baseDir`, `installedAt` or `files` appears in `ai-primitives-hub.lock.json` |
 | Effective desired state | `(committed − excludes) ⊕ local` across all four combinations |
-| Legacy extension lockfile migration | Production-shaped `prompt-registry.lock.json` with on-disk `path` + on-disk `checksum` → lossless target record, `installedChecksum` equal to the stored value |
+| Legacy extension lockfile migration | Production-shaped `prompt-registry.lock.json` with on-disk `path` + on-disk `checksum` → `installedChecksum` **equals the stored hash**, so a pre-existing local modification is still reported after migration |
 | Legacy CLI lockfile migration | Bundle-relative `path` + archive `checksum` → path re-derived, `installedChecksum` recomputed from disk |
 | **Mixed legacy lockfile** | One file with both writers' entries → each resolved independently by existence probe |
 | Lazy migration ordering | Opening a workspace writes nothing; first install migrates and deletes the legacy committed file |
 | Reconcile removal | Bundle dropped from committed desired state → files cleaned on next reconcile, nothing removed on open |
 | Portable replay | Lockfile written with a name-derived `sourceId` replays on a machine where that source is configured under a different name (P2) |
-| No type inference from id | An awesome-copilot source with id `team-prompts` fetches through the awesome-copilot path (P3) |
+| No type inference from id | **Misleading** id: `src.type: 'github'` with id `awesome-copilot-xyz` must fetch through the **github** path. The naive case (`src.type: 'awesome-copilot'`, id `team-prompts`) already passes today and proves nothing |
 | Drift on transformed content | The issue #357 Stage 2 case `installedChecksum` fixes, for CLI-written entries |
 | Symlink replacement | Pre-place a symlink, deploy, assert the cache is untouched and the destination is a regular file |
 | Shared-destination refcount | Two targets → one `.mcp.json`; uninstall one, the other's servers survive |
 | Binary assets through local sources | `readBundleFiles` preserves bytes where the `archiver` text path corrupted them |
 | `resolveBundle` call count | `install owner/repo:foo@1.2.3` does not walk the release catalog |
-| User-scope migration | Fixture globalState + cache + symlinks → real files, lockfile records, symlinks gone; second run is a no-op |
-| Unknown source type | `apm` in a hub config → warn, skip, rest of the hub loads |
+| User-scope migration | Fixture `AppStorage` install JSONs + cache + symlinks → real files, materialization records, symlinks gone, JSON records removed; second run is a no-op. One case per record kind in §8.2 |
+| Unknown source type | `apm` in a hub config → warn, skip, rest of the hub loads; **and** in a lockfile → replay reports unmanaged retention, not a silent `null`; **and** schema enum validation does not reject the whole config |
+
+Additional cases the audit identified as missing, grouped by what they protect:
+
+**Entry-point reachability** — every registered CLI producer from §3.7 (`install` local /
+replay / remote, `update`, `uninstall`, `profile` activate/deactivate, `apply`) and every
+extension entry (command, marketplace, profile, scope and commit-mode commands,
+auto-update scheduler). A test per producer asserting it reaches shared deployment.
+
+**Placement breadth** — deliberate path/type mismatches and id/filename mismatches, not
+just happy-path files; governed `items[]` inventory filtering alongside legacy `prompts[]`;
+every canonical kind; skill subtrees with binary assets; hooks, plugins, powers;
+unsupported-kind diagnostics distinguishing the three cases in §4.7; ambiguous **custom
+layout** inversion raising a diagnostic; custom target roots and layout overrides;
+transformers that inspect source prefixes (Kiro agents); WSL home resolution;
+`allowedKinds`.
+
+**Safety** — a `local-skills` install whose parent is a **directory symlink**: assert the
+original source bytes are untouched (§4.8); failure injected after overwrite, mid-skill
+write, MCP config write, desired-state write, local-state write, exclude write, and legacy
+deletion, each asserting applied effects are reported; concurrent CLI/extension mutation of
+one lockfile; restart after every migration interruption point.
+
+**Migration provenance** — a mixed legacy lockfile where a CLI bundle-relative path *also*
+exists in the repository (existence proves nothing); uninstall-triggered migration with no
+cache or manifest available; an edited extension file retaining its stored drift baseline;
+a CLI entry recording an adopted baseline; an unrecoverable source descriptor retained and
+reported rather than guessed; workspace skills and cache-missing user migration; mixed
+commit/local-only bundles under one target.
+
+**Reconcile** — same bundle id with changed version, source, layout, target root or
+`allowedKinds`, asserting the install signature triggers redeploy; a fresh clone with
+committed artifacts and no materialization; pin removal; scope move.
+
+**No-write guarantees** — activation with auto-update enabled asserts no repository
+migration or write; `--dry-run` asserts no writes through **every** port including cache
+synthesis, store initialization and auth setup; mixed old/new client writes after the
+rename.
 
 ## 11. Sequencing
 
-Slices 7 and 8 are independent of 1–6 and may run in parallel. Slice 2 is a prerequisite
-for 3 and 4; slice 9 requires both.
+The earlier ordering claimed independent slices that are not independently safe: source
+identity is a behavior change despite being described as none; slice 2 was called both a
+prerequisite of and independent from slice 3; CLI cutover depends on profile/apply/update
+and MCP parity, not just command write blocks; service deletion depends on scope and
+commit-mode commands, skills paths and consumers; resolver deletion must wait for every
+registered consumer; and a v3 writer must not precede a v2 reader. Corrected order:
 
-1. `app/deploy` skeleton, `PrimitiveKind` routing, layout inversion, golden placement
-   matrix. No delivery changes.
-2. Lockfile `3.0.0`: role split, two files, `installedChecksum`, `excludes`, effective
-   desired state, v2 readers for both writers' shapes.
-3. Source identity: P1 deterministic ids, P2 identity matching (including the
-   `checkAndOfferMissingSources` stub), P3 remove type sniffing. Independent of the
-   schema work and shippable alone.
-4. CLI cuts over to `deploy`; delete prefix routing and `RepositoryScopeWriter`.
-5. Extension cuts over; delete the scope services.
-6. MCP relocation and the portable-path layout change.
-7. Download unification on `SourceAdapter`; delete `resolvers/` and `downloaders/`.
-8. APM retirement.
-9. Migration: eager user scope, lazy repository scope, lockfile rename.
-10. Documentation, schemas, and ADRs.
+1. **Correct the factual baseline and name every deliberate behavior change** (§13).
+2. **Specify contracts**: install signature and state identity, physical-destination
+   ownership, transaction and staging, migration provenance, reconciliation.
+3. **Add primitives behind existing callers**: export and generalize `routeToKind`,
+   canonical→alias naming, the `FileSystem` link-identity capability (§4.8), and a
+   **legacy destination locator** implementing the old prefix+filename rules. No caller
+   changes behavior yet.
+4. **Add source and MCP capabilities behind existing entry points**, with parity tests:
+   `resolveBundle`, `readBundleFiles`, per-server input predicate, Azure DevOps auth policy.
+5. **Introduce shared state readers and read-only compatibility**: v2 readers for both
+   writers' shapes, identity-based source resolution (P2), effective-desired-state
+   computation. Still no v3 writes.
+6. **Implement shared deployment with the staging contract**, exercised by tests only.
+7. **Cut over every lifecycle producer and consumer** from §3.7 behind a migration gate,
+   including scheduling and trigger provenance.
+8. **Enable migrations** — eager user, lazy repository — with recovery, interruption and
+   concurrent-write tests.
+9. **Delete legacy implementations** only once entry-point tests show no remaining callers.
+10. Documentation, schemas and ADRs.
 
-Slices 1–3 are pure additions with no delivery-layer behavior change, so they can merge
-independently of the rest.
+P1–P3 remain valuable early, but they belong in steps 1 and 5 as **behavior changes with
+their own tests**, not as a "no delivery-layer change" slice.
 
 ## 12. Documentation, schemas, and ADRs
 
@@ -811,28 +1198,69 @@ dual-naming rule cites the lockfile filename), the root `AGENTS.md`,
 `docs/contributor-guide/testing/{golden-path,test-plan}.md`, `docs/user-guide/sources.md`,
 `docs/author-guide/creating-a-hub.md`.
 
-**Schemas:** `apps/vscode-extension/schemas/lockfile.schema.json` and the published copy
-under `packages/core/**/public/schemas/` are rewritten for `3.0.0` — including the
-description and the deprecated-`commitMode` note, both of which name the old filenames.
-`apm.schema.json` is deleted with §7.
+**Schemas.** The git-tracked source of truth is
+`packages/core/src/public/schemas/lockfile.schema.json`; `schemas/lockfile.schema.json` and
+`apps/vscode-extension/schemas/lockfile.schema.json` are generated copies and must be
+regenerated, not hand-edited. The lockfile schema is rewritten for `3.0.0`, including its
+description and deprecated-`commitMode` note, which name the old filenames. The source-type
+enums in `schemas/hub-config.schema.json` and the lockfile schema need the retired-value
+policy from §7 before APM members are removed. `apm.schema.json` is removed only if
+authoring support is also retired (§7).
 
 **New or amended ADRs:**
 
 - Unify source fetching on `SourceAdapter`, overruling `resolver-registry.ts`'s
   "overlap is intentional and stays".
-- Retire the `apm` and `local-apm` source types.
-- Adopt portable MCP destinations; drop the deprecated VS Code locations.
+- Retire the `apm` and `local-apm` source types, with the schema enum policy.
+- Adopt portable MCP destinations, citing the product documentation and version that
+  establishes the deprecation and input-forwarding behavior.
 - Lockfile `3.0.0`: split by role — committed desired state, local materialization.
-- Retire the `workspace` installation scope.
-- **Amend ADR-0004.** Its decision to keep `prompt-registry.lock.json` rested on "no
-  forced migration for existing extension users or already-committed repository
-  lockfiles". The role split voids that premise independently of any rename: the committed
-  file's meaning changes either way. Once a semantic break is unavoidable, reusing the
-  filename is actively harmful — an un-upgraded extension reading a `3.0.0` file sees
-  entries with no `files` array and `checkFilesMissing()` concludes everything is missing,
-  offering repair. Under the rename it finds no file, concludes "no repository installs",
-  and does nothing; the committed `.github/` files keep working because Copilot reads them
-  directly. Inert beats wrong. ADR-0004's second premise — that both tools read and write
-  the same file — is preserved, and the rename also converges repository scope on the
-  filename `resolveUserConfigPaths()` already uses for user scope. ADR-0004 itself
+- Retire the `workspace` installation scope, recording the cache, skills and MCP-scope
+  semantics that change with it.
+- **Amend ADR-0004.** Its decision to keep `prompt-registry.lock.json` rested on "no forced
+  migration for existing extension users or already-committed repository lockfiles". The
+  role split voids that premise independently of any rename: the committed file's meaning
+  changes either way. Given an unavoidable semantic break, a distinct filename means an
+  un-upgraded client finds no file and stays inert rather than acting on a file it cannot
+  interpret. **The earlier justification for this was wrong and is withdrawn:**
+  `checkFilesMissing` (`lockfile-manager.ts:574`) returns `false` when `files` is
+  absent or empty, so an old client would *not* report everything missing or offer repair.
+  The real risks are narrower and still sufficient — an old client would treat a `3.0.0`
+  file as containing bundles with no tracked files, could resurrect legacy state on write,
+  and would not see installs recorded in the new local file. ADR-0004's second premise,
+  that both tools read and write the same file, is preserved, and the rename converges
+  repository scope on the filename `resolveUserConfigPaths()` already uses. ADR-0004 itself
   anticipated this: "until the lockfile is naturally retired far in the future, if ever."
+
+## 13. Deliberate behavior changes and external premises
+
+Each item below is a change in behavior, not a refactor. Implementation must not present
+any of them as preservation.
+
+| Change | From | To |
+|---|---|---|
+| User-scope artifact | symlink-or-copy, pre-existing regular files skipped | real copies |
+| CLI user-scope routing | prefix-routed, bundle filename kept | manifest-routed, normalized id + suffix |
+| Copilot repository placement | `RepositoryScopeWriter`, bundle filename kept | layout + manifest routing, normalized id |
+| `workspace` scope | distinct cache, workspace skills dir, repository MCP scope | retired; folded into user |
+| Scope conflict | reached only from explicit scope-move commands | enforced on every install |
+| Drift protection | repository scope only, main lockfile only | all scopes, both files |
+| MCP destinations | user-profile `mcp.json`, `.vscode/mcp.json` | portable `mcp-config.json`, `.mcp.json` |
+| Input-requiring MCP servers | written, with a warning | skipped, with a warning |
+| MCP config backups | created by default on write | not created by migration |
+| Deployment order | cache write → MCP → scope sync → record | place → MCP → record |
+| APM sources | installable | retired; records retained as unmanaged |
+| Unknown source type | factory throws; schema enum may reject the config | warn and skip |
+
+**External premises, to be cited and versioned rather than asserted:** that the VS Code
+user-profile `mcp.json` and `.vscode/mcp.json` are deprecated; that
+`$COPILOT_HOME/mcp-config.json` and `.mcp.json` are the portable, Agent-Host-native
+destinations; that Agent Host does not forward servers requiring `${input:...}`; that a
+non-default VS Code profile does not read the default-profile MCP file and that the
+upstream issues are closed as not planned; and that the extension has materially more
+adoption than the CLI. The last one shaped §8.3's default assumption, so it is explicitly
+marked unverified there and is not used to justify any lossy default.
+
+**Acceptance criteria, not established facts:** byte parity between layers, lockfile
+portability across machines, transaction safety, and migration idempotence. Current tests
+confirm today's behavior; they do not validate these.

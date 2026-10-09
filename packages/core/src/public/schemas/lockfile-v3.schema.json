@@ -94,16 +94,16 @@
     "targetRecord": {
       "type": "object",
       "description": "Target-specific installation record",
-      "required": ["targetType", "scope", "baseDir", "bundles"],
+      "required": ["baseDir", "bundles"],
       "properties": {
         "targetType": {
           "type": "string",
-          "description": "Type of target",
+          "description": "Type of target (optional for unmanaged reserved key)",
           "enum": ["vscode", "vscode-insiders", "copilot-cli", "kiro", "kiro-cli", "windsurf", "claude-code", "cursor", "opencode", "devin", "devin-cli"]
         },
         "scope": {
           "type": "string",
-          "description": "Installation scope",
+          "description": "Installation scope (optional for unmanaged reserved key)",
           "enum": ["user", "workspace", "repository"]
         },
         "baseDir": {

@@ -163,6 +163,29 @@ describe('lockfile 3.x wire-format schema', () => {
       }
     })).toBe(true);
   });
+
+  it('accepts an unmanaged target record with no targetType or scope', () => {
+    expect(validate({
+      version: '3.0.0',
+      generatedAt: '2026-10-09T12:00:00.000Z',
+      generatedBy: 'ai-primitives-hub-cli',
+      targets: {
+        unmanaged: {
+          baseDir: '',
+          bundles: {
+            'src/web-dev': {
+              version: '1.0.0',
+              sourceId: 'src',
+              installedAt: '2026-10-09T12:00:00.000Z',
+              state: 'unmanaged',
+              unmanagedReason: 'destination could not be proven from bundle-relative path',
+              files: [{ path: 'prompts/hello.prompt.md', checksum: 'a'.repeat(64) }]
+            }
+          }
+        }
+      }
+    })).toBe(true);
+  });
 });
 
 describe('lockfile wire-format schema', () => {

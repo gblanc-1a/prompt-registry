@@ -14,6 +14,7 @@
  * until it is set so an interruption resumes.
  * @module stores/migrate-lockfile-v3
  */
+
 import {
   classifyLockfileVersion,
   logicalKeyFromLegacyId,
@@ -28,6 +29,7 @@ import {
   emptyLocalLockfileV3,
   readLockfileV3Pair,
   writeLockfileV3Pair,
+  writeV3File,
 } from './lockfile-v3';
 import type {
   LocalLockfileV3,
@@ -84,21 +86,19 @@ export const convertV2ToPair = (
   const local = emptyLocalLockfileV3(options.generatedBy, options.now);
   const report: MigrationReport = { migrated: [], unmanaged: [] };
 
-  // Carry hubs and profiles verbatim into the desired half.
+  // Carry hubs and profiles verbatim into the desired half (shallow-copy to avoid aliasing).
   if (v2.hubs) {
-    desired.hubs = v2.hubs;
+    desired.hubs = { ...v2.hubs };
   }
   if (v2.profiles) {
-    desired.profiles = v2.profiles;
+    desired.profiles = { ...v2.profiles };
   }
 
-  // Carry sources into the desired half.
-  desired.sources = v2.sources;
+  // Carry sources into the desired half (shallow-copy to avoid aliasing).
+  desired.sources = { ...v2.sources };
 
   // Prepare the unmanaged target record (not a configured target).
   const unmanagedTarget: LockfileV3TargetRecord = {
-    targetType: 'vscode',
-    scope: 'user',
     baseDir: '',
     bundles: {}
   };
@@ -124,8 +124,9 @@ export const convertV2ToPair = (
     }
 
     // Determine the unmanaged reason.
-    let reason: string;
-    reason = v2.sources[entry.sourceId] ? 'destination could not be proven from bundle-relative path' : 'unrecoverable source descriptor';
+    const reason = v2.sources[entry.sourceId]
+      ? 'destination could not be proven from bundle-relative path'
+      : 'unrecoverable source descriptor';
 
     // Materialization record: mark as unmanaged.
     const bundleRecord: LockfileV3BundleRecord = {
@@ -139,6 +140,11 @@ export const convertV2ToPair = (
         checksum: f.checksum
       }))
     };
+
+    // Carry commitMode when present (§8.3).
+    if (entry.commitMode) {
+      bundleRecord.commitMode = entry.commitMode;
+    }
 
     unmanagedTarget.bundles[logicalKey] = bundleRecord;
     report.unmanaged.push({ key: logicalKey, reason });
@@ -157,8 +163,8 @@ export const convertV2ToPair = (
  *
  * Follows design §8.4's order: write local without marker, write desired,
  * delete legacy files, write local with marker. Every step is idempotent
- * and resumes an interrupted migration by unioning the new local file with
- * any legacy local records until the marker is set.
+ * and resumes an interrupted migration by unioning the existing-new local
+ * file with any legacy-derived records until the marker is set.
  * @param sources - Paths to the lockfiles.
  * @param fs - Filesystem adapter with rename for atomic writes.
  * @param options - Generation metadata.
@@ -167,7 +173,7 @@ export const convertV2ToPair = (
  * @param options.triggeredByKey - Bundle key being installed; omit its materialization.
  * @returns The v3 pair and migration report (null if no migration occurred).
  * @throws {UnsupportedLockfileVersionError} On unreadable version.
- * @throws {Error} On write failure.
+ * @throws {Error} On write failure or missing fs.remove.
  */
 export const migrateLockfileIfNeeded = async (
   sources: MigrationSources,
@@ -217,10 +223,6 @@ export const migrateLockfileIfNeeded = async (
   }
 
   // Major 2 → continue with migration.
-  if (verdict.major !== 2) {
-    throw new UnsupportedLockfileVersionError(v2Source, verdict);
-  }
-
   const v2 = parsed as Lockfile;
 
   // Step 2: Convert and union with any existing v3 local file's targets.
@@ -241,19 +243,40 @@ export const migrateLockfileIfNeeded = async (
     }
   }
 
-  // Union the targets: new winning per key.
+  // Union: existing-new wins per bundle key (§8.4).
   if (existingLocal && !existingLocal.migration?.lockfileV3) {
     // Migration is incomplete, so union the targets.
+    // Collect all bundle keys from existing-new, then add legacy-derived records
+    // for keys not already present (per bundle key, not per (target, bundle) pair).
+    const existingKeys = new Set<string>();
+    for (const targetRecord of Object.values(existingLocal.targets)) {
+      for (const bundleKey of Object.keys(targetRecord.bundles)) {
+        existingKeys.add(bundleKey);
+      }
+    }
+
+    // Merge existing-new targets into the converted pair, preserving their records.
     for (const [targetName, targetRecord] of Object.entries(existingLocal.targets)) {
       if (convertedPair.local.targets[targetName]) {
-        // Merge bundles within the target.
+        // Merge bundles: existing-new wins.
         for (const [bundleKey, bundleRecord] of Object.entries(targetRecord.bundles)) {
-          if (!convertedPair.local.targets[targetName].bundles[bundleKey]) {
-            convertedPair.local.targets[targetName].bundles[bundleKey] = bundleRecord;
-          }
+          convertedPair.local.targets[targetName].bundles[bundleKey] = bundleRecord;
         }
       } else {
         convertedPair.local.targets[targetName] = targetRecord;
+      }
+    }
+
+    // Remove legacy-derived records for keys that exist in existing-new.
+    for (const [targetName, targetRecord] of Object.entries(convertedPair.local.targets)) {
+      for (const bundleKey of Object.keys(targetRecord.bundles)) {
+        if (existingKeys.has(bundleKey) && targetName === UNMANAGED_TARGET_KEY) {
+          delete targetRecord.bundles[bundleKey];
+        }
+      }
+      // Clean up empty unmanaged target.
+      if (targetName === UNMANAGED_TARGET_KEY && Object.keys(targetRecord.bundles).length === 0) {
+        delete convertedPair.local.targets[UNMANAGED_TARGET_KEY];
       }
     }
   }
@@ -266,42 +289,20 @@ export const migrateLockfileIfNeeded = async (
   );
 
   // Step 4: Delete each legacyFiles entry, tolerating absence.
+  if (sources.legacyFiles.length > 0 && !fs.remove) {
+    throw new Error(
+      'fs.remove is required when legacyFiles is non-empty, but the adapter does not provide it'
+    );
+  }
   for (const legacyFile of sources.legacyFiles) {
-    if (fs.remove && (await fs.exists(legacyFile))) {
-      await fs.remove(legacyFile);
+    if (await fs.exists(legacyFile)) {
+      await fs.remove!(legacyFile);
     }
   }
 
   // Step 5: Write local again with the marker (only local, not desired).
   convertedPair.local.migration = { lockfileV3: 'complete' };
-
-  // Write only the local file atomically.
-  const localContents = JSON.stringify(convertedPair.local, null, 2) + '\n';
-  if (fs.mkdir !== undefined) {
-    const { dirname } = await import('node:path');
-    await fs.mkdir(dirname(sources.localFile), { recursive: true });
-  }
-
-  if (fs.rename === undefined) {
-    await fs.writeFile(sources.localFile, localContents);
-  } else {
-    // Unique per write: two processes must not race on one fixed temp path.
-    const { randomUUID } = await import('node:crypto');
-    const temp = `${sources.localFile}.${randomUUID()}.tmp`;
-    try {
-      await fs.writeFile(temp, localContents);
-      await fs.rename(temp, sources.localFile);
-    } catch (cause) {
-      if (fs.remove !== undefined) {
-        try {
-          await fs.remove(temp);
-        } catch {
-          // Cleanup is best effort; preserve the rename failure.
-        }
-      }
-      throw cause;
-    }
-  }
+  await writeV3File(sources.localFile, convertedPair.local, fs);
 
   return { pair: convertedPair, report };
 };

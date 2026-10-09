@@ -113,6 +113,16 @@ describe('convertV2ToPair', () => {
     expect(file.installedChecksum).toBeUndefined();
   });
 
+  it('carries commitMode when present (§8.3)', () => {
+    const v2 = v2WithOneBundle();
+    v2.bundles['web-dev'].commitMode = 'local-only';
+
+    const { pair } = convertV2ToPair(v2, OPTS);
+
+    expect(pair.local.targets[UNMANAGED_TARGET_KEY].bundles['github-abc123/web-dev'].commitMode)
+      .toBe('local-only');
+  });
+
   it('marks a bundle whose source descriptor is missing as unmanaged for that reason', () => {
     const broken = { ...v2WithOneBundle(), sources: {} };
 
@@ -234,17 +244,55 @@ describe('migrateLockfileIfNeeded', () => {
 
   it('resumes an interruption between the local and desired writes (Review Focus 5)', async () => {
     // §8.4: until the marker is set, materialization is the new local file
-    // unioned with legacy, new winning per key — so a half-done migration
-    // must not discard the legacy record.
+    // unioned with legacy, existing-new winning per key — so a half-done
+    // migration must preserve the existing-new record and discard the
+    // legacy-derived duplicate.
     const fs = fakeFs();
-    fs.files.set(userSources.desiredFile, JSON.stringify(v2WithOneBundle()));
-    const partial = convertV2ToPair(v2WithOneBundle(), OPTS);
-    delete partial.pair.local.migration;
-    fs.files.set(userSources.localFile, JSON.stringify(partial.pair.local));
+    const v2 = v2WithOneBundle();
+    // Add a second bundle that will be in the v2 file.
+    v2.bundles['other-bundle'] = {
+      version: '2.0.0',
+      sourceId: 'github-abc123',
+      sourceType: 'github',
+      installedAt: '2026-02-01T00:00:00.000Z',
+      checksum: 'sha256:otherbytes',
+      files: [{ path: 'other.md', checksum: 'otherhash' }]
+    };
+    fs.files.set(userSources.desiredFile, JSON.stringify(v2));
+
+    // Seed the partial local file with an existing-new record for web-dev
+    // (not derived from v2) and a different target for a different bundle.
+    const partialLocal = {
+      version: '3.0.0',
+      generatedAt: OPTS.now,
+      generatedBy: OPTS.generatedBy,
+      targets: {
+        'real-target': {
+          targetType: 'cursor',
+          scope: 'user',
+          baseDir: '/real/path',
+          bundles: {
+            'github-abc123/web-dev': {
+              version: '1.0.0',
+              sourceId: 'github-abc123',
+              installedAt: '2026-01-01T00:00:00.000Z',
+              files: [{ path: '/real/path/hello.prompt.md', checksum: 'realhash', installedChecksum: 'installedhash' }]
+            }
+          }
+        }
+      }
+    };
+    fs.files.set(userSources.localFile, JSON.stringify(partialLocal));
 
     const { pair } = await migrateLockfileIfNeeded(userSources, fs, OPTS);
 
-    expect(pair.local.targets[UNMANAGED_TARGET_KEY].bundles['github-abc123/web-dev']).toBeDefined();
+    // Existing-new record wins (has installedChecksum, is under 'real-target').
+    expect(pair.local.targets['real-target'].bundles['github-abc123/web-dev'].files[0].installedChecksum)
+      .toBe('installedhash');
+    // Legacy-derived unmanaged copy is removed (de-duplicated per bundle key).
+    expect(pair.local.targets[UNMANAGED_TARGET_KEY]?.bundles['github-abc123/web-dev']).toBeUndefined();
+    // other-bundle still exists in unmanaged (not de-duplicated).
+    expect(pair.local.targets[UNMANAGED_TARGET_KEY].bundles['github-abc123/other-bundle']).toBeDefined();
     expect(JSON.parse(fs.files.get(userSources.localFile) as string).migration)
       .toEqual({ lockfileV3: 'complete' });
   });
@@ -279,5 +327,41 @@ describe('migrateLockfileIfNeeded', () => {
 
     await expect(migrateLockfileIfNeeded(userSources, fs, OPTS))
       .rejects.toThrow(/newer version of AI Primitives Hub/);
+  });
+
+  it('leaves the marker unwritten when a legacy deletion fails', async () => {
+    const fs = fakeFs();
+    const repoSources = {
+      desiredFile: '/work/ai-primitives-hub.lock.json',
+      localFile: '/work/ai-primitives-hub.local.lock.json',
+      legacyFiles: ['/work/prompt-registry.lock.json']
+    };
+    fs.files.set('/work/prompt-registry.lock.json', JSON.stringify(v2WithOneBundle()));
+    let deleteAttempted = false;
+    fs.remove = async (p: string) => {
+      deleteAttempted = true;
+      throw new Error('permission denied');
+    };
+
+    await expect(migrateLockfileIfNeeded(repoSources, fs, OPTS))
+      .rejects.toThrow('permission denied');
+    expect(deleteAttempted).toBe(true);
+    // Local file was written in step 3, but without the marker.
+    const local = JSON.parse(fs.files.get(repoSources.localFile) as string);
+    expect(local.migration).toBeUndefined();
+  });
+
+  it('fails when legacyFiles is non-empty but fs.remove is missing', async () => {
+    const fs = fakeFs();
+    const repoSources = {
+      desiredFile: '/work/ai-primitives-hub.lock.json',
+      localFile: '/work/ai-primitives-hub.local.lock.json',
+      legacyFiles: ['/work/prompt-registry.lock.json']
+    };
+    fs.files.set('/work/prompt-registry.lock.json', JSON.stringify(v2WithOneBundle()));
+    delete (fs as { remove?: unknown }).remove;
+
+    await expect(migrateLockfileIfNeeded(repoSources, fs, OPTS))
+      .rejects.toThrow(/fs\.remove is required/);
   });
 });

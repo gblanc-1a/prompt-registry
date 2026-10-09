@@ -96,10 +96,10 @@ export interface LockfileV3BundleRecord {
 
 /** Target materialization record in the local file. */
 export interface LockfileV3TargetRecord {
-  /** Target type (vscode, cursor, etc.). */
-  targetType: TargetType;
-  /** Installation scope. */
-  scope: InstallationScope;
+  /** Target type (vscode, cursor, etc.). Optional for the unmanaged reserved key. */
+  targetType?: TargetType;
+  /** Installation scope. Optional for the unmanaged reserved key. */
+  scope?: InstallationScope;
   /** Base directory for file paths. */
   baseDir: string;
   /** Repository commit mode (absent at user scope). */
@@ -291,7 +291,15 @@ export const readLockfileV3Pair = async (
   };
 };
 
-const writeV3File = async (
+/**
+ * Write a single v3 lockfile (local or desired) atomically.
+ * @param file - Absolute path to the file.
+ * @param payload - The lockfile content to write.
+ * @param payload.version
+ * @param fs - Filesystem adapter with optional rename.
+ * @throws {UnsupportedLockfileVersionError} On invalid version.
+ */
+export const writeV3File = async (
   file: string,
   payload: { version: string },
   fs: LockfileFsWithRename

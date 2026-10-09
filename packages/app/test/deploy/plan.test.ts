@@ -7,11 +7,13 @@ import {
   it,
 } from 'vitest';
 import {
-  createGovernedReleaseArchive,
-} from '../../../core/test/fixtures/release-archives';
-import {
   planDeploy,
 } from '../../src/deploy/plan';
+import {
+  LOCAL_FILE,
+  request,
+  seedLocal,
+} from './fixtures';
 
 const rejectOnWrite = (label: string) => () => {
   throw new Error(`planDeploy must not write (${label})`);
@@ -60,53 +62,6 @@ const readOnlyPorts = (files: Map<string, string>) => ({
     desiredFile: '/home/u/.config/ai-primitives-hub/ai-primitives-hub.lock.json',
     localFile: '/home/u/.config/ai-primitives-hub/ai-primitives-hub.local.lock.json',
     legacyFiles: []
-  }
-});
-
-const LOCAL_FILE = '/home/u/.config/ai-primitives-hub/ai-primitives-hub.local.lock.json';
-
-/**
- * Seed a v3 local file holding one materialization record.
- * @param files
- */
-const seedLocal = (files: { path: string; installedChecksum: string }[]): string => JSON.stringify({
-  version: '3.0.0',
-  generatedAt: '2026-10-09T12:00:00.000Z',
-  generatedBy: 'ai-primitives-hub-cli',
-  migration: { lockfileV3: 'complete' },
-  targets: {
-    'my-vscode': {
-      targetType: 'vscode',
-      scope: 'user',
-      baseDir: '/home/u/.copilot',
-      bundles: {
-        'github-abc123/web-dev': {
-          version: '1.0.0',
-          sourceId: 'github-abc123',
-          installedAt: '2026-10-09T12:00:00.000Z',
-          files
-        }
-      }
-    }
-  }
-});
-
-const request = () => ({
-  files: createGovernedReleaseArchive({ id: 'web-dev', version: '1.0.0' }),
-  bundle: { bundleId: 'web-dev', version: '1.0.0' },
-  source: { sourceId: 'github-abc123', type: 'github', url: 'https://github.com/owner/repo' },
-  targetName: 'my-vscode',
-  runtimeAssetRoot: '/home/u/.config/ai-primitives-hub/runtime',
-  placement: {
-    scope: 'user' as const,
-    targetType: 'vscode' as const,
-    resolvedLayout: {
-      baseDir: '${HOME}/.copilot',
-      kindRoutes: { 'prompts/': 'prompts/', 'instructions/': 'instructions/', 'agents/': 'agents/' },
-      skipPaths: ['deployment-manifest.yml', 'README.md']
-    },
-    baseRoot: '/home/u/.copilot',
-    env: { HOME: '/home/u' }
   }
 });
 

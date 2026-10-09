@@ -1,0 +1,210 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/AmadeusITGroup/ai-primitives-hub/schemas/lockfile-v3.schema.json",
+  "title": "AI Primitives Hub Lockfile 3.x",
+  "description": "Either half of the role-split lockfile pair. The desired-state file is shareable and carries no local identifiers; the local file carries materialization only. Both shapes apply identically at user and repository scope.",
+  "oneOf": [
+    { "$ref": "#/definitions/desiredState" },
+    { "$ref": "#/definitions/localState" }
+  ],
+  "definitions": {
+    "desiredState": {
+      "type": "object",
+      "required": ["$schema", "version", "bundles", "sources"],
+      "additionalProperties": false,
+      "properties": {
+        "$schema": { "type": "string" },
+        "version": { "type": "string", "pattern": "^3\\.\\d+\\.\\d+$" },
+        "bundles": { "type": "object", "additionalProperties": { "$ref": "#/definitions/desiredEntry" } },
+        "sources": { "type": "object", "additionalProperties": { "$ref": "#/definitions/sourceEntry" } },
+        "hubs": { "type": "object" },
+        "profiles": { "type": "object" }
+      }
+    },
+    "localState": {
+      "type": "object",
+      "required": ["version", "generatedAt", "generatedBy", "targets"],
+      "additionalProperties": false,
+      "properties": {
+        "version": { "type": "string", "pattern": "^3\\.\\d+\\.\\d+$" },
+        "generatedAt": { "type": "string", "format": "date-time" },
+        "generatedBy": { "type": "string" },
+        "migration": { "type": "object", "properties": { "lockfileV3": { "enum": ["complete"] } } },
+        "targets": { "type": "object", "additionalProperties": { "$ref": "#/definitions/targetRecord" } }
+      }
+    },
+    "desiredEntry": {
+      "type": "object",
+      "description": "Bundle entry in the desired-state file",
+      "required": ["version", "sourceId"],
+      "properties": {
+        "version": {
+          "type": "string",
+          "description": "Semantic version of the bundle"
+        },
+        "sourceId": {
+          "type": "string",
+          "description": "ID of the source this bundle comes from"
+        },
+        "archiveSha": {
+          "type": "string",
+          "description": "Optional provenance hash of the archive bytes (§5.2)"
+        }
+      }
+    },
+    "sourceEntry": {
+      "type": "object",
+      "description": "Source configuration entry",
+      "required": ["type", "url"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Source type",
+          "enum": ["github", "local", "awesome-copilot", "local-awesome-copilot", "apm", "local-apm", "skills", "local-skills", "azure-devops", "artifactory"]
+        },
+        "url": {
+          "type": "string",
+          "description": "URL of the source",
+          "minLength": 1
+        },
+        "branch": {
+          "type": "string",
+          "description": "Optional Git branch for git-based sources"
+        },
+        "collectionsPath": {
+          "type": "string",
+          "description": "Optional collections subdirectory"
+        },
+        "indexFile": {
+          "type": "string",
+          "description": "Optional Artifactory index file"
+        },
+        "authMode": {
+          "type": "string",
+          "enum": ["anonymous", "bearer"],
+          "description": "Optional Artifactory authentication mode"
+        },
+        "credentialRef": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional external credential reference"
+        }
+      }
+    },
+    "targetRecord": {
+      "type": "object",
+      "description": "Target-specific installation record",
+      "required": ["targetType", "scope", "baseDir", "bundles"],
+      "properties": {
+        "targetType": {
+          "type": "string",
+          "description": "Type of target",
+          "enum": ["vscode", "vscode-insiders", "copilot-cli", "kiro", "kiro-cli", "windsurf", "claude-code", "cursor", "opencode", "devin", "devin-cli"]
+        },
+        "scope": {
+          "type": "string",
+          "description": "Installation scope",
+          "enum": ["user", "workspace", "repository"]
+        },
+        "baseDir": {
+          "type": "string",
+          "description": "Absolute base directory for this target's installations"
+        },
+        "commitMode": {
+          "type": "string",
+          "description": "Default commit mode for this target (§5.3)",
+          "enum": ["commit", "local-only"]
+        },
+        "bundles": {
+          "type": "object",
+          "description": "Map of bundle IDs to their installation records",
+          "additionalProperties": { "$ref": "#/definitions/bundleRecord" }
+        }
+      }
+    },
+    "bundleRecord": {
+      "type": "object",
+      "description": "Bundle installation record within a target",
+      "required": ["version", "sourceId", "installedAt", "files"],
+      "properties": {
+        "version": {
+          "type": "string",
+          "description": "Semantic version of the installed bundle"
+        },
+        "sourceId": {
+          "type": "string",
+          "description": "ID of the source this bundle was installed from"
+        },
+        "installedAt": {
+          "type": "string",
+          "description": "ISO 8601 timestamp when bundle was installed",
+          "format": "date-time"
+        },
+        "commitMode": {
+          "type": "string",
+          "description": "Per-bundle override of target-level commitMode (§5.3)",
+          "enum": ["commit", "local-only"]
+        },
+        "state": {
+          "type": "string",
+          "description": "Migration state marker (§8.3)",
+          "enum": ["unmanaged"]
+        },
+        "unmanagedReason": {
+          "type": "string",
+          "description": "Human-readable reason for unmanaged state (§8.3)"
+        },
+        "linked": {
+          "type": "boolean",
+          "description": "Local-skills live link (§4.8)",
+          "enum": [true]
+        },
+        "mcpConfigPath": {
+          "type": "string",
+          "description": "Path to MCP configuration file"
+        },
+        "mcpServers": {
+          "type": "object",
+          "description": "MCP server configurations"
+        },
+        "complete": {
+          "type": "boolean",
+          "description": "Per-record migration marker (§8.4)",
+          "enum": [true]
+        },
+        "files": {
+          "type": "array",
+          "description": "List of installed files with their checksums",
+          "items": { "$ref": "#/definitions/fileEntry" }
+        }
+      }
+    },
+    "fileEntry": {
+      "type": "object",
+      "description": "File entry within a bundle",
+      "required": ["path"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Relative path from target's base directory",
+          "minLength": 1
+        },
+        "checksum": {
+          "type": "string",
+          "description": "SHA256 checksum of source bytes (§5.8)",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "installedChecksum": {
+          "type": "string",
+          "description": "SHA256 checksum of the installed file",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "adoptedAtMigration": {
+          "type": "boolean",
+          "description": "Checksum was adopted from disk during migration (§8.3)",
+          "enum": [true]
+        }
+      }
+    }
+  }
+}

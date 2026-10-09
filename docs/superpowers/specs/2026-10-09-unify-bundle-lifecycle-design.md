@@ -784,9 +784,16 @@ not. No *content* key appears in both files — `bundles`, `sources`, `hubs` and
 exist only in the committed file, `targets` only in the local one. Both carry `version`,
 because both are versioned wire formats subject to the §5.12 gate.
 
-User scope keeps one XDG file, `ai-primitives-hub.lock.json`, carrying both roles — it is
-machine-local by nature, so the split buys nothing there. Repository scope therefore
-converges on the filename convention `resolveUserConfigPaths()` already uses.
+**User scope uses the same two files, rooted under XDG** —
+`${XDG_CONFIG_HOME:-$HOME/.config}/ai-primitives-hub/ai-primitives-hub.lock.json` for
+desired state and `…/ai-primitives-hub.local.lock.json` for materialization. An earlier
+version of this section kept one merged file there, on the grounds that a machine-local
+file gains nothing from the split. That is **amended by requester decision**: the two
+scopes must function identically and differ only in where they are rooted. The split is
+therefore unconditional, which also means the desired-state file is byte-comparable at
+every scope rather than only in a repository, and that one store, one migration shape and
+one test set serve both scopes. The cost is accepted: a two-file write is not one
+filesystem transaction at user scope either, so §8.4's ordering applies there too.
 
 The alternative considered and rejected was a three-file model splitting by commit mode,
 keeping materialized records in the committed file keyed by `{targetType}:{scope}`. It
@@ -1122,8 +1129,13 @@ reads, and the current readers and writers make that unsafe:
 - every upsert stamps `LOCKFILE_SCHEMA_VERSION = '2.0.0'`
   (`json-lockfile-store.ts:49`, used at `:162`, `:252`, `:268`, `:287`, `:318`), so a
   flag-off write **downgrades the stamp on a v3 file** while leaving v3 structures in place.
-- `lockfile.schema.json:28` enumerates `"2.0.0"` as the only allowed version, so `3.0.0`
-  fails wire-format validation before any of this is reached.
+- `lockfile.schema.json`'s `version` is `{"type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$"}`
+  with `2.0.0` only as an *example*, so `3.0.0` already passes wire-format validation. The
+  real wire-format blocker for v3 is `required: [..., "generatedAt", "generatedBy", ...]`,
+  which §5.2 removes from the desired-state file — so v3 gets its own
+  `lockfile-v3.schema.json` and the v2 file is left intact, because both generations are
+  validated throughout the cutover. An earlier version of this spec said the enum admitted
+  `2.0.0` alone; it has no enum.
 - the extension's `LockfileManager` declares its own `LOCKFILE_SCHEMA_VERSION = '2.0.0'`
   (`lockfile-manager.ts:56`), and `read()` (`:619`) merely parses — only the separate
   `validate()` (`:632`) applies the schema. So "the schema rejects it" is not a claim that
@@ -1132,8 +1144,8 @@ reads, and the current readers and writers make that unsafe:
 **Prerequisite, in Step 0, before any v3 write:** every read checks the schema version
 first. A known major is parsed; an unknown major **fails loudly** with an actionable
 message ("this lockfile was written by a newer version of AI Primitives Hub; upgrade or
-disable `unifiedDeploy`") and no write proceeds. The schema enum gains `3.0.0`, and no
-writer re-stamps a version it did not understand.
+disable `unifiedDeploy`") and no write proceeds. No writer re-stamps a version it did not
+understand.
 
 A separate temporary filename for flagged state was rejected: it would need its own
 migration later, i.e. a second rename. Making slice 1 ship a **dual-format writer** — one
@@ -1583,8 +1595,8 @@ than inventing an origin.
 committed and `local-only` bundles, so the mode is recorded **per materialized bundle**
 (`commitMode?` in §5.3), with the target-level value as a default only.
 
-The CLI's XDG user lockfile already uses the new filename, so it needs only the shape
-migration. Its paths are **bundle-relative**, and the same rule applies there as everywhere
+The CLI's XDG user lockfile already uses the new filename, so it needs the shape
+migration **and** the split into a pair (§5.1 amendment), in §8.4's order. Its paths are **bundle-relative**, and the same rule applies there as everywhere
 else: no old-rules locator is built, so a path that cannot be proven on disk is retained
 unmanaged. The exception is the bundle whose own install or update triggered the migration —
 that one is being deployed now, so its paths and both checksums are written fresh.
@@ -2078,6 +2090,7 @@ silently absorbed.
 | 9 | — (open) | An untracked pre-existing destination is **skipped and reported**; `--force` overwrites (§4.10) | Preserves today's extension behavior, never destroys hand-written files silently, and reuses the existing flag. Refusing the whole install would let one stale file block an unrelated bundle |
 | 10 | — (open) | Removal propagates only on **explicit** action: CLI reconcile, extension prompt (§5.6) | Symmetric with install. Nothing is deleted without a yes, which is also what makes #3's git-based divergence workable |
 | 11 | — (open) | Flag-off code must refuse `3.0.0` state loudly; the version gate ships in Step 0 (§5.12) | Today's reader is an unchecked cast and today's writers re-stamp `2.0.0`, so without the gate a flagged merge can corrupt state rather than merely ignore it |
+| 12 | — (open) | User scope uses the same two-file split as repository scope (§5.1) | Scopes must behave identically; one store, one migration and one test set serve both. The merged-file XDG variant was rejected on 2026-10-09 |
 
 **Still unresolved, deliberately:** nothing. Every item the review flagged as needing a
 decision has one. What the review flagged as *incorrect* is corrected inline with its

@@ -37,6 +37,10 @@ import {
   createHash,
 } from 'node:crypto';
 import * as path from 'node:path';
+import {
+  classifyLockfileVersion,
+  UnsupportedLockfileVersionError,
+} from '@ai-primitives-hub/core';
 import type {
   ExtractedFiles,
 } from '@ai-primitives-hub/core';
@@ -195,7 +199,12 @@ export const readLockfile = async (file: string, fs: LockfileFs): Promise<Lockfi
     return null;
   }
   const raw = await fs.readFile(file);
-  return JSON.parse(raw) as Lockfile;
+  const parsed = JSON.parse(raw) as { version?: unknown };
+  const verdict = classifyLockfileVersion(parsed.version);
+  if (verdict.kind !== 'readable' || verdict.major !== 2) {
+    throw new UnsupportedLockfileVersionError(file, verdict);
+  }
+  return parsed as Lockfile;
 };
 
 /**
@@ -209,6 +218,13 @@ export const writeLockfile = async (
   lock: Lockfile,
   fs: LockfileFs
 ): Promise<void> => {
+  // A v2 writer must never re-stamp state it does not understand (§5.12):
+  // the legacy helpers below all set LOCKFILE_SCHEMA_VERSION unconditionally,
+  // so a v3 payload reaching here is a wiring defect, not a value to coerce.
+  const verdict = classifyLockfileVersion(lock.version);
+  if (verdict.kind !== 'readable' || verdict.major !== 2) {
+    throw new UnsupportedLockfileVersionError(file, verdict);
+  }
   if (fs.mkdir !== undefined) {
     const dir = path.dirname(file);
     await fs.mkdir(dir, { recursive: true });

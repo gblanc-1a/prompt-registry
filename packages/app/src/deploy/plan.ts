@@ -180,7 +180,10 @@ export async function planDeploy(
             if (fileExists) {
               const content = await ports.fs.readFileBytes(subtreeFile.path);
               const hash = createHash('sha256').update(content).digest('hex');
-              if (hash !== subtreeFile.checksum) {
+              if (hash === subtreeFile.checksum) {
+                // File is tracked and matches — satisfied.
+                satisfied.push(subtreeFile.path);
+              } else {
                 drifted.push(subtreeFile.path);
               }
             } else {
@@ -191,10 +194,12 @@ export async function planDeploy(
           // Check for drift: compare on-disk hash to installedChecksum.
           const content = await ports.fs.readFileBytes(to);
           const hash = createHash('sha256').update(content).digest('hex');
-          if (hash !== tracked.checksum) {
+          if (hash === tracked.checksum) {
+            // File is tracked and matches — satisfied.
+            satisfied.push(to);
+          } else {
             drifted.push(to);
           }
-          // Otherwise, the file is tracked and matches — will be overwritten.
         }
       } else {
         // Tracked but missing.

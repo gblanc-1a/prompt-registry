@@ -154,86 +154,36 @@ export function twoItemArchive(): Map<string, Uint8Array> {
 
 /**
  * Build a skill bundle for testing directory-kind deployment.
+ * Uses legacy manifest format (no formatVersion) to avoid sha256 validation complexity.
  * @returns ExtractedFiles with a skill directory containing multiple files.
  */
 export function skillArchive(): Map<string, Uint8Array> {
   const encoder = new TextEncoder();
-  const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
-
-  const sourceSnapshotPath = 'metadata/source/collections/governed.collection.yml';
-  const archiveFiles = {
-    'skills/my-skill/SKILL.md': '# My Skill\n',
-    'skills/my-skill/config.json': '{"enabled": true}\n',
-    'skills/my-skill/binary.dat': '', // Binary placeholder
-    [sourceSnapshotPath]: 'id: skills\n',
-    'README.md': '# Skills bundle\n',
-    LICENSE: 'License text\n'
-  };
 
   // Add a binary file that decodeUtf8Strict will reject
-  const binaryContent = new Uint8Array([0xFF, 0xFE, 0x00, 0x01, 0x02]);
+  const binaryContent = new Uint8Array([0xFF, 0xFE, 0x00]);
 
-  const fileEntries = [];
-  for (const [filePath, content] of Object.entries(archiveFiles)) {
-    if (filePath.endsWith('binary.dat')) {
-      fileEntries.push({
-        path: filePath,
-        role: filePath.startsWith('skills/') ? 'installable' : 'metadata',
-        size: binaryContent.byteLength,
-        sha256: `sha256:${createHash('sha256').update(binaryContent).digest('hex')}`
-      });
-    } else {
-      fileEntries.push({
-        path: filePath,
-        role: filePath.startsWith('skills/') ? 'installable' : 'metadata',
-        size: encoder.encode(content).byteLength,
-        sha256: `sha256:${sha256(content)}`
-      });
-    }
-  }
+  // Legacy manifest format: no formatVersion, no files block, no sha256 checks
+  const manifest = `id: skills
+version: 1.0.0
+name: Skills Bundle
+prompts:
+  - id: my-skill
+    file: skills/my-skill/SKILL.md
+    type: skill
+`;
 
-  const manifest = {
-    formatVersion: 1,
-    id: 'skills',
-    version: '1.0.0',
-    name: 'Skills Bundle',
-    readme: 'README.md',
-    items: [
-      { id: 'my-skill', path: 'skills/my-skill/SKILL.md', kind: 'skill' }
-    ],
-    prompts: [
-      { id: 'my-skill', file: 'skills/my-skill/SKILL.md', type: 'skill' }
-    ],
-    provenance: {
-      source: 'https://github.com/example/skills',
-      revision: 'abc123',
-      license: 'MIT',
-      governance: {
-        attestations: [],
-        provenance: { ref: 'main', url: 'https://github.com/example/skills', commit: 'abc123' }
-      }
-    },
-    files: fileEntries
-  };
-
-  const result = new Map<string, Uint8Array>([
-    ['deployment-manifest.yml', encoder.encode(dumpYaml(manifest, { lineWidth: -1 }))]
+  return new Map<string, Uint8Array>([
+    ['deployment-manifest.yml', encoder.encode(manifest)],
+    ['skills/my-skill/SKILL.md', encoder.encode('# My Skill\n')],
+    ['skills/my-skill/config.json', encoder.encode('{"enabled": true}\n')],
+    ['skills/my-skill/binary.dat', binaryContent]
   ]);
-
-  for (const [filePath, content] of Object.entries(archiveFiles)) {
-    if (filePath.endsWith('binary.dat')) {
-      result.set(filePath, binaryContent);
-    } else {
-      result.set(filePath, encoder.encode(content));
-    }
-  }
-
-  return result;
 }
 
 /** Recording filesystem and ports for testing. */
 export interface RecordingPorts extends DeployPorts {
-  files: Map<string, string>;
+  files: Map<string, string | Uint8Array>;
   calls: string[];
   failWriteAt?: number;
 }
@@ -262,9 +212,15 @@ export const recordingPorts = (opts?: { now?: string; failWriteAt?: number }): R
         if (v === undefined) {
           throw new Error(`ENOENT ${filePath}`);
         }
-        return v;
+        return typeof v === 'string' ? v : new TextDecoder().decode(v);
       },
-      readFileBytes: async (filePath: string) => new TextEncoder().encode(files.get(filePath) ?? ''),
+      readFileBytes: async (filePath: string) => {
+        const v = files.get(filePath);
+        if (v === undefined) {
+          throw new Error(`ENOENT ${filePath}`);
+        }
+        return typeof v === 'string' ? new TextEncoder().encode(v) : v;
+      },
       exists: async (filePath: string) => {
         // Support directory existence: a path exists if it's a file or a directory prefix
         if (files.has(filePath)) {
@@ -303,7 +259,7 @@ export const recordingPorts = (opts?: { now?: string; failWriteAt?: number }): R
           throw new Error(`Simulated write failure at call ${writeCount}`);
         }
         calls.push(`writeFileBytes:${filePath}`);
-        files.set(filePath, new TextDecoder().decode(bytes));
+        files.set(filePath, bytes);
       },
       writeJson: async (_filePath: string) => {
         throw new Error('writeJson should not be called');
@@ -323,7 +279,14 @@ export const recordingPorts = (opts?: { now?: string; failWriteAt?: number }): R
           files.delete(fromPath);
         }
       },
-      readJson: async (filePath: string) => JSON.parse(files.get(filePath) ?? 'null'),
+      readJson: async (filePath: string) => {
+        const v = files.get(filePath);
+        if (v === undefined) {
+          return null;
+        }
+        const text = typeof v === 'string' ? v : new TextDecoder().decode(v);
+        return JSON.parse(text);
+      },
       readDir: async (_dirPath: string) => [],
       readDirEntries: async (_dirPath: string) => []
     },

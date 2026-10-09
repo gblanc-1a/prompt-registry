@@ -202,14 +202,16 @@ describe('deployBundle', () => {
       .toBe(first.files.get(first.lockfileStore.desiredFile));
   });
 
-  it.skip('deploys directory-kind subtrees byte-for-byte, records all files, and re-deploy converges', async () => {
+  it('deploys directory-kind subtrees byte-for-byte, records all files, and re-deploy converges', async () => {
     const ports = recordingPorts();
 
     // First deploy
     const result = await deployBundle(skillRequest(), ports);
 
     // 1. Relative-path preservation for nested files
-    expect(result.written).toContain('/home/u/.copilot/skills/my-skill');
+    expect(result.written).toContain('/home/u/.copilot/skills/my-skill/SKILL.md');
+    expect(result.written).toContain('/home/u/.copilot/skills/my-skill/config.json');
+    expect(result.written).toContain('/home/u/.copilot/skills/my-skill/binary.dat');
     expect(ports.files.has('/home/u/.copilot/skills/my-skill/SKILL.md')).toBe(true);
     expect(ports.files.has('/home/u/.copilot/skills/my-skill/config.json')).toBe(true);
     expect(ports.files.has('/home/u/.copilot/skills/my-skill/binary.dat')).toBe(true);
@@ -217,12 +219,17 @@ describe('deployBundle', () => {
     // 2. Byte-for-byte fidelity of binary payload (decodeUtf8Strict rejects)
     const binaryBytes = ports.files.get('/home/u/.copilot/skills/my-skill/binary.dat');
     expect(binaryBytes).toBeDefined();
-    // Binary data written through writeFileBytes and decoded by test harness
-    const binaryArray = new TextEncoder().encode(binaryBytes);
-    expect(binaryArray[0]).toBe(0xFF); // Verify binary prefix
+    expect(binaryBytes).toBeInstanceOf(Uint8Array);
+    // Verify binary payload matches source: [0xff, 0xfe, 0x00]
+    const binaryArray = binaryBytes as Uint8Array;
+    expect(binaryArray[0]).toBe(0xFF);
+    expect(binaryArray[1]).toBe(0xFE);
+    expect(binaryArray[2]).toBe(0x00);
 
     // 3. Record enumerates every subtree file, not just the entry point
     const { local } = readPair(ports);
+    expect(local.targets['my-vscode']).toBeDefined();
+    expect(local.targets['my-vscode'].bundles['github-abc123/skills']).toBeDefined();
     const skillRecord = local.targets['my-vscode'].bundles['github-abc123/skills'];
     expect(skillRecord.files).toHaveLength(3); // SKILL.md, config.json, binary.dat
     const recordedPaths = skillRecord.files.map((f: { path: string }) => f.path).toSorted();
@@ -235,8 +242,12 @@ describe('deployBundle', () => {
     // 4. Re-deploy converges (the C3 regression guard)
     const secondResult = await deployBundle(skillRequest(), ports);
 
-    // Second deploy should find all files satisfied
-    expect(secondResult.satisfied.length).toBeGreaterThan(0);
+    // Second deploy should find all files satisfied (all 3 subtree files already placed)
+    expect(secondResult.satisfied.toSorted()).toEqual([
+      '/home/u/.copilot/skills/my-skill/SKILL.md',
+      '/home/u/.copilot/skills/my-skill/binary.dat',
+      '/home/u/.copilot/skills/my-skill/config.json'
+    ]);
 
     // Record's files array must remain intact, not empty
     const { local: localAfterSecond } = readPair(ports);

@@ -119,11 +119,39 @@ export async function deployBundle(
   const satisfied: string[] = [];
   const collisions: { to: string; reason: 'untracked-existing' }[] = [];
 
+  // Invariant: req.files is defined because planDeploy already threw if both files and bytes were absent.
+  const files = req.files!;
+
   // Collect destinations to write (not in satisfied, and not in collisions unless force).
   const toWrite = plan.destinations.filter((dest) => {
-    const alreadySatisfied = plan.satisfied.includes(dest.to);
+    const shape = nameShapeForKind(dest.kind);
+    let alreadySatisfied = false;
+
+    if (shape === 'directory') {
+      // For directory kinds, check if ALL subtree files are satisfied.
+      // Build the list of expected subtree files and see if all are in plan.satisfied.
+      const sourcePrefix = posix.dirname(dest.from) + '/';
+      const subtreeFiles: string[] = [];
+      for (const [bundlePath] of files) {
+        if (bundlePath.startsWith(sourcePrefix)) {
+          const tail = bundlePath.slice(sourcePrefix.length);
+          const outPath = posix.join(dest.to, tail);
+          subtreeFiles.push(outPath);
+        }
+      }
+      alreadySatisfied = subtreeFiles.length > 0 && subtreeFiles.every((f) => plan.satisfied.includes(f));
+      if (alreadySatisfied) {
+        // Add all satisfied files to the result.
+        satisfied.push(...subtreeFiles);
+      }
+    } else {
+      alreadySatisfied = plan.satisfied.includes(dest.to);
+      if (alreadySatisfied) {
+        satisfied.push(dest.to);
+      }
+    }
+
     if (alreadySatisfied) {
-      satisfied.push(dest.to);
       return false;
     }
     const hasCollision = plan.collisions.some((c) => c.to === dest.to);
@@ -133,9 +161,6 @@ export async function deployBundle(
     }
     return true;
   });
-
-  // Invariant: req.files is defined because planDeploy already threw if both files and bytes were absent.
-  const files = req.files!;
 
   try {
     for (const dest of toWrite) {
@@ -180,11 +205,25 @@ export async function deployBundle(
     const fileRecords: LockfileV3FileEntry[] = [];
 
     for (const dest of plan.destinations) {
-      if (!allDestinations.includes(dest.to)) {
-        continue;
+      const shape = nameShapeForKind(dest.kind);
+
+      // For directory kinds, check if the directory itself OR any file under it is in allDestinations.
+      // For file kinds, check if the destination itself is in allDestinations.
+      let shouldRecord = false;
+      if (shape === 'directory') {
+        shouldRecord = allDestinations.includes(dest.to);
+        if (!shouldRecord) {
+          // Also check if any subtree file is in allDestinations (for re-deploy case).
+          const dirPrefix = dest.to + '/';
+          shouldRecord = allDestinations.some((p) => p.startsWith(dirPrefix));
+        }
+      } else {
+        shouldRecord = allDestinations.includes(dest.to);
       }
 
-      const shape = nameShapeForKind(dest.kind);
+      if (!shouldRecord) {
+        continue;
+      }
 
       if (shape === 'directory') {
         // Directory kind: record all files in the subtree, not just the primary file.

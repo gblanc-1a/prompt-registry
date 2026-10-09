@@ -10,11 +10,13 @@
  */
 import * as posix from 'node:path/posix';
 import {
+  readLockfileV3Pair,
   removeDesiredBundle,
   removeMaterialization,
   writeLockfileV3Pair,
 } from '../stores/lockfile-v3';
 import {
+  findLockfileSource,
   migrateLockfileIfNeeded,
 } from '../stores/migrate-lockfile-v3';
 import type {
@@ -113,22 +115,28 @@ export async function undeployBundle(
   //    No triggeredByKey: no bundle is being deployed, so nothing gets fresh paths.
   const generatedBy = ports.generatedBy ?? 'ai-primitives-hub';
   const now = ports.now ?? new Date().toISOString();
-  const { pair, report: migration } = await migrateLockfileIfNeeded(
-    ports.lockfileStore,
-    ports.fs,
-    { generatedBy, now }
-  );
+  // With no legacy or desired file there is nothing to migrate, but a local-only v3 pair
+  // is legal and must still be read (migration would hand back an empty pair for it).
+  const { pair, report: migration } = await findLockfileSource(ports.lockfileStore, ports.fs) === null
+    ? {
+      pair: (await readLockfileV3Pair(ports.lockfileStore, ports.fs, { generatedBy, now })).pair,
+      report: null
+    }
+    : await migrateLockfileIfNeeded(ports.lockfileStore, ports.fs, { generatedBy, now });
 
-  // 2. Look up the target and bundle record.
-  const targetRecord = pair.local.targets[targetName];
-  const bundleRecord = targetRecord?.bundles[key];
+  // 2. Look up the target and bundle record (own properties only: a target or key named
+  //    like an inherited property must not resolve to something on the prototype).
+  const targetRecord = Object.hasOwn(pair.local.targets, targetName) ? pair.local.targets[targetName] : undefined;
+  const bundleRecord = targetRecord !== undefined && Object.hasOwn(targetRecord.bundles, key)
+    ? targetRecord.bundles[key]
+    : undefined;
 
   if (bundleRecord === undefined || targetRecord === undefined) {
     // No materialization record for this target/key. Either it was never
     // installed, or a prior attempt's local write dropped it but its desired
     // write failed (§8.4) — distinguish by checking for that orphan.
-    const hasOrphanedDesiredEntry = pair.desired.bundles[key] !== undefined
-      && !Object.values(pair.local.targets).some((target) => target.bundles[key] !== undefined);
+    const hasOrphanedDesiredEntry = Object.hasOwn(pair.desired.bundles, key)
+      && !Object.values(pair.local.targets).some((target) => Object.hasOwn(target.bundles, key));
 
     if (hasOrphanedDesiredEntry) {
       // Converge: drop the orphaned desired entry and write the pair again.

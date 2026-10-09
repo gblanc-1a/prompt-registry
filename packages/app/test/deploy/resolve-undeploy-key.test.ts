@@ -175,7 +175,7 @@ describe('resolveUndeployKey', () => {
       seedV3(ports, { 'my-vscode': { 'src-a/web-dev': { sourceId: 'src-a' } } });
 
       expect(await resolve(ports, 'web-dev', targetName)).toEqual({ kind: 'none' });
-      expect(await listTargetBundles(targetName, ports)).toEqual([]);
+      expect((await listTargetBundles(targetName, ports)).bundles).toEqual([]);
     });
 
     it('resolves a real bundle whose id is "constructor" by bare id and by full key', async () => {
@@ -241,7 +241,7 @@ describe('resolveUndeployKey', () => {
       seedV2(ports, ['older-bundle']);
       const before = snapshot(ports);
 
-      expect(await listTargetBundles('my-vscode', ports)).toEqual([]);
+      expect(await listTargetBundles('my-vscode', ports)).toEqual({ bundles: [], desiredOnly: [] });
       expect(snapshot(ports)).toEqual(before);
     });
   });
@@ -333,15 +333,149 @@ describe('listTargetBundles', () => {
       'other-vscode': { 'src-c/three': { sourceId: 'src-c' } }
     });
 
-    const listed = await listTargetBundles('my-vscode', ports);
+    const { bundles } = await listTargetBundles('my-vscode', ports);
 
-    expect(listed.map((b) => [b.key, b.version])).toEqual([['src-a/one', '1.1.0'], ['src-b/two', '2.0.0']]);
+    expect(bundles.map((b) => [b.key, b.version])).toEqual([['src-a/one', '1.1.0'], ['src-b/two', '2.0.0']]);
   });
 
   it('is empty for an absent store and writes nothing', async () => {
     const ports = recordingPorts();
 
-    expect(await listTargetBundles('my-vscode', ports)).toEqual([]);
+    expect(await listTargetBundles('my-vscode', ports)).toEqual({ bundles: [], desiredOnly: [] });
     expect(ports.files.size).toBe(0);
+  });
+
+  describe('desiredOnly', () => {
+    it('names desired keys that no target materializes, leaving ones another target holds out', async () => {
+      const ports = recordingPorts();
+      seedV3(
+        ports,
+        { 'my-vscode': { 'src-a/kept': { sourceId: 'src-a' } }, 'other-vscode': { 'src-c/theirs': { sourceId: 'src-c' } } },
+        {
+          'src-a/kept': { sourceId: 'src-a' },
+          'src-c/theirs': { sourceId: 'src-c' },
+          'src-b/lonely': { sourceId: 'src-b' }
+        }
+      );
+
+      expect((await listTargetBundles('my-vscode', ports)).desiredOnly).toEqual(['src-b/lonely']);
+    });
+
+    it('lists the desired-only keys of an empty target and writes nothing', async () => {
+      const ports = recordingPorts();
+      seedV3(ports, {}, { 'src-b/lonely': { sourceId: 'src-b' } });
+      const before = snapshot(ports);
+
+      expect(await listTargetBundles('my-vscode', ports)).toEqual({ bundles: [], desiredOnly: ['src-b/lonely'] });
+      expect(snapshot(ports)).toEqual(before);
+      expect(mutations(ports)).toEqual([]);
+    });
+
+    it('is empty when every desired key is materialized', async () => {
+      const ports = recordingPorts();
+      seedV3(ports, { 'my-vscode': { 'src-a/kept': { sourceId: 'src-a' } } });
+
+      expect((await listTargetBundles('my-vscode', ports)).desiredOnly).toEqual([]);
+    });
+
+    it('finds the orphan an interrupted uninstall left behind', async () => {
+      const ports = recordingPorts();
+      await deployBundle(request(), ports);
+      const writesSoFar = ports.calls.filter((c) => c.startsWith('writeFile:') || c.startsWith('writeFileBytes:')).length;
+      ports.failWriteAt = writesSoFar + 2;
+      await expect(undeployBundle({
+        key: 'github-abc123/web-dev',
+        bundle: { bundleId: 'web-dev', version: '1.0.0' },
+        scope: 'user',
+        targetName: 'my-vscode'
+      }, ports)).rejects.toThrow();
+      ports.failWriteAt = undefined;
+
+      expect(await listTargetBundles('my-vscode', ports)).toEqual({ bundles: [], desiredOnly: ['github-abc123/web-dev'] });
+    });
+  });
+});
+
+describe('local-only and desired-only v3 pairs', () => {
+  const seedLocalOnly = (ports: RecordingPorts): void => {
+    seedV3(ports, { 'my-vscode': { 'src-a/web-dev': { sourceId: 'src-a', version: '2.0.0' } } });
+    ports.files.delete(ports.lockfileStore.desiredFile);
+  };
+  const seedDesiredOnly = (ports: RecordingPorts): void => {
+    seedV3(ports, {}, { 'src-a/web-dev': { sourceId: 'src-a', version: '3.0.0' } });
+    ports.files.delete(ports.lockfileStore.localFile);
+  };
+
+  it('resolves a local-only pair (desired file absent) by bare id and by full key, writing nothing', async () => {
+    const ports = recordingPorts();
+    seedLocalOnly(ports);
+    const before = snapshot(ports);
+
+    expect(await resolve(ports, 'web-dev')).toMatchObject({ kind: 'match', key: 'src-a/web-dev', version: '2.0.0' });
+    expect(await resolve(ports, 'src-a/web-dev')).toMatchObject({ kind: 'match', key: 'src-a/web-dev' });
+    expect((await listTargetBundles('my-vscode', ports)).bundles.map((b) => b.key)).toEqual(['src-a/web-dev']);
+    expect(snapshot(ports)).toEqual(before);
+    expect(mutations(ports)).toEqual([]);
+  });
+
+  it('resolves a desired-only pair (local file absent) as an orphan when the key is desired, and none otherwise', async () => {
+    const ports = recordingPorts();
+    seedDesiredOnly(ports);
+
+    expect(await resolve(ports, 'web-dev')).toEqual({ kind: 'orphan', key: 'src-a/web-dev', version: '3.0.0' });
+    expect(await resolve(ports, 'src-a/web-dev')).toEqual({ kind: 'orphan', key: 'src-a/web-dev', version: '3.0.0' });
+    expect(await resolve(ports, 'absent')).toEqual({ kind: 'none' });
+    expect(mutations(ports)).toEqual([]);
+  });
+
+  it('undeployBundle removes the recorded files of a local-only pair and drops the record', async () => {
+    const ports = recordingPorts();
+    seedLocalOnly(ports);
+    ports.files.set('/home/u/.copilot/prompts/hello.prompt.md', '# hello\n');
+
+    const result = await undeployBundle({
+      key: 'src-a/web-dev',
+      bundle: { bundleId: 'web-dev', version: '2.0.0' },
+      scope: 'user',
+      targetName: 'my-vscode'
+    }, ports);
+
+    expect(result.removed).toEqual(['/home/u/.copilot/prompts/hello.prompt.md']);
+    expect(ports.files.has('/home/u/.copilot/prompts/hello.prompt.md')).toBe(false);
+    expect(await resolve(ports, 'web-dev')).toEqual({ kind: 'none' });
+  });
+});
+
+describe('undeployBundle with inherited-property target names', () => {
+  it.each(['constructor', '__proto__', 'toString'])('treats a missing "%s" target as having no record, without throwing or writing', async (targetName) => {
+    const ports = recordingPorts();
+    seedV3(ports, { 'my-vscode': { 'src-a/web-dev': { sourceId: 'src-a' } } });
+    const before = snapshot(ports);
+
+    const result = await undeployBundle({
+      key: 'src-a/web-dev',
+      bundle: { bundleId: 'web-dev', version: '1.0.0' },
+      scope: 'user',
+      targetName
+    }, ports);
+
+    expect(result).toMatchObject({ removed: [], skipped: [] });
+    expect(snapshot(ports)).toEqual(before);
+    expect(mutations(ports)).toEqual([]);
+  });
+
+  it.each(['constructor', '__proto__', 'toString'])('repairs an orphaned desired entry when the target is named "%s"', async (targetName) => {
+    const ports = recordingPorts();
+    seedV3(ports, {}, { 'src-a/web-dev': { sourceId: 'src-a' } });
+
+    await undeployBundle({
+      key: 'src-a/web-dev',
+      bundle: { bundleId: 'web-dev', version: '1.0.0' },
+      scope: 'user',
+      targetName
+    }, ports);
+
+    expect(await resolve(ports, 'web-dev')).toEqual({ kind: 'none' });
+    expect(JSON.parse(ports.files.get(ports.lockfileStore.desiredFile) as string)).toMatchObject({ bundles: {} });
   });
 });

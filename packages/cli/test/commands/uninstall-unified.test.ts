@@ -445,6 +445,21 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
       await expect(readFile(outside, 'utf8')).resolves.toBe('# outside\n');
     });
 
+    it('removes the recorded files of a local-only v3 pair (no desired file) and drops the record', async () => {
+      const [file] = await writeManaged('prompts/a.prompt.md');
+      await writeV3({ 'src-a/local-foo': record({ sourceId: 'src-a', files: [{ path: 'prompts/a.prompt.md' }] }) });
+      await rm(paths().userLockfile);
+
+      const result = await uninstall(['--bundle', 'local-foo']);
+
+      expect(result.exitCode).toBe(0);
+      expect(parse<UninstallData>(result.stdout).data).toMatchObject({ key: 'src-a/local-foo', removed: [file], skipped: [] });
+      expect(await exists(file)).toBe(false);
+      expect((await readLocal()).targets['my-vscode']).toBeUndefined();
+      // undeployBundle writes the pair, so the missing desired half is created, empty.
+      expect((await readDesired()).bundles).toEqual({});
+    });
+
     it('reads a target with no scope as user', async () => {
       await install();
       const added = await run(['target', 'add', 'scopeless', '--type', 'vscode', '-o', 'json']);
@@ -562,10 +577,34 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
       const result = await uninstall(['--bundle', 'local-foo', '--dry-run'], recording);
 
       expect(result.exitCode).toBe(0);
-      expect(parse<unknown>(result.stdout).status).toBe('warning');
+      const envelope = parse<unknown>(result.stdout);
+      expect(envelope.status).toBe('warning');
+      // The dry-run migrated nothing, so it neither claims a migration nor surfaces migration reasons.
+      expect(envelope.data).toEqual({ target: 'my-vscode', bundle: 'local-foo', reason: 'not found in lockfile' });
       expect(recording.writes).toEqual([]);
       await expect(readFile(paths().userLockfile, 'utf8')).resolves.toBe(before);
       expect(await exists(paths().userLocalLockfile)).toBe(false);
+
+      const text = await run(['uninstall', '--bundle', 'local-foo', '--target', 'my-vscode', '--dry-run'], flagOn, recording);
+
+      expect(text.stdout).toBe('Bundle "local-foo" is not installed in target "my-vscode". Nothing to uninstall.\n');
+      expect(recording.writes).toEqual([]);
+      await expect(readFile(paths().userLockfile, 'utf8')).resolves.toBe(before);
+    });
+
+    it('lists the recorded files of a local-only v3 pair (no desired file) and writes nothing', async () => {
+      await writeManaged('prompts/a.prompt.md');
+      await writeV3({ 'src-a/local-foo': record({ sourceId: 'src-a', files: [{ path: 'prompts/a.prompt.md' }] }) });
+      await rm(paths().userLockfile);
+      const recording = new RecordingFs();
+
+      const result = await uninstall(['--bundle', 'local-foo', '--dry-run'], recording);
+
+      expect(result.exitCode).toBe(0);
+      const { data } = parse<{ key: string; files: string[] }>(result.stdout);
+      expect(data).toMatchObject({ key: 'src-a/local-foo', files: [path.join('prompts', 'a.prompt.md')] });
+      expect(recording.writes).toEqual([]);
+      expect(await exists(paths().userLockfile)).toBe(false);
     });
 
     it('names the orphaned desired entry it would drop after an interrupted uninstall', async () => {
@@ -657,6 +696,69 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
       await expect(readFile(otherFile, 'utf8')).resolves.toBe('# other\n');
       expect(Object.keys((await readLocal()).targets.elsewhere.bundles)).toEqual(['src-x/other']);
       expect(Object.keys((await readLocal()).targets['my-vscode']?.bundles ?? {})).toEqual([]);
+      expect(data).not.toHaveProperty('desiredOnly');
+    });
+
+    it('reports a desired key left by an interrupted uninstall instead of dropping it, in JSON and text, and a named uninstall then repairs it', async () => {
+      const alpha = await installBundle('alpha');
+      const beta = await installBundle('beta');
+      const recording = new RecordingFs();
+      recording.failOnce('rename', (to) => to === paths().userLockfile, new Error('ENOSPC: simulated desired write failure'));
+
+      const interrupted = await uninstall(['--bundle', 'alpha'], recording);
+
+      expect(interrupted.exitCode).not.toBe(0);
+      // The injection fired on the intended write: alpha's file and local record are gone, desired still names both.
+      expect(await exists(alpha.file)).toBe(false);
+      expect(Object.keys((await readLocal()).targets['my-vscode'].bundles)).toEqual([beta.key]);
+      expect(Object.keys((await readDesired()).bundles)).toEqual([alpha.key, beta.key]);
+
+      const retry = await uninstall(['--all']);
+
+      expect(retry.exitCode).toBe(0);
+      const envelope = parse<UninstallAllData & { desiredOnly: string[] }>(retry.stdout);
+      expect(envelope.status).toBe('ok');
+      expect(envelope.data.bundles).toEqual([{ id: beta.key, removed: 1, skipped: 0 }]);
+      expect(envelope.data.desiredOnly).toEqual([alpha.key]);
+      expect(await exists(beta.file)).toBe(false);
+      expect(Object.keys((await readDesired()).bundles)).toEqual([alpha.key]);
+
+      const text = await run(['uninstall', '--all', '--target', 'my-vscode']);
+
+      expect(text.exitCode).toBe(0);
+      expect(text.stdout).toContain(`Desired but not installed on my-vscode: ${alpha.key}.`);
+      expect(text.stdout).toContain('uninstall --bundle <key> --target <name>');
+
+      const repaired = await uninstall(['--bundle', 'alpha']);
+
+      expect(repaired.exitCode).toBe(0);
+      expect((await readDesired()).bundles).toEqual({});
+      const clean = await uninstall(['--all']);
+      expect(parse<UninstallAllData>(clean.stdout).data).not.toHaveProperty('desiredOnly');
+    });
+
+    it('reports a desired-only key for an empty target, and a dry-run lists it without writing', async () => {
+      await writeV3({});
+      const desired = JSON.parse(await readFile(paths().userLockfile, 'utf8')) as { bundles: Record<string, unknown> };
+      desired.bundles['src-b/lonely'] = { version: '1.0.0', sourceId: 'src-b' };
+      await writeFile(paths().userLockfile, JSON.stringify(desired, null, 2));
+      const before = await lockfileBytes();
+      const recording = new RecordingFs();
+
+      const dryRun = await uninstall(['--all', '--dry-run'], recording);
+
+      expect(parse<{ desiredOnly: string[] }>(dryRun.stdout).data.desiredOnly).toEqual(['src-b/lonely']);
+      expect(recording.writes).toEqual([]);
+
+      const result = await uninstall(['--all'], recording);
+
+      expect(result.exitCode).toBe(0);
+      expect(parse<UninstallAllData & { desiredOnly: string[] }>(result.stdout).data)
+        .toMatchObject({ uninstalled: 0, desiredOnly: ['src-b/lonely'] });
+      expect(recording.writes).toEqual([]);
+      expect(await lockfileBytes()).toEqual(before);
+      const text = await run(['uninstall', '--all', '--target', 'my-vscode']);
+      expect(text.stdout).toContain('Desired but not installed on my-vscode: src-b/lonely.');
     });
 
     it('says what it removed in text mode', async () => {

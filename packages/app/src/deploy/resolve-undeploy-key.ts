@@ -6,8 +6,10 @@
  * Resolving one to the other needs the lockfile pair, and a v2 store has to
  * be migrated before it has v3 records to look at. Migration commits writes
  * (and deletes legacy files), so resolution previews it in memory
- * (`planLockfileMigration`) instead: a lookup that finds nothing, or finds
+ * (`readLockfilePair`) instead: a lookup that finds nothing, or finds
  * an ambiguity, leaves every lockfile byte-identical, including a v2 store.
+ * Existing v3 halves are read as they stand, so a local-only or desired-only
+ * pair resolves too.
  * @module deploy/resolve-undeploy-key
  */
 import {
@@ -20,7 +22,7 @@ import type {
   LockfileV3Pair,
 } from '../stores/lockfile-v3';
 import {
-  planLockfileMigration,
+  readLockfilePair,
 } from '../stores/migrate-lockfile-v3';
 import type {
   DeployPorts,
@@ -55,7 +57,7 @@ export type UndeployKeyResolution =
   | { kind: 'none' };
 
 const previewPair = async (ports: ResolveUndeployPorts): Promise<LockfileV3Pair> => {
-  const { pair } = await planLockfileMigration(ports.lockfileStore, ports.fs, {
+  const { pair } = await readLockfilePair(ports.lockfileStore, ports.fs, {
     generatedBy: 'ai-primitives-hub',
     now: new Date().toISOString()
   });
@@ -129,17 +131,33 @@ export const resolveUndeployKey = async (
     : { kind: 'orphan', key: only, version: pair.desired.bundles[only].version };
 };
 
+/** What a bulk uninstall of a target sees. */
+export interface TargetBundleListing {
+  /** The target's materialized bundles, in recorded order. */
+  bundles: TargetBundle[];
+  /**
+   * Desired keys that no target (this one or any other) materializes. An interrupted
+   * uninstall's orphan looks exactly like intent not yet materialized, so a bulk
+   * uninstall reports these rather than dropping them.
+   */
+  desiredOnly: string[];
+}
+
 /**
- * List what a target materializes, for a bulk uninstall. Reads like
- * {@link resolveUndeployKey}: v2 stores are previewed, never migrated.
+ * List what a target materializes, for a bulk uninstall, plus the desired-only keys. Reads
+ * like {@link resolveUndeployKey}: v2 stores are previewed, never migrated.
  * @param targetName - Target to list.
  * @param ports - Filesystem and lockfile paths; read only.
- * @returns The target's bundles in recorded order; empty when it holds none.
+ * @returns The target's bundles in recorded order and the desired-only keys; empty when none.
  */
 export const listTargetBundles = async (
   targetName: string,
   ports: ResolveUndeployPorts
-): Promise<TargetBundle[]> => {
-  const records = targetBundles(await previewPair(ports), targetName);
-  return Object.entries(records).map(([key, record]) => ({ key, version: record.version, record }));
+): Promise<TargetBundleListing> => {
+  const pair = await previewPair(ports);
+  const records = targetBundles(pair, targetName);
+  return {
+    bundles: Object.entries(records).map(([key, record]) => ({ key, version: record.version, record })),
+    desiredOnly: Object.keys(pair.desired.bundles).filter((key) => !isMaterialized(pair, key))
+  };
 };

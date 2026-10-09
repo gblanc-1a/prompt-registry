@@ -464,6 +464,17 @@ const lockfileUninstallRefused = (lockPath: string): RegistryError => new Regist
 const withMigration = (migration: MigrationReport | null): { migration?: MigrationReport } =>
   migration === null ? {} : { migration };
 
+const withDesiredOnly = (desiredOnly: string[]): { desiredOnly?: string[] } =>
+  desiredOnly.length === 0 ? {} : { desiredOnly };
+
+// An interrupted uninstall's orphan is indistinguishable from intent not yet materialized, so
+// `--all` reports desired-only keys instead of dropping them.
+const renderDesiredOnly = (targetName: string, desiredOnly: string[]): string =>
+  desiredOnly.length === 0
+    ? ''
+    : `Desired but not installed on ${targetName}: ${desiredOnly.join(', ')}. `
+      + 'Run `uninstall --bundle <key> --target <name>` to drop that desired intent.\n';
+
 const bundleHalf = (key: string): string => parseLogicalBundleKey(key)?.manifestId ?? key;
 
 const failureReason = (cause: unknown): string => cause instanceof Error ? cause.message : String(cause);
@@ -604,8 +615,9 @@ async function runUnifiedAllUninstall(
 ): Promise<number> {
   const dryRun = opts.dryRun === true;
   const ports = unifiedPorts(ctx);
-  const bundles = await listTargetBundles(target.name, ports);
+  const { bundles, desiredOnly } = await listTargetBundles(target.name, ports);
   const keys = bundles.map((b) => b.key);
+  const desiredOnlyNote = renderDesiredOnly(target.name, desiredOnly);
 
   if (dryRun) {
     const managed = bundles.filter((b) => b.record.state !== 'unmanaged');
@@ -621,12 +633,14 @@ async function runUnifiedAllUninstall(
         files: managed.flatMap((b) => b.record.files.map((f) => f.path)),
         unmanaged: bundles
           .filter((b) => b.record.state === 'unmanaged')
-          .map((b) => ({ key: b.key, reason: b.record.unmanagedReason }))
+          .map((b) => ({ key: b.key, reason: b.record.unmanagedReason })),
+        ...withDesiredOnly(desiredOnly)
       },
       textRenderer: (d) => `[dry-run] Would uninstall all bundles from target "${d.target}":\n`
         + `  Bundles: ${d.bundles.join(', ')}\n`
         + `  Files: ${d.files.length} total\n`
         + d.unmanaged.map((u) => `  Left in place: ${u.key} (${u.reason}).\n`).join('')
+        + desiredOnlyNote
         + 'Run without --dry-run to apply.\n'
     });
     return 0;
@@ -658,9 +672,10 @@ async function runUnifiedAllUninstall(
       status: 'ok',
       data: {
         target: target.name,
-        uninstalled: 0
+        uninstalled: 0,
+        ...withDesiredOnly(desiredOnly)
       },
-      textRenderer: (d) => `No bundles installed in target "${d.target}". Nothing to uninstall.\n`
+      textRenderer: (d) => `No bundles installed in target "${d.target}". Nothing to uninstall.\n${desiredOnlyNote}`
     });
     return 0;
   }
@@ -681,6 +696,7 @@ async function runUnifiedAllUninstall(
         ...(r.unmanagedReason === undefined ? {} : { unmanagedReason: r.unmanagedReason })
       })),
       ...(failure === undefined ? {} : { failure }),
+      ...withDesiredOnly(desiredOnly),
       ...withMigration(migration)
     },
     warnings: failure === undefined ? undefined : [`${failure.key}: ${failure.reason}`],
@@ -693,6 +709,7 @@ async function runUnifiedAllUninstall(
         + (d.failure === undefined
           ? ''
           : `Failed on ${d.failure.key}: ${d.failure.reason}. ${notAttempted} later bundle${notAttempted === 1 ? '' : 's'} not attempted.\n`)
+        + desiredOnlyNote
         + renderMigration(migration)
   });
   return failure === undefined ? 0 : 1;

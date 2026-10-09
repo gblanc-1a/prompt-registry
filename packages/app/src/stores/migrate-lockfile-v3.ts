@@ -159,6 +159,58 @@ export const convertV2ToPair = (
 };
 
 /**
+ * Find the file a migration (or a plain v3 read) starts from: the first existing
+ * legacy file, else the desired file. `null` means neither exists, so there is
+ * no v2 state to migrate and no desired half to read.
+ * @param sources - Paths to the lockfiles.
+ * @param fs - Filesystem adapter (existence probes only).
+ * @returns The source file path, or null when none exists.
+ */
+export const findLockfileSource = async (
+  sources: MigrationSources,
+  fs: Pick<LockfileFsWithRename, 'exists'>
+): Promise<string | null> => {
+  for (const legacyFile of sources.legacyFiles) {
+    if (await fs.exists(legacyFile)) {
+      return legacyFile;
+    }
+  }
+  return await fs.exists(sources.desiredFile) ? sources.desiredFile : null;
+};
+
+/**
+ * Read the lockfile pair as it stands, for a caller that does not write it back through a
+ * migration. A v2 store is previewed in memory (see {@link planLockfileMigration}). When no
+ * legacy or desired file exists, the local half is still read on its own: a local-only v3
+ * pair is legal (`readLockfileV3Pair` defaults the missing half), and migration has
+ * nothing to convert. Never writes.
+ * @param sources - Paths to the lockfiles.
+ * @param fs - Filesystem adapter (read operations only are used).
+ * @param options - Generation metadata.
+ * @param options.generatedBy - Tool identifier.
+ * @param options.now - ISO timestamp.
+ * @returns The pair, and the migration preview report (null unless a v2 file was converted).
+ * @throws {UnsupportedLockfileVersionError} On unreadable version.
+ * @throws {LockfileGenerationMismatchError} On a local file of another schema generation.
+ */
+export const readLockfilePair = async (
+  sources: MigrationSources,
+  fs: LockfileFsWithRename,
+  options: { generatedBy: string; now: string }
+): Promise<{ pair: LockfileV3Pair; report: MigrationReport | null }> => {
+  if (await findLockfileSource(sources, fs) === null) {
+    const halves = await readLockfileV3Pair(
+      { desiredFile: sources.desiredFile, localFile: sources.localFile },
+      fs,
+      options
+    );
+    return { pair: halves.pair, report: null };
+  }
+  const plan = await planLockfileMigration(sources, fs, options);
+  return { pair: plan.pair, report: plan.report };
+};
+
+/**
  * Read the lockfile state and compute, in memory, the pair a migration would produce.
  * Never writes: this is the read half of {@link migrateLockfileIfNeeded}, shared so a
  * read-only caller can see the post-migration state without committing it.
@@ -178,16 +230,7 @@ export const planLockfileMigration = async (
   options: { generatedBy: string; now: string; triggeredByKey?: string }
 ): Promise<{ pair: LockfileV3Pair; report: MigrationReport | null; pendingWrite: boolean }> => {
   // Step 1: Read the raw v2 source — legacyFiles[0] if any exists, else desiredFile.
-  let v2Source: string | null = null;
-  for (const legacyFile of sources.legacyFiles) {
-    if (await fs.exists(legacyFile)) {
-      v2Source = legacyFile;
-      break;
-    }
-  }
-  if (!v2Source && (await fs.exists(sources.desiredFile))) {
-    v2Source = sources.desiredFile;
-  }
+  const v2Source = await findLockfileSource(sources, fs);
 
   // Absent → return an empty pair, report: null, no write.
   if (!v2Source) {

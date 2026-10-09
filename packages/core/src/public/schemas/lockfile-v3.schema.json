@@ -164,8 +164,11 @@
           "description": "Path to MCP configuration file"
         },
         "mcpServers": {
-          "type": "object",
-          "description": "MCP server configurations"
+          "type": "array",
+          "description": "MCP server names contributed by this bundle (for cleanup ownership)",
+          "items": {
+            "type": "string"
+          }
         },
         "complete": {
           "type": "boolean",

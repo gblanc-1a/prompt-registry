@@ -147,7 +147,7 @@ describe('lockfile 3.x wire-format schema', () => {
               unmanagedReason: 'Provenance unclear during migration',
               linked: true,
               mcpConfigPath: '/path/to/mcp.json',
-              mcpServers: { 'server-1': { command: 'server', args: [] } },
+              mcpServers: ['server-1', 'server-2'],
               complete: true,
               files: [
                 {

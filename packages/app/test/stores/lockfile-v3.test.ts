@@ -316,12 +316,27 @@ describe('schema conformance', () => {
         unmanagedReason: 'Test',
         linked: true,
         mcpConfigPath: 'mcp.json',
-        mcpServers: { server1: {} },
+        mcpServers: ['server-a', 'server-b'],
         complete: true
       }
     );
 
     expect(validate(desired)).toBe(true);
     expect(validate(local)).toBe(true);
+  });
+
+  it('rejects mcpServers as an object (design §6.5: server names only)', () => {
+    const local = upsertMaterialization(
+      emptyLocalLockfileV3('cli', NOW),
+      binding,
+      'src/web-dev',
+      {
+        ...record(),
+        mcpServers: { 'server-a': { config: 'data' } } as unknown as string[]
+      }
+    );
+
+    expect(validate(local)).toBe(false);
+    expect(validate.errors?.some((e) => e.instancePath.includes('mcpServers'))).toBe(true);
   });
 });

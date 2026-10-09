@@ -88,8 +88,8 @@ export interface LockfileV3BundleRecord {
   files: LockfileV3FileEntry[];
   /** Path to the MCP config file, if this bundle installed one. */
   mcpConfigPath?: string;
-  /** MCP server configurations contributed by this bundle. */
-  mcpServers?: Record<string, unknown>;
+  /** MCP server names contributed by this bundle. */
+  mcpServers?: string[];
   /** True when all expected files are present and unmodified. */
   complete?: true;
 }

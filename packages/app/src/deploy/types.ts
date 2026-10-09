@@ -44,6 +44,10 @@ export interface DeployRequest {
     type: string;
     /** Source URL. */
     url?: string;
+    /** Git branch, for git-based sources. */
+    branch?: string;
+    /** Collections subdirectory, for awesome-copilot sources. */
+    collectionsPath?: string;
   };
   /** Target name. */
   targetName: string;

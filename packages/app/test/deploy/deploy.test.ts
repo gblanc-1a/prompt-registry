@@ -323,4 +323,82 @@ describe('deployBundle', () => {
     // v2 should have been written, not satisfied
     expect(v2Result.written).toContain('/home/u/.copilot/skills/upgrade-skill/SKILL.md');
   });
+
+  describe('desired source descriptor', () => {
+    it('records the source descriptor next to the bundle entry that references it', async () => {
+      const ports = recordingPorts();
+      const req = request();
+
+      await deployBundle(req, ports);
+
+      const { desired } = readPair(ports);
+      expect(desired.sources).toEqual({
+        [req.source.sourceId]: { type: req.source.type, url: req.source.url }
+      });
+      expect(desired.bundles['github-abc123/web-dev'].sourceId).toBe(req.source.sourceId);
+    });
+
+    it('writes branch and collectionsPath only when the request carries them', async () => {
+      const plain = recordingPorts();
+      const rich = recordingPorts();
+      const req = request();
+
+      await deployBundle(req, plain);
+      await deployBundle({ ...req, source: { ...req.source, branch: 'release', collectionsPath: 'collections' } }, rich);
+
+      expect(Object.keys(readPair(plain).desired.sources[req.source.sourceId]).toSorted()).toEqual(['type', 'url']);
+      expect(readPair(rich).desired.sources[req.source.sourceId]).toEqual({
+        type: req.source.type,
+        url: req.source.url,
+        branch: 'release',
+        collectionsPath: 'collections'
+      });
+    });
+
+    it('keeps the descriptor on re-deploy', async () => {
+      const ports = recordingPorts();
+      const req = request();
+
+      await deployBundle(req, ports);
+      const first = readPair(ports).desired.sources;
+      expect(first[req.source.sourceId]).toBeDefined();
+      await deployBundle(req, ports);
+
+      expect(readPair(ports).desired.sources).toEqual(first);
+    });
+
+    it('does not duplicate or clobber the descriptor when a second bundle shares the source', async () => {
+      const ports = recordingPorts();
+      const first = request();
+      const second = upgradePromptRequest(promptArchive('1.0.0', '# second\n'), '1.0.0');
+      expect(second.source).toEqual(first.source);
+
+      await deployBundle(first, ports);
+      await deployBundle(second, ports);
+
+      const { desired } = readPair(ports);
+      expect(Object.keys(desired.sources)).toEqual([first.source.sourceId]);
+      expect(desired.sources[first.source.sourceId]).toEqual({ type: first.source.type, url: first.source.url });
+      expect(Object.keys(desired.bundles)).toHaveLength(2);
+    });
+
+    it('preserves descriptor fields it does not own', async () => {
+      const ports = recordingPorts();
+      const req = request();
+      ports.files.set(ports.lockfileStore.desiredFile, JSON.stringify({
+        $schema: 'x',
+        version: '3.0.0',
+        bundles: {},
+        sources: { [req.source.sourceId]: { type: 'github', url: 'https://old.example/repo', indexFile: 'index.json' } }
+      }));
+
+      await deployBundle(req, ports);
+
+      expect(readPair(ports).desired.sources[req.source.sourceId]).toEqual({
+        type: req.source.type,
+        url: req.source.url,
+        indexFile: 'index.json'
+      });
+    });
+  });
 });

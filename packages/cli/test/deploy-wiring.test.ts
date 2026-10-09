@@ -1,4 +1,7 @@
 import * as path from 'node:path';
+import type {
+  Target,
+} from '@ai-primitives-hub/core';
 import {
   NodeFileSystem,
 } from '@ai-primitives-hub/infra';
@@ -50,6 +53,21 @@ describe('buildPlacementContext', () => {
     expect(placement.resolvedLayout.kindRoutes['prompts/']).toBe('prompts/');
   });
 
+  it('records user scope explicitly when the target carries none', async () => {
+    const { scope: _omitted, ...withoutScope } = userTarget;
+
+    const placement = await buildPlacementContext(ctxWith({ HOME: '/home/u' }), withoutScope as Target);
+
+    expect(placement.scope).toBe('user');
+  });
+
+  it.each(['repository', 'workspace', 'bogus'])('refuses to build a placement for scope "%s"', async (scope) => {
+    const refused: string = scope;
+
+    await expect(buildPlacementContext(ctxWith({ HOME: '/home/u' }), { ...userTarget, scope: refused } as Target))
+      .rejects.toMatchObject({ code: 'BUNDLE.UNSUPPORTED_SCOPE' });
+  });
+
   it('carries allowedKinds through untouched', async () => {
     const ctx = ctxWith({ HOME: '/home/u' });
 
@@ -80,6 +98,24 @@ describe('buildDeployPorts', () => {
 });
 
 describe('assertUnifiedDeploySupported', () => {
+  it.each(['repository', 'workspace', 'bogus'])('refuses scope "%s" with BUNDLE.UNSUPPORTED_SCOPE naming the scope and slice 3', (scope) => {
+    const refused: string = scope;
+    const target = { ...userTarget, scope: refused, rootPath: '/work' } as Target;
+
+    expect(() => assertUnifiedDeploySupported(target)).toThrow(expect.objectContaining({
+      code: 'BUNDLE.UNSUPPORTED_SCOPE',
+      message: expect.stringContaining(`scope "${scope}"`),
+      hint: expect.stringContaining('AI_PRIMITIVES_HUB_UNIFIED_DEPLOY')
+    }));
+    expect(() => assertUnifiedDeploySupported(target)).toThrow(/slice 3/);
+  });
+
+  it('reads an absent scope as user, as the legacy path does', () => {
+    const { scope: _omitted, ...withoutScope } = userTarget;
+
+    expect(() => assertUnifiedDeploySupported(withoutScope as Target)).not.toThrow();
+  });
+
   it('accepts a user-scope target', () => {
     expect(() => assertUnifiedDeploySupported(userTarget)).not.toThrow();
   });

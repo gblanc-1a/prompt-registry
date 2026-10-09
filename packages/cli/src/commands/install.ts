@@ -25,6 +25,7 @@ import {
   FileTreeTargetWriter,
   type Lockfile,
   type LockfileBundleEntry,
+  LockfileGenerationMismatchError,
   type LockfileSourceEntry,
   planDeploy,
   readLockfile,
@@ -877,6 +878,53 @@ interface UnifiedInstallArgs {
 
 type UnifiedMigration = DeployResult['migration'];
 
+type RemoteSourceDescriptor = Pick<DeployRequest['source'], 'type' | 'url' | 'branch' | 'collectionsPath'> & { url: string };
+
+/**
+ * Describe the source a remote install actually resolved from: the configured
+ * source's own URL when there is one, then the enterprise host the GitHub App
+ * preflight resolved, and only then the github.com slug recipe.
+ * @param repoSlug Resolved `owner/repo` slug.
+ * @param sourceConfig Configured source, when the install was source-aware.
+ * @param repositoryTarget Preflight-resolved repository target, when GitHub App auth is on.
+ * @returns Descriptor fields for `DeployRequest.source`.
+ */
+function remoteSourceDescriptor(
+  repoSlug: string,
+  sourceConfig: RegistrySource | undefined,
+  repositoryTarget: GitHubRepositoryTarget | undefined
+): RemoteSourceDescriptor {
+  const fallbackUrl = repositoryTarget === undefined
+    ? `https://github.com/${repoSlug}`
+    : `https://${repositoryTarget.host}/${repositoryTarget.owner}/${repositoryTarget.repository}`;
+  const branch = sourceConfig?.config?.branch;
+  const collectionsPath = sourceConfig?.config?.collectionsPath;
+  return {
+    type: sourceConfig?.type ?? 'github',
+    url: sourceConfig?.url === undefined || sourceConfig.url.length === 0 ? fallbackUrl : sourceConfig.url,
+    ...(typeof branch === 'string' && branch.length > 0 ? { branch } : {}),
+    ...(typeof collectionsPath === 'string' && collectionsPath.length > 0 ? { collectionsPath } : {})
+  };
+}
+
+/**
+ * Read the lockfile pair's raw contents, `null` for an absent file, so a run can
+ * report whether it actually changed them.
+ * @param ctx CLI context.
+ * @param paths Lockfile pair paths.
+ * @param paths.desiredFile Desired-state file path.
+ * @param paths.localFile Local materialization file path.
+ * @returns Raw contents of the desired and local files.
+ */
+async function snapshotLockfiles(
+  ctx: Context,
+  paths: { desiredFile: string; localFile: string }
+): Promise<(string | null)[]> {
+  return await Promise.all([paths.desiredFile, paths.localFile].map(
+    async (file) => await ctx.fs.exists(file) ? await ctx.fs.readFile(file) : null
+  ));
+}
+
 const renderMigration = (migration: UnifiedMigration): string => {
   if (migration === null) {
     return '';
@@ -907,7 +955,19 @@ async function runUnifiedInstall(args: UnifiedInstallArgs): Promise<number> {
   const bundle = { id: request.bundle.bundleId, version: request.bundle.version };
 
   if (dryRun) {
-    const plan = await planDeploy({ ...request, force }, ports);
+    const plan = await planDeploy({ ...request, force }, ports).catch((cause: unknown) => {
+      // Migration runs on install, never on a dry run, so a v2 lockfile cannot be planned against.
+      if (cause instanceof LockfileGenerationMismatchError) {
+        throw new RegistryError({
+          code: 'CONFIG.LOCKFILE_NOT_MIGRATED',
+          message: `install: the lockfile at ${cause.file} is a v${cause.found} lockfile and has not been migrated to v${cause.expected}, so a dry run cannot plan against it.`,
+          hint: 'Run the install without --dry-run to migrate it — migration runs on install, never on a dry run.',
+          context: { file: cause.file, found: cause.found, expected: cause.expected },
+          cause
+        });
+      }
+      throw cause;
+    });
     formatOutput({
       ctx,
       command: 'install',
@@ -933,7 +993,10 @@ async function runUnifiedInstall(args: UnifiedInstallArgs): Promise<number> {
     return 0;
   }
 
+  const before = await snapshotLockfiles(ctx, ports.lockfileStore);
   const result = await deployBundle({ ...request, force }, ports);
+  const after = await snapshotLockfiles(ctx, result.lockfiles);
+  const lockfileUpdated = before.some((content, i) => content !== after[i]);
   formatOutput({
     ctx,
     command: 'install',
@@ -956,7 +1019,7 @@ async function runUnifiedInstall(args: UnifiedInstallArgs): Promise<number> {
     textRenderer: (d) => `Installed ${d.bundle.id}@${d.bundle.version} into target "${d.target}" `
       + `(${d.written.length} written, ${d.skipped.length} skipped, ${d.satisfied.length} already satisfied, `
       + `${d.collisions.length} collision${d.collisions.length === 1 ? '' : 's'}). `
-      + `Updated ${d.lockfile}.\n${renderMigration(d.migration)}`
+      + `${lockfileUpdated ? `Updated ${d.lockfile}.` : 'Lockfile unchanged.'}\n${renderMigration(d.migration)}`
   });
   return 0;
 }
@@ -978,14 +1041,17 @@ async function performLocalInstall(
   let unified = false;
   try {
     const effectiveTarget = resolveEffectiveTarget(ctx, target, opts);
+    // Refuse before any read: an unsupported scope must not touch the source tree or the lockfiles.
+    unified = unifiedDeployRequested(ctx);
+    if (unified) {
+      assertUnifiedDeploySupported(effectiveTarget);
+    }
     const files = await readLocalBundle(opts.from as string, ctx.fs);
     const manifest = validateManifest(files, {
       expectedId: opts.bundle ?? '',
       expectedVersion: undefined
     });
-    unified = unifiedDeployRequested(ctx);
     if (unified) {
-      assertUnifiedDeploySupported(effectiveTarget);
       return await runUnifiedInstall({
         ctx,
         fmt,
@@ -1180,6 +1246,11 @@ async function performRemoteInstall(
 ): Promise<number> {
   try {
     const effectiveTarget = resolveEffectiveTarget(ctx, target, opts);
+    // Refuse before any network, auth or lockfile effect.
+    const unified = unifiedDeployRequested(ctx);
+    if (unified) {
+      assertUnifiedDeploySupported(effectiveTarget);
+    }
     const spec = parseBundleSpec(opts.bundle as string);
     const repoSlug = opts.source ?? spec.sourceId;
     if (repoSlug === undefined || repoSlug.length === 0) {
@@ -1240,9 +1311,8 @@ async function performRemoteInstall(
       expectedId: opts.sourceConfig === undefined ? spec.bundleId : undefined,
       expectedVersion: spec.bundleVersion === 'latest' ? undefined : spec.bundleVersion
     });
-    if (unifiedDeployRequested(ctx)) {
-      assertUnifiedDeploySupported(effectiveTarget);
-      const sourceCollectionsPath = opts.sourceConfig?.config?.collectionsPath;
+    if (unified) {
+      const sourceDescriptor = remoteSourceDescriptor(repoSlug, opts.sourceConfig, repositoryTarget);
       return await runUnifiedInstall({
         ctx,
         fmt,
@@ -1254,21 +1324,17 @@ async function performRemoteInstall(
         request: {
           files,
           bundle: { bundleId: manifest.id, version: manifest.version },
-          source: {
-            sourceId: installable.ref.sourceId,
-            type: opts.sourceConfig?.type ?? 'github',
-            url: `https://github.com/${repoSlug}`
-          },
+          source: { sourceId: installable.ref.sourceId, ...sourceDescriptor },
           targetName: effectiveTarget.name,
           runtimeAssetRoot: runtimeAssetRootFor(ctx),
           placement: await buildPlacementContext(ctx, effectiveTarget)
         },
         extra: {
           source: {
-            type: 'github',
+            type: sourceDescriptor.type,
             repo: repoSlug,
             sourceId: installable.ref.sourceId,
-            ...(sourceCollectionsPath ? { collectionsPath: sourceCollectionsPath } : {})
+            url: sourceDescriptor.url
           },
           sha256: dl.sha256
         }

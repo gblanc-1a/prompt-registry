@@ -371,6 +371,34 @@ export const upsertDesiredBundle = (
 });
 
 /**
+ * Upsert a desired source descriptor, so a recorded bundle's `sourceId` is
+ * replayable. Merges over any existing entry rather than replacing it, which
+ * keeps descriptor fields this helper does not own (e.g. `indexFile`,
+ * `credentialRef`) when the entry came from a migrated or hand-edited file.
+ * @param lock - Desired lockfile.
+ * @param sourceId - Source ID.
+ * @param entry - Source descriptor; `undefined` optional fields are not written.
+ * @returns New lockfile with the source added or updated.
+ */
+export const upsertDesiredSource = (
+  lock: DesiredLockfileV3,
+  sourceId: string,
+  entry: LockfileSourceEntry
+): DesiredLockfileV3 => ({
+  ...lock,
+  sources: {
+    ...lock.sources,
+    [sourceId]: {
+      ...lock.sources[sourceId],
+      type: entry.type,
+      url: entry.url,
+      ...(entry.branch === undefined ? {} : { branch: entry.branch }),
+      ...(entry.collectionsPath === undefined ? {} : { collectionsPath: entry.collectionsPath })
+    }
+  }
+});
+
+/**
  * Remove a desired bundle entry.
  * @param lock - Desired lockfile.
  * @param bundleId - Bundle ID to remove.

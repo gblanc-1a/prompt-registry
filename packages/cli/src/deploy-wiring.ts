@@ -56,17 +56,19 @@ export const unifiedDeployRequested = (ctx: Context): boolean => isUnifiedDeploy
  * (same loader construction as `createWriterFactory`) resolved once, plus
  * the expanded absolute base root.
  * @param ctx CLI context.
- * @param target Effective target.
+ * @param target Effective target; must be user scope (an absent scope is recorded as user).
  * @returns Placement context shared by planning and writing.
+ * @throws {RegistryError} BUNDLE.UNSUPPORTED_SCOPE for any scope other than user.
  */
 export const buildPlacementContext = async (
   ctx: Context,
   target: Target
 ): Promise<PlacementContext> => {
+  assertUnifiedDeploySupported(target);
   const resolvedLayout = await resolveLayoutAsync(target, layoutLoaderFor(ctx));
   const env = { ...ctx.env };
   return {
-    scope: target.scope,
+    scope: 'user',
     targetType: target.type,
     resolvedLayout,
     baseRoot: expandPath(resolvedLayout.baseDir, env),
@@ -126,15 +128,19 @@ export const runtimeAssetRootFor = (ctx: Context): string =>
   path.join(resolveUserConfigPaths(ctx.env).root, 'runtime');
 
 /**
- * Refuse targets the unified path cannot converge yet.
+ * Refuse targets the unified path cannot converge yet. Only user scope is
+ * supported; an absent scope is read as user, which is what the legacy path
+ * does (every scope other than `repository` resolves the user layout and the
+ * user lockfile).
  * @param target Effective target.
- * @throws {RegistryError} BUNDLE.UNSUPPORTED_SCOPE for repository scope.
+ * @throws {RegistryError} BUNDLE.UNSUPPORTED_SCOPE for any scope other than user.
  */
 export const assertUnifiedDeploySupported = (target: Target): void => {
-  if (target.scope === 'repository') {
+  const scope: string | undefined = target.scope;
+  if (scope !== undefined && scope !== 'user') {
     throw new RegistryError({
       code: 'BUNDLE.UNSUPPORTED_SCOPE',
-      message: `install: repository scope is not yet supported with unifiedDeploy enabled (target "${target.name}"); it arrives in slice 3.`,
+      message: `install: scope "${scope}" is not yet supported with unifiedDeploy enabled (target "${target.name}"); only user scope is supported until slice 3 adds repository scope.`,
       hint: 'Unset AI_PRIMITIVES_HUB_UNIFIED_DEPLOY to use the current repository-scope path.'
     });
   }

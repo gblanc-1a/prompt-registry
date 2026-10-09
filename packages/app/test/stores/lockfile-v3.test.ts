@@ -15,6 +15,7 @@ import {
   readLockfileV3Pair,
   removeMaterialization,
   upsertDesiredBundle,
+  upsertDesiredSource,
   upsertMaterialization,
   writeLockfileV3Pair,
 } from '../../src/stores/lockfile-v3';
@@ -323,6 +324,21 @@ describe('schema conformance', () => {
 
     expect(validate(desired)).toBe(true);
     expect(validate(local)).toBe(true);
+  });
+
+  it('a source descriptor written by upsertDesiredSource conforms to schema, with and without optional fields', () => {
+    const base = emptyDesiredLockfileV3();
+    const plain = upsertDesiredSource(base, 'src', { type: 'github', url: 'https://ghe.example.com/o/r' });
+    const rich = upsertDesiredSource(base, 'src', {
+      type: 'awesome-copilot',
+      url: 'https://ghe.example.com/o/r',
+      branch: 'main',
+      collectionsPath: 'collections'
+    });
+
+    expect(validate(plain)).toBe(true);
+    expect(validate(rich)).toBe(true);
+    expect(Object.keys(plain.sources.src)).toEqual(['type', 'url']);
   });
 
   it('rejects mcpServers as an object (design §6.5: server names only)', () => {

@@ -17,12 +17,21 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import {
   emptyLockfile,
+  type Lockfile,
   resolveUserConfigPaths,
   upsertBundleEntry,
   upsertSource,
   writeLockfile,
 } from '@ai-primitives-hub/app';
+import type {
+  HttpClient,
+  HttpRequest,
+  HttpResponse,
+  RegistrySource,
+  Target,
+} from '@ai-primitives-hub/core';
 import {
+  buildZip,
   NodeFileSystem,
 } from '@ai-primitives-hub/infra';
 import {
@@ -33,12 +42,15 @@ import {
   it,
 } from 'vitest';
 import {
+  installBundleWithSource,
   InstallCommand,
 } from '../../src/commands/install';
 import {
   TargetAddCommand,
 } from '../../src/commands/target-add';
 import {
+  createTestContext,
+  runCli,
   runCommand,
 } from '../../src/framework';
 import {
@@ -73,19 +85,86 @@ const exists = async (p: string): Promise<boolean> => {
   }
 };
 
+/** Real filesystem that records which paths a run read and which it mutated. */
+class RecordingFs extends NodeFileSystem {
+  public readonly reads: string[] = [];
+  public readonly writes: string[] = [];
+
+  public override async readFile(file: string): Promise<string> {
+    this.reads.push(file);
+    return await super.readFile(file);
+  }
+
+  public override async readFileBytes(file: string): Promise<Uint8Array> {
+    this.reads.push(file);
+    return await super.readFileBytes(file);
+  }
+
+  public override async exists(file: string): Promise<boolean> {
+    this.reads.push(file);
+    return await super.exists(file);
+  }
+
+  public override async readDir(dir: string): Promise<string[]> {
+    this.reads.push(dir);
+    return await super.readDir(dir);
+  }
+
+  public override async writeFile(file: string, contents: string): Promise<void> {
+    this.writes.push(file);
+    await super.writeFile(file, contents);
+  }
+
+  public override async writeFileBytes(file: string, bytes: Uint8Array): Promise<void> {
+    this.writes.push(file);
+    await super.writeFileBytes(file, bytes);
+  }
+
+  public override async mkdir(dir: string, opts?: { recursive?: boolean }): Promise<void> {
+    this.writes.push(dir);
+    await super.mkdir(dir, opts);
+  }
+
+  public override async rename(from: string, to: string): Promise<void> {
+    this.writes.push(to);
+    await super.rename(from, to);
+  }
+
+  public override async remove(file: string, opts?: { recursive?: boolean }): Promise<void> {
+    this.writes.push(file);
+    await super.remove(file, opts);
+  }
+}
+
 describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', () => {
   let workspace: string;
   let bundleDir: string;
   let env: Record<string, string>;
 
-  const run = (argv: string[], overrides: Record<string, string> = {}): ReturnType<typeof runCommand> => runCommand(argv, {
+  const run = (
+    argv: string[],
+    overrides: Record<string, string> = {},
+    fs: NodeFileSystem = new NodeFileSystem()
+  ): ReturnType<typeof runCommand> => runCommand(argv, {
     commandClasses: [TargetAddCommand, InstallCommand],
-    context: {
-      cwd: workspace,
-      fs: new NodeFileSystem(),
-      env: { ...env, ...overrides }
-    }
+    context: { cwd: workspace, fs, env: { ...env, ...overrides } }
   });
+
+  const seedLegacyLockfile = async (): Promise<Lockfile> => {
+    const userPaths = resolveUserConfigPaths(env);
+    let legacy = emptyLockfile('ai-primitives-hub-cli');
+    legacy = upsertBundleEntry(legacy, 'older-bundle', {
+      version: '0.9.0',
+      sourceId: 'legacy-source',
+      sourceType: 'github',
+      installedAt: '2026-01-01T00:00:00.000Z',
+      files: []
+    });
+    legacy = upsertSource(legacy, 'legacy-source', { type: 'github', url: 'https://github.com/o/r' });
+    await mkdir(path.dirname(userPaths.userLockfile), { recursive: true });
+    await writeLockfile(userPaths.userLockfile, legacy, new NodeFileSystem());
+    return legacy;
+  };
   const flagOn = { AI_PRIMITIVES_HUB_UNIFIED_DEPLOY: '1' };
   const parse = <T>(stdout: string): JsonEnvelope<T> => JSON.parse(stdout) as JsonEnvelope<T>;
   const destination = (): string => path.join(workspace, '.copilot', 'prompts', 'hello.prompt.md');
@@ -171,16 +250,230 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
     await expect(readFile(destination(), 'utf8')).resolves.toContain('Hello Prompt');
   });
 
-  it('refuses repository scope naming the flag, and writes nothing', async () => {
+  it.each(['repository', 'workspace', 'bogus'])('refuses scope "%s" with BUNDLE.UNSUPPORTED_SCOPE before reading or writing anything', async (scope) => {
+    const recording = new RecordingFs();
+    await seedLegacyLockfile();
+    const userPaths = resolveUserConfigPaths(env);
+    const before = await readFile(userPaths.userLockfile, 'utf8');
+
     const result = await run([
-      'install', 'local-foo', '--from', bundleDir, '--target', 'my-vscode', '--scope', 'repository', '-o', 'json'
-    ], flagOn);
+      'install', 'local-foo', '--from', bundleDir, '--target', 'my-vscode', '--scope', scope, '-o', 'json'
+    ], flagOn, recording);
 
     expect(result.exitCode).toBe(1);
-    expect(result.stdout + result.stderr).toContain('BUNDLE.UNSUPPORTED_SCOPE');
-    expect(result.stdout + result.stderr).toContain('AI_PRIMITIVES_HUB_UNIFIED_DEPLOY');
+    const { errors } = parse<null>(result.stdout);
+    expect(errors[0].code).toBe('BUNDLE.UNSUPPORTED_SCOPE');
+    expect(errors[0].message).toContain(`scope "${scope}"`);
+    expect(errors[0].message).toContain('slice 3');
+    expect(recording.writes).toEqual([]);
+    expect(recording.reads.filter((p) => p.startsWith(bundleDir)
+      || p === userPaths.userLockfile || p === userPaths.userLocalLockfile)).toEqual([]);
+    await expect(readFile(userPaths.userLockfile, 'utf8')).resolves.toBe(before);
     expect(await exists(path.join(workspace, '.github'))).toBe(false);
-    expect(await exists(resolveUserConfigPaths(env).userLocalLockfile)).toBe(false);
+    expect(await exists(userPaths.userLocalLockfile)).toBe(false);
+  });
+
+  it('reads a target with no scope as user and records user scope', async () => {
+    const added = await run(['target', 'add', 'scopeless', '--type', 'vscode', '-o', 'json']);
+    const { file } = parse<{ file: string }>(added.stdout).data;
+    const text = await readFile(file, 'utf8');
+    await writeFile(file, text.replaceAll(/^\s*scope: .*\n/gm, ''));
+
+    const result = await run(['install', 'local-foo', '--from', bundleDir, '--target', 'scopeless', '-o', 'json'], flagOn);
+
+    expect(result.exitCode).toBe(0);
+    const local = JSON.parse(await readFile(resolveUserConfigPaths(env).userLocalLockfile, 'utf8')) as {
+      targets: Record<string, { scope: string }>;
+    };
+    expect(local.targets.scopeless.scope).toBe('user');
+  });
+
+  it('records the source descriptor in the desired lockfile for a fresh local install', async () => {
+    const result = await run(['install', 'local-foo', '--from', bundleDir, '--target', 'my-vscode', '-o', 'json'], flagOn);
+
+    expect(result.exitCode).toBe(0);
+    const desired = JSON.parse(await readFile(resolveUserConfigPaths(env).userLockfile, 'utf8')) as {
+      bundles: Record<string, { sourceId: string }>;
+      sources: Record<string, { type: string; url: string }>;
+    };
+    const [entry] = Object.values(desired.bundles);
+    expect(desired.sources[entry.sourceId]).toEqual({ type: 'local', url: bundleDir });
+  });
+
+  it('dry-run over an un-migrated v2 lockfile refuses with an actionable error and writes nothing', async () => {
+    await seedLegacyLockfile();
+    const userPaths = resolveUserConfigPaths(env);
+    const before = await readFile(userPaths.userLockfile, 'utf8');
+    const recording = new RecordingFs();
+
+    const result = await run([
+      'install', 'local-foo', '--from', bundleDir, '--target', 'my-vscode', '--dry-run', '-o', 'json'
+    ], flagOn, recording);
+
+    expect(result.exitCode).toBe(1);
+    const { errors } = parse<null>(result.stdout);
+    expect(errors[0].code).toBe('CONFIG.LOCKFILE_NOT_MIGRATED');
+    expect(errors[0].message).toContain(userPaths.userLockfile);
+    expect(JSON.stringify(errors[0])).toContain('Run the install without --dry-run to migrate it');
+    expect(recording.writes).toEqual([]);
+    await expect(readFile(userPaths.userLockfile, 'utf8')).resolves.toBe(before);
+    expect(await exists(userPaths.userLocalLockfile)).toBe(false);
+  });
+
+  it('a non-dry-run install over a v2 lockfile still migrates it and succeeds', async () => {
+    await seedLegacyLockfile();
+
+    const result = await run(['install', 'local-foo', '--from', bundleDir, '--target', 'my-vscode', '-o', 'json'], flagOn);
+
+    expect(result.exitCode).toBe(0);
+    const { data } = parse<UnifiedInstallData>(result.stdout);
+    expect(data.migration?.unmanaged.map((u) => u.key)).toEqual(['legacy-source/older-bundle']);
+    const desired = JSON.parse(await readFile(data.lockfile, 'utf8')) as { version: string; bundles: Record<string, unknown> };
+    expect(desired.version.startsWith('3.')).toBe(true);
+    expect(Object.keys(desired.bundles)).toContain('legacy-source/older-bundle');
+    await expect(readFile(destination(), 'utf8')).resolves.toContain('Hello Prompt');
+  });
+
+  it('does not claim a lockfile update when a collision-only fresh install wrote none', async () => {
+    await mkdir(path.dirname(destination()), { recursive: true });
+    await writeFile(destination(), 'user-authored\n');
+    const userPaths = resolveUserConfigPaths(env);
+
+    const result = await run(['install', 'local-foo', '--from', bundleDir, '--target', 'my-vscode'], flagOn);
+
+    expect(result.exitCode).toBe(0);
+    expect(await exists(userPaths.userLockfile)).toBe(false);
+    expect(await exists(userPaths.userLocalLockfile)).toBe(false);
+    expect(result.stdout).not.toContain('Updated');
+    expect(result.stdout).toContain('Lockfile unchanged');
+  });
+
+  it('says it updated the lockfile when it did', async () => {
+    const result = await run(['install', 'local-foo', '--from', bundleDir, '--target', 'my-vscode'], flagOn);
+
+    expect(result.stdout).toContain(`Updated ${resolveUserConfigPaths(env).userLockfile}.`);
+  });
+
+  describe('remote', () => {
+    const remoteBundleId = 'remote-foo';
+    const zipBytes = buildZip([...createLegacyReleaseArchive({ id: remoteBundleId }).entries()].map(([filePath, bytes]) => ({
+      path: filePath,
+      bytes
+    })));
+    let httpCalls: string[];
+    const http: HttpClient = {
+      fetch: (request: HttpRequest): Promise<HttpResponse> => {
+        httpCalls.push(request.url);
+        if (request.url === 'https://api.github.com/repos/owner/repo/releases') {
+          return Promise.resolve({
+            statusCode: 200,
+            body: new TextEncoder().encode(JSON.stringify([{
+              tag_name: `${remoteBundleId}-v1.0.0`,
+              assets: [{ name: 'bundle.zip', url: 'https://api.github.com/assets/remote-foo' }]
+            }])),
+            finalUrl: request.url,
+            headers: {}
+          });
+        }
+        if (request.url === 'https://api.github.com/assets/remote-foo') {
+          return Promise.resolve({ statusCode: 200, body: zipBytes, finalUrl: request.url, headers: {} });
+        }
+        return Promise.reject(new Error(`Unexpected request: ${request.url}`));
+      }
+    };
+    const tokens = { getToken: () => Promise.resolve(undefined) };
+
+    const runRemote = async (argv: string[], fs: NodeFileSystem = new NodeFileSystem()): Promise<{ exitCode: number; stdout: string }> => {
+      const ctx = createTestContext({ cwd: workspace, fs, env: { ...env, ...flagOn } });
+      const exitCode = await runCli(argv, {
+        ctx,
+        name: 'ai-primitives-hub',
+        version: '0.0.0-test',
+        commands: [],
+        commandClasses: [TargetAddCommand, InstallCommand],
+        http,
+        tokens
+      });
+      return { exitCode, stdout: ctx.stdout.captured() };
+    };
+
+    beforeEach(() => {
+      httpCalls = [];
+    });
+
+    it('refuses repository scope before any HTTP request', async () => {
+      const recording = new RecordingFs();
+
+      const result = await runRemote([
+        'install', remoteBundleId, '--source', 'owner/repo', '--target', 'my-vscode', '--scope', 'repository', '-o', 'json'
+      ], recording);
+
+      expect(result.exitCode).toBe(1);
+      expect(parse<null>(result.stdout).errors[0].code).toBe('BUNDLE.UNSUPPORTED_SCOPE');
+      expect(httpCalls).toEqual([]);
+      expect(recording.writes).toEqual([]);
+    });
+
+    it('dry-run over an un-migrated v2 lockfile surfaces CONFIG.LOCKFILE_NOT_MIGRATED, not a network error, and writes nothing', async () => {
+      await seedLegacyLockfile();
+      const recording = new RecordingFs();
+
+      const result = await runRemote([
+        'install', remoteBundleId, '--source', 'owner/repo', '--target', 'my-vscode', '--dry-run', '-o', 'json'
+      ], recording);
+
+      expect(result.exitCode).toBe(1);
+      expect(parse<null>(result.stdout).errors[0].code).toBe('CONFIG.LOCKFILE_NOT_MIGRATED');
+      expect(recording.writes).toEqual([]);
+    });
+
+    it('a non-dry-run install over a v2 lockfile still migrates it and succeeds', async () => {
+      await seedLegacyLockfile();
+
+      const result = await runRemote(['install', remoteBundleId, '--source', 'owner/repo', '--target', 'my-vscode', '-o', 'json']);
+
+      expect(result.exitCode).toBe(0);
+      expect(parse<UnifiedInstallData>(result.stdout).data.migration?.unmanaged).toHaveLength(1);
+    });
+
+    it('records github.com as the source URL when no source is configured', async () => {
+      const result = await runRemote(['install', remoteBundleId, '--source', 'owner/repo', '--target', 'my-vscode', '-o', 'json']);
+
+      expect(result.exitCode).toBe(0);
+      const desired = JSON.parse(await readFile(resolveUserConfigPaths(env).userLockfile, 'utf8')) as {
+        sources: Record<string, unknown>;
+      };
+      expect(Object.values(desired.sources)).toEqual([{ type: 'github', url: 'https://github.com/owner/repo' }]);
+    });
+
+    it('records the configured source URL, branch and collectionsPath rather than a synthesized github.com URL', async () => {
+      const source: RegistrySource = {
+        id: 'mirror-source',
+        name: 'Mirror source',
+        type: 'github',
+        url: 'https://www.github.com/owner/repo',
+        enabled: true,
+        priority: 0,
+        config: { branch: 'release', collectionsPath: 'collections' }
+      };
+      const target: Target = { name: 'my-vscode', type: 'vscode', scope: 'user' };
+      const ctx = createTestContext({ cwd: workspace, fs: new NodeFileSystem(), env: { ...env, ...flagOn } });
+
+      const exitCode = await installBundleWithSource(remoteBundleId, source, target, ctx, http, tokens, 'json');
+
+      expect(exitCode).toBe(0);
+      const desired = JSON.parse(await readFile(resolveUserConfigPaths(env).userLockfile, 'utf8')) as {
+        bundles: Record<string, { sourceId: string }>;
+        sources: Record<string, unknown>;
+      };
+      const [entry] = Object.values(desired.bundles);
+      expect(desired.sources[entry.sourceId]).toEqual({
+        type: source.type,
+        url: source.url,
+        branch: 'release',
+        collectionsPath: 'collections'
+      });
+    });
   });
 
   it('surfaces why a legacy bundle was left unmanaged, in JSON and in text', async () => {

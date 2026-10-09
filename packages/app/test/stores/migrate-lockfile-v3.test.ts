@@ -355,7 +355,7 @@ describe('migrateLockfileIfNeeded', () => {
     };
     fs.files.set('/work/prompt-registry.lock.json', JSON.stringify(v2WithOneBundle()));
     let deleteAttempted = false;
-    fs.remove = async (p: string) => {
+    fs.remove = async (_p: string) => {
       deleteAttempted = true;
       throw new Error('permission denied');
     };

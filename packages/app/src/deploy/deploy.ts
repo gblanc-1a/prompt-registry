@@ -141,13 +141,11 @@ export async function deployBundle(
     for (const dest of toWrite) {
       const shape = nameShapeForKind(dest.kind);
 
-      if (shape === 'directory') {
-        // Directory kind (skill, plugin, power): copy entire subtree preserving relative paths.
-        await writeDirectoryKind(req, dest, ports, plan, written, created);
-      } else {
-        // File kind: write single file with optional transformation.
-        await writeFileKind(req, dest, ports, plan, written, created);
-      }
+      // Directory kind (skill, plugin, power): copy entire subtree preserving relative paths.
+      // File kind: write single file with optional transformation.
+      await (shape === 'directory'
+        ? writeDirectoryKind(req, dest, ports, plan, written, created)
+        : writeFileKind(req, dest, ports, plan, written, created));
     }
 
     // 5. Record state: upsert desired bundle, upsert materialization, write pair.

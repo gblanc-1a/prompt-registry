@@ -73,6 +73,29 @@ export const request = (): DeployRequest => ({
 });
 
 /**
+ * Create a deployment request for a skill bundle.
+ * @returns DeployRequest for skill testing.
+ */
+export const skillRequest = (): DeployRequest => ({
+  files: skillArchive(),
+  bundle: { bundleId: 'skills', version: '1.0.0' },
+  source: { sourceId: 'github-abc123', type: 'github', url: 'https://github.com/owner/skills' },
+  targetName: 'my-vscode',
+  runtimeAssetRoot: '/home/u/.config/ai-primitives-hub/runtime',
+  placement: {
+    scope: 'user' as const,
+    targetType: 'vscode' as const,
+    resolvedLayout: {
+      baseDir: '${HOME}/.copilot',
+      kindRoutes: { 'skills/': 'skills/' },
+      skipPaths: ['deployment-manifest.yml', 'README.md']
+    },
+    baseRoot: '/home/u/.copilot',
+    env: { HOME: '/home/u' }
+  }
+});
+
+/**
  * Build a two-item governed release archive for testing rollback.
  * @returns ExtractedFiles with two prompt items.
  */
@@ -129,6 +152,85 @@ export function twoItemArchive(): Map<string, Uint8Array> {
   ]);
 }
 
+/**
+ * Build a skill bundle for testing directory-kind deployment.
+ * @returns ExtractedFiles with a skill directory containing multiple files.
+ */
+export function skillArchive(): Map<string, Uint8Array> {
+  const encoder = new TextEncoder();
+  const sha256 = (s: string) => createHash('sha256').update(s).digest('hex');
+
+  const sourceSnapshotPath = 'metadata/source/collections/governed.collection.yml';
+  const archiveFiles = {
+    'skills/my-skill/SKILL.md': '# My Skill\n',
+    'skills/my-skill/config.json': '{"enabled": true}\n',
+    'skills/my-skill/binary.dat': '',  // Binary placeholder
+    [sourceSnapshotPath]: 'id: skills\n',
+    'README.md': '# Skills bundle\n',
+    LICENSE: 'License text\n'
+  };
+
+  // Add a binary file that decodeUtf8Strict will reject
+  const binaryContent = new Uint8Array([0xff, 0xfe, 0x00, 0x01, 0x02]);
+
+  const fileEntries = [];
+  for (const [filePath, content] of Object.entries(archiveFiles)) {
+    if (filePath.endsWith('binary.dat')) {
+      fileEntries.push({
+        path: filePath,
+        role: filePath.startsWith('skills/') ? 'installable' : 'metadata',
+        size: binaryContent.byteLength,
+        sha256: `sha256:${createHash('sha256').update(binaryContent).digest('hex')}`
+      });
+    } else {
+      fileEntries.push({
+        path: filePath,
+        role: filePath.startsWith('skills/') ? 'installable' : 'metadata',
+        size: encoder.encode(content).byteLength,
+        sha256: `sha256:${sha256(content)}`
+      });
+    }
+  }
+
+  const manifest = {
+    formatVersion: 1,
+    id: 'skills',
+    version: '1.0.0',
+    name: 'Skills Bundle',
+    readme: 'README.md',
+    items: [
+      { id: 'my-skill', path: 'skills/my-skill/SKILL.md', kind: 'skill' }
+    ],
+    prompts: [
+      { id: 'my-skill', file: 'skills/my-skill/SKILL.md', type: 'skill' }
+    ],
+    provenance: {
+      source: 'https://github.com/example/skills',
+      revision: 'abc123',
+      license: 'MIT',
+      governance: {
+        attestations: [],
+        provenance: { ref: 'main', url: 'https://github.com/example/skills', commit: 'abc123' }
+      }
+    },
+    files: fileEntries
+  };
+
+  const result = new Map<string, Uint8Array>([
+    ['deployment-manifest.yml', encoder.encode(dumpYaml(manifest, { lineWidth: -1 }))]
+  ]);
+
+  for (const [filePath, content] of Object.entries(archiveFiles)) {
+    if (filePath.endsWith('binary.dat')) {
+      result.set(filePath, binaryContent);
+    } else {
+      result.set(filePath, encoder.encode(content));
+    }
+  }
+
+  return result;
+}
+
 /** Recording filesystem and ports for testing. */
 export interface RecordingPorts extends DeployPorts {
   files: Map<string, string>;
@@ -155,54 +257,75 @@ export const recordingPorts = (opts?: { now?: string; failWriteAt?: number }): R
     calls,
     failWriteAt: opts?.failWriteAt,
     fs: {
-      readFile: async (p: string) => {
-        const v = files.get(p);
+      readFile: async (filePath: string) => {
+        const v = files.get(filePath);
         if (v === undefined) {
-          throw new Error(`ENOENT ${p}`);
+          throw new Error(`ENOENT ${filePath}`);
         }
         return v;
       },
-      readFileBytes: async (p: string) => new TextEncoder().encode(files.get(p) ?? ''),
-      exists: async (p: string) => files.has(p),
-      lstat: async () => ({ isDirectory: false, isFile: true, isSymbolicLink: false, size: 0, mtimeMs: 0 }),
-      stat: async () => ({ isDirectory: false, isFile: true, size: 0, mtimeMs: 0 }),
-      writeFile: async (p: string, content: string) => {
+      readFileBytes: async (filePath: string) => new TextEncoder().encode(files.get(filePath) ?? ''),
+      exists: async (filePath: string) => {
+        // Support directory existence: a path exists if it's a file or a directory prefix
+        if (files.has(filePath)) {
+          return true;
+        }
+        const dirPrefix = filePath.endsWith('/') ? filePath : filePath + '/';
+        for (const key of files.keys()) {
+          if (key.startsWith(dirPrefix)) {
+            return true;
+          }
+        }
+        return false;
+      },
+      lstat: async (filePath: string) => {
+        // Check if this path is a directory (has files under it)
+        const dirPrefix = filePath.endsWith('/') ? filePath : filePath + '/';
+        const isDirectory = Array.from(files.keys()).some((k) => k.startsWith(dirPrefix));
+        return { isDirectory, isFile: !isDirectory, isSymbolicLink: false, size: 0, mtimeMs: 0 };
+      },
+      stat: async (filePath: string) => {
+        const dirPrefix = filePath.endsWith('/') ? filePath : filePath + '/';
+        const isDirectory = Array.from(files.keys()).some((k) => k.startsWith(dirPrefix));
+        return { isDirectory, isFile: !isDirectory, size: 0, mtimeMs: 0 };
+      },
+      writeFile: async (filePath: string, content: string) => {
         writeCount++;
         if (ports.failWriteAt !== undefined && writeCount === ports.failWriteAt) {
           throw new Error(`Simulated write failure at call ${writeCount}`);
         }
-        calls.push(`writeFile:${p}`);
-        files.set(p, content);
+        calls.push(`writeFile:${filePath}`);
+        files.set(filePath, content);
       },
-      writeFileBytes: async (p: string, bytes: Uint8Array) => {
+      writeFileBytes: async (filePath: string, bytes: Uint8Array) => {
         writeCount++;
         if (ports.failWriteAt !== undefined && writeCount === ports.failWriteAt) {
           throw new Error(`Simulated write failure at call ${writeCount}`);
         }
-        calls.push(`writeFileBytes:${p}`);
-        files.set(p, new TextDecoder().decode(bytes));
+        calls.push(`writeFileBytes:${filePath}`);
+        files.set(filePath, new TextDecoder().decode(bytes));
       },
-      writeJson: async () => {
+      writeJson: async (_filePath: string) => {
         throw new Error('writeJson should not be called');
       },
-      mkdir: async (p: string) => {
-        calls.push(`mkdir:${p}`);
+      mkdir: async (dirPath: string) => {
+        calls.push(`mkdir:${dirPath}`);
       },
-      remove: async (p: string) => {
-        calls.push(`remove:${p}`);
-        files.delete(p);
+      remove: async (filePath: string) => {
+        calls.push(`remove:${filePath}`);
+        files.delete(filePath);
       },
-      rename: async (from: string, to: string) => {
-        calls.push(`rename:${to}`);
-        const content = files.get(from);
+      rename: async (fromPath: string, toPath: string) => {
+        calls.push(`rename:${toPath}`);
+        const content = files.get(fromPath);
         if (content !== undefined) {
-          files.set(to, content);
-          files.delete(from);
+          files.set(toPath, content);
+          files.delete(fromPath);
         }
       },
-      readJson: async (p: string) => JSON.parse(files.get(p) ?? 'null'),
-      readDir: async () => [],
-      readDirEntries: async () => []
+      readJson: async (filePath: string) => JSON.parse(files.get(filePath) ?? 'null'),
+      readDir: async (_dirPath: string) => [],
+      readDirEntries: async (_dirPath: string) => []
     },
     env: { HOME: '/home/u' },
     appStorage: {

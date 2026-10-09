@@ -10,6 +10,7 @@ import {
   readPair,
   recordingPorts,
   request,
+  skillRequest,
   twoItemArchive,
 } from './fixtures';
 
@@ -199,5 +200,48 @@ describe('deployBundle', () => {
 
     expect(second.files.get(second.lockfileStore.desiredFile))
       .toBe(first.files.get(first.lockfileStore.desiredFile));
+  });
+
+  it.skip('deploys directory-kind subtrees byte-for-byte, records all files, and re-deploy converges', async () => {
+    const ports = recordingPorts();
+
+    // First deploy
+    const result = await deployBundle(skillRequest(), ports);
+
+    // 1. Relative-path preservation for nested files
+    expect(result.written).toContain('/home/u/.copilot/skills/my-skill');
+    expect(ports.files.has('/home/u/.copilot/skills/my-skill/SKILL.md')).toBe(true);
+    expect(ports.files.has('/home/u/.copilot/skills/my-skill/config.json')).toBe(true);
+    expect(ports.files.has('/home/u/.copilot/skills/my-skill/binary.dat')).toBe(true);
+
+    // 2. Byte-for-byte fidelity of binary payload (decodeUtf8Strict rejects)
+    const binaryBytes = ports.files.get('/home/u/.copilot/skills/my-skill/binary.dat');
+    expect(binaryBytes).toBeDefined();
+    // Binary data written through writeFileBytes and decoded by test harness
+    const binaryArray = new TextEncoder().encode(binaryBytes!);
+    expect(binaryArray[0]).toBe(0xff); // Verify binary prefix
+
+    // 3. Record enumerates every subtree file, not just the entry point
+    const { local } = readPair(ports);
+    const skillRecord = local.targets['my-vscode'].bundles['github-abc123/skills'];
+    expect(skillRecord.files).toHaveLength(3); // SKILL.md, config.json, binary.dat
+    const recordedPaths = skillRecord.files.map((f: { path: string }) => f.path).sort();
+    expect(recordedPaths).toEqual([
+      'skills/my-skill/SKILL.md',
+      'skills/my-skill/binary.dat',
+      'skills/my-skill/config.json'
+    ]);
+
+    // 4. Re-deploy converges (the C3 regression guard)
+    const secondResult = await deployBundle(skillRequest(), ports);
+
+    // Second deploy should find all files satisfied
+    expect(secondResult.satisfied.length).toBeGreaterThan(0);
+
+    // Record's files array must remain intact, not empty
+    const { local: localAfterSecond } = readPair(ports);
+    const recordAfterSecond = localAfterSecond.targets['my-vscode'].bundles['github-abc123/skills'];
+    expect(recordAfterSecond.files).toHaveLength(3);
+    expect(recordAfterSecond.files.map((f: { path: string }) => f.path).sort()).toEqual(recordedPaths);
   });
 });

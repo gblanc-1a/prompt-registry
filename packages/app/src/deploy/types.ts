@@ -76,7 +76,7 @@ export interface DeployPlan {
   bundleKey: string;
   /** Destinations to write. */
   destinations: PlacementDestination[];
-  /** Destinations that already exist with identical bytes (no-op). */
+  /** Destinations that already exist with bytes identical to what this deploy would write (no-op). */
   satisfied: string[];
   /** Untracked collisions (existing files we would overwrite). */
   collisions: { to: string; reason: 'untracked-existing' }[];

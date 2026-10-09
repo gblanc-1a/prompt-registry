@@ -181,6 +181,101 @@ prompts:
   ]);
 }
 
+/**
+ * Build a simple prompt bundle for testing upgrades.
+ * @param version - Version string for the manifest.
+ * @param content - Content for the prompt file.
+ * @returns ExtractedFiles with a single prompt.
+ */
+export function promptArchive(version: string, content: string): Map<string, Uint8Array> {
+  const encoder = new TextEncoder();
+  const manifest = `id: upgrade-test
+version: ${version}
+name: Upgrade Test Bundle
+prompts:
+  - id: test-prompt
+    file: prompts/test-prompt.prompt.md
+    type: prompt
+`;
+  return new Map<string, Uint8Array>([
+    ['deployment-manifest.yml', encoder.encode(manifest)],
+    ['prompts/test-prompt.prompt.md', encoder.encode(content)]
+  ]);
+}
+
+/**
+ * Build a skill bundle with specific content for testing upgrades.
+ * @param version - Version string for the manifest.
+ * @param content - Content for the main skill file.
+ * @returns ExtractedFiles with a skill directory.
+ */
+export function skillArchiveVersioned(version: string, content: string): Map<string, Uint8Array> {
+  const encoder = new TextEncoder();
+  const manifest = `id: skills
+version: ${version}
+name: Skills Bundle
+prompts:
+  - id: upgrade-skill
+    file: skills/upgrade-skill/SKILL.md
+    type: skill
+`;
+  return new Map<string, Uint8Array>([
+    ['deployment-manifest.yml', encoder.encode(manifest)],
+    ['skills/upgrade-skill/SKILL.md', encoder.encode(content)],
+    ['skills/upgrade-skill/config.json', encoder.encode('{"enabled": true}\n')]
+  ]);
+}
+
+/**
+ * Create a deployment request for testing upgrades.
+ * @param files - Archive files.
+ * @param version - Version string.
+ * @returns DeployRequest for upgrade testing.
+ */
+export const upgradePromptRequest = (files: Map<string, Uint8Array>, version: string): DeployRequest => ({
+  files,
+  bundle: { bundleId: 'upgrade-test', version },
+  source: { sourceId: 'github-abc123', type: 'github', url: 'https://github.com/owner/repo' },
+  targetName: 'my-vscode',
+  runtimeAssetRoot: '/home/u/.config/ai-primitives-hub/runtime',
+  placement: {
+    scope: 'user' as const,
+    targetType: 'vscode' as const,
+    resolvedLayout: {
+      baseDir: '${HOME}/.copilot',
+      kindRoutes: { 'prompts/': 'prompts/' },
+      skipPaths: ['deployment-manifest.yml', 'README.md']
+    },
+    baseRoot: '/home/u/.copilot',
+    env: { HOME: '/home/u' }
+  }
+});
+
+/**
+ * Create a deployment request for skill upgrades.
+ * @param files - Archive files.
+ * @param version - Version string.
+ * @returns DeployRequest for skill upgrade testing.
+ */
+export const upgradeSkillRequest = (files: Map<string, Uint8Array>, version: string): DeployRequest => ({
+  files,
+  bundle: { bundleId: 'skills', version },
+  source: { sourceId: 'github-abc123', type: 'github', url: 'https://github.com/owner/skills' },
+  targetName: 'my-vscode',
+  runtimeAssetRoot: '/home/u/.config/ai-primitives-hub/runtime',
+  placement: {
+    scope: 'user' as const,
+    targetType: 'vscode' as const,
+    resolvedLayout: {
+      baseDir: '${HOME}/.copilot',
+      kindRoutes: { 'skills/': 'skills/' },
+      skipPaths: ['deployment-manifest.yml', 'README.md']
+    },
+    baseRoot: '/home/u/.copilot',
+    env: { HOME: '/home/u' }
+  }
+});
+
 /** Recording filesystem and ports for testing. */
 export interface RecordingPorts extends DeployPorts {
   files: Map<string, string | Uint8Array>;
@@ -196,7 +291,7 @@ export interface RecordingPorts extends DeployPorts {
  * @returns Recording ports for testing.
  */
 export const recordingPorts = (opts?: { now?: string; failWriteAt?: number }): RecordingPorts => {
-  const files = new Map<string, string>();
+  const files = new Map<string, string | Uint8Array>();
   const calls: string[] = [];
   const now = opts?.now ?? '2026-10-09T12:00:00.000Z';
   let writeCount = 0;
@@ -322,7 +417,13 @@ export const recordingPorts = (opts?: { now?: string; failWriteAt?: number }): R
  * @param ports - Recording ports.
  * @returns The desired and local lockfiles.
  */
-export const readPair = (ports: RecordingPorts): { desired: DesiredLockfileV3; local: LocalLockfileV3 } => ({
-  desired: JSON.parse(ports.files.get(ports.lockfileStore.desiredFile) ?? 'null'),
-  local: JSON.parse(ports.files.get(ports.lockfileStore.localFile) ?? 'null')
-});
+export const readPair = (ports: RecordingPorts): { desired: DesiredLockfileV3; local: LocalLockfileV3 } => {
+  const desiredContent = ports.files.get(ports.lockfileStore.desiredFile);
+  const localContent = ports.files.get(ports.lockfileStore.localFile);
+  const desiredText = typeof desiredContent === 'string' ? desiredContent : (desiredContent ? new TextDecoder().decode(desiredContent) : 'null');
+  const localText = typeof localContent === 'string' ? localContent : (localContent ? new TextDecoder().decode(localContent) : 'null');
+  return {
+    desired: JSON.parse(desiredText),
+    local: JSON.parse(localText)
+  };
+};

@@ -1,4 +1,7 @@
 import {
+  createHash,
+} from 'node:crypto';
+import {
   describe,
   expect,
   it,
@@ -7,11 +10,15 @@ import {
   deployBundle,
 } from '../../src/deploy/deploy';
 import {
+  promptArchive,
   readPair,
   recordingPorts,
   request,
+  skillArchiveVersioned,
   skillRequest,
   twoItemArchive,
+  upgradePromptRequest,
+  upgradeSkillRequest,
 } from './fixtures';
 
 describe('deployBundle', () => {
@@ -254,5 +261,66 @@ describe('deployBundle', () => {
     const recordAfterSecond = localAfterSecond.targets['my-vscode'].bundles['github-abc123/skills'];
     expect(recordAfterSecond.files).toHaveLength(3);
     expect(recordAfterSecond.files.map((f: { path: string }) => f.path).toSorted()).toEqual(recordedPaths);
+  });
+
+  it('upgrades file-kind bundle content when version changes', async () => {
+    const ports = recordingPorts();
+
+    // Deploy v1
+    const v1Content = '# V1\n';
+    const v1Files = promptArchive('1.0.0', v1Content);
+    await deployBundle(upgradePromptRequest(v1Files, '1.0.0'), ports);
+
+    // Deploy v2 with changed content
+    const v2Content = '# V2\n';
+    const v2Files = promptArchive('2.0.0', v2Content);
+    const v2Result = await deployBundle(upgradePromptRequest(v2Files, '2.0.0'), ports);
+
+    // Assert v2 bytes are on disk
+    const onDisk = ports.files.get('/home/u/.copilot/prompts/test-prompt.prompt.md');
+    expect(onDisk).toBeDefined();
+    const onDiskText = typeof onDisk === 'string' ? onDisk : new TextDecoder().decode(onDisk);
+    expect(onDiskText).toBe(v2Content);
+
+    // Assert installedChecksum matches v2's hash (computed from the same literal)
+    const v2Hash = createHash('sha256').update(new TextEncoder().encode(v2Content)).digest('hex');
+    const { local } = readPair(ports);
+    const record = local.targets['my-vscode'].bundles['github-abc123/upgrade-test'];
+    expect(record.files).toHaveLength(1);
+    expect(record.files[0].installedChecksum).toBe(v2Hash);
+
+    // v2 should have been written, not satisfied
+    expect(v2Result.written).toContain('/home/u/.copilot/prompts/test-prompt.prompt.md');
+  });
+
+  it('upgrades directory-kind bundle content when version changes', async () => {
+    const ports = recordingPorts();
+
+    // Deploy v1
+    const v1Content = '# Skill V1\n';
+    const v1Files = skillArchiveVersioned('1.0.0', v1Content);
+    await deployBundle(upgradeSkillRequest(v1Files, '1.0.0'), ports);
+
+    // Deploy v2 with changed content
+    const v2Content = '# Skill V2\n';
+    const v2Files = skillArchiveVersioned('2.0.0', v2Content);
+    const v2Result = await deployBundle(upgradeSkillRequest(v2Files, '2.0.0'), ports);
+
+    // Assert v2 bytes are on disk for the main skill file
+    const onDisk = ports.files.get('/home/u/.copilot/skills/upgrade-skill/SKILL.md');
+    expect(onDisk).toBeDefined();
+    const onDiskText = typeof onDisk === 'string' ? onDisk : new TextDecoder().decode(onDisk);
+    expect(onDiskText).toBe(v2Content);
+
+    // Assert installedChecksum matches v2's hash (computed from the same literal)
+    const v2Hash = createHash('sha256').update(new TextEncoder().encode(v2Content)).digest('hex');
+    const { local } = readPair(ports);
+    const record = local.targets['my-vscode'].bundles['github-abc123/skills'];
+    const skillFile = record.files.find((f: { path: string }) => f.path === 'skills/upgrade-skill/SKILL.md');
+    expect(skillFile).toBeDefined();
+    expect(skillFile!.installedChecksum).toBe(v2Hash);
+
+    // v2 should have been written, not satisfied
+    expect(v2Result.written).toContain('/home/u/.copilot/skills/upgrade-skill/SKILL.md');
   });
 });

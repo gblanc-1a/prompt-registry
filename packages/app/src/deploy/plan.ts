@@ -174,31 +174,72 @@ export async function planDeploy(
       // Tracked destination.
       if (exists) {
         if (isDirectory) {
-          // Directory kinds: check per-file drift.
+          // Directory kinds: check per-file drift and satisfied separately.
+          const sourcePrefix = posix.dirname(from) + '/';
+          const dirPrefix = to + '/';
+
           for (const subtreeFile of trackedSubtreeFiles) {
             const fileExists = await ports.fs.exists(subtreeFile.path);
             if (fileExists) {
               const content = await ports.fs.readFileBytes(subtreeFile.path);
               const hash = createHash('sha256').update(content).digest('hex');
-              if (hash === subtreeFile.checksum) {
-                // File is tracked and matches — satisfied.
-                satisfied.push(subtreeFile.path);
-              } else {
+
+              // Check drift: on-disk vs installedChecksum (what we last wrote).
+              if (hash !== subtreeFile.checksum) {
                 drifted.push(subtreeFile.path);
+              }
+
+              // Check satisfied: on-disk vs source bytes (what we would write).
+              // Reconstruct bundle path from destination path.
+              const tail = subtreeFile.path.slice(dirPrefix.length);
+              const bundlePath = sourcePrefix + tail;
+              const sourceBytes = installableFiles.get(bundlePath);
+              if (sourceBytes) {
+                const sourceHash = createHash('sha256').update(sourceBytes).digest('hex');
+                if (hash === sourceHash) {
+                  satisfied.push(subtreeFile.path);
+                }
               }
             } else {
               missing.push(subtreeFile.path);
             }
           }
         } else {
-          // Check for drift: compare on-disk hash to installedChecksum.
+          // File kind: check drift and satisfied separately.
           const content = await ports.fs.readFileBytes(to);
           const hash = createHash('sha256').update(content).digest('hex');
-          if (hash === tracked.checksum) {
-            // File is tracked and matches — satisfied.
-            satisfied.push(to);
-          } else {
+
+          // Check drift: on-disk vs installedChecksum (what we last wrote).
+          if (hash !== tracked.checksum) {
             drifted.push(to);
+          }
+
+          // Check satisfied: on-disk vs source bytes (what we would write).
+          const sourceBytes = installableFiles.get(from);
+          if (sourceBytes) {
+            // Apply transformer if present and the payload is text.
+            let expectedBytes = sourceBytes;
+            const text = decodeUtf8Strict(sourceBytes);
+            if (text !== null && ports.transformer !== undefined) {
+              try {
+                const target: Target = {
+                  name: request.targetName,
+                  type: placement.targetType,
+                  scope: placement.scope
+                };
+                const result = ports.transformer.transform({
+                  target,
+                  filePath: from,
+                  content: text
+                });
+                expectedBytes = new TextEncoder().encode(result.content);
+              } catch {
+                // Transformation failure: compare against untransformed bytes (fail-safe).
+              }
+            }
+            if (arraysEqual(content, expectedBytes)) {
+              satisfied.push(to);
+            }
           }
         }
       } else {

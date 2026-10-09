@@ -87,6 +87,7 @@ import {
   assertUnifiedDeploySupported,
   buildDeployPorts,
   buildPlacementContext,
+  renderMigration,
   runtimeAssetRootFor,
   transformerFor,
   unifiedDeployRequested,
@@ -943,19 +944,6 @@ const dryRunNotMigrated = (cause: LockfileGenerationMismatchError): RegistryErro
   context: { file: cause.file, found: cause.found, expected: cause.expected },
   cause
 });
-
-const renderMigration = (migration: UnifiedMigration): string => {
-  if (migration === null) {
-    return '';
-  }
-  const migrated = migration.migrated.length > 0
-    ? `Migrated ${migration.migrated.length} bundle${migration.migrated.length === 1 ? '' : 's'} to lockfile v3.\n`
-    : '';
-  const unmanaged = migration.unmanaged.map(
-    (u) => `Left unmanaged: ${u.key} (${u.reason}).\n`
-  ).join('');
-  return migrated + unmanaged;
-};
 
 /**
  * Flag-on install: plan (dry-run) or deploy through `app/deploy`, then render

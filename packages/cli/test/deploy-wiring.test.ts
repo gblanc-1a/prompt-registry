@@ -120,6 +120,13 @@ describe('assertUnifiedDeploySupported', () => {
     expect(() => assertUnifiedDeploySupported(userTarget)).not.toThrow();
   });
 
+  it('names the calling command in the refusal', () => {
+    const target = { ...userTarget, scope: 'repository', rootPath: '/work' } as Target;
+
+    expect(() => assertUnifiedDeploySupported(target, 'uninstall')).toThrow(/^uninstall: scope "repository"/);
+    expect(() => assertUnifiedDeploySupported(target)).toThrow(/^install: scope "repository"/);
+  });
+
   it('refuses repository scope with a message naming the next slice', () => {
     expect(() => assertUnifiedDeploySupported({ ...userTarget, scope: 'repository', rootPath: '/work' }))
       .toThrow(/repository scope .*not yet supported|unifiedDeploy/i);

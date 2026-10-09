@@ -164,14 +164,14 @@ export function skillArchive(): Map<string, Uint8Array> {
   const archiveFiles = {
     'skills/my-skill/SKILL.md': '# My Skill\n',
     'skills/my-skill/config.json': '{"enabled": true}\n',
-    'skills/my-skill/binary.dat': '',  // Binary placeholder
+    'skills/my-skill/binary.dat': '', // Binary placeholder
     [sourceSnapshotPath]: 'id: skills\n',
     'README.md': '# Skills bundle\n',
     LICENSE: 'License text\n'
   };
 
   // Add a binary file that decodeUtf8Strict will reject
-  const binaryContent = new Uint8Array([0xff, 0xfe, 0x00, 0x01, 0x02]);
+  const binaryContent = new Uint8Array([0xFF, 0xFE, 0x00, 0x01, 0x02]);
 
   const fileEntries = [];
   for (const [filePath, content] of Object.entries(archiveFiles)) {

@@ -115,7 +115,7 @@ describe('readLockfileV3Pair', () => {
 
   it('reads a half-present pair — local written, desired not yet (the §8.4 interruption)', async () => {
     const mockFs = fakeFs();
-    fs.files.set(userPaths.localFile, JSON.stringify(
+    mockFs.files.set(userPaths.localFile, JSON.stringify(
       upsertMaterialization(emptyLocalLockfileV3('cli', NOW), binding, 'src/web-dev', record())
     ));
 
@@ -128,7 +128,7 @@ describe('readLockfileV3Pair', () => {
 
   it('refuses a v2 file so the caller migrates instead of misreading it', async () => {
     const mockFs = fakeFs();
-    fs.files.set(userPaths.desiredFile, JSON.stringify({ version: '2.0.0', bundles: {}, sources: {} }));
+    mockFs.files.set(userPaths.desiredFile, JSON.stringify({ version: '2.0.0', bundles: {}, sources: {} }));
 
     await expect(readLockfileV3Pair(userPaths, mockFs, DEFAULTS))
       .rejects.toThrow(LockfileGenerationMismatchError);
@@ -136,7 +136,7 @@ describe('readLockfileV3Pair', () => {
 
   it('refuses an unknown major loudly', async () => {
     const mockFs = fakeFs();
-    fs.files.set(userPaths.localFile, JSON.stringify({ version: '9.0.0' }));
+    mockFs.files.set(userPaths.localFile, JSON.stringify({ version: '9.0.0' }));
 
     await expect(readLockfileV3Pair(userPaths, mockFs, DEFAULTS))
       .rejects.toThrow(/newer version of AI Primitives Hub/);
@@ -163,7 +163,7 @@ describe('writeLockfileV3Pair', () => {
       local: emptyLocalLockfileV3('cli', NOW)
     }, mockFs);
 
-    expect(fs.order).toEqual([userPaths.localFile, userPaths.desiredFile]);
+    expect(mockFs.order).toEqual([userPaths.localFile, userPaths.desiredFile]);
   });
 
   it('writes through a unique temp file per write', async () => {
@@ -173,7 +173,7 @@ describe('writeLockfileV3Pair', () => {
     await writeLockfileV3Pair(userPaths, pair, mockFs);
     await writeLockfileV3Pair(userPaths, pair, mockFs);
 
-    const temps = fs.renames.map(([from]) => from);
+    const temps = mockFs.renames.map(([from]) => from);
     expect(new Set(temps).size).toBe(temps.length);
     expect(temps[0]).toContain(`${userPaths.localFile}.`);
   });
@@ -196,8 +196,8 @@ describe('writeLockfileV3Pair', () => {
       local: emptyLocalLockfileV3('cli', NOW)
     }, mockFs);
 
-    expect(fs.files.get(userPaths.desiredFile)?.endsWith('}\n')).toBe(true);
-    expect(fs.files.get(userPaths.localFile)?.endsWith('}\n')).toBe(true);
+    expect(mockFs.files.get(userPaths.desiredFile)?.endsWith('}\n')).toBe(true);
+    expect(mockFs.files.get(userPaths.localFile)?.endsWith('}\n')).toBe(true);
   });
 
   it('behaves identically at repository paths — only the destination differs', async () => {

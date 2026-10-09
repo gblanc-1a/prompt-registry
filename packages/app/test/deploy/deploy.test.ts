@@ -218,14 +218,14 @@ describe('deployBundle', () => {
     const binaryBytes = ports.files.get('/home/u/.copilot/skills/my-skill/binary.dat');
     expect(binaryBytes).toBeDefined();
     // Binary data written through writeFileBytes and decoded by test harness
-    const binaryArray = new TextEncoder().encode(binaryBytes!);
-    expect(binaryArray[0]).toBe(0xff); // Verify binary prefix
+    const binaryArray = new TextEncoder().encode(binaryBytes);
+    expect(binaryArray[0]).toBe(0xFF); // Verify binary prefix
 
     // 3. Record enumerates every subtree file, not just the entry point
     const { local } = readPair(ports);
     const skillRecord = local.targets['my-vscode'].bundles['github-abc123/skills'];
     expect(skillRecord.files).toHaveLength(3); // SKILL.md, config.json, binary.dat
-    const recordedPaths = skillRecord.files.map((f: { path: string }) => f.path).sort();
+    const recordedPaths = skillRecord.files.map((f: { path: string }) => f.path).toSorted();
     expect(recordedPaths).toEqual([
       'skills/my-skill/SKILL.md',
       'skills/my-skill/binary.dat',
@@ -242,6 +242,6 @@ describe('deployBundle', () => {
     const { local: localAfterSecond } = readPair(ports);
     const recordAfterSecond = localAfterSecond.targets['my-vscode'].bundles['github-abc123/skills'];
     expect(recordAfterSecond.files).toHaveLength(3);
-    expect(recordAfterSecond.files.map((f: { path: string }) => f.path).sort()).toEqual(recordedPaths);
+    expect(recordAfterSecond.files.map((f: { path: string }) => f.path).toSorted()).toEqual(recordedPaths);
   });
 });

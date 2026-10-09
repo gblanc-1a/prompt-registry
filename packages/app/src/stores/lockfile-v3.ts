@@ -372,9 +372,11 @@ export const upsertDesiredBundle = (
 
 /**
  * Upsert a desired source descriptor, so a recorded bundle's `sourceId` is
- * replayable. Merges over any existing entry rather than replacing it, which
- * keeps descriptor fields this helper does not own (e.g. `indexFile`,
- * `credentialRef`) when the entry came from a migrated or hand-edited file.
+ * replayable. The four fields this helper owns (`type`, `url`, `branch`,
+ * `collectionsPath`) are replaced wholesale: an omitted `branch` or
+ * `collectionsPath` is removed, never retained, because a stale one would
+ * replay the wrong branch or collection against the new `url`. Any other field
+ * already on the entry (e.g. `indexFile`, `credentialRef`) is preserved.
  * @param lock - Desired lockfile.
  * @param sourceId - Source ID.
  * @param entry - Source descriptor; `undefined` optional fields are not written.
@@ -384,19 +386,24 @@ export const upsertDesiredSource = (
   lock: DesiredLockfileV3,
   sourceId: string,
   entry: LockfileSourceEntry
-): DesiredLockfileV3 => ({
-  ...lock,
-  sources: {
-    ...lock.sources,
-    [sourceId]: {
-      ...lock.sources[sourceId],
-      type: entry.type,
-      url: entry.url,
-      ...(entry.branch === undefined ? {} : { branch: entry.branch }),
-      ...(entry.collectionsPath === undefined ? {} : { collectionsPath: entry.collectionsPath })
+): DesiredLockfileV3 => {
+  const {
+    type: _type, url: _url, branch: _branch, collectionsPath: _collectionsPath, ...unowned
+  } = lock.sources[sourceId] ?? {};
+  return {
+    ...lock,
+    sources: {
+      ...lock.sources,
+      [sourceId]: {
+        ...unowned,
+        type: entry.type,
+        url: entry.url,
+        ...(entry.branch === undefined ? {} : { branch: entry.branch }),
+        ...(entry.collectionsPath === undefined ? {} : { collectionsPath: entry.collectionsPath })
+      }
     }
-  }
-});
+  };
+};
 
 /**
  * Remove a desired bundle entry.

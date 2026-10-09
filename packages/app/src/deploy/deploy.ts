@@ -40,6 +40,7 @@ import type {
   MigrationReport,
 } from '../stores/migrate-lockfile-v3';
 import {
+  assertReplayableSource,
   planDeploy,
 } from './plan';
 import type {
@@ -84,12 +85,15 @@ export interface DeployResult {
  * @param ports - Deployment ports (fs, env, lockfileStore, etc.).
  * @returns Deployment result.
  * @throws {RegistryError} BUNDLE.DEPLOY_DRIFT when tracked files have drifted and force is not set.
+ * @throws {RegistryError} BUNDLE.INVALID_DEPLOY_REQUEST when the source has no url (before any write).
  */
 export async function deployBundle(
   req: DeployRequest,
   ports: DeployPorts
 ): Promise<DeployResult> {
   const { bundle, source, placement, force, commitMode } = req;
+  // Before migration: nothing may be written for a request that cannot be recorded.
+  assertReplayableSource(source);
   const key = logicalBundleKey({ sourceId: source.sourceId, manifestId: bundle.bundleId });
 
   // 1. Migrate lockfile if needed (before any write, so files are never a v2/v3 hybrid).
@@ -201,16 +205,13 @@ export async function deployBundle(
       ...(req.bytes !== undefined && !isLocalSourceType(source.type) ? computeArchiveSha(req.bytes) : {})
     });
     // The bundle entry references `sources[sourceId]`; recording one without
-    // the other leaves intent that cannot be replayed (design §5.2). The schema
-    // requires `url`, so a descriptor without one is not written.
-    const desiredUpdated = source.url === undefined
-      ? desiredWithBundle
-      : upsertDesiredSource(desiredWithBundle, source.sourceId, {
-        type: source.type,
-        url: source.url,
-        ...(source.branch === undefined ? {} : { branch: source.branch }),
-        ...(source.collectionsPath === undefined ? {} : { collectionsPath: source.collectionsPath })
-      });
+    // the other leaves intent that cannot be replayed (design §5.2).
+    const desiredUpdated = upsertDesiredSource(desiredWithBundle, source.sourceId, {
+      type: source.type,
+      url: source.url,
+      ...(source.branch === undefined ? {} : { branch: source.branch }),
+      ...(source.collectionsPath === undefined ? {} : { collectionsPath: source.collectionsPath })
+    });
 
     // Build materialization record from ALL destinations (not just written),
     // so a retry whose destinations are all satisfied still records state (§9.3).

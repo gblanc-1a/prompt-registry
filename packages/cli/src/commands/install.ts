@@ -878,7 +878,7 @@ interface UnifiedInstallArgs {
 
 type UnifiedMigration = DeployResult['migration'];
 
-type RemoteSourceDescriptor = Pick<DeployRequest['source'], 'type' | 'url' | 'branch' | 'collectionsPath'> & { url: string };
+type RemoteSourceDescriptor = Pick<DeployRequest['source'], 'type' | 'url' | 'branch' | 'collectionsPath'>;
 
 /**
  * Describe the source a remote install actually resolved from: the configured
@@ -1334,7 +1334,8 @@ async function performRemoteInstall(
             type: sourceDescriptor.type,
             repo: repoSlug,
             sourceId: installable.ref.sourceId,
-            url: sourceDescriptor.url
+            url: sourceDescriptor.url,
+            ...(sourceDescriptor.collectionsPath === undefined ? {} : { collectionsPath: sourceDescriptor.collectionsPath })
           },
           sha256: dl.sha256
         }

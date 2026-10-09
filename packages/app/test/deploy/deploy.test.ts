@@ -10,6 +10,9 @@ import {
   deployBundle,
 } from '../../src/deploy/deploy';
 import {
+  planDeploy,
+} from '../../src/deploy/plan';
+import {
   promptArchive,
   readPair,
   recordingPorts,
@@ -380,6 +383,56 @@ describe('deployBundle', () => {
       expect(Object.keys(desired.sources)).toEqual([first.source.sourceId]);
       expect(desired.sources[first.source.sourceId]).toEqual({ type: first.source.type, url: first.source.url });
       expect(Object.keys(desired.bundles)).toHaveLength(2);
+    });
+
+    it('replaces the owned fields wholesale: a conflicting descriptor keeps no stale branch or collectionsPath', async () => {
+      const ports = recordingPorts();
+      const req = request();
+      ports.files.set(ports.lockfileStore.desiredFile, JSON.stringify({
+        $schema: 'x',
+        version: '3.0.0',
+        bundles: {},
+        sources: {
+          [req.source.sourceId]: { type: 'github', url: 'https://old.example/repo', branch: 'old', collectionsPath: 'old' }
+        }
+      }));
+
+      await deployBundle(req, ports);
+
+      expect(readPair(ports).desired.sources[req.source.sourceId]).toEqual({
+        type: req.source.type,
+        url: req.source.url
+      });
+    });
+
+    it('refuses a source with no url before any write, including the migration', async () => {
+      const ports = recordingPorts();
+      const legacy = JSON.stringify({
+        $schema: 'x', version: '2.0.0', generatedAt: 'x', generatedBy: 'x',
+        bundles: {
+          other: {
+            version: '1.0.0', sourceId: 'github-abc123', sourceType: 'github',
+            installedAt: 'x', files: [{ path: 'prompts/other.prompt.md', checksum: 'h' }]
+          }
+        },
+        sources: { 'github-abc123': { type: 'github', url: 'https://github.com/owner/repo' } }
+      });
+      ports.files.set(ports.lockfileStore.desiredFile, legacy);
+      const req = request();
+
+      await expect(deployBundle({ ...req, source: { ...req.source, url: '' } }, ports))
+        .rejects.toMatchObject({ code: 'BUNDLE.INVALID_DEPLOY_REQUEST' });
+
+      expect(ports.calls.filter((c) => !c.startsWith('event:'))).toEqual([]);
+      expect([...ports.files.entries()]).toEqual([[ports.lockfileStore.desiredFile, legacy]]);
+    });
+
+    it('planDeploy refuses a source with no url too, so a dry run reports it', async () => {
+      const ports = recordingPorts();
+      const req = request();
+
+      await expect(planDeploy({ ...req, source: { ...req.source, url: '' } }, ports))
+        .rejects.toMatchObject({ code: 'BUNDLE.INVALID_DEPLOY_REQUEST' });
     });
 
     it('preserves descriptor fields it does not own', async () => {

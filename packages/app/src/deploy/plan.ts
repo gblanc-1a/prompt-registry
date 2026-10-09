@@ -33,6 +33,24 @@ import type {
 } from './types';
 
 /**
+ * Refuse a request whose source descriptor could not be written to the desired
+ * lockfile. `url` is required by the type, but a JavaScript caller (or an empty
+ * string) can still reach this point, and recording a bundle whose `sourceId`
+ * has no descriptor leaves intent that cannot be replayed (design §5.2). Called
+ * before any effect, including migration.
+ * @param source - The request's source.
+ * @throws {RegistryError} BUNDLE.INVALID_DEPLOY_REQUEST when `url` is absent or empty.
+ */
+export function assertReplayableSource(source: DeployRequest['source']): void {
+  if (typeof source.url !== 'string' || source.url.length === 0) {
+    throw new RegistryError({
+      code: 'BUNDLE.INVALID_DEPLOY_REQUEST',
+      message: `Deploy request source "${source.sourceId}" has no url, so its descriptor cannot be recorded in the lockfile`
+    });
+  }
+}
+
+/**
  * Plan a deployment without performing any writes.
  *
  * Analyzes what a deploy would do: destinations, skipped items, drift,
@@ -41,7 +59,7 @@ import type {
  * @param request - Deployment request.
  * @param ports - Read-only ports (fs, env, lockfileStore).
  * @returns The deployment plan.
- * @throws {RegistryError} BUNDLE.INVALID_DEPLOY_REQUEST when neither bytes nor files is given.
+ * @throws {RegistryError} BUNDLE.INVALID_DEPLOY_REQUEST when neither bytes nor files is given, or the source has no url.
  * @throws {RegistryError} BUNDLE.ARCHIVE_MISMATCH when expectedArchiveSha is present and doesn't match.
  */
 export async function planDeploy(
@@ -49,6 +67,7 @@ export async function planDeploy(
   ports: DeployPorts
 ): Promise<DeployPlan> {
   const { files, bytes, expectedArchiveSha, bundle, source, placement } = request;
+  assertReplayableSource(source);
 
   // Compute bundle key once for both lockfile lookup and return value.
   const bundleKey = logicalBundleKey({ sourceId: source.sourceId, manifestId: bundle.bundleId });

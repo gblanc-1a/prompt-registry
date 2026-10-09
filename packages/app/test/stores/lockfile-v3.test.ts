@@ -277,6 +277,54 @@ describe('pure record helpers', () => {
   });
 });
 
+describe('upsertDesiredSource', () => {
+  const withSource = (entry: Record<string, unknown>) => ({
+    ...emptyDesiredLockfileV3(),
+    sources: { src: entry as unknown as { type: string; url: string } }
+  });
+
+  it('replaces the four owned fields wholesale, dropping a branch and collectionsPath the new entry omits', () => {
+    const existing = withSource({ type: 'github', url: 'https://a.example/o/r', branch: 'old', collectionsPath: 'old' });
+
+    const updated = upsertDesiredSource(existing, 'src', { type: 'github', url: 'https://b.example/o/r' });
+
+    expect(updated.sources.src).toEqual({ type: 'github', url: 'https://b.example/o/r' });
+    expect(Object.keys(updated.sources.src)).toEqual(['type', 'url']);
+  });
+
+  it('keeps fields on the existing entry that it does not own', () => {
+    const existing = withSource({ type: 'github', url: 'https://a.example/o/r', branch: 'old', indexFile: 'index.json', credentialRef: 'ref' });
+
+    const updated = upsertDesiredSource(existing, 'src', { type: 'awesome-copilot', url: 'https://b.example/o/r', branch: 'new' });
+
+    expect(updated.sources.src).toEqual({
+      type: 'awesome-copilot',
+      url: 'https://b.example/o/r',
+      branch: 'new',
+      indexFile: 'index.json',
+      credentialRef: 'ref'
+    });
+  });
+
+  it('never writes an undefined optional key', () => {
+    const updated = upsertDesiredSource(emptyDesiredLockfileV3(), 'src', {
+      type: 'github', url: 'https://a.example/o/r', branch: undefined, collectionsPath: undefined
+    });
+
+    expect(Object.keys(updated.sources.src)).toEqual(['type', 'url']);
+  });
+
+  it('does not touch other sources or the input lockfile', () => {
+    const existing = withSource({ type: 'github', url: 'https://a.example/o/r', branch: 'old' });
+    const base = { ...existing, sources: { ...existing.sources, other: { type: 'local', url: '/x' } } };
+
+    const updated = upsertDesiredSource(base, 'src', { type: 'github', url: 'https://b.example/o/r' });
+
+    expect(updated.sources.other).toEqual({ type: 'local', url: '/x' });
+    expect(base.sources.src).toEqual({ type: 'github', url: 'https://a.example/o/r', branch: 'old' });
+  });
+});
+
 describe('schema conformance', () => {
   const schemaPath = path.join(__dirname, '../../../core/src/public/schemas/lockfile-v3.schema.json');
   const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));

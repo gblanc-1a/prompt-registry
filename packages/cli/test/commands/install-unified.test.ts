@@ -444,6 +444,7 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
         sources: Record<string, unknown>;
       };
       expect(Object.values(desired.sources)).toEqual([{ type: 'github', url: 'https://github.com/owner/repo' }]);
+      expect(parse<{ source: Record<string, unknown> }>(result.stdout).data.source).not.toHaveProperty('collectionsPath');
     });
 
     it('records the configured source URL, branch and collectionsPath rather than a synthesized github.com URL', async () => {
@@ -462,6 +463,8 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
       const exitCode = await installBundleWithSource(remoteBundleId, source, target, ctx, http, tokens, 'json');
 
       expect(exitCode).toBe(0);
+      expect(parse<{ source: { collectionsPath?: string; url: string } }>(ctx.stdout.captured()).data.source)
+        .toMatchObject({ collectionsPath: 'collections', url: source.url });
       const desired = JSON.parse(await readFile(resolveUserConfigPaths(env).userLockfile, 'utf8')) as {
         bundles: Record<string, { sourceId: string }>;
         sources: Record<string, unknown>;

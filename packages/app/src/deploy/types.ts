@@ -42,8 +42,8 @@ export interface DeployRequest {
     sourceId: string;
     /** Source type. */
     type: string;
-    /** Source URL. */
-    url?: string;
+    /** Source URL. Required: the desired lockfile's source descriptor (schema `url`) cannot be written without it. */
+    url: string;
     /** Git branch, for git-based sources. */
     branch?: string;
     /** Collections subdirectory, for awesome-copilot sources. */

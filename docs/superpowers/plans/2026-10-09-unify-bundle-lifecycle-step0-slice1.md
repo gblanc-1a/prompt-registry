@@ -4293,7 +4293,7 @@ describe('unified deploy, CLI user scope, vscode', () => {
 });
 ```
 
-`runFlagOnWithFailure` needs a seam. Add one rather than monkey-patching: give `DeployPorts` an optional `onEvent` (already in §3.1's port list) that `deployBundle` calls with `{ stage: 'state-write' }` **before** the state write, and let the test's port throw from it. That is a production-shaped seam — slice 5's progress UI needs the same events — not test-only scaffolding.
+`runFlagOnWithFailure` needs a seam. Add one rather than monkey-patching: give `DeployPorts` an optional `onEvent` (already in §3.1's port list) that `deployBundle` calls with `{ kind: 'state-write' }` **before** the state write (the repo's other event unions — `PipelineEvent`, `HubHarvestEvent` — discriminate on `kind`, so `DeployEvent` does too), and let the test's port throw from it. That is a production-shaped seam — slice 5's progress UI needs the same events — not test-only scaffolding.
 
 - [ ] **Step 3: Run it to verify it fails, then make it pass**
 

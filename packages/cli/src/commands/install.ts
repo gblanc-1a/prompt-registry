@@ -19,6 +19,7 @@ import * as path from 'node:path';
 import {
   checksumFiles,
   deployBundle,
+  type DeployPorts,
   type DeployRequest,
   type DeployResult,
   emptyLockfile,
@@ -27,8 +28,12 @@ import {
   type LockfileBundleEntry,
   LockfileGenerationMismatchError,
   type LockfileSourceEntry,
+  type LockfileV3Pair,
+  migrateLockfileIfNeeded,
+  type PlacementContext,
   planDeploy,
   readLockfile,
+  readLockfileV3Pair,
   resolveUserConfigPaths,
   type TargetWriter,
   TransformerRegistry,
@@ -51,6 +56,7 @@ import type {
 import {
   getInstallableBundleFiles,
   parseBundleSpec,
+  parseLogicalBundleKey,
   validateManifest,
 } from '@ai-primitives-hub/core';
 import {
@@ -925,6 +931,19 @@ async function snapshotLockfiles(
   ));
 }
 
+const unifiedPortsFor = (ctx: Context, target: Target): DeployPorts => ({
+  ...buildDeployPorts(ctx, { scope: 'user' }),
+  transformer: transformerFor(target)
+});
+
+const dryRunNotMigrated = (cause: LockfileGenerationMismatchError): RegistryError => new RegistryError({
+  code: 'CONFIG.LOCKFILE_NOT_MIGRATED',
+  message: `install: the lockfile at ${cause.file} is a v${cause.found} lockfile and has not been migrated to v${cause.expected}, so a dry run cannot plan against it.`,
+  hint: 'Run the install without --dry-run to migrate it — migration runs on install, never on a dry run.',
+  context: { file: cause.file, found: cause.found, expected: cause.expected },
+  cause
+});
+
 const renderMigration = (migration: UnifiedMigration): string => {
   if (migration === null) {
     return '';
@@ -948,25 +967,13 @@ async function runUnifiedInstall(args: UnifiedInstallArgs): Promise<number> {
   const {
     ctx, fmt, target, dryRun, force, request, extra
   } = args;
-  const ports = {
-    ...buildDeployPorts(ctx, { scope: 'user' }),
-    transformer: transformerFor(target)
-  };
+  const ports = unifiedPortsFor(ctx, target);
   const bundle = { id: request.bundle.bundleId, version: request.bundle.version };
 
   if (dryRun) {
     const plan = await planDeploy({ ...request, force }, ports).catch((cause: unknown) => {
       // Migration runs on install, never on a dry run, so a v2 lockfile cannot be planned against.
-      if (cause instanceof LockfileGenerationMismatchError) {
-        throw new RegistryError({
-          code: 'CONFIG.LOCKFILE_NOT_MIGRATED',
-          message: `install: the lockfile at ${cause.file} is a v${cause.found} lockfile and has not been migrated to v${cause.expected}, so a dry run cannot plan against it.`,
-          hint: 'Run the install without --dry-run to migrate it — migration runs on install, never on a dry run.',
-          context: { file: cause.file, found: cause.found, expected: cause.expected },
-          cause
-        });
-      }
-      throw cause;
+      throw cause instanceof LockfileGenerationMismatchError ? dryRunNotMigrated(cause) : cause;
     });
     formatOutput({
       ctx,
@@ -1153,6 +1160,305 @@ async function performLocalInstall(
   }
 }
 
+const sourceDescriptorFrom = (src: LockfileSourceEntry): RemoteSourceDescriptor => ({
+  type: src.type,
+  url: src.url,
+  ...(src.branch === undefined ? {} : { branch: src.branch }),
+  ...(src.collectionsPath === undefined ? {} : { collectionsPath: src.collectionsPath })
+});
+
+const failureReason = (cause: unknown): string => cause instanceof Error ? cause.message : String(cause);
+
+/**
+ * Read the v3 desired state to replay. A v2 file is only migrated when it is the user
+ * lockfile itself and this is not a dry run (migration runs on install, never on a dry run);
+ * any other v2 file is refused rather than replayed through a path that records nothing.
+ * @param ports Deploy ports (their lockfile store is the pair replayed entries are recorded in).
+ * @param lockPath Lockfile to replay.
+ * @param dryRun Whether this is a dry run.
+ * @returns The desired state and the migration report, when one ran.
+ * @throws {RegistryError} CONFIG.LOCKFILE_NOT_MIGRATED for a v2 lockfile that cannot be migrated here.
+ */
+async function readReplayDesired(
+  ports: DeployPorts,
+  lockPath: string,
+  dryRun: boolean
+): Promise<{ desired: LockfileV3Pair['desired']; migration: UnifiedMigration }> {
+  const defaults = { generatedBy: ports.generatedBy ?? 'ai-primitives-hub', now: new Date().toISOString() };
+  try {
+    const { pair } = await readLockfileV3Pair(
+      { desiredFile: lockPath, localFile: ports.lockfileStore.localFile },
+      ports.fs,
+      defaults
+    );
+    return { desired: pair.desired, migration: null };
+  } catch (cause) {
+    if (!(cause instanceof LockfileGenerationMismatchError)) {
+      throw cause;
+    }
+    if (lockPath !== ports.lockfileStore.desiredFile) {
+      throw new RegistryError({
+        code: 'CONFIG.LOCKFILE_NOT_MIGRATED',
+        message: `install: the lockfile at ${cause.file} is a v${cause.found} lockfile and has not been migrated to v${cause.expected}; `
+          + 'a lockfile other than the user lockfile is not migrated by --lockfile replay.',
+        hint: `Replay ${ports.lockfileStore.desiredFile} instead, or unset AI_PRIMITIVES_HUB_UNIFIED_DEPLOY to replay this file as it is.`,
+        context: { file: cause.file, found: cause.found, expected: cause.expected },
+        cause
+      });
+    }
+    if (dryRun) {
+      throw dryRunNotMigrated(cause);
+    }
+    const { pair, report } = await migrateLockfileIfNeeded(ports.lockfileStore, ports.fs, defaults);
+    return { desired: pair.desired, migration: report };
+  }
+}
+
+interface ReplayRequestArgs {
+  key: string;
+  desired: LockfileV3Pair['desired'];
+  target: Target;
+  placement: PlacementContext;
+  ctx: Context;
+  http: HttpClient;
+  tokens: TokenProvider;
+  verbose: boolean;
+  sourceAwareDependencyCache?: SourceAwareInstallDependencyCache;
+}
+
+/**
+ * Build the deploy request for one desired entry: the source descriptor recorded in
+ * `desired.sources` is fetched with the legacy replay's `fetchFilesForSource`, and the exact
+ * recorded version is required of the result (design §3.2): an absent version fails, it never
+ * falls back to latest.
+ * @param args Entry and fetch dependencies.
+ * @returns The deploy request.
+ * @throws {Error} With an actionable reason when the entry cannot be replayed.
+ */
+async function buildReplayRequest(args: ReplayRequestArgs): Promise<Omit<DeployRequest, 'force'>> {
+  const { key, desired, target, placement, ctx, verbose } = args;
+  const entry = desired.bundles[key];
+  const parsed = parseLogicalBundleKey(key);
+  if (parsed === null) {
+    throw new Error(`"${key}" is not a {sourceId}/{bundleId} bundle key, so it cannot be replayed`);
+  }
+  if (parsed.sourceId !== entry.sourceId) {
+    throw new Error(`the key names source "${parsed.sourceId}" but the entry records sourceId "${entry.sourceId}"; fix the lockfile before replaying it`);
+  }
+  const src: LockfileSourceEntry | undefined = desired.sources[entry.sourceId];
+  if (src === undefined) {
+    throw new Error(`source "${entry.sourceId}" has no descriptor in the lockfile's sources, so it cannot be replayed`);
+  }
+  const files = await fetchFilesForSource(
+    src,
+    parsed.manifestId,
+    {
+      version: entry.version,
+      sourceId: entry.sourceId,
+      sourceType: src.type,
+      installedAt: new Date().toISOString(),
+      files: [],
+      ...(entry.archiveSha === undefined ? {} : { checksum: entry.archiveSha.replace(/^sha256:/, '') })
+    },
+    args.http,
+    args.tokens,
+    ctx,
+    verbose,
+    args.sourceAwareDependencyCache
+  );
+  if (files === null) {
+    throw new Error(`version ${entry.version} was not found in source "${entry.sourceId}" (${src.url}), `
+      + 'or its archive did not match the recorded checksum; the pin is exact, so no other version was substituted');
+  }
+  validateManifest(files, { expectedId: parsed.manifestId, expectedVersion: entry.version });
+  return {
+    files,
+    bundle: { bundleId: parsed.manifestId, version: entry.version },
+    source: { sourceId: entry.sourceId, ...sourceDescriptorFrom(src) },
+    targetName: target.name,
+    runtimeAssetRoot: runtimeAssetRootFor(ctx),
+    placement
+  };
+}
+
+/**
+ * Flag-on `install --lockfile`: replay each desired entry of a v3 lockfile through
+ * `app/deploy`, or plan it (read-only) on a dry run. One entry failing does not stop the
+ * others: each `deployBundle` is its own atomic pair write and cleans up its own files, so
+ * a failure leaves nothing half-applied for the next entry to trip over.
+ * @param opts Install options.
+ * @param target Effective target (user scope, already checked).
+ * @param ctx CLI context.
+ * @param fmt Output format.
+ * @param lockPath Absolute path of the lockfile to replay.
+ * @returns Exit code: 1 when any entry failed.
+ */
+async function performUnifiedLockfileInstall(
+  opts: InstallOptions,
+  target: Target,
+  ctx: Context,
+  fmt: OutputFormat,
+  lockPath: string
+): Promise<number> {
+  const dryRun = opts.dryRun === true;
+  const force = opts.force === true;
+  const ports = unifiedPortsFor(ctx, target);
+  const { desired, migration } = await readReplayDesired(ports, lockPath, dryRun);
+  const placement = await buildPlacementContext(ctx, target);
+  const http = opts.http ?? new NodeHttpClient();
+  const tokens = opts.tokens ?? defaultTokenProvider(ctx.env);
+  const sourceAwareDependencyCache = isGitHubAppAuthEnabled(ctx.env)
+    ? createSourceAwareInstallDependencyCache(http, ctx)
+    : undefined;
+  const keys = Object.keys(desired.bundles);
+
+  const replayed: string[] = [];
+  const failures: { key: string; reason: string }[] = [];
+  const written: string[] = [];
+  const destinations: string[] = [];
+  const drifted: string[] = [];
+  const satisfied: string[] = [];
+  const skipped: { key: string; from: string; reason: string }[] = [];
+  const collisions: { to: string; reason: string }[] = [];
+
+  if (opts.verbose === true) {
+    ctx.stdout.write(`[verbose] Planning to replay ${keys.length} bundles\n`);
+  }
+
+  for (const key of keys) {
+    try {
+      const request = await buildReplayRequest({
+        key,
+        desired,
+        target,
+        placement,
+        ctx,
+        http,
+        tokens,
+        verbose: opts.verbose ?? false,
+        sourceAwareDependencyCache
+      });
+      if (dryRun) {
+        const plan = await planDeploy({ ...request, force }, ports);
+        destinations.push(...plan.destinations.map((d) => d.to));
+        drifted.push(...plan.drifted);
+        satisfied.push(...plan.satisfied);
+        skipped.push(...plan.skipped.map((s) => ({ key, ...s })));
+        collisions.push(...plan.collisions);
+      } else {
+        const result = await deployBundle({ ...request, force }, ports);
+        written.push(...result.written);
+        satisfied.push(...result.satisfied);
+        skipped.push(...result.skipped.map((s) => ({ key, ...s })));
+        collisions.push(...result.collisions);
+      }
+      replayed.push(key);
+    } catch (cause) {
+      if (dryRun && cause instanceof LockfileGenerationMismatchError) {
+        throw dryRunNotMigrated(cause);
+      }
+      failures.push({ key, reason: failureReason(cause) });
+    }
+  }
+
+  const warnings = [
+    ...failures.map((f) => `${f.key}: ${f.reason}`),
+    ...collisions.map((c) => `${c.to}: existing untracked file left in place (use --force to overwrite)`)
+  ];
+  const failureText = (list: { key: string; reason: string }[]): string => list.length === 0
+    ? '.\n'
+    : `; ${list.length} failure${list.length === 1 ? '' : 's'}:\n${list.map((f) => `  - ${f.key}: ${f.reason}\n`).join('')}`;
+  const status = warnings.length > 0 ? 'warning' : 'ok';
+
+  if (dryRun) {
+    formatOutput({
+      ctx,
+      command: 'install',
+      output: fmt,
+      status,
+      data: {
+        dryRun: true,
+        lockfile: lockPath,
+        target: target.name,
+        replayPlanned: keys.length,
+        wouldReplay: replayed,
+        destinations,
+        skipped,
+        collisions,
+        satisfied,
+        drifted,
+        failures
+      },
+      warnings: warnings.length > 0 ? warnings : undefined,
+      textRenderer: (d) => `Dry run: would replay ${d.wouldReplay.length}/${d.replayPlanned} bundles `
+        + `(${d.destinations.length} destination${d.destinations.length === 1 ? '' : 's'}, `
+        + `${d.collisions.length} collision${d.collisions.length === 1 ? '' : 's'}, `
+        + `${d.satisfied.length} already satisfied) into target "${d.target}"${failureText(d.failures)}`
+    });
+    return failures.length === 0 ? 0 : 1;
+  }
+
+  formatOutput({
+    ctx,
+    command: 'install',
+    output: fmt,
+    status,
+    data: {
+      lockfile: lockPath,
+      target: target.name,
+      replayPlanned: keys.length,
+      replayed,
+      failures,
+      written,
+      skipped,
+      collisions,
+      satisfied,
+      migration
+    },
+    warnings: warnings.length > 0 ? warnings : undefined,
+    textRenderer: (d) => `Replay: ${d.replayed.length}/${d.replayPlanned} bundles installed into target "${d.target}" `
+      + `(${d.written.length} written, ${d.satisfied.length} already satisfied, `
+      + `${d.collisions.length} collision${d.collisions.length === 1 ? '' : 's'})${failureText(d.failures)}${renderMigration(d.migration)}`
+  });
+  return failures.length === 0 ? 0 : 1;
+}
+
+/**
+ * Flag-off `install --lockfile --dry-run`: say which entries a replay would install,
+ * without fetching or writing anything (not the writer, not the target state).
+ * @param lock Lockfile that would be replayed.
+ * @param lockPath Path of that lockfile.
+ * @param target Effective target.
+ * @param ctx CLI context.
+ * @param fmt Output format.
+ * @returns Exit code 0.
+ */
+function reportLockfileReplayPlan(
+  lock: Lockfile,
+  lockPath: string,
+  target: Target,
+  ctx: Context,
+  fmt: OutputFormat
+): number {
+  const wouldReplay = Object.keys(lock.bundles);
+  formatOutput({
+    ctx,
+    command: 'install',
+    output: fmt,
+    status: 'ok',
+    data: {
+      dryRun: true,
+      lockfile: lockPath,
+      target: target.name,
+      replayPlanned: wouldReplay.length,
+      wouldReplay
+    },
+    textRenderer: (d) => `Dry run: would replay ${d.replayPlanned} bundle${d.replayPlanned === 1 ? '' : 's'} `
+      + `from ${d.lockfile} into target "${d.target}".\n`
+  });
+  return 0;
+}
+
 /**
  * Perform lockfile-based install.
  * @param opts Install options.
@@ -1168,11 +1474,33 @@ async function performLockfileInstall(
   fmt: OutputFormat
 ): Promise<number> {
   const effectiveTarget = resolveEffectiveTarget(ctx, target, opts);
+  let unified: boolean;
+  try {
+    unified = unifiedDeployRequested(ctx);
+  } catch (cause) {
+    throw new RegistryError({
+      code: 'USAGE.INVALID_FLAG',
+      message: `install: ${failureReason(cause)}`,
+      hint: 'Set AI_PRIMITIVES_HUB_UNIFIED_DEPLOY to 1, true, yes, 0, false or no, or unset it.',
+      cause
+    });
+  }
+  // Refuse before reading any lockfile: an unsupported scope must not touch the user pair.
+  if (unified) {
+    assertUnifiedDeploySupported(effectiveTarget);
+  }
   const lockfile = opts.lockfile as string;
   const lockPath = path.isAbsolute(lockfile)
     ? lockfile
     : path.join(ctx.cwd(), lockfile);
+  if (unified) {
+    return await performUnifiedLockfileInstall(opts, effectiveTarget, ctx, fmt, lockPath);
+  }
   const lock = await readLockfile(lockPath, ctx.fs) ?? emptyLockfile('ai-primitives-hub-cli');
+  if (opts.dryRun === true) {
+    // Parity with the local and remote branches, which have always checked this (design §10).
+    return reportLockfileReplayPlan(lock, lockPath, effectiveTarget, ctx, fmt);
+  }
   const bundleIds = Object.keys(lock.bundles);
   const http = opts.http ?? new NodeHttpClient();
   const tokens = opts.tokens ?? defaultTokenProvider(ctx.env);

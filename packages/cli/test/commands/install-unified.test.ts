@@ -354,6 +354,279 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
     expect(result.stdout).toContain(`Updated ${resolveUserConfigPaths(env).userLockfile}.`);
   });
 
+  describe('lockfile replay (local sources)', () => {
+    interface DesiredFile {
+      bundles: Record<string, { version: string; sourceId: string }>;
+      sources: Record<string, unknown>;
+    }
+    interface ReplayData {
+      lockfile: string;
+      target: string;
+      replayPlanned: number;
+      replayed: string[];
+      failures: { key: string; reason: string }[];
+      written: string[];
+      skipped: unknown[];
+      collisions: { to: string; reason: string }[];
+      satisfied: string[];
+      migration: { migrated: string[] } | null;
+    }
+    interface DryRunReplayData {
+      dryRun: boolean;
+      replayPlanned: number;
+      wouldReplay: string[];
+      destinations: string[];
+      satisfied: string[];
+      collisions: unknown[];
+      skipped: unknown[];
+      failures: { key: string; reason: string }[];
+    }
+
+    const lockfilePath = (): string => resolveUserConfigPaths(env).userLockfile;
+    const replayKey = (): string => `local-${path.basename(bundleDir)}/local-foo`;
+    const installOnce = async (): Promise<void> => {
+      const result = await run(['install', 'local-foo', '--from', bundleDir, '--target', 'my-vscode', '-o', 'json'], flagOn);
+      expect(result.exitCode).toBe(0);
+    };
+    const replay = (extra: string[] = [], fs: NodeFileSystem = new NodeFileSystem(), file: string = lockfilePath()): ReturnType<typeof runCommand> =>
+      run(['install', '--lockfile', file, '--target', 'my-vscode', ...extra, '-o', 'json'], flagOn, fs);
+    const readDesired = async (): Promise<DesiredFile> => JSON.parse(await readFile(lockfilePath(), 'utf8')) as DesiredFile;
+    const editDesired = async (edit: (desired: DesiredFile) => void): Promise<void> => {
+      const desired = await readDesired();
+      edit(desired);
+      await writeFile(lockfilePath(), JSON.stringify(desired, null, 2));
+    };
+
+    it('replays the desired state a prior flag-on install recorded, restoring a deleted file', async () => {
+      await installOnce();
+      await rm(destination());
+
+      const result = await replay();
+
+      expect(result.exitCode).toBe(0);
+      const envelope = parse<ReplayData>(result.stdout);
+      expect(envelope.status).toBe('ok');
+      expect(envelope.data.replayed).toEqual([replayKey()]);
+      expect(envelope.data.replayPlanned).toBe(1);
+      expect(envelope.data.failures).toEqual([]);
+      expect(envelope.data.written).toEqual([destination()]);
+      expect(envelope.data.collisions).toEqual([]);
+      expect(envelope.data.skipped).toEqual([]);
+      expect(envelope.data.migration).toBeNull();
+      await expect(readFile(destination(), 'utf8')).resolves.toContain('Hello Prompt');
+    });
+
+    it('reports a replay over already-installed files as satisfied rather than rewriting', async () => {
+      await installOnce();
+
+      const result = await replay();
+
+      expect(result.exitCode).toBe(0);
+      const { data } = parse<ReplayData>(result.stdout);
+      expect(data.replayed).toEqual([replayKey()]);
+      expect(data.written).toEqual([]);
+      expect(data.satisfied).toEqual([destination()]);
+    });
+
+    it('--dry-run plans each desired entry and writes nothing', async () => {
+      await installOnce();
+      await rm(destination());
+      const userPaths = resolveUserConfigPaths(env);
+      const desiredBefore = await readFile(userPaths.userLockfile, 'utf8');
+      const localBefore = await readFile(userPaths.userLocalLockfile, 'utf8');
+      const recording = new RecordingFs();
+
+      const result = await replay(['--dry-run'], recording);
+
+      expect(result.exitCode).toBe(0);
+      const { data } = parse<DryRunReplayData>(result.stdout);
+      expect(data.dryRun).toBe(true);
+      expect(data.wouldReplay).toEqual([replayKey()]);
+      expect(data.replayPlanned).toBe(1);
+      expect(data.destinations).toEqual([destination()]);
+      expect(data.failures).toEqual([]);
+      expect(recording.writes).toEqual([]);
+      expect(await exists(destination())).toBe(false);
+      await expect(readFile(userPaths.userLockfile, 'utf8')).resolves.toBe(desiredBefore);
+      await expect(readFile(userPaths.userLocalLockfile, 'utf8')).resolves.toBe(localBefore);
+    });
+
+    it('--dry-run over an un-migrated v2 lockfile refuses with CONFIG.LOCKFILE_NOT_MIGRATED and writes nothing', async () => {
+      await seedLegacyLockfile();
+      const userPaths = resolveUserConfigPaths(env);
+      const before = await readFile(userPaths.userLockfile, 'utf8');
+      const recording = new RecordingFs();
+
+      const result = await replay(['--dry-run'], recording);
+
+      expect(result.exitCode).toBe(1);
+      const { errors } = parse<null>(result.stdout);
+      expect(errors[0].code).toBe('CONFIG.LOCKFILE_NOT_MIGRATED');
+      expect(errors[0].message).toContain(userPaths.userLockfile);
+      expect(recording.writes).toEqual([]);
+      await expect(readFile(userPaths.userLockfile, 'utf8')).resolves.toBe(before);
+      expect(await exists(userPaths.userLocalLockfile)).toBe(false);
+    });
+
+    it('migrates the user lockfile on a non-dry-run replay of it, then replays the migrated entry', async () => {
+      const userPaths = resolveUserConfigPaths(env);
+      let legacy = emptyLockfile('ai-primitives-hub-cli');
+      legacy = upsertBundleEntry(legacy, 'local-foo', {
+        version: '1.0.0',
+        sourceId: 'local-bundle',
+        sourceType: 'local',
+        installedAt: '2026-01-01T00:00:00.000Z',
+        files: []
+      });
+      legacy = upsertSource(legacy, 'local-bundle', { type: 'local', url: bundleDir });
+      await mkdir(path.dirname(userPaths.userLockfile), { recursive: true });
+      await writeLockfile(userPaths.userLockfile, legacy, new NodeFileSystem());
+
+      const result = await replay();
+
+      expect(result.exitCode).toBe(0);
+      const { data } = parse<ReplayData>(result.stdout);
+      expect(data.migration).not.toBeNull();
+      expect(data.replayed).toEqual(['local-bundle/local-foo']);
+      expect((await readDesired()).bundles['local-bundle/local-foo'].version).toBe('1.0.0');
+      await expect(readFile(destination(), 'utf8')).resolves.toContain('Hello Prompt');
+    });
+
+    it('refuses a v2 lockfile other than the user lockfile with CONFIG.LOCKFILE_NOT_MIGRATED and writes nothing', async () => {
+      const foreign = path.join(workspace, 'foreign.lock.json');
+      let legacy = emptyLockfile('ai-primitives-hub-cli');
+      legacy = upsertBundleEntry(legacy, 'local-foo', {
+        version: '1.0.0',
+        sourceId: 'local-bundle',
+        sourceType: 'local',
+        installedAt: '2026-01-01T00:00:00.000Z',
+        files: []
+      });
+      legacy = upsertSource(legacy, 'local-bundle', { type: 'local', url: bundleDir });
+      await writeLockfile(foreign, legacy, new NodeFileSystem());
+      const recording = new RecordingFs();
+
+      const result = await replay([], recording, foreign);
+
+      expect(result.exitCode).toBe(1);
+      const { errors } = parse<null>(result.stdout);
+      expect(errors[0].code).toBe('CONFIG.LOCKFILE_NOT_MIGRATED');
+      expect(errors[0].message).toContain(foreign);
+      expect(recording.writes).toEqual([]);
+      expect(await exists(destination())).toBe(false);
+    });
+
+    it.each(['repository', 'workspace', 'bogus'])('refuses scope "%s" with BUNDLE.UNSUPPORTED_SCOPE before reading or writing anything', async (scope) => {
+      await installOnce();
+      await rm(destination());
+      const userPaths = resolveUserConfigPaths(env);
+      const before = await readFile(userPaths.userLockfile, 'utf8');
+      const recording = new RecordingFs();
+
+      const result = await replay(['--scope', scope], recording);
+
+      expect(result.exitCode).toBe(1);
+      const { errors } = parse<null>(result.stdout);
+      expect(errors[0].code).toBe('BUNDLE.UNSUPPORTED_SCOPE');
+      expect(errors[0].message).toContain(`scope "${scope}"`);
+      expect(recording.writes).toEqual([]);
+      expect(recording.reads.filter((p) => p.startsWith(bundleDir)
+        || p === userPaths.userLockfile || p === userPaths.userLocalLockfile)).toEqual([]);
+      await expect(readFile(userPaths.userLockfile, 'utf8')).resolves.toBe(before);
+      expect(await exists(destination())).toBe(false);
+    });
+
+    it('fails closed, naming the key and version, when a pinned version is absent from the source', async () => {
+      await installOnce();
+      await editDesired((desired) => {
+        desired.bundles[replayKey()].version = '9.9.9';
+      });
+      await rm(destination());
+      const before = await readFile(lockfilePath(), 'utf8');
+
+      const result = await replay();
+
+      expect(result.exitCode).toBe(1);
+      const envelope = parse<ReplayData>(result.stdout);
+      expect(envelope.status).toBe('warning');
+      expect(envelope.data.replayed).toEqual([]);
+      expect(envelope.data.failures).toHaveLength(1);
+      expect(envelope.data.failures[0].key).toBe(replayKey());
+      expect(envelope.data.failures[0].reason).toContain('9.9.9');
+      expect(envelope.warnings.join('\n')).toContain('9.9.9');
+      expect(await exists(destination())).toBe(false);
+      await expect(readFile(lockfilePath(), 'utf8')).resolves.toBe(before);
+    });
+
+    it('--dry-run reports the missing pin as a failure and exits 1', async () => {
+      await installOnce();
+      await editDesired((desired) => {
+        desired.bundles[replayKey()].version = '9.9.9';
+      });
+      await rm(destination());
+      const recording = new RecordingFs();
+
+      const result = await replay(['--dry-run'], recording);
+
+      expect(result.exitCode).toBe(1);
+      const { data } = parse<DryRunReplayData>(result.stdout);
+      expect(data.wouldReplay).toEqual([]);
+      expect(data.failures).toHaveLength(1);
+      expect(data.failures[0].key).toBe(replayKey());
+      expect(data.failures[0].reason).toContain('9.9.9');
+      expect(recording.writes).toEqual([]);
+    });
+
+    it('fails an entry whose source has no descriptor, still replays the others, and exits 1', async () => {
+      await installOnce();
+      await editDesired((desired) => {
+        desired.bundles = { 'ghost-source/ghost': { version: '1.0.0', sourceId: 'ghost-source' }, ...desired.bundles };
+      });
+      await rm(destination());
+
+      const result = await replay();
+
+      expect(result.exitCode).toBe(1);
+      const { data } = parse<ReplayData>(result.stdout);
+      expect(data.replayPlanned).toBe(2);
+      expect(data.replayed).toEqual([replayKey()]);
+      expect(data.failures).toHaveLength(1);
+      expect(data.failures[0].key).toBe('ghost-source/ghost');
+      expect(data.failures[0].reason).toContain('ghost-source');
+      await expect(readFile(destination(), 'utf8')).resolves.toContain('Hello Prompt');
+      expect(Object.keys((await readDesired()).sources)).not.toContain('ghost-source');
+    });
+
+    it('reports an unrecognized AI_PRIMITIVES_HUB_UNIFIED_DEPLOY value as USAGE.INVALID_FLAG', async () => {
+      const result = await run(['install', '--lockfile', lockfilePath(), '--target', 'my-vscode', '-o', 'json'], {
+        AI_PRIMITIVES_HUB_UNIFIED_DEPLOY: 'maybe'
+      });
+
+      expect(result.exitCode).toBe(1);
+      const { errors } = parse<null>(result.stdout);
+      expect(errors[0].code).toBe('USAGE.INVALID_FLAG');
+      expect(errors[0].message).toContain('AI_PRIMITIVES_HUB_UNIFIED_DEPLOY');
+    });
+
+    it('fails an entry whose key names a different source than its sourceId', async () => {
+      await installOnce();
+      await editDesired((desired) => {
+        desired.sources['some-other-source'] = desired.sources[desired.bundles[replayKey()].sourceId];
+        desired.bundles[replayKey()].sourceId = 'some-other-source';
+      });
+      await rm(destination());
+
+      const result = await replay();
+
+      expect(result.exitCode).toBe(1);
+      const { data } = parse<ReplayData>(result.stdout);
+      expect(data.replayed).toEqual([]);
+      expect(data.failures[0].key).toBe(replayKey());
+      expect(data.failures[0].reason).toContain('some-other-source');
+      expect(await exists(destination())).toBe(false);
+    });
+  });
+
   describe('remote', () => {
     const remoteBundleId = 'remote-foo';
     const zipBytes = buildZip([...createLegacyReleaseArchive({ id: remoteBundleId }).entries()].map(([filePath, bytes]) => ({
@@ -445,6 +718,52 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
       };
       expect(Object.values(desired.sources)).toEqual([{ type: 'github', url: 'https://github.com/owner/repo' }]);
       expect(parse<{ source: Record<string, unknown> }>(result.stdout).data.source).not.toHaveProperty('collectionsPath');
+    });
+
+    describe('lockfile replay', () => {
+      const sourceId = 'gh-source';
+      const key = `${sourceId}/${remoteBundleId}`;
+      const writeDesired = async (version: string): Promise<void> => {
+        const file = resolveUserConfigPaths(env).userLockfile;
+        await mkdir(path.dirname(file), { recursive: true });
+        await writeFile(file, JSON.stringify({
+          version: '3.0.0',
+          bundles: { [key]: { version, sourceId } },
+          sources: { [sourceId]: { type: 'github', url: 'https://github.com/owner/repo' } }
+        }, null, 2));
+      };
+      const replayRemote = async (fs: NodeFileSystem): Promise<{ exitCode: number; stdout: string }> =>
+        await runRemote(['install', '--lockfile', resolveUserConfigPaths(env).userLockfile, '--target', 'my-vscode', '-o', 'json'], fs);
+
+      it('fetches the recorded source descriptor at the pinned version and deploys it', async () => {
+        await writeDesired('1.0.0');
+
+        const result = await replayRemote(new NodeFileSystem());
+
+        expect(result.exitCode).toBe(0);
+        const { data } = parse<{ replayed: string[]; failures: unknown[] }>(result.stdout);
+        expect(data.replayed).toEqual([key]);
+        expect(data.failures).toEqual([]);
+        expect(httpCalls).toContain('https://api.github.com/repos/owner/repo/releases');
+        await expect(readFile(destination(), 'utf8')).resolves.toContain('Hello Prompt');
+      });
+
+      it('fails closed when the pinned version is not a release, and never downloads the latest instead', async () => {
+        await writeDesired('9.9.9');
+        const recording = new RecordingFs();
+
+        const result = await replayRemote(recording);
+
+        expect(result.exitCode).toBe(1);
+        const { data } = parse<{ replayed: string[]; failures: { key: string; reason: string }[] }>(result.stdout);
+        expect(data.replayed).toEqual([]);
+        expect(data.failures).toHaveLength(1);
+        expect(data.failures[0].key).toBe(key);
+        expect(data.failures[0].reason).toContain('9.9.9');
+        expect(httpCalls).not.toContain('https://api.github.com/assets/remote-foo');
+        expect(recording.writes).toEqual([]);
+        expect(await exists(destination())).toBe(false);
+      });
     });
 
     it('records the configured source URL, branch and collectionsPath rather than a synthesized github.com URL', async () => {

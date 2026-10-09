@@ -60,16 +60,46 @@ interface JsonEnvelope<T> {
   data: T;
 }
 
+/** Real filesystem that records every path a run mutated. */
+class WriteRecordingFs extends NodeFileSystem {
+  public readonly writes: string[] = [];
+
+  public override async writeFile(file: string, contents: string): Promise<void> {
+    this.writes.push(file);
+    await super.writeFile(file, contents);
+  }
+
+  public override async writeFileBytes(file: string, bytes: Uint8Array): Promise<void> {
+    this.writes.push(file);
+    await super.writeFileBytes(file, bytes);
+  }
+
+  public override async mkdir(dir: string, opts?: { recursive?: boolean }): Promise<void> {
+    this.writes.push(dir);
+    await super.mkdir(dir, opts);
+  }
+
+  public override async rename(from: string, to: string): Promise<void> {
+    this.writes.push(to);
+    await super.rename(from, to);
+  }
+
+  public override async remove(file: string, opts?: { recursive?: boolean }): Promise<void> {
+    this.writes.push(file);
+    await super.remove(file, opts);
+  }
+}
+
 describe('install command (local --from mode)', () => {
   let workspace: string;
   let bundleDir: string;
   let targetDir: string;
 
-  const run = (argv: string[]): ReturnType<typeof runCommand> => runCommand(argv, {
+  const run = (argv: string[], fs: NodeFileSystem = new NodeFileSystem()): ReturnType<typeof runCommand> => runCommand(argv, {
     commandClasses: COMMAND_CLASSES,
     context: {
       cwd: workspace,
-      fs: new NodeFileSystem(),
+      fs,
       env: {
         HOME: workspace,
         USERPROFILE: workspace,
@@ -215,6 +245,28 @@ describe('install command (local --from mode)', () => {
     await expect(readFile(path.join(targetDir, 'prompts', 'hello.prompt.md'), 'utf8'))
       .resolves.toContain('Hello Prompt');
     await expect(readFile(path.join(targetDir, 'README.md'), 'utf8')).rejects.toThrow();
+  });
+
+  it('--lockfile --dry-run reports what would be replayed and writes nothing', async () => {
+    const firstInstall = await run([
+      'install', 'local-foo', '--from', bundleDir, '--target', 'copilot', '-o', 'json'
+    ]);
+    const { lockfile } = parseJson<{ lockfile: string }>(firstInstall.stdout).data;
+    const lockfileBefore = await readFile(lockfile, 'utf8');
+    const replayedFile = path.join(targetDir, 'prompts', 'hello.prompt.md');
+    await rm(replayedFile);
+    const recording = new WriteRecordingFs();
+
+    const result = await run(['install', '--lockfile', lockfile, '--target', 'copilot', '--dry-run', '-o', 'json'], recording);
+
+    expect(result.exitCode).toBe(0);
+    const { data } = parseJson<{ dryRun: boolean; replayPlanned: number; wouldReplay: string[] }>(result.stdout);
+    expect(data.dryRun).toBe(true);
+    expect(data.replayPlanned).toBe(1);
+    expect(data.wouldReplay).toEqual(['local-foo']);
+    expect(recording.writes).toEqual([]);
+    await expect(readFile(replayedFile, 'utf8')).rejects.toThrow();
+    await expect(readFile(lockfile, 'utf8')).resolves.toBe(lockfileBefore);
   });
 
   it('dry-run: reports the plan but writes nothing', async () => {

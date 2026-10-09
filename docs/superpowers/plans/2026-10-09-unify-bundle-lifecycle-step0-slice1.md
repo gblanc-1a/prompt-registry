@@ -55,7 +55,7 @@ Three places where the design leaves a choice the implementation must make. Each
 
    The honest cost of the overrule: two files at a scope where one would have done, and a two-file write that is not one filesystem transaction (§8.4's hazard, now present at user scope). The benefit is that slices 3 and 6 inherit one store, one migration shape and one set of tests instead of two, and nothing about "how state works" depends on which scope you are in.
 
-2. **A factual correction to §5.12.** The spec says "`lockfile.schema.json:28` enumerates `"2.0.0"` as the only allowed version, so `3.0.0` fails wire-format validation before any of this is reached." That is not what the file contains: `version` is `{"type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$", "examples": ["2.0.0"]}` in all three copies (`packages/core/src/public/schemas/lockfile.schema.json:23`, `schemas/lockfile.schema.json`, `apps/vscode-extension/schemas/lockfile.schema.json`). `"3.0.0"` therefore already validates. The real wire-format blocker for v3 is `required: [..., "generatedAt", "generatedBy", ...]`, which the v3 **desired** file omits — and after Scope Note 1's amendment that file exists at user scope, so the blocker lands in **this** plan, not slice 3. Task 1 therefore pins the behavior with a test instead of widening a non-existent enum, splits `required` per role in the schema, and records the correction in the spec.
+2. **A factual correction to §5.12.** The spec says "`lockfile.schema.json:28` enumerates `"2.0.0"` as the only allowed version, so `3.0.0` fails wire-format validation before any of this is reached." That is not what the file contains: `version` is `{"type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$", "examples": ["2.0.0"]}` in `packages/core/src/public/schemas/lockfile.schema.json:23` — which is the only real copy (see the schema-copies note below). `"3.0.0"` therefore already validates. The real wire-format blocker for v3 is `required: [..., "generatedAt", "generatedBy", ...]`, which the v3 **desired** file omits — and after Scope Note 1's amendment that file exists at user scope, so the blocker lands in **this** plan, not slice 3. Task 1 therefore pins the behavior with a test instead of widening a non-existent enum, splits `required` per role in the schema, and records the correction in the spec.
 
 3. **Slice 1 includes a minimal v3-aware `install --lockfile` replay.** §11 scopes slice 1 to "CLI user-scope install and uninstall", but `detectInstallContext` (`packages/cli/src/commands/install.ts:483`) auto-selects the lockfile branch when no bundle is named, and `findProjectLockfile` falls back to the XDG user lockfile (`packages/cli/src/framework/target.ts:78`). Once slice 1 has written v3 there, a flag-on bare `install` would hit the version gate and fail — a capability regression inside the flag-on window, which §2's bridge rule forbids. Task 13 therefore teaches the replay branch to read v3 desired state and deploy through `deploy`. This is the smallest addition that keeps install → replay → uninstall coherent for the slice's own surface.
 
@@ -119,7 +119,7 @@ The §5.12 prerequisite. Every read checks the version first; a known major pars
 - Modify: `packages/core/src/domain/index.ts` (add the barrel line)
 - Modify: `packages/app/src/stores/json-lockfile-store.ts:193-199` (`readLockfile`) and `:207-217` (`writeLockfile`)
 - Test: `packages/app/test/stores/json-lockfile-store.test.ts`
-- Modify: `packages/core/src/public/schemas/lockfile.schema.json`, `schemas/lockfile.schema.json`, `apps/vscode-extension/schemas/lockfile.schema.json` (add `"3.0.0"` to the `version` property's `examples`)
+- Modify: `packages/core/src/public/schemas/lockfile.schema.json` (add `"3.0.0"` to the `version` property's `examples`) — **and nothing else**; see the schema-copies note below
 - Modify: `docs/superpowers/specs/2026-10-09-unify-bundle-lifecycle-design.md` §5.12 (the enum correction from Scope Note 2)
 
 **Interfaces:**
@@ -392,7 +392,14 @@ Expected: PASS. If an existing test constructs a lockfile without a `version`, f
 
 Two parts, because Scope Note 1 makes the v3 desired file land in this plan.
 
-**9a — leave the v2 schema alone.** Do not rewrite `lockfile.schema.json` for v3. Both generations coexist for the whole cutover (§2's accepted cost), and the extension's `validate()` applies this file to v2 state throughout slices 1–9; relaxing its `required` would stop it catching a genuinely malformed v2 file. Add only `"3.0.0"` to the `version` property's `examples` array, in all three copies (`packages/core/src/public/schemas/lockfile.schema.json` is the source of truth; `schemas/lockfile.schema.json` and `apps/vscode-extension/schemas/lockfile.schema.json` are copies — copy the file, do not hand-edit divergently). The extension copy already differs from the other two; change only `examples` and leave that divergence for slice 6.
+**9a — leave the v2 schema alone.** Do not rewrite `lockfile.schema.json` for v3. Both generations coexist for the whole cutover (§2's accepted cost), and the extension's `validate()` applies this file to v2 state throughout slices 1–9; relaxing its `required` would stop it catching a genuinely malformed v2 file. Add only `"3.0.0"` to the `version` property's `examples` array.
+
+> **Schema copies: there is one file, not three.** An earlier version of this plan told you to update three paths, mirroring the design's §12 wording. That was wrong, and it is corrected here:
+> - `packages/core/src/public/schemas/` is the one real directory. **Edit only this.**
+> - `schemas/` at the repo root is a **tracked symlink** to it (git mode 120000). Editing it is editing core's copy; there is no second file to keep in sync, and nothing to `cp`.
+> - `apps/vscode-extension/schemas/` is **gitignored** (`.gitignore:56-57`). Normally it is a symlink to the same directory; `apps/vscode-extension/scripts/package-helpers.js` expands it into real files for VSIX packaging and restores the symlink afterwards. A checkout may be sitting in the expanded state, in which case the files there are stale build output.
+>
+> So: never hand-edit either of the latter two, and never `git add` anything under `apps/vscode-extension/schemas/` — tracking a build artifact guarantees drift and fights `restore-schemas` on the next packaging run.
 
 **9b — add `lockfile-v3.schema.json`.** Create `packages/core/src/public/schemas/lockfile-v3.schema.json` as a `oneOf` over the two role shapes, and export it from `packages/core/src/index.ts` next to the existing schema exports:
 
@@ -570,8 +577,6 @@ git add packages/core/src/domain/install/lockfile-version.ts \
         packages/app/src/stores/json-lockfile-store.ts \
         packages/app/test/stores/json-lockfile-store.test.ts \
         packages/core/src/public/schemas/lockfile.schema.json \
-        schemas/lockfile.schema.json \
-        apps/vscode-extension/schemas/lockfile.schema.json \
         docs/superpowers/specs/2026-10-09-unify-bundle-lifecycle-design.md
 git commit -m "feat(core): gate lockfile reads and add the 3.x wire schema
 

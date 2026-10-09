@@ -1170,41 +1170,47 @@ const sourceDescriptorFrom = (src: LockfileSourceEntry): RemoteSourceDescriptor 
 const failureReason = (cause: unknown): string => cause instanceof Error ? cause.message : String(cause);
 
 /**
- * Read the v3 desired state to replay. A v2 file is only migrated when it is the user
- * lockfile itself and this is not a dry run (migration runs on install, never on a dry run);
- * any other v2 file is refused rather than replayed through a path that records nothing.
+ * Refuse any lockfile other than the user desired file. Replayed entries are recorded in the
+ * user pair, so replaying a repository-scoped or otherwise foreign file would write its bundles
+ * and source descriptors over unrelated user state. Paths are compared `path.resolve`d, so a
+ * `/./` or relative spelling of the user file is accepted; a symlink alias is not followed and is
+ * refused (conservative). Called before the file is read.
+ * @param ports Deploy ports; their lockfile store is the pair replayed entries are recorded in.
+ * @param lockPath Lockfile requested for replay.
+ * @param cwd Directory relative paths are resolved against.
+ * @throws {RegistryError} BUNDLE.UNSUPPORTED_SCOPE (Task 12's code: same cause, same remedy) for any other file.
+ */
+function assertReplayLockfileIsUserFile(ports: DeployPorts, lockPath: string, cwd: string): void {
+  const userFile = ports.lockfileStore.desiredFile;
+  if (path.resolve(cwd, lockPath) !== path.resolve(cwd, userFile)) {
+    throw new RegistryError({
+      code: 'BUNDLE.UNSUPPORTED_SCOPE',
+      message: `install: the lockfile ${lockPath} is not the user lockfile (${userFile}); repository-scoped and other lockfiles are not yet supported with unifiedDeploy enabled (slice 3).`,
+      hint: 'Unset AI_PRIMITIVES_HUB_UNIFIED_DEPLOY to use the current repository-scope path.',
+      context: { file: lockPath, userLockfile: userFile }
+    });
+  }
+}
+
+/**
+ * Read the user desired state to replay. A v2 user lockfile is migrated unless this is a
+ * dry run (migration runs on install, never on a dry run).
  * @param ports Deploy ports (their lockfile store is the pair replayed entries are recorded in).
- * @param lockPath Lockfile to replay.
  * @param dryRun Whether this is a dry run.
  * @returns The desired state and the migration report, when one ran.
- * @throws {RegistryError} CONFIG.LOCKFILE_NOT_MIGRATED for a v2 lockfile that cannot be migrated here.
+ * @throws {RegistryError} CONFIG.LOCKFILE_NOT_MIGRATED for a v2 lockfile on a dry run.
  */
 async function readReplayDesired(
   ports: DeployPorts,
-  lockPath: string,
   dryRun: boolean
 ): Promise<{ desired: LockfileV3Pair['desired']; migration: UnifiedMigration }> {
   const defaults = { generatedBy: ports.generatedBy ?? 'ai-primitives-hub', now: new Date().toISOString() };
   try {
-    const { pair } = await readLockfileV3Pair(
-      { desiredFile: lockPath, localFile: ports.lockfileStore.localFile },
-      ports.fs,
-      defaults
-    );
+    const { pair } = await readLockfileV3Pair(ports.lockfileStore, ports.fs, defaults);
     return { desired: pair.desired, migration: null };
   } catch (cause) {
     if (!(cause instanceof LockfileGenerationMismatchError)) {
       throw cause;
-    }
-    if (lockPath !== ports.lockfileStore.desiredFile) {
-      throw new RegistryError({
-        code: 'CONFIG.LOCKFILE_NOT_MIGRATED',
-        message: `install: the lockfile at ${cause.file} is a v${cause.found} lockfile and has not been migrated to v${cause.expected}; `
-          + 'a lockfile other than the user lockfile is not migrated by --lockfile replay.',
-        hint: `Replay ${ports.lockfileStore.desiredFile} instead, or unset AI_PRIMITIVES_HUB_UNIFIED_DEPLOY to replay this file as it is.`,
-        context: { file: cause.file, found: cause.found, expected: cause.expected },
-        cause
-      });
     }
     if (dryRun) {
       throw dryRunNotMigrated(cause);
@@ -1284,8 +1290,10 @@ async function buildReplayRequest(args: ReplayRequestArgs): Promise<Omit<DeployR
 /**
  * Flag-on `install --lockfile`: replay each desired entry of a v3 lockfile through
  * `app/deploy`, or plan it (read-only) on a dry run. One entry failing does not stop the
- * others: each `deployBundle` is its own atomic pair write and cleans up its own files, so
- * a failure leaves nothing half-applied for the next entry to trip over.
+ * others: each `deployBundle` is an independent, non-transactional operation (the pair is
+ * written local-first, then desired) that removes only the files it created on failure and does
+ * not restore bytes it overwrote (design §9.2), so a failed entry can leave partial state
+ * that the next replay converges.
  * @param opts Install options.
  * @param target Effective target (user scope, already checked).
  * @param ctx CLI context.
@@ -1303,7 +1311,8 @@ async function performUnifiedLockfileInstall(
   const dryRun = opts.dryRun === true;
   const force = opts.force === true;
   const ports = unifiedPortsFor(ctx, target);
-  const { desired, migration } = await readReplayDesired(ports, lockPath, dryRun);
+  assertReplayLockfileIsUserFile(ports, lockPath, ctx.cwd());
+  const { desired, migration } = await readReplayDesired(ports, dryRun);
   const placement = await buildPlacementContext(ctx, target);
   const http = opts.http ?? new NodeHttpClient();
   const tokens = opts.tokens ?? defaultTokenProvider(ctx.env);

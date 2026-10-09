@@ -11,6 +11,7 @@ import {
   readFile,
   rm,
   stat,
+  symlink,
   writeFile,
 } from 'node:fs/promises';
 import * as os from 'node:os';
@@ -88,15 +89,19 @@ const exists = async (p: string): Promise<boolean> => {
 /** Real filesystem that records which paths a run read and which it mutated. */
 class RecordingFs extends NodeFileSystem {
   public readonly reads: string[] = [];
+  /** Subset of `reads` that read contents (not mere existence probes). */
+  public readonly contentReads: string[] = [];
   public readonly writes: string[] = [];
 
   public override async readFile(file: string): Promise<string> {
     this.reads.push(file);
+    this.contentReads.push(file);
     return await super.readFile(file);
   }
 
   public override async readFileBytes(file: string): Promise<Uint8Array> {
     this.reads.push(file);
+    this.contentReads.push(file);
     return await super.readFileBytes(file);
   }
 
@@ -492,8 +497,136 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
       await expect(readFile(destination(), 'utf8')).resolves.toContain('Hello Prompt');
     });
 
-    it('refuses a v2 lockfile other than the user lockfile with CONFIG.LOCKFILE_NOT_MIGRATED and writes nothing', async () => {
+    // A foreign file that would, if replayed, overwrite the descriptor of the user pair's source.
+    const writeForeign = async (file: string, format: 'v2' | 'v3'): Promise<void> => {
+      const sourceId = `local-${path.basename(bundleDir)}`;
+      const elsewhere = path.join(workspace, 'elsewhere');
+      await mkdir(path.dirname(file), { recursive: true });
+      if (format === 'v3') {
+        await writeFile(file, JSON.stringify({
+          version: '3.0.0',
+          bundles: { [`${sourceId}/local-foo`]: { version: '1.0.0', sourceId } },
+          sources: { [sourceId]: { type: 'local', url: elsewhere } }
+        }, null, 2));
+        return;
+      }
+      let legacy = emptyLockfile('ai-primitives-hub-cli');
+      legacy = upsertBundleEntry(legacy, 'local-foo', {
+        version: '1.0.0',
+        sourceId,
+        sourceType: 'local',
+        installedAt: '2026-01-01T00:00:00.000Z',
+        files: []
+      });
+      legacy = upsertSource(legacy, sourceId, { type: 'local', url: elsewhere });
+      await writeLockfile(file, legacy, new NodeFileSystem());
+    };
+    const expectRefusedUntouched = async (
+      result: Awaited<ReturnType<typeof runCommand>>,
+      recording: RecordingFs,
+      foreign: string,
+      userBefore: string
+    ): Promise<void> => {
+      expect(result.exitCode).toBe(1);
+      const { errors } = parse<null>(result.stdout);
+      expect(errors[0].code).toBe('BUNDLE.UNSUPPORTED_SCOPE');
+      expect(errors[0].message).toContain(foreign);
+      expect(errors[0].message).toContain('slice 3');
+      expect(JSON.stringify(errors[0])).toContain('Unset AI_PRIMITIVES_HUB_UNIFIED_DEPLOY');
+      expect(recording.writes).toEqual([]);
+      expect(recording.contentReads).not.toContain(foreign);
+      await expect(readFile(lockfilePath(), 'utf8')).resolves.toBe(userBefore);
+      expect(await exists(destination())).toBe(false);
+    };
+
+    it.each(['v2', 'v3'] as const)('refuses an explicit %s lockfile other than the user lockfile without reading or writing anything', async (format) => {
+      await installOnce();
+      await rm(destination());
       const foreign = path.join(workspace, 'foreign.lock.json');
+      await writeForeign(foreign, format);
+      const userBefore = await readFile(lockfilePath(), 'utf8');
+      const recording = new RecordingFs();
+
+      const result = await replay([], recording, foreign);
+
+      await expectRefusedUntouched(result, recording, foreign, userBefore);
+      expect(recording.reads).not.toContain(foreign);
+    });
+
+    it.each(['prompt-registry.lock.json', 'prompt-registry.local.lock.json'])('refuses a bare install whose detection selects the project v2 %s, without reading it', async (name) => {
+      await installOnce();
+      await rm(destination());
+      const foreign = path.join(workspace, name);
+      await writeForeign(foreign, 'v2');
+      const userBefore = await readFile(lockfilePath(), 'utf8');
+      const recording = new RecordingFs();
+
+      const result = await run(['install', '--target', 'my-vscode', '-o', 'json'], flagOn, recording);
+
+      // Detection only probes for the file's existence; its contents are never read.
+      await expectRefusedUntouched(result, recording, foreign, userBefore);
+    });
+
+    it('ignores a project ai-primitives-hub.lock.json in detection and replays the user lockfile instead', async () => {
+      await installOnce();
+      await rm(destination());
+      const foreign = path.join(workspace, 'ai-primitives-hub.lock.json');
+      await writeForeign(foreign, 'v3');
+      const recording = new RecordingFs();
+
+      const result = await run(['install', '--target', 'my-vscode', '-o', 'json'], flagOn, recording);
+
+      expect(result.exitCode).toBe(0);
+      expect(parse<ReplayData>(result.stdout).data.lockfile).toBe(lockfilePath());
+      expect(recording.reads).not.toContain(foreign);
+      await expect(readFile(destination(), 'utf8')).resolves.toContain('Hello Prompt');
+    });
+
+    it('with no user lockfile, a bare install ignores a project ai-primitives-hub.lock.json and asks for a mode', async () => {
+      const foreign = path.join(workspace, 'ai-primitives-hub.lock.json');
+      await writeForeign(foreign, 'v3');
+      const recording = new RecordingFs();
+
+      const result = await run(['install', '--target', 'my-vscode', '-o', 'json'], flagOn, recording);
+
+      expect(result.exitCode).toBe(1);
+      expect(parse<null>(result.stdout).errors[0].code).toBe('USAGE.MISSING_FLAG');
+      expect(recording.reads).not.toContain(foreign);
+      expect(recording.writes).toEqual([]);
+    });
+
+    it('replays the user lockfile on a bare install when only the user lockfile exists', async () => {
+      await installOnce();
+      await rm(destination());
+
+      const result = await run(['install', '--target', 'my-vscode', '-o', 'json'], flagOn);
+
+      expect(result.exitCode).toBe(0);
+      const { data } = parse<ReplayData>(result.stdout);
+      expect(data.lockfile).toBe(lockfilePath());
+      expect(data.replayed).toEqual([replayKey()]);
+      await expect(readFile(destination(), 'utf8')).resolves.toContain('Hello Prompt');
+    });
+
+    it('accepts a /./ spelling and a relative spelling of the user lockfile', async () => {
+      await installOnce();
+      const spellings = [
+        `${path.dirname(lockfilePath())}${path.sep}.${path.sep}${path.basename(lockfilePath())}`,
+        path.relative(workspace, lockfilePath())
+      ];
+
+      for (const spelling of spellings) {
+        await rm(destination(), { force: true });
+        const result = await replay([], new NodeFileSystem(), spelling);
+
+        expect(result.exitCode, spelling).toBe(0);
+        expect(parse<ReplayData>(result.stdout).data.replayed).toEqual([replayKey()]);
+        await expect(readFile(destination(), 'utf8')).resolves.toContain('Hello Prompt');
+      }
+    });
+
+    it('migrates a v2 user lockfile named with a /./ spelling, as it does the plain spelling', async () => {
+      const userPaths = resolveUserConfigPaths(env);
       let legacy = emptyLockfile('ai-primitives-hub-cli');
       legacy = upsertBundleEntry(legacy, 'local-foo', {
         version: '1.0.0',
@@ -503,17 +636,28 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
         files: []
       });
       legacy = upsertSource(legacy, 'local-bundle', { type: 'local', url: bundleDir });
-      await writeLockfile(foreign, legacy, new NodeFileSystem());
+      await mkdir(path.dirname(userPaths.userLockfile), { recursive: true });
+      await writeLockfile(userPaths.userLockfile, legacy, new NodeFileSystem());
+      const spelling = `${path.dirname(userPaths.userLockfile)}${path.sep}.${path.sep}${path.basename(userPaths.userLockfile)}`;
+
+      const result = await replay([], new NodeFileSystem(), spelling);
+
+      expect(result.exitCode).toBe(0);
+      expect(parse<ReplayData>(result.stdout).data.migration).not.toBeNull();
+      expect((await readDesired()).bundles['local-bundle/local-foo'].version).toBe('1.0.0');
+    });
+
+    it('refuses a symlink alias of the user lockfile (aliases are not followed)', async () => {
+      await installOnce();
+      await rm(destination());
+      const alias = path.join(workspace, 'alias.lock.json');
+      await symlink(lockfilePath(), alias);
+      const userBefore = await readFile(lockfilePath(), 'utf8');
       const recording = new RecordingFs();
 
-      const result = await replay([], recording, foreign);
+      const result = await replay([], recording, alias);
 
-      expect(result.exitCode).toBe(1);
-      const { errors } = parse<null>(result.stdout);
-      expect(errors[0].code).toBe('CONFIG.LOCKFILE_NOT_MIGRATED');
-      expect(errors[0].message).toContain(foreign);
-      expect(recording.writes).toEqual([]);
-      expect(await exists(destination())).toBe(false);
+      await expectRefusedUntouched(result, recording, alias, userBefore);
     });
 
     it.each(['repository', 'workspace', 'bogus'])('refuses scope "%s" with BUNDLE.UNSUPPORTED_SCOPE before reading or writing anything', async (scope) => {

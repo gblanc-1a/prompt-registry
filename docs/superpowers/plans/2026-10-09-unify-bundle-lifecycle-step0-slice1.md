@@ -3109,8 +3109,8 @@ Expected: FAIL — module not found.
 `types.ts` is §3.1's interfaces verbatim, with slice-1 scope noted in the doc comment of each field that is typed but unreachable (`conflict.kind === 'shared-destination'`, `commitMode`, `mcp`). `DeployPorts` is `{ fs, env, appStorage, layoutLoader, lockfileStore, mcpConfigStore, gitExclude, onEvent? }` — declare all eight so slices 3–7 add behavior rather than signature, and mark `mcpConfigStore`/`gitExclude` optional for now with a comment naming the slice that makes them required.
 
 `plan.ts`'s `planDeploy`:
-1. Validate `exactly one of bytes/files`; throw a `RegistryError`-shaped error with code `DEPLOY.INVALID_REQUEST`.
-2. If `expectedArchiveSha` is present and `bytes` is present, compare SHA-256 **before anything else** (§5.2: "compare it before any deployment effect"); mismatch throws `DEPLOY.ARCHIVE_MISMATCH`.
+1. Validate `exactly one of bytes/files`; throw a `RegistryError`-shaped error with code `BUNDLE.INVALID_DEPLOY_REQUEST`.
+2. If `expectedArchiveSha` is present and `bytes` is present, compare SHA-256 **before anything else** (§5.2: "compare it before any deployment effect"); mismatch throws `BUNDLE.ARCHIVE_MISMATCH`.
 3. Extract (`files` given) or decode `bytes` via the injected extractor; validate the manifest with `validateManifest`; narrow with `getInstallableBundleFiles`.
 4. `normalizeManifestItems` → `resolveDestinations` using `{ baseRoot: expandPath(resolvedLayout.baseDir, placement.env), kindRoutes: resolvedLayout.kindRoutes, allowedKinds: placement.allowedKinds }`.
 5. Read the pair through `readLockfileV3Pair` (either half absent → that half is empty) and index the current bundle's recorded files by absolute path, joining each `files[].path` to its target record's `baseDir`. Only the **local** half answers drift, missing and tracked-ness; the planner must not require the desired half to exist, because §8.4 makes "local written, desired not yet" a legal state.
@@ -3380,7 +3380,7 @@ Expected: FAIL — module not found.
 Sequence, in exactly this order:
 
 1. `planDeploy(req, ports)` — reuse it rather than re-deriving; the plan is what the extension's dialog and the CLI's `--dry-run` already saw.
-2. `plan.drifted.length > 0 && req.force !== true` → throw `DEPLOY.DRIFT` naming the drifted paths. (§5.11: the CLI refuses unless `--force`; the extension's dialog is slice 5.)
+2. `plan.drifted.length > 0 && req.force !== true` → throw `BUNDLE.DEPLOY_DRIFT` naming the drifted paths. (§5.11: the CLI refuses unless `--force`; the extension's dialog is slice 5.)
 3. `migrateLockfileIfNeeded(ports.lockfileStore, ports.fs, { generatedBy, now, triggeredByKey: key })` — before the first write, so the files are never a v2/v3 hybrid. `ports.lockfileStore` already **is** the `MigrationSources` shape (`desiredFile`, `localFile`, `legacyFiles`), which is why `deploy` needs no scope check: at user scope `legacyFiles` is empty, at repository scope it names the two `prompt-registry.*` files, and this call site does not change. Keep the returned pair in memory; do not re-read.
 4. **Place.** For each destination not in `satisfied`, and not in `collisions` unless `force`: `mkdir` the parent, write bytes (`writeFileBytes` for a binary payload, `writeFile` for strict UTF-8 text through the transformer), then verify by read-back exactly as `FileTreeTargetWriter.writeContent` does (`file-tree-writer.ts:327`). Track written paths. On failure, remove only the paths this call created, then rethrow — **no attempt to restore overwritten bytes** (§9.2).
 5. **Record.** `upsertDesiredBundle` on the desired half, `upsertMaterialization` on the local half, then **one** `writeLockfileV3Pair` — which writes local before desired (§8.4). The desired entry carries `archiveSha` only when the bytes came from an immutable remote artifact — i.e. when `req.bytes` was supplied *and* `req.source.type` is not a local family; omit it otherwise (§5.2's `archiver` non-determinism). Nothing in this step mentions scope: the `TargetBinding` passed to `upsertMaterialization` carries `scope` and `baseDir` as data, and `commitMode` is spread in only when the request supplies one.
@@ -3793,7 +3793,7 @@ Create `packages/cli/src/deploy-wiring.ts`:
   ```
 
   `scope` is a parameter today only so slice 3 has one obvious place to add its branch — **and that branch belongs here, in the wiring, not in the store**. `mcpConfigStore` and `gitExclude` stay undefined with a comment naming slices 7 and 3.
-- `assertUnifiedDeploySupported` throws `new RegistryError({ code: 'DEPLOY.UNSUPPORTED_SCOPE', message: ..., hint: 'Unset AI_PRIMITIVES_HUB_UNIFIED_DEPLOY to use the current repository-scope path.' })`.
+- `assertUnifiedDeploySupported` throws `new RegistryError({ code: 'BUNDLE.UNSUPPORTED_SCOPE', message: ..., hint: 'Unset AI_PRIMITIVES_HUB_UNIFIED_DEPLOY to use the current repository-scope path.' })`.
 
 - [ ] **Step 4: Route the two install branches**
 

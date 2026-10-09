@@ -6,6 +6,7 @@ import {
 import {
   convertV2ToPair,
   migrateLockfileIfNeeded,
+  planLockfileMigration,
   UNMANAGED_TARGET_KEY,
 } from '../../src/stores/migrate-lockfile-v3';
 
@@ -380,5 +381,37 @@ describe('migrateLockfileIfNeeded', () => {
 
     await expect(migrateLockfileIfNeeded(repoSources, fs, OPTS))
       .rejects.toThrow(/fs\.remove is required/);
+  });
+});
+
+describe('planLockfileMigration', () => {
+  it('computes the migrated pair and report for a v2 file without writing or deleting anything', async () => {
+    const fs = fakeFs();
+    const repoSources = {
+      desiredFile: '/work/ai-primitives-hub.lock.json',
+      localFile: '/work/ai-primitives-hub.local.lock.json',
+      legacyFiles: ['/work/prompt-registry.lock.json']
+    };
+    fs.files.set('/work/prompt-registry.lock.json', JSON.stringify(v2WithOneBundle()));
+    const before = [...fs.files.entries()];
+
+    const plan = await planLockfileMigration(repoSources, fs, OPTS);
+
+    expect(plan.pendingWrite).toBe(true);
+    expect(plan.report?.unmanaged.map((u) => u.key)).toEqual(['github-abc123/web-dev']);
+    expect(Object.keys(plan.pair.desired.bundles)).toEqual(['github-abc123/web-dev']);
+    expect([...fs.files.entries()]).toEqual(before);
+    expect(fs.order).toEqual([]);
+  });
+
+  it('reports nothing pending for an absent store and for a v3 pair', async () => {
+    const fs = fakeFs();
+    expect((await planLockfileMigration(userSources, fs, OPTS)).pendingWrite).toBe(false);
+    fs.files.set(userSources.desiredFile, JSON.stringify(v2WithOneBundle()));
+    await migrateLockfileIfNeeded(userSources, fs, OPTS);
+
+    const plan = await planLockfileMigration(userSources, fs, OPTS);
+
+    expect(plan).toMatchObject({ pendingWrite: false, report: null });
   });
 });

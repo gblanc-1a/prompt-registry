@@ -17,15 +17,14 @@
 import * as path from 'node:path';
 import {
   cleanupOrphanedSource,
+  type DeployPorts,
   FileTreeTargetWriter,
+  listTargetBundles,
   type LockfileBundleEntry,
-  LockfileGenerationMismatchError,
-  type LockfileV3BundleRecord,
-  migrateLockfileIfNeeded,
   type MigrationReport,
   readLockfile,
-  readLockfileV3Pair,
   removeBundleEntry,
+  resolveUndeployKey,
   type TargetWriter,
   TransformerRegistry,
   undeployBundle,
@@ -35,8 +34,6 @@ import {
   writeLockfile,
 } from '@ai-primitives-hub/app';
 import {
-  InvalidLogicalBundleKeyError,
-  logicalKeyFromLegacyId,
   parseLogicalBundleKey,
   type Target,
 } from '@ai-primitives-hub/core';
@@ -415,17 +412,14 @@ async function findAllBundleEntries(
 }
 
 /**
- * Whether this run takes the unified (`app/deploy`) path. Refuses an unsupported scope
- * here, before any lockfile is read, so a refused run touches nothing.
+ * Whether the unified (`app/deploy`) path was requested through the environment.
  * @param ctx CLI context.
- * @param target Effective target.
- * @returns True when `AI_PRIMITIVES_HUB_UNIFIED_DEPLOY` is on and the scope is supported.
- * @throws {RegistryError} USAGE.INVALID_FLAG for an unrecognized flag value; BUNDLE.UNSUPPORTED_SCOPE for a scope other than user.
+ * @returns True when `AI_PRIMITIVES_HUB_UNIFIED_DEPLOY` is on.
+ * @throws {RegistryError} USAGE.INVALID_FLAG for an unrecognized flag value.
  */
-function unifiedUninstallRequested(ctx: Context, target: Target): boolean {
-  let unified: boolean;
+function uninstallFlagEnabled(ctx: Context): boolean {
   try {
-    unified = unifiedDeployRequested(ctx);
+    return unifiedDeployRequested(ctx);
   } catch (cause) {
     throw new RegistryError({
       code: 'USAGE.INVALID_FLAG',
@@ -434,100 +428,47 @@ function unifiedUninstallRequested(ctx: Context, target: Target): boolean {
       cause
     });
   }
+}
+
+/**
+ * Whether this run takes the unified (`app/deploy`) path. Refuses an unsupported scope
+ * here, before any lockfile is read, so a refused run touches nothing.
+ * @param ctx CLI context.
+ * @param target Effective target.
+ * @returns True when `AI_PRIMITIVES_HUB_UNIFIED_DEPLOY` is on and the scope is supported.
+ * @throws {RegistryError} USAGE.INVALID_FLAG for an unrecognized flag value; BUNDLE.UNSUPPORTED_SCOPE for a scope other than user.
+ */
+function unifiedUninstallRequested(ctx: Context, target: Target): boolean {
+  const unified = uninstallFlagEnabled(ctx);
   if (unified) {
     assertUnifiedDeploySupported(target, 'uninstall');
   }
   return unified;
 }
 
-const dryRunNotMigrated = (cause: LockfileGenerationMismatchError): RegistryError => new RegistryError({
-  code: 'CONFIG.LOCKFILE_NOT_MIGRATED',
-  message: `uninstall: the lockfile at ${cause.file} is a v${cause.found} lockfile and has not been migrated to v${cause.expected}, so a dry run cannot read it.`,
-  hint: 'Run the uninstall without --dry-run to migrate it — migration runs on a real run, never on a dry run.',
-  context: { file: cause.file, found: cause.found, expected: cause.expected },
-  cause
+/**
+ * Lockfile-driven uninstall replays whatever file it is handed through the v2 reader, which
+ * cannot read the v3 files unified deploy writes and could rewrite a repository lockfile the
+ * unified path does not own. Until repository scope lands it is refused outright.
+ * @param lockPath Lockfile the run would have read (explicit or auto-detected).
+ * @returns The refusal to throw.
+ */
+const lockfileUninstallRefused = (lockPath: string): RegistryError => new RegistryError({
+  code: 'BUNDLE.UNSUPPORTED_SCOPE',
+  message: `uninstall: lockfile-driven uninstall (${lockPath}) is not yet supported with unifiedDeploy enabled. `
+    + 'Uninstall a named bundle with `uninstall --bundle <id> --target <name>`, or everything a target holds with `uninstall --all --target <name>`.',
+  hint: 'Unset AI_PRIMITIVES_HUB_UNIFIED_DEPLOY to use the current repository-scope path.',
+  context: { lockfile: lockPath }
 });
-
-interface UnifiedUninstallState {
-  ports: ReturnType<typeof buildDeployPorts>;
-  /** Materialization records the target holds, keyed by logical bundle key. */
-  records: Record<string, LockfileV3BundleRecord>;
-  /** Report from a migration this run performed, `null` when none ran. */
-  migration: MigrationReport | null;
-}
-
-/**
- * Read the target's materialization records. A real run migrates a v2 lockfile first (uninstall
- * is a permitted migration trigger), so a key can be resolved against v3 records; a dry run never
- * migrates or writes, and refuses a v2 lockfile instead. A store with no lockfiles reads as empty
- * and is not written.
- * @param ctx CLI context.
- * @param target Effective target.
- * @param dryRun Whether this is a dry run.
- * @returns Ports, the target's records and the migration report.
- * @throws {RegistryError} CONFIG.LOCKFILE_NOT_MIGRATED for a v2 lockfile on a dry run.
- */
-async function readUnifiedState(ctx: Context, target: Target, dryRun: boolean): Promise<UnifiedUninstallState> {
-  const defaults = { generatedBy: 'ai-primitives-hub', now: new Date().toISOString() };
-  const ports: UnifiedUninstallState['ports'] = {
-    ...buildDeployPorts(ctx, { scope: 'user' }),
-    ...defaults
-  };
-  if (dryRun) {
-    try {
-      const read = await readLockfileV3Pair(ports.lockfileStore, ports.fs, defaults);
-      return { ports, records: read.pair.local.targets[target.name]?.bundles ?? {}, migration: null };
-    } catch (cause) {
-      throw cause instanceof LockfileGenerationMismatchError ? dryRunNotMigrated(cause) : cause;
-    }
-  }
-  const { pair, report } = await migrateLockfileIfNeeded(ports.lockfileStore, ports.fs, defaults);
-  return { ports, records: pair.local.targets[target.name]?.bundles ?? {}, migration: report };
-}
-
-type KeyResolution =
-  | { kind: 'found'; key: string }
-  | { kind: 'none' }
-  | { kind: 'ambiguous'; keys: string[] };
-
-const matchesBareId = (key: string, typed: string): boolean => {
-  const parts = parseLogicalBundleKey(key);
-  if (parts === null || typed.includes('/')) {
-    return false;
-  }
-  try {
-    return logicalKeyFromLegacyId(typed, parts.sourceId) === key;
-  } catch (cause) {
-    if (cause instanceof InvalidLogicalBundleKeyError) {
-      return false;
-    }
-    throw cause;
-  }
-};
-
-/**
- * Resolve what the user typed to a logical bundle key recorded for the target: either the
- * full `sourceId/bundleId` key, or a bare bundle id (legacy version suffix stripped) matched
- * against the key's bundle half.
- * @param records The target's materialization records.
- * @param typed The `--bundle` value.
- * @returns The one matching key, none, or every matching key when the id is ambiguous.
- */
-function resolveBundleKey(records: Record<string, LockfileV3BundleRecord>, typed: string): KeyResolution {
-  if (records[typed] !== undefined) {
-    return { kind: 'found', key: typed };
-  }
-  const keys = Object.keys(records).filter((key) => matchesBareId(key, typed));
-  if (keys.length === 0) {
-    return { kind: 'none' };
-  }
-  return keys.length === 1 ? { kind: 'found', key: keys[0] } : { kind: 'ambiguous', keys };
-}
 
 const withMigration = (migration: MigrationReport | null): { migration?: MigrationReport } =>
   migration === null ? {} : { migration };
 
 const bundleHalf = (key: string): string => parseLogicalBundleKey(key)?.manifestId ?? key;
+
+const failureReason = (cause: unknown): string => cause instanceof Error ? cause.message : String(cause);
+
+const unifiedPorts = (ctx: Context): DeployPorts => buildDeployPorts(ctx, { scope: 'user' });
 
 /**
  * Flag-on uninstall of one bundle: resolve the key, then remove exactly the recorded paths
@@ -550,8 +491,8 @@ async function runUnifiedBundleUninstall(
 ): Promise<number> {
   const typed = opts.bundle as string;
   const dryRun = opts.dryRun === true;
-  const { ports, records, migration } = await readUnifiedState(ctx, target, dryRun);
-  const resolution = resolveBundleKey(records, typed);
+  const ports = unifiedPorts(ctx);
+  const resolution = await resolveUndeployKey({ targetName: target.name, typed }, ports);
 
   if (resolution.kind === 'none') {
     formatOutput({
@@ -562,10 +503,9 @@ async function runUnifiedBundleUninstall(
       data: {
         target: target.name,
         bundle: typed,
-        reason: 'not found in lockfile',
-        ...withMigration(migration)
+        reason: 'not found in lockfile'
       },
-      textRenderer: (d) => `Bundle "${d.bundle}" is not installed in target "${d.target}". Nothing to uninstall.\n${renderMigration(migration)}`
+      textRenderer: (d) => `Bundle "${d.bundle}" is not installed in target "${d.target}". Nothing to uninstall.\n`
     });
     return 0;
   }
@@ -578,10 +518,10 @@ async function runUnifiedBundleUninstall(
     });
   }
 
-  const { key } = resolution;
-  const record = records[key];
+  const { key, version } = resolution;
   if (dryRun) {
-    const unmanaged = record.state === 'unmanaged';
+    const record = resolution.kind === 'match' ? resolution.record : undefined;
+    const unmanaged = record?.state === 'unmanaged';
     formatOutput({
       ctx,
       command: 'uninstall',
@@ -592,26 +532,33 @@ async function runUnifiedBundleUninstall(
         target: target.name,
         bundle: typed,
         key,
-        files: unmanaged ? [] : record.files.map((f) => f.path),
-        ...(unmanaged ? { unmanagedReason: record.unmanagedReason } : {})
+        files: record === undefined || unmanaged ? [] : record.files.map((f) => f.path),
+        ...(unmanaged ? { unmanagedReason: record.unmanagedReason } : {}),
+        ...(record === undefined ? { orphaned: true } : {})
       },
-      textRenderer: (d) => unmanaged
-        ? `[dry-run] Would drop the record of unmanaged bundle "${d.bundle}" from target "${d.target}"; its files stay in place (${d.unmanagedReason}).\n`
-        + 'Run without --dry-run to apply.\n'
-        : `[dry-run] Would uninstall bundle "${d.bundle}" from target "${d.target}":\n`
-          + `  Files: ${d.files.join(', ')}\n`
+      textRenderer: (d) => {
+        if (record === undefined) {
+          return `[dry-run] Would drop the orphaned desired entry "${d.key}" left by an interrupted uninstall; no files are removed.\n`
+            + 'Run without --dry-run to apply.\n';
+        }
+        return unmanaged
+          ? `[dry-run] Would drop the record of unmanaged bundle "${d.bundle}" from target "${d.target}"; its files stay in place (${record.unmanagedReason}).\n`
           + 'Run without --dry-run to apply.\n'
+          : `[dry-run] Would uninstall bundle "${d.bundle}" from target "${d.target}":\n`
+            + `  Files: ${d.files.join(', ')}\n`
+            + 'Run without --dry-run to apply.\n';
+      }
     });
     return 0;
   }
 
   const result = await undeployBundle({
     key,
-    bundle: { bundleId: bundleHalf(key), version: record.version },
+    bundle: { bundleId: bundleHalf(key), version },
     scope: 'user',
     targetName: target.name
   }, ports);
-  const reported = migration ?? result.migration;
+  const reported = result.migration;
   formatOutput({
     ctx,
     command: 'uninstall',
@@ -656,11 +603,12 @@ async function runUnifiedAllUninstall(
   fmt: OutputFormat
 ): Promise<number> {
   const dryRun = opts.dryRun === true;
-  const { ports, records, migration } = await readUnifiedState(ctx, target, dryRun);
-  const keys = Object.keys(records);
+  const ports = unifiedPorts(ctx);
+  const bundles = await listTargetBundles(target.name, ports);
+  const keys = bundles.map((b) => b.key);
 
   if (dryRun) {
-    const managed = keys.filter((key) => records[key].state !== 'unmanaged');
+    const managed = bundles.filter((b) => b.record.state !== 'unmanaged');
     formatOutput({
       ctx,
       command: 'uninstall',
@@ -670,10 +618,10 @@ async function runUnifiedAllUninstall(
         dryRun: true,
         target: target.name,
         bundles: keys,
-        files: managed.flatMap((key) => records[key].files.map((f) => f.path)),
-        unmanaged: keys
-          .filter((key) => records[key].state === 'unmanaged')
-          .map((key) => ({ key, reason: records[key].unmanagedReason }))
+        files: managed.flatMap((b) => b.record.files.map((f) => f.path)),
+        unmanaged: bundles
+          .filter((b) => b.record.state === 'unmanaged')
+          .map((b) => ({ key: b.key, reason: b.record.unmanagedReason }))
       },
       textRenderer: (d) => `[dry-run] Would uninstall all bundles from target "${d.target}":\n`
         + `  Bundles: ${d.bundles.join(', ')}\n`
@@ -684,17 +632,25 @@ async function runUnifiedAllUninstall(
     return 0;
   }
 
+  // Keys are snapshotted above, so a failure leaves the later bundles untouched and unattempted.
   const results: UndeployResult[] = [];
-  for (const key of keys) {
-    results.push(await undeployBundle({
-      key,
-      bundle: { bundleId: bundleHalf(key), version: records[key].version },
-      scope: 'user',
-      targetName: target.name
-    }, ports));
+  let failure: { key: string; reason: string } | undefined;
+  for (const bundle of bundles) {
+    try {
+      results.push(await undeployBundle({
+        key: bundle.key,
+        bundle: { bundleId: bundleHalf(bundle.key), version: bundle.version },
+        scope: 'user',
+        targetName: target.name
+      }, ports));
+    } catch (cause) {
+      failure = { key: bundle.key, reason: failureReason(cause) };
+      break;
+    }
   }
+  const migration = results.map((r) => r.migration).find((m) => m !== null) ?? null;
 
-  if (results.length === 0) {
+  if (results.length === 0 && failure === undefined) {
     formatOutput({
       ctx,
       command: 'uninstall',
@@ -702,19 +658,19 @@ async function runUnifiedAllUninstall(
       status: 'ok',
       data: {
         target: target.name,
-        uninstalled: 0,
-        ...withMigration(migration)
+        uninstalled: 0
       },
-      textRenderer: (d) => `No bundles installed in target "${d.target}". Nothing to uninstall.\n${renderMigration(migration)}`
+      textRenderer: (d) => `No bundles installed in target "${d.target}". Nothing to uninstall.\n`
     });
     return 0;
   }
 
+  const notAttempted = failure === undefined ? 0 : keys.length - results.length - 1;
   formatOutput({
     ctx,
     command: 'uninstall',
     output: fmt,
-    status: results.some((r) => r.unmanagedReason !== undefined) ? 'warning' : 'ok',
+    status: failure !== undefined || results.some((r) => r.unmanagedReason !== undefined) ? 'warning' : 'ok',
     data: {
       target: target.name,
       uninstalled: results.length,
@@ -724,17 +680,22 @@ async function runUnifiedAllUninstall(
         skipped: r.skipped.length,
         ...(r.unmanagedReason === undefined ? {} : { unmanagedReason: r.unmanagedReason })
       })),
+      ...(failure === undefined ? {} : { failure }),
       ...withMigration(migration)
     },
+    warnings: failure === undefined ? undefined : [`${failure.key}: ${failure.reason}`],
     textRenderer: (d) => `Uninstalled ${d.uninstalled} bundle${d.uninstalled === 1 ? '' : 's'} `
       + `from target "${d.target}".\n`
       + d.bundles
         .filter((b) => b.unmanagedReason !== undefined)
         .map((b) => `Left in place: ${b.id} (${b.skipped} file${b.skipped === 1 ? '' : 's'}; ${b.unmanagedReason}).\n`)
         .join('')
+        + (d.failure === undefined
+          ? ''
+          : `Failed on ${d.failure.key}: ${d.failure.reason}. ${notAttempted} later bundle${notAttempted === 1 ? '' : 's'} not attempted.\n`)
         + renderMigration(migration)
   });
-  return 0;
+  return failure === undefined ? 0 : 1;
 }
 
 /**
@@ -850,6 +811,10 @@ async function performLockfileUninstall(
   const lockPath = path.isAbsolute(lockfile)
     ? lockfile
     : path.join(ctx.cwd(), lockfile);
+  // Refuse before reading: the v2 reader below cannot read what unified deploy writes.
+  if (uninstallFlagEnabled(ctx)) {
+    throw lockfileUninstallRefused(lockPath);
+  }
   const lock = await readLockfile(lockPath, ctx.fs);
 
   if (lock === null) {

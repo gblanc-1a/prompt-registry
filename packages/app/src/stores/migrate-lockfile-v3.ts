@@ -159,27 +159,24 @@ export const convertV2ToPair = (
 };
 
 /**
- * Migrate the lockfile from v2 to v3 if needed.
- *
- * Follows design §8.4's order: write local without marker, write desired,
- * delete legacy files, write local with marker. Every step is idempotent
- * and resumes an interrupted migration by unioning the existing-new local
- * file with any legacy-derived records until the marker is set.
+ * Read the lockfile state and compute, in memory, the pair a migration would produce.
+ * Never writes: this is the read half of {@link migrateLockfileIfNeeded}, shared so a
+ * read-only caller can see the post-migration state without committing it.
  * @param sources - Paths to the lockfiles.
- * @param fs - Filesystem adapter with rename for atomic writes.
+ * @param fs - Filesystem adapter (read operations only are used).
  * @param options - Generation metadata.
  * @param options.generatedBy - Tool identifier.
  * @param options.now - ISO timestamp.
  * @param options.triggeredByKey - Bundle key being installed; omit its materialization.
- * @returns The v3 pair and migration report (null if no migration occurred).
+ * @returns The pair, the report (null unless a v2 file was converted), and whether
+ * the pair still has to be written to disk (true only for a v2 conversion).
  * @throws {UnsupportedLockfileVersionError} On unreadable version.
- * @throws {Error} On write failure or missing fs.remove.
  */
-export const migrateLockfileIfNeeded = async (
+export const planLockfileMigration = async (
   sources: MigrationSources,
   fs: LockfileFsWithRename,
   options: { generatedBy: string; now: string; triggeredByKey?: string }
-): Promise<{ pair: LockfileV3Pair; report: MigrationReport | null }> => {
+): Promise<{ pair: LockfileV3Pair; report: MigrationReport | null; pendingWrite: boolean }> => {
   // Step 1: Read the raw v2 source — legacyFiles[0] if any exists, else desiredFile.
   let v2Source: string | null = null;
   for (const legacyFile of sources.legacyFiles) {
@@ -199,7 +196,8 @@ export const migrateLockfileIfNeeded = async (
         desired: emptyDesiredLockfileV3(),
         local: emptyLocalLockfileV3(options.generatedBy, options.now)
       },
-      report: null
+      report: null,
+      pendingWrite: false
     };
   }
 
@@ -219,7 +217,7 @@ export const migrateLockfileIfNeeded = async (
       fs,
       { generatedBy: options.generatedBy, now: options.now }
     );
-    return { pair, report: null };
+    return { pair, report: null, pendingWrite: false };
   }
 
   // Major 2 → continue with migration.
@@ -273,6 +271,37 @@ export const migrateLockfileIfNeeded = async (
 
     convertedPair.local.targets = unionedTargets;
   }
+
+  return { pair: convertedPair, report, pendingWrite: true };
+};
+
+/**
+ * Migrate the lockfile from v2 to v3 if needed.
+ *
+ * Follows design §8.4's order: write local without marker, write desired,
+ * delete legacy files, write local with marker. Every step is idempotent
+ * and resumes an interrupted migration by unioning the existing-new local
+ * file with any legacy-derived records until the marker is set.
+ * @param sources - Paths to the lockfiles.
+ * @param fs - Filesystem adapter with rename for atomic writes.
+ * @param options - Generation metadata.
+ * @param options.generatedBy - Tool identifier.
+ * @param options.now - ISO timestamp.
+ * @param options.triggeredByKey - Bundle key being installed; omit its materialization.
+ * @returns The v3 pair and migration report (null if no migration occurred).
+ * @throws {UnsupportedLockfileVersionError} On unreadable version.
+ * @throws {Error} On write failure or missing fs.remove.
+ */
+export const migrateLockfileIfNeeded = async (
+  sources: MigrationSources,
+  fs: LockfileFsWithRename,
+  options: { generatedBy: string; now: string; triggeredByKey?: string }
+): Promise<{ pair: LockfileV3Pair; report: MigrationReport | null }> => {
+  const plan = await planLockfileMigration(sources, fs, options);
+  if (!plan.pendingWrite) {
+    return { pair: plan.pair, report: plan.report };
+  }
+  const { pair: convertedPair, report } = plan;
 
   // Step 3: Write local without marker, then desired.
   await writeLockfileV3Pair(

@@ -6,3 +6,4 @@ export * from './types';
 export * from './plan';
 export * from './deploy';
 export * from './undeploy';
+export * from './resolve-undeploy-key';

@@ -192,21 +192,41 @@ no `{type}-` prefix for `install.ts:1538`'s type sniffing to read.
 ### Delivery constraints
 
 This is a large refactor, so incremental delivery is a **requirement**, not a scheduling
-preference — it constrains the design. Reader-before-writer ordering in particular cannot be
-retrofitted.
+preference — it constrains the design.
 
-- Every PR leaves `main` releasable. No PR depends on a later one to be correct.
-- Additive first: a new module, port method or reader lands with its tests and **no caller
-  change**, mergeable on its own.
-- Readers precede writers. The v2-compatible reader ships before anything writes v3.
-- One producer per cutover PR (CLI install, CLI update, CLI profile/apply, extension
-  install, …), each carrying the parity test for that producer.
-- Deletions are separate PRs, gated on an entry-point test proving no callers remain.
-- Target roughly 400 changed lines excluding tests and generated files; split rather than
-  exceed.
+The priority is **end-to-end testability from the first PR**, accepting larger PRs to get
+it. An additive-only sequence (new module, then new port, then new reader, each with no
+caller change) would keep PRs small but leave nothing exercisable end to end until the
+cutover PR, which is the wrong trade: the assumptions in this spec most need testing against
+real installs, early.
 
-§11's steps are ordered by dependency; the implementation plan derives the actual PR
-boundaries from them under these rules.
+**One feature flag, dual-surfaced.** `AI_PRIMITIVES_HUB_UNIFIED_DEPLOY` for the CLI
+(following `isGitHubAppAuthEnabled` / `GITHUB_PUBLIC_AUTH_MODE` in `infra`) and
+`promptregistry.unifiedDeploy` for the extension (following the existing
+`promptregistry.*` settings). Default **off**.
+
+Rules:
+
+- **Every PR is a vertical slice**: a complete resolve → place → record path for some
+  narrowing of (producer × scope × target), runnable and E2E-testable on merge with the
+  flag on.
+- **Flag off keeps `main` releasable.** The legacy path is untouched and remains the
+  default, so no PR needs a later one to be correct.
+- **Every PR adds a flag-on E2E test** for the slice it delivers, run in CI alongside the
+  flag-off suite. The golden placement matrix (§10) grows one column per slice.
+- **Readers before the flag flips, not before the writer merges.** The v2-compatible reader
+  must ship before `unifiedDeploy` defaults on — that is the real constraint, and a flag
+  satisfies it without serializing PRs.
+- **One producer per cutover PR** (§3.7), so a regression is attributable.
+- **Deletions are separate PRs**, after the flag defaults on, each gated on an entry-point
+  test proving no callers remain.
+- No line-count target. Slices are sized by "smallest thing that is E2E-testable", which is
+  typically 600–1200 lines including tests.
+
+**Accepted cost, deliberately:** both paths coexist for the duration of the cutover, which
+means double maintenance and a doubled test matrix for the flagged surfaces. That is the
+price of testing real behavior early instead of at the end, and the flag plus the deletion
+PRs bound how long it lasts.
 
 ### Non-goals
 
@@ -1132,6 +1152,11 @@ Order is place → MCP → record, which is a **change** from the extension's cu
 Vitest in `packages/`, Mocha in the extension. A focused failing test comes first for each
 slice.
 
+Every slice runs **two** suites: the existing behavior with `unifiedDeploy` off, proving no
+regression on the legacy path, and the slice's own E2E coverage with it on. The golden
+placement matrix gains one column per slice, so by slice 6 it is the CLI-vs-extension parity
+assertion rather than a CLI-only check.
+
 | Test | Purpose |
 |---|---|
 | **Golden placement matrix** — one fixture bundle × 11 targets × 2 scopes → expected path set | Highest-value test in the plan; locks every placement decision in §4 and §6 |
@@ -1193,37 +1218,43 @@ migration or write; `--dry-run` asserts no writes through **every** port includi
 synthesis, store initialization and auth setup; mixed old/new client writes after the
 rename.
 
-## 11. Sequencing
+## 11. Sequencing — vertical slices
 
-The earlier ordering claimed independent slices that are not independently safe: source
-identity is a behavior change despite being described as none; slice 2 was called both a
-prerequisite of and independent from slice 3; CLI cutover depends on profile/apply/update
-and MCP parity, not just command write blocks; service deletion depends on scope and
-commit-mode commands, skills paths and consumers; resolver deletion must wait for every
-registered consumer; and a v3 writer must not precede a v2 reader. Corrected order:
+Reordered from a horizontal, additive-only sequence (which deferred all end-to-end testing
+to a late cutover) into vertical slices, per §2's delivery constraints. Each row is one PR,
+E2E-testable on merge with `unifiedDeploy` on, inert with it off.
 
-1. **Correct the factual baseline and name every deliberate behavior change** (§13).
-2. **Specify contracts**: the `(bundleId, version, targetType)` reconcile key,
-   physical-destination ownership, the migration call-site rule, and the unmanaged rule for
-   anything unproven. Deliberately no transaction or staging contract (§9.2).
-3. **Add primitives behind existing callers**: export and generalize `routeToKind`,
-   canonical→alias naming, and the `FileSystem` link-identity capability (§4.8). No caller
-   changes behavior yet.
-4. **Add source and MCP capabilities behind existing entry points**, with parity tests:
-   `resolveBundle`, `readBundleFiles`, per-server input predicate, Azure DevOps auth policy.
-5. **Introduce shared state readers and read-only compatibility**: v2 readers for both
-   writers' shapes, identity-based source resolution (P2), effective-desired-state
-   computation. Still no v3 writes.
-6. **Implement shared deployment**, exercised by tests only.
-7. **Cut over every lifecycle producer and consumer** from §3.7 behind a migration gate,
-   including scheduling, with migration confined to the three command handlers.
-8. **Enable migrations** — eager user, lazy repository — with recovery, interruption and
-   concurrent-write tests.
-9. **Delete legacy implementations** only once entry-point tests show no remaining callers.
-10. Documentation, schemas and ADRs.
+| # | Slice | What becomes testable E2E |
+|---|---|---|
+| 1 | `app/deploy` + `PrimitiveKind` routing + lockfile `3.0.0` read/write + **CLI user-scope install for `vscode`** | `install X --target my-vscode` writes real files into `~/.copilot/{prompts,instructions,agents}` by manifest type, records desired + materialized state; `uninstall` removes exactly those paths |
+| 2 | Widen to **all 11 targets, user scope** | The golden placement matrix at user scope: kiro→`steering/`, claude-code→`commands/`, cursor→`rules/`, including the prefix-vs-manifest fix |
+| 3 | **CLI repository scope**, incl. git-exclude and commit modes; retires `RepositoryScopeWriter` for the three Copilot targets | Repository installs at both commit modes, for all targets, through one writer |
+| 4 | **CLI update, profile activate/deactivate, apply** onto the shared path | The producers §3.7 found outside the original deletion table; reconcile's removal half |
+| 5 | **Extension user scope** + `FileSystem` link-identity (§4.8) + §8.2 record classification | Real copies replacing symlinks in VS Code; a `local-skills` live source directory proven untouched |
+| 6 | **Extension repository scope** | Extension and CLI producing byte-identical repository output — the headline success criterion |
+| 7 | **MCP into shared deploy**, portable destinations | **CLI installs MCP servers for the first time**; extension writes `mcp-config.json`/`.mcp.json` |
+| 8 | **Download unification on `SourceAdapter`** + `resolveBundle` / `readBundleFiles` | CLI installs from `azure-devops` and `local` sources; binary assets survive local sources |
+| 9 | **Source identity P1–P3** | A lockfile written by one user replays for another whose source is named differently |
+| 10 | **Migrations**: eager user, lazy repository, lockfile rename | Upgrade paths from real extension-written and CLI-written lockfiles |
+| 11 | **Flip `unifiedDeploy` to default on** | Nothing new; the v2 reader and every slice above must be in place first |
+| 12+ | **Deletions**, one area per PR | `UserScopeService`, `RepositoryScopeService`, `RepositoryScopeWriter`, `infra/resolvers`, `infra/downloaders`, APM, prefix routing — each gated on an entry-point test showing no callers |
 
-P1–P3 remain valuable early, but they belong in steps 1 and 5 as **behavior changes with
-their own tests**, not as a "no delivery-layer change" slice.
+Slice 1 is the one that matters most: it puts a complete, inspectable install on disk, so
+every assumption in §4 and §5 gets tested against reality before the remaining eleven slices
+are built on them.
+
+Two things sit outside the slice sequence because they gate it:
+
+- **Step 0 — primitives.** Export and generalize `routeToKind`, add canonical→alias naming,
+  and add the `FileSystem` link-identity capability. Small, additive, no behavior change;
+  slice 1 needs the first two and slice 5 needs the third.
+- **Schema enum policy** (§7) must land before any APM member is removed, or existing
+  configs fail wire-format validation.
+
+**Behavior changes ship with their slice, not separately.** P1–P3 (slice 9), scope-conflict
+enforcement (slice 3), and the MCP input-skip policy (slice 7) are each a behavior change
+with its own tests, inside the slice that delivers them — not deferred to a "no behavior
+change" step, which the previous ordering wrongly claimed to have.
 
 ## 12. Documentation, schemas, and ADRs
 
@@ -1316,6 +1347,7 @@ a materially smaller implementation.
 | Orphaned files from old CLI-written entries are not recovered | Unproven destinations are left alone and reported unmanaged; no old-rules locator is built (§8.3) |
 | Simultaneous CLI and extension writes can lose a state entry | Atomic writes prevent corruption; the next operation re-derives (§8.4) |
 | MCP config backups are no longer created by migration | Read-modify-write merges preserve unrelated entries; nothing is wholesale replaced (§6.7) |
+| Legacy and unified paths coexist behind `unifiedDeploy` for the whole cutover — double maintenance, doubled test matrix | Bounded by the flag-flip and deletion PRs (§11 slices 11–12); accepted in exchange for E2E testing from slice 1 (§2) |
 
 **Acceptance criteria, not established facts:** byte parity between layers, lockfile
 portability across machines, transaction safety, and migration idempotence. Current tests

@@ -45,11 +45,14 @@ export interface UndeployResult {
  * Resolve a recorded (contract-relative) path against its target's `baseDir`.
  *
  * Recorded paths are specified relative to `baseDir` (§5.7). A path that is
- * itself absolute, or one whose `..` segments resolve outside `baseDir`,
- * violates that contract — joining it anyway risks either re-prefixing an
- * absolute path onto `baseDir` (leaving the real file untouched while the
- * record is dropped) or deleting something outside the target entirely. Such
- * a path is never removed.
+ * itself absolute, one whose `..` segments resolve outside `baseDir`, or one
+ * that resolves to `baseDir` itself (e.g. `.`, `a/..`, `a/../`) violates that
+ * contract — joining it anyway risks either re-prefixing an absolute path
+ * onto `baseDir` (leaving the real file untouched while the record is
+ * dropped), deleting something outside the target entirely, or handing
+ * `baseDir` itself to a non-recursive `remove` (which rejects a directory on
+ * the real filesystem, throwing before the record can be dropped). Such a
+ * path is never removed.
  * @param baseDir - The target record's base directory.
  * @param recordedPath - The recorded file path.
  * @returns The safe absolute path, or the path to report when unsafe.
@@ -63,7 +66,7 @@ const resolveRecordedPath = (
   }
   const joined = posix.normalize(posix.join(baseDir, recordedPath));
   const relativeToBase = posix.relative(baseDir, joined);
-  if (relativeToBase === '..' || relativeToBase.startsWith('../')) {
+  if (relativeToBase === '' || relativeToBase === '..' || relativeToBase.startsWith('../')) {
     return { safe: false, reportPath: joined };
   }
   return { safe: true, absolutePath: joined };

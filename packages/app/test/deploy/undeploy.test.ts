@@ -128,6 +128,37 @@ describe('undeployBundle', () => {
     expect(ports.files.get('/home/u/outside/escape.prompt.md')).toBe('# escape leftover\n');
   });
 
+  it('does not remove a recorded path that resolves to baseDir itself (., a/.., a/../)', async () => {
+    // A recorded path that normalizes away to baseDir (via `.`, a same-level
+    // `..`, or either with a trailing slash) must not reach
+    // `fs.remove(baseDir)`: the real filesystem's non-recursive remove
+    // (infra/fs/node-filesystem.ts) rejects a directory, which would throw
+    // before the record could ever be dropped. A real file nested under
+    // baseDir is required so the mock's prefix-based `exists` reports
+    // baseDir as existing, the same way a real directory with contents does
+    // — otherwise this would pass vacuously via the "already absent" path.
+    const ports = recordingPorts();
+    ports.files.set(ports.lockfileStore.desiredFile, desiredSnapshot());
+    ports.files.set(ports.lockfileStore.localFile, seedLocal([
+      { path: '.', installedChecksum: 'a' },
+      { path: 'a/..', installedChecksum: 'b' },
+      { path: 'a/../', installedChecksum: 'c' }
+    ]));
+    ports.files.set('/home/u/.copilot/prompts/unrelated.prompt.md', '# unrelated\n');
+
+    const result = await undeployBundle(undeployRequest(), ports);
+
+    expect(result.removed).toEqual([]);
+    expect(result.skipped).toHaveLength(3);
+    expect(ports.calls.filter((c) => c.startsWith('remove:'))).toEqual([]);
+    expect(ports.calls).not.toContain('remove:/home/u/.copilot');
+    expect(ports.files.get('/home/u/.copilot/prompts/unrelated.prompt.md')).toBe('# unrelated\n');
+    // Still drops the record: the user asked to uninstall, even though none
+    // of its recorded paths were safe to act on.
+    const { local } = readPair(ports);
+    expect(local.targets['my-vscode']).toBeUndefined();
+  });
+
   it('is a no-op for a bundle that is not recorded', async () => {
     const ports = recordingPorts();
     await deployBundle(request(), ports);

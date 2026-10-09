@@ -9,13 +9,13 @@
  */
 import * as nodePath from 'node:path';
 import {
+  UnsupportedLockfileVersionError,
+} from '@ai-primitives-hub/core';
+import {
   describe,
   expect,
   it,
 } from 'vitest';
-import {
-  UnsupportedLockfileVersionError,
-} from '@ai-primitives-hub/core';
 import {
   cleanupOrphanedSource,
   deleteLockfile,

@@ -65,6 +65,25 @@ file resolver in `app` — has zero production callers.
 writes per-file checksums on install and never compares them, silently overwriting.
 `ScopeConflictResolver` enforces "a bundle lives at one scope only"; the CLI does not.
 
+**The same lockfile fields mean different things to each writer.** Not merely different
+state locations — the shared `LockfileFileEntry` shape is interpreted two ways:
+
+| Field | Extension (`collectRepositoryFileEntries`) | CLI (`checksumFiles`) |
+|---|---|---|
+| `path` | `path.relative(workspaceRoot, targetPath)` → **on-disk, repo-relative** | the extracted-files map key → **bundle-relative** |
+| `checksum` | `calculateFileChecksum(targetPath)` → **on-disk, post-transform** | `sha256(archiveBytes)` → **source bytes** |
+
+A single repository can contain both, since the extension and CLI can each install into
+it, and `generatedBy` records only the last writer. The extension's
+`LockfileSourceEntry` also omits `collectionsPath` entirely, which app's includes.
+
+**`sourceId` is portable for hub sources and not for manual ones.** Hub-loaded sources get
+`generateHubSourceId` → `{type}-{sha256(type:normalizedUrl:branch:collectionsPath)[0:12]}`,
+documented as "Portable: Not tied to user's hub configuration". Manually added sources
+(`source-commands.ts:533`) get `generateSanitizedId(name)`, derived from the user-typed
+display name — so a teammate replaying the lockfile has a different id, and the id carries
+no `{type}-` prefix for `install.ts:1538`'s type sniffing to read.
+
 ### 1.2 Defects found during design, fixed by this work
 
 - **`workspace` scope is indistinguishable from `user` scope.** `ScopeServiceFactory`
@@ -78,11 +97,20 @@ writes per-file checksums on install and never compares them, silently overwriti
   list, orphaning its files on uninstall. The same collision exists at repository scope
   (`.github` vs `.kiro` under one repo lockfile). The extension never hits it because it
   has exactly one host.
-- **Drift detection is broken for transformed files.** `LockfileFileEntry.checksum`'s own
-  documentation: "SHA256 of the extracted archive bytes for this path (not the optionally
-  transformed on-disk result). User-modification checks compare this against the current
-  file; transformed files will therefore look modified until an `installedChecksum` field
-  is added (issue #357 Stage 2)."
+- **Drift detection is broken for CLI-written lockfiles only.**
+  `LockfileFileEntry.checksum`'s documentation — "SHA256 of the extracted archive bytes for
+  this path (not the optionally transformed on-disk result). User-modification checks
+  compare this against the current file; transformed files will therefore look modified
+  until an `installedChecksum` field is added (issue #357 Stage 2)" — describes the CLI's
+  behavior only. `detectModifiedFiles` compares the on-disk hash against `entry.checksum`,
+  which is **correct** for extension-written entries and wrong for CLI-written ones.
+- **`checkAndOfferMissingSources` offers a remedy it does not implement.** It compares
+  lockfile source ids against locally configured ids, prompts "Would you like to add
+  them?", and on confirmation does nothing: "Actual addition would be handled by
+  RegistryManager/HubManager. For now, just log the intent."
+- **Type inferred from an id.** `install.ts:1538` decides a source is awesome-copilot via
+  `entry.sourceId.startsWith('awesome-copilot-')`, misclassifying any name-derived id as
+  plain `github` and sending it down the wrong fetch path.
 - **Kind vocabulary gap.** `KIND_TO_ROUTE_KEY` is keyed on the 5-value `CopilotFileType`,
   so `writeManifestItems` silently `skipped.push()`es every other kind. The layouts route
   11 more.
@@ -108,9 +136,13 @@ writes per-file checksums on install and never compares them, silently overwriti
 - The same bundle installed by the CLI or the extension produces byte-identical on-disk
   results and is visible to both.
 - `UserScopeService` and `RepositoryScopeService` are deleted.
-- Existing extension installs transfer to the unified layout in one shot at activation.
+- Existing extension installs transfer to the unified layout without the user having to
+  act, and without a surprise diff in a shared repository.
 - The lockfile schema supports a future `install --lockfile --target <t>` per-harness
   workflow **without a further breaking change**.
+- The committed lockfile is portable: a teammate can replay it on a different harness,
+  on a different machine, without having configured the same sources by the same names.
+- Opening a repository never dirties the working tree.
 
 ### Non-goals
 
@@ -133,12 +165,18 @@ writes per-file checksums on install and never compares them, silently overwriti
 | User-scope artifact | real file copies, not symlinks |
 | `workspace` scope | retired; `user` and `repository` remain |
 | Existing `workspace` records | migrate to **user** scope (their files are in `~/.copilot/`) |
-| Migration trigger | automatic at activation, one info notification, no backup/rollback |
+| Migration trigger | **user scope** eager at activation; **repository scope** lazy on first write |
 | MCP | folded into the shared lifecycle |
 | Bundle fetching | unified on `SourceAdapter`, auth injected per layer |
 | `apm` / `local-apm` | retired |
 | Unknown source type | warn and skip, rest of the hub loads |
 | MCP destinations | portable only |
+| Lockfile split | by **role** (desired vs materialized), not by commit mode |
+| Committed per-file checksums | none — verification by re-derivation |
+| Developer autonomy | `excludes` list plus local version pin; local wins |
+| Lockfile filename | renamed to `ai-primitives-hub.lock.json`; ADR-0004 amended |
+| Legacy committed lockfile | deleted during the lazy migration, in the same diff |
+| Safety nets | no backup, no rollback, one info notification |
 
 ## 3. Architecture
 
@@ -183,7 +221,7 @@ interface DeployRequest {
   sourceId: string;
   sourceType: string;
   scope: 'user' | 'repository';
-  targetName: string;              // lockfile install-record key
+  targetName: string;              // key of the local materialization record
   targetType: TargetType;
   workspaceRoot?: string;          // required when scope === 'repository'
   commitMode?: 'commit' | 'local-only';
@@ -351,107 +389,166 @@ writing. This is permanent writer behavior, not migration-only code.
 
 ## 5. State
 
-### 5.1 Truth model
+### 5.1 Two files, split by role — not by commit mode
 
-The lockfile is authoritative for "what is installed". `RegistryStorage`/`globalState`
-keeps only UI cache: display manifests, readmes, source catalogs, setup state.
-`InstalledBundle` becomes a projection `app` assembles from lockfile + cache.
-`globalStorage/bundles/` survives as a pure cache — `prompt-loader.ts:107` scans it to
-list installed prompts and the marketplace joins `installPath` with manifest-relative
-paths — but is no longer the installed artifact.
+| File | Git | Contents |
+|---|---|---|
+| `ai-primitives-hub.lock.json` | **committed** | desired state only: `bundles`, `sources`, `hubs`, `profiles` |
+| `ai-primitives-hub.local.lock.json` | **git-excluded** | local desired overrides (`bundles`, `excludes`) + **all** materialization (`targets`) |
+| `prompt-registry.lock.json`, `prompt-registry.local.lock.json` | legacy | read-only until lazy migration (§8), then deleted |
 
-Filenames stay as ADR-0004 mandates: `prompt-registry.lock.json` /
-`prompt-registry.local.lock.json` for repository scope, the XDG user lockfile for user
-scope.
+User scope keeps one XDG file, `ai-primitives-hub.lock.json`, carrying both roles — it is
+machine-local by nature, so the split buys nothing there. Repository scope therefore
+converges on the filename convention `resolveUserConfigPaths()` already uses.
 
-### 5.2 Schema `2.1.0` — desired state separated from materialized state
+The alternative considered and rejected was a three-file model splitting by commit mode,
+keeping materialized records in the committed file keyed by `{targetType}:{scope}`. It
+preserves committed per-file checksums, but leaves cross-user merge hazards (path
+separators, `installedAt` churn, shared-destination refcounts across users) permanently
+live. Role-splitting deletes that entire class of problem instead of defending against it.
+
+### 5.2 Committed file — desired state
 
 ```ts
 {
-  version: "2.1.0",
+  $schema, version: "3.0.0", generatedAt, generatedBy,
+  bundles: { "<bundleId>": { version, sourceId, checksum? } },
+  sources: { "<deterministicSourceId>": { type, url, branch?, collectionsPath? } },
+  hubs?, profiles?
+}
+```
 
-  // DESIRED — portable, committed, what `install --lockfile` consumes
-  bundles: { "<bundleId>": { version, sourceId, sourceType, checksum?, installedAt } },
-  sources: { "<sourceId>": { type, url, branch?, collectionsPath? } },
-  hubs?, profiles?,
+`installedAt` and `sourceType` leave the bundle entry: the first is per-machine churn, the
+second is already `sources[sourceId].type`. `checksum` (bundle archive SHA) stays —
+content-addressed, so it never churns, and it lets replay verify a download. **There is no
+`installs` section, ever.** The whole file is small, hand-editable, and is exactly what
+`install --lockfile --target <t>` consumes.
 
-  // MATERIALIZED — machine- and target-specific, optional
-  installs?: {
+### 5.3 Local file — overrides plus materialization
+
+```ts
+{
+  version: "3.0.0",
+  bundles?:  { "<bundleId>": { version, sourceId } },   // personal additions and version pins
+  excludes?: string[],                                   // committed bundles to skip
+  targets: {
     "<targetName>": {
-      targetType,
-      baseDir?,
-      commitMode?,
-      bundles: {
-        "<bundleId>": {
-          version,
-          files: [{ path, checksum, installedChecksum }],
-          mcpConfigPath?: string,
-          mcpServers?: { "<prefixedName>": { originalName, identity, disabled?: true } }
-        }
-      }
+      targetType, scope, baseDir, commitMode,
+      bundles: { "<bundleId>": {
+        version, installedAt,
+        files: [{ path, checksum, installedChecksum }],
+        mcpConfigPath?, mcpServers?
+      } }
     }
   }
 }
 ```
 
-**Why top-level siblings rather than `installs` nested in each bundle entry.**
-`replaySingleEntry` already reads only desired state — `entry.sourceId`, `entry.version`,
-`lock.sources[...]`, with `target` passed separately — and never touches `entry.files`. The
-declarative path is therefore already target-agnostic in behavior; the schema just has to
-say so. The split buys:
+`targetName` is safe as a key here precisely because this file is never shared. In a
+committed file it would not be: two developers installing for the same host under locally
+chosen target names would commit two records describing the same files, breaking the §6.6
+refcount — each record would believe it owned them.
 
-1. `bundles` + `sources` alone is a complete, valid lockfile.
-   `install --lockfile f --target my-kiro` needs nothing else.
-2. `installs` is optional and omittable — a lockfile can be committed with zero
-   materialized records, which is the "commit desired state, each developer materializes
-   for their own harness" workflow.
-3. **Invariant, enforced by test:** desired state never references a `targetName` (local
-   to `targets.yml`, meaningless across machines) or a `baseDir` (absolute). Both live only
-   in `installs`.
-4. It decouples "is desired state committed" from "are the files committed". Today one
-   `commitMode` flag governs both because they share a record. With the split `commitMode`
-   belongs to the install record, so desired state goes in the committed lockfile while
-   materialized records for `local-only` installs go in the git-excluded local lockfile,
-   and reading merges the two. Impossible with nested `installs`.
-5. `installs[t].bundles[b].version` vs `bundles[b].version` detects a target materialized
-   at a stale version, so `status` can report "desired 1.2.0, my-vscode at 1.1.0".
+### 5.4 Effective desired state
 
-The `installs` key also resolves the multi-target collision in §1.2: records are keyed by
-target name, so one bundle materialized to `my-vscode` and `my-kiro` keeps two independent
-file lists.
+`effective = (committed.bundles − local.excludes) ⊕ local.bundles`, where `local.bundles`
+overrides version. Pure function, deterministic.
 
-### 5.3 Path semantics
+### 5.5 `commitMode` loses its second job
 
-`path` becomes the **on-disk** path relative to the record's root: the workspace root for
-repository scope, the resolved `baseDir` for user scope. Today the extension stores
-workspace-relative on-disk paths while the CLI stores bundle-relative paths and recomputes
-the destination at removal time via `pickRoute` — which manifest-driven renaming makes
-impossible. Recording the written path is the only correct option, and it matches what
-production extension lockfiles already contain, so existing repository lockfiles need no
-migration.
+It now means only "add the written files to `.git/info/exclude`". It no longer decides
+where anything is recorded. "Dev A commits the `.github/` files; dev B uses kiro and does
+not want to commit" and "dev B does want to commit" become the same code path with a
+different boolean.
 
-Removal iterates `installs[].bundles[].files[].path` joined to that record's root. No path
-recomputation anywhere.
+### 5.6 Reconcile
 
-### 5.4 `installedChecksum`
+`reconcile(target)` installs `effective − materialized` and undeploys
+`materialized − effective`. The first half is what `install --lockfile` already does; the
+second half is new, and it is what makes removal propagate: A drops a bundle from committed
+desired state, B pulls, and B's files are cleaned on next reconcile.
 
-`installedChecksum` records the bytes actually written, post-transform. `checksum` is
-retained for round-trip compatibility but is no longer load-bearing. This unblocks drift
-detection for transformed files (issue #357 Stage 2).
+**Reconcile on workspace open is read-only** — it reports and offers, never acts. Acting
+would write, and writing would trigger the lazy repository migration (§9), producing
+exactly the unexpected diff that migration ordering exists to avoid. This matches what
+`RepositoryActivationService` already does: detect and offer.
 
-### 5.5 Legacy reads
+### 5.7 Path semantics
 
-If `installs` is absent, synthesize one install record from entry-level `files` and
-`commitMode` under a default target name. Every existing `prompt-registry.lock.json` keeps
-working untouched. Writers always emit `installs`. Readers accept both shapes.
+`path` is the **on-disk** path, POSIX-normalized, relative to the record's root: the
+workspace root for repository scope, the resolved `baseDir` for user scope. Removal
+iterates `targets[].bundles[].files[].path` joined to that root; nothing is recomputed.
 
-### 5.6 Rules, surfaced identically by both layers
+This matters because the two writers disagree today. The extension stores on-disk
+repo-relative paths (`collectRepositoryFileEntries` →
+`path.relative(workspaceRoot, targetPath)`); the CLI stores bundle-relative paths
+(`checksumFiles` → the extracted-files map key) and recomputes the destination at removal
+time via `pickRoute`. Manifest-driven renaming (§4) makes recomputation impossible, so
+recording the written path is the only correct option. The extension's existing behavior
+is the one being adopted.
+
+### 5.8 Two checksums, because today's single field means two different things
+
+- `installedChecksum` — hash of the bytes **actually written** (post-transform). Drift
+  detection compares against this.
+- `checksum` — hash of the **source** bytes from the archive. Retained for provenance; not
+  load-bearing.
+
+The split is required because `LockfileFileEntry.checksum` currently means opposite things
+depending on the writer: the extension stores `calculateFileChecksum(targetPath)` — the
+on-disk, post-transform file — while the CLI stores `sha256(archiveBytes)`. The field's own
+documentation ("SHA256 of the extracted archive bytes… transformed files will therefore
+look modified until an `installedChecksum` field is added") describes **only the CLI**.
+Consequently `detectModifiedFiles`, which compares the on-disk hash against
+`entry.checksum`, is **correct today for extension-written lockfiles** and broken only for
+CLI-written ones. Since a repository can contain both, the ambiguity cannot be resolved by
+inspection and the field must be split rather than reinterpreted.
+
+### 5.9 Verification by re-derivation, not stored checksums
+
+Placement is a pure function of (bundle manifest, targetType, scope) after §4, so
+`doctor`/`status` recomputes expected destinations from desired state and compares against
+disk. No committed checksums are needed. This also catches a stale lockfile, which stored
+committed checksums would have confirmed as healthy.
+
+### 5.10 Source identity — three prerequisites
+
+`sourceId` portability is currently split in two. Hub-loaded sources get
+`generateHubSourceId` → `{type}-{sha256(type:normalizedUrl:branch:collectionsPath)[0:12]}`,
+documented as "Portable: Not tied to user's hub configuration". Manually added sources
+(`source-commands.ts:533`) get `generateSanitizedId(name)` — derived from the user-typed
+**display name**, so non-portable, and carrying no `{type}-` prefix. Three fixes:
+
+- **P1** `source-commands.ts:533` uses `generateSourceId(type, url, config)`; the display
+  name stays in `name`, where it belongs. Ids become portable by construction.
+- **P2** Sources resolve by **identity** `(type, normalizedUrl, branch, collectionsPath)`,
+  not by id. All four fields are already present in `LockfileSourceEntry` — except
+  `collectionsPath`, which the extension's own type omits entirely and which therefore
+  defaults to `'collections'`, matching what `generateSourceId` already does. Identity
+  matching makes existing non-portable lockfiles work **without rewriting them**, and lets
+  `RepositoryActivationService.checkAndOfferMissingSources` actually resolve instead of
+  logging intent — its handler is currently a stub: "Actual addition would be handled by
+  RegistryManager/HubManager. For now, just log the intent."
+- **P3** Delete the type sniffing at `install.ts:1538`
+  (`entry.sourceId.startsWith('awesome-copilot-')`), which silently misclassifies a
+  name-derived id as plain `github`. Read the required `src.type` from `lock.sources`.
+
+Deterministic ids are written only when something else is already being written (§9); P2
+makes a read-time rewrite unnecessary.
+
+A prior instance of this same bug already exists in the codebase:
+`sourceId-normalization-v2` was needed because v1 lowercased only the host, so
+differently-cased URLs produced different ids. It deliberately does not rewrite lockfiles
+and relies on dual-read. P2 generalizes that approach instead of adding a third id format.
+
+### 5.11 Rules, surfaced identically by both layers
 
 | Rule | Moved from | `planDeploy` field | Extension | CLI |
 |---|---|---|---|---|
 | Local modification | `detectModifiedFiles()` | `drifted` | existing warning dialog | refuse unless `--force` (**new**) |
 | Missing files | `checkFilesMissing()` | `missing` | repair prompt | report in `status` |
 | Scope conflict | `ScopeConflictResolver` | `conflict` | existing migrate-with-rollback UX | refuse with hint (**new**) |
+| Personal opt-out | — | excluded from `effective` | silently skipped | silently skipped |
 
 ## 6. MCP
 
@@ -511,14 +608,14 @@ resolution reuse `resolveMcpLayoutConfig` and `core`'s `resolveMcpConfigPath` /
 pair. The deliberate no-fallback rule stays: windsurf has no repository MCP file, and
 inheriting the user entry would make a repository install write into `$HOME`.
 
-### 6.5 Tracking sidecar retires into the install record
+### 6.5 Tracking sidecar retires into the materialization record
 
 `readTrackingMetadata`/`writeTrackingMetadata` persist `managedServers` to a sidecar
 beside each `mcp.json` — a second answer to "what did this bundle install". It folds into
-`installs[t].bundles[b].mcpServers` (§5.2). `originalConfig` is dropped: it is recoverable
+`targets[t].bundles[b].mcpServers` (§5.3). `originalConfig` is dropped: it is recoverable
 from the bundle manifest, and `identity` (the existing `computeServerIdentity` output) is
 all `detectAndDisableDuplicates` compares. Cross-bundle duplicate detection still works by
-iterating install records. `mcpConfigPath` records the file actually written, so uninstall
+iterating materialization records. `mcpConfigPath` records the file actually written, so uninstall
 targets it correctly even after this round changes the layout.
 
 ### 6.6 Shared destinations need a refcount
@@ -547,30 +644,100 @@ Ten documentation files reference apm, including `docs/user-guide/sources.md` an
 
 ## 8. Migration
 
-One shot, from `runMigrations()` at activation, tagged
-`@migration-cleanup(unify-bundle-lifecycle)`, idempotent — an existing install record
-means done, backed by a `MigrationRegistry` flag. One info notification plus a logged
-summary.
+### 8.1 Triggers — eager for user scope, lazy for repository scope
+
+| State | Trigger | VCS impact |
+|---|---|---|
+| User scope (`globalStorage` records, cache, symlinks, XDG lockfile) | **Eager**, at activation via `runMigrations()` | none — machine-local |
+| Repository scope (`prompt-registry.lock.json` + `.local.lock.json`) | **Lazy** — first install / uninstall / update in that repository | one intentional diff, attached to an action the user initiated |
+
+Lazy repository migration exists so that merely opening a repository in VS Code never
+produces a dangling working-tree change. Rules that follow:
+
+- **No write-on-read for repository scope.** Opening a workspace reads legacy files in
+  place and changes nothing — including the P1/P2 id rewrite, which happens only when
+  something else is already being written.
+- **Reconcile on open is read-only** (§5.6).
+- **`--dry-run` never migrates.**
+- The repository pair migrates **together, atomically**, on that first write: the new
+  committed file is written, the legacy committed file is deleted, and the legacy local
+  file is folded into the new local file. The developer commits one coherent diff alongside
+  whatever they were already doing.
+- A repository nobody installs into stays on legacy indefinitely and keeps working through
+  the v2 reader. The exposure window for a mixed-version team therefore only opens when
+  someone deliberately acts.
+- Concurrent migration on two branches produces identical committed content, since desired
+  state is deterministic. The only conflict is the add/delete pair.
+
+**Accepted cost:** the v2 **reader** for the committed repository file stays alive
+indefinitely, tagged `@migration-cleanup(lockfile-v3)`. That is the price of not dirtying
+working trees.
+
+### 8.2 User-scope migration
 
 For each user- or workspace-scope record in `RegistryStorage`:
 
 1. Read the cached bundle at `globalStorage/bundles/<bundleId>`.
 2. `deployBundle` at user scope for the detected host.
-3. Write the `installs` record to the user lockfile.
+3. Write the target record to the local side of the XDG lockfile.
 4. Drop the install truth from `globalState`, keeping only UI cache.
 
 Workspace-scope records become user-scope records, since their files are physically in
-`~/.copilot/`. Repository-scope records need no file movement: entries migrate to the
-`installs` shape on the next write, and legacy reads keep working meanwhile. MCP entries
-move out of `${vscodeUserDir}/mcp.json` and `.vscode/mcp.json` into the portable files
-keyed `mcpServers`; the tracking sidecar is deleted. APM-sourced records stay on disk,
-flagged unmanaged with one warning naming the bundle.
+`~/.copilot/`. Idempotent: an existing materialization record means done, backed by a
+`MigrationRegistry` flag. One info notification plus a logged summary.
+
+§4.6's symlink-before-write rule is what makes step 2 safe.
+
+### 8.3 Legacy lockfiles are predominantly extension-written
+
+The extension has real adoption; the CLI does not. The migration is therefore designed
+around extension semantics as the default and treats CLI-written entries as a detected
+special case — and must handle a single lockfile containing both, which happens whenever
+the extension installed one bundle and the CLI another into the same repository.
+`generatedBy` records only the last writer, so it is **not** a safe discriminator.
+
+**Path resolution — per entry, by existence.** Test `join(repoRoot, entry.path)`. If it
+exists, the path was on-disk (extension-written). If not, re-derive the destination from
+the bundle-relative path through the deterministic placement function and test that
+(CLI-written). Lazy migration guarantees the manifest is in hand, so re-derivation is
+always available.
+
+**Checksums — replaced, never interpreted.** Per §5.8 the legacy value's meaning depends on
+the writer and cannot be determined by inspection.
+
+- For the bundle whose install/update triggered migration: compute both `checksum` and
+  `installedChecksum` fresh.
+- For every other bundle: set `installedChecksum` to the hash of the **current on-disk
+  file** and omit `checksum`. Current state becomes the drift baseline.
+
+This rule is chosen for the dominant case: extension-written entries already store the
+on-disk hash, so adopting current state is **lossless** for them. For the rarer CLI-written
+entries, drift that predates migration is forgiven exactly once — better than carrying a
+value whose meaning we would have to guess.
+
+**Assigning a target to legacy materialization.** Legacy lockfiles carry no target
+dimension, but they came from one host, inferable from the path prefix: `.kiro/` → kiro,
+`.cursor/` → cursor, `.claude/` → claude-code, `.opencode/` → opencode. `.github/` is
+ambiguous between vscode and copilot-cli, resolved by preferring the currently detected
+host when consistent with the prefix, else a synthetic `legacy-<prefix>` target name. A
+wrong label is cosmetic: the record stores explicit paths and the file is never shared.
+
+**Carried over unchanged:** `version`, `sourceId`, `sourceType`, `installedAt`.
+`commitMode` is implied by which legacy file held the entry and is recorded on the target
+record.
+
+The CLI's XDG user lockfile is already named `ai-primitives-hub.lock.json`, so it needs no
+rename — only the same shape migration, with bundle-relative paths re-derived identically.
+
+### 8.4 MCP and APM
+
+MCP entries move out of `${vscodeUserDir}/mcp.json` and `.vscode/mcp.json` into the
+portable files keyed `mcpServers`, and the tracking sidecar is deleted. APM-sourced records
+stay on disk, flagged unmanaged with one warning naming the bundle.
 
 No backup and no rollback, by decision. The single non-crash concession: a record whose
 cache is missing cannot be redeployed, so it is reported as unmanaged with the bundle name
 rather than throwing.
-
-§4.6's symlink-before-write rule is what makes step 2 safe.
 
 ## 9. Error handling
 
@@ -592,40 +759,62 @@ slice.
 |---|---|
 | **Golden placement matrix** — one fixture bundle × 11 targets × 2 scopes → expected path set | Highest-value test in the plan; locks every placement decision in §4 and §6 |
 | Layout inversion guard, every target × scope | No kind maps to two different output directories; future layout edits fail loudly |
-| CLI vs extension byte-identical | Drive `deploy` through both wirings, assert identical tree and lockfile. The actual success criterion |
-| Legacy lockfile read | Production-shaped `prompt-registry.lock.json` with entry-level `files` → synthesized install record |
-| Desired-state portability | No `targetName` or `baseDir` appears outside `installs` |
-| Drift on transformed content | The issue #357 Stage 2 case `installedChecksum` fixes |
+| CLI vs extension byte-identical | Drive `deploy` through both wirings, assert identical tree and both lockfiles. The actual success criterion |
+| Committed file carries no local identifiers | No `targetName`, `baseDir`, `installedAt` or `files` appears in `ai-primitives-hub.lock.json` |
+| Effective desired state | `(committed − excludes) ⊕ local` across all four combinations |
+| Legacy extension lockfile migration | Production-shaped `prompt-registry.lock.json` with on-disk `path` + on-disk `checksum` → lossless target record, `installedChecksum` equal to the stored value |
+| Legacy CLI lockfile migration | Bundle-relative `path` + archive `checksum` → path re-derived, `installedChecksum` recomputed from disk |
+| **Mixed legacy lockfile** | One file with both writers' entries → each resolved independently by existence probe |
+| Lazy migration ordering | Opening a workspace writes nothing; first install migrates and deletes the legacy committed file |
+| Reconcile removal | Bundle dropped from committed desired state → files cleaned on next reconcile, nothing removed on open |
+| Portable replay | Lockfile written with a name-derived `sourceId` replays on a machine where that source is configured under a different name (P2) |
+| No type inference from id | An awesome-copilot source with id `team-prompts` fetches through the awesome-copilot path (P3) |
+| Drift on transformed content | The issue #357 Stage 2 case `installedChecksum` fixes, for CLI-written entries |
 | Symlink replacement | Pre-place a symlink, deploy, assert the cache is untouched and the destination is a regular file |
 | Shared-destination refcount | Two targets → one `.mcp.json`; uninstall one, the other's servers survive |
 | Binary assets through local sources | `readBundleFiles` preserves bytes where the `archiver` text path corrupted them |
 | `resolveBundle` call count | `install owner/repo:foo@1.2.3` does not walk the release catalog |
-| Migration | Fixture globalState + cache + symlinks → real files, lockfile records, symlinks gone; second run is a no-op |
+| User-scope migration | Fixture globalState + cache + symlinks → real files, lockfile records, symlinks gone; second run is a no-op |
 | Unknown source type | `apm` in a hub config → warn, skip, rest of the hub loads |
 
 ## 11. Sequencing
 
-Slices 6 and 7 are independent of 1–5 and may run in parallel.
+Slices 7 and 8 are independent of 1–6 and may run in parallel. Slice 2 is a prerequisite
+for 3 and 4; slice 9 requires both.
 
 1. `app/deploy` skeleton, `PrimitiveKind` routing, layout inversion, golden placement
    matrix. No delivery changes.
-2. Lockfile schema: `bundles`/`installs` split, `installedChecksum`, legacy read.
-3. CLI cuts over to `deploy`; delete prefix routing and `RepositoryScopeWriter`.
-4. Extension cuts over; delete the scope services.
-5. MCP relocation and the portable-path layout change.
-6. Download unification on `SourceAdapter`; delete `resolvers/` and `downloaders/`.
-7. APM retirement.
-8. One-shot migration.
-9. Documentation and ADRs.
+2. Lockfile `3.0.0`: role split, two files, `installedChecksum`, `excludes`, effective
+   desired state, v2 readers for both writers' shapes.
+3. Source identity: P1 deterministic ids, P2 identity matching (including the
+   `checkAndOfferMissingSources` stub), P3 remove type sniffing. Independent of the
+   schema work and shippable alone.
+4. CLI cuts over to `deploy`; delete prefix routing and `RepositoryScopeWriter`.
+5. Extension cuts over; delete the scope services.
+6. MCP relocation and the portable-path layout change.
+7. Download unification on `SourceAdapter`; delete `resolvers/` and `downloaders/`.
+8. APM retirement.
+9. Migration: eager user scope, lazy repository scope, lockfile rename.
+10. Documentation, schemas, and ADRs.
 
-## 12. Documentation and ADRs
+Slices 1–3 are pure additions with no delivery-layer behavior change, so they can merge
+independently of the rest.
+
+## 12. Documentation, schemas, and ADRs
 
 **Update:** `apps/vscode-extension/src/services/AGENTS.md` (its Key Services table names
-the deleted services), `apps/vscode-extension/AGENTS.md`, `packages/AGENTS.md`,
+the deleted services), `apps/vscode-extension/AGENTS.md`, `packages/AGENTS.md` (its
+dual-naming rule cites the lockfile filename), the root `AGENTS.md`,
 `docs/contributor-guide/architecture/installation-flow.md`, `adapters.md`,
-`mcp-integration.md`, `update-system.md`,
-`library-centric-architecture/{codemap,component}.md`, `docs/user-guide/sources.md`,
+`mcp-integration.md`, `update-system.md`, `authentication.md`, `core-flows.md`,
+`validation.md`, `library-centric-architecture/{codemap,component,system-context}.md`,
+`docs/contributor-guide/testing/{golden-path,test-plan}.md`, `docs/user-guide/sources.md`,
 `docs/author-guide/creating-a-hub.md`.
+
+**Schemas:** `apps/vscode-extension/schemas/lockfile.schema.json` and the published copy
+under `packages/core/**/public/schemas/` are rewritten for `3.0.0` — including the
+description and the deprecated-`commitMode` note, both of which name the old filenames.
+`apm.schema.json` is deleted with §7.
 
 **New or amended ADRs:**
 
@@ -633,5 +822,17 @@ the deleted services), `apps/vscode-extension/AGENTS.md`, `packages/AGENTS.md`,
   "overlap is intentional and stays".
 - Retire the `apm` and `local-apm` source types.
 - Adopt portable MCP destinations; drop the deprecated VS Code locations.
-- Lockfile `2.1.0`: desired state separated from materialized state.
+- Lockfile `3.0.0`: split by role — committed desired state, local materialization.
 - Retire the `workspace` installation scope.
+- **Amend ADR-0004.** Its decision to keep `prompt-registry.lock.json` rested on "no
+  forced migration for existing extension users or already-committed repository
+  lockfiles". The role split voids that premise independently of any rename: the committed
+  file's meaning changes either way. Once a semantic break is unavoidable, reusing the
+  filename is actively harmful — an un-upgraded extension reading a `3.0.0` file sees
+  entries with no `files` array and `checkFilesMissing()` concludes everything is missing,
+  offering repair. Under the rename it finds no file, concludes "no repository installs",
+  and does nothing; the committed `.github/` files keep working because Copilot reads them
+  directly. Inert beats wrong. ADR-0004's second premise — that both tools read and write
+  the same file — is preserved, and the rename also converges repository scope on the
+  filename `resolveUserConfigPaths()` already uses for user scope. ADR-0004 itself
+  anticipated this: "until the lockfile is naturally retired far in the future, if ever."

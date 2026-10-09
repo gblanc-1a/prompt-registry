@@ -95,7 +95,7 @@ treat them as open to challenge rather than as fixed constraints:
 - the desired-vs-materialized lockfile split, schema `3.0.0`, and the two-file layout
 - `reconcile` and its comparison key, now `(logicalBundleKey, version, sourceId, targetType)`
 - the `resolveBundle` / `readBundleFiles` / link-identity port additions
-- the `unifiedDeploy` feature flag and the twelve vertical slices
+- the `unifiedDeploy` feature flag and the vertical slice sequence
 - retiring the MCP tracking sidecar; folding MCP state into materialization records
 - idempotent redeploy in place of a staging or rollback contract
 - every item in the design's §13 Accepted risks table

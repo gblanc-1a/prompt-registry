@@ -7,7 +7,9 @@
   [the requester-stated requirements](./2026-10-09-unify-bundle-lifecycle-requirements.md).
   Its factual corrections are incorporated inline. Its open decisions were put to the
   requester and are recorded in §14, which also lists the three places their answers
-  **amend** a previously stated requirement.
+  **amend** a previously stated requirement. A third pass then checked this document against
+  itself and against the requirements list; it changed no decision and added no machinery —
+  its corrections are summarized at the head of §13's accepted risks.
 
 ## 1. Problem
 
@@ -239,6 +241,20 @@ Rules:
   (`PromptLoader`, marketplace file opening, update discovery, profile and storage
   readers). Postponing all readers to the migration slice would leave intermediate slices
   with a flag-on install the UI cannot see.
+- **Each slice ships the migration for the state it writes.** The same argument, applied to
+  the state side, and it is binding rather than tidy: FR-16 permits repository migration on
+  install, update **and** uninstall, so a flag-on install that writes `3.0.0` state for a
+  surface *is* a permitted trigger and must migrate that surface's legacy state in the same
+  PR. Migration is therefore **not a late slice** — it is distributed across slices 1, 3 and
+  5, each carrying the part its own writer makes authoritative (§11). A slice that wrote new
+  state while the legacy file still owned records for the same surface would leave two
+  disagreeing truths and a flag-on uninstall unable to find what it had to remove.
+- **A slice that moves a producer onto shared `deploy` before a capability joins shared
+  `deploy` keeps the legacy step wired for that capability**, so the flag-on path never loses
+  behavior the flag-off path has. Concretely: MCP joins shared deploy at slice 7, so the
+  extension's existing `McpServerManager` step — which already runs *outside* the install
+  pipeline (§3.7) — stays wired in slices 5 and 6 and is removed by slice 7. The CLI needs no
+  such bridge, since it installs no MCP servers today (§1.1).
 - **Flag off keeps `main` releasable**, and flag-off code never reads or writes flag-on
   state: see §5.12, which is a prerequisite for slice 1 rather than a late concern.
 - **Every PR adds a flag-on E2E test** for the slice it delivers, driven through the
@@ -294,7 +310,7 @@ PRs bound how long it lasts.
 | Committed per-file checksums | none — verification by re-derivation, bounded by what is available offline (§5.9) |
 | Removal propagation | only on explicit action: `install --lockfile` / reconcile in the CLI, a prompt in the extension (§5.6) |
 | Untracked destination collision | skip and report; `--force` overwrites (§4.10) |
-| Lockfile filename | renamed to `ai-primitives-hub.lock.json`; ADR-0004 amended |
+| Lockfile filename | renamed to `ai-primitives-hub.lock.json`; ADR-0004 amended. NFR-9 raised the rename as a **question** conditional on whether it helps or complicates migration, not as a mandate — §12 gives the migration-specific reason it helps, and that reason is what justifies the decision |
 | Legacy committed lockfile | deleted during the lazy migration, in the same diff |
 | Flag-off vs `3.0.0` state | every read checks the schema version; an unknown major fails loudly instead of being cast (§5.12) |
 | Safety nets | no backup, no rollback, one info notification |
@@ -321,8 +337,12 @@ per delivery layer.
                    downloadBundle(b)    → Buffer (remote)
                               │
                        app/deploy
-                   extract → validate → place → MCP → git-exclude → record
+                   extract → validate → place → record → MCP → git-exclude
 ```
+
+The **record → MCP** order in that last stage is load-bearing, not incidental: a crash
+between them must leave a tracked entry with no server, never a live server with no owner
+(§6.7, §9.2). Any diagram or implementation that records last is wrong.
 
 ### 3.1 New module: `packages/app/src/deploy/`
 
@@ -760,7 +780,9 @@ Two cases that look similar and are not:
 | `prompt-registry.lock.json`, `prompt-registry.local.lock.json` | legacy | read-only until lazy migration (§8), then deleted |
 
 The role split is clean: **what the team wants** is committed, **what this machine did** is
-not. No key appears in both files.
+not. No *content* key appears in both files — `bundles`, `sources`, `hubs` and `profiles`
+exist only in the committed file, `targets` only in the local one. Both carry `version`,
+because both are versioned wire formats subject to the §5.12 gate.
 
 User scope keeps one XDG file, `ai-primitives-hub.lock.json`, carrying both roles — it is
 machine-local by nature, so the split buys nothing there. Repository scope therefore
@@ -823,7 +845,7 @@ effect**. Never treat its absence as a failure.
         state?: 'unmanaged',                       // §8.3; absent means managed
         unmanagedReason?: string,                  // shown to the user, never parsed
         linked?: true,                             // local-skills live link, §4.8
-        files: [{ path, checksum?, installedChecksum, adoptedAtMigration?: true }],
+        files: [{ path, checksum?, installedChecksum?, adoptedAtMigration?: true }],
         mcpConfigPath?, mcpServers?,
         complete?: true                            // per-record migration marker, §8.4
       } }
@@ -859,6 +881,12 @@ convert, and §8 would otherwise be promising retention with no shape to retain 
   migration resumable without a journal (§8.4).
 - **`linked`** records the §4.8 exception, so nothing later "repairs" the link into a copy.
 
+`installedChecksum` is optional for exactly one reason: a `linked: true` record writes no
+bytes of its own, so there is nothing to baseline. Its `files` entries carry `path` only, and
+drift detection skips them — the user owns that tree and editing it is the feature. For every
+other record `installedChecksum` is required, and a managed record missing it is a migration
+defect, not a permitted shape.
+
 ### 5.4 Desired state has one source, and git is the override mechanism
 
 Desired state is **the committed file as it exists in the working tree** — including
@@ -885,14 +913,30 @@ being answered. Operation semantics reduce to one table:
 | Pin a different version | `version` edited | redeploy at the pinned version |
 | Switch a bundle to a different source | `sourceId` edited (+ descriptor) | redeploy; `sourceId` on the record follows (§5.6) |
 | Change `commitMode` | **unchanged** | `commitMode` changes, `.git/info/exclude` recomputed |
-| Move a bundle between scopes | unchanged | old record removed, new one added |
+| Move a bundle between scopes | entry **removed** when the bundle leaves repository scope, **added** when it enters | old record removed, new one added |
 | Activate / deactivate a profile | the batch of installs and uninstalls it implies | likewise |
 
-Two things that table makes explicit. First, "last materialization" is computed from **this
+Three things that table makes explicit. First, "last materialization" is computed from **this
 machine's** local file, which knows nothing about a teammate's targets — that is precisely
 why the resulting committed diff is the developer's to commit or revert, and why nothing
 silently decides for the team. Second, `commitMode` cannot leak a personal version or source
 into shared desired state, because it does not touch that file at all.
+
+Third, **desired state carries no target and no scope, and that is the design rather than an
+omission.** A repository's committed file means "these bundles, at this repository" — which
+target they are materialized into is FR-10/FR-11's whole point (dev A commits `.github`, dev B
+uses kiro, one bundle list) and FR-15's whole point (`install --lockfile --target <t>` picks
+the harness at install time, instead of committing files for every harness). So
+`reconcile(target)` takes the target as its **argument**, not from the file, which is where
+§5.6's `targetType` comparison component comes from.
+
+The one consequence that needs stating: because the repository's committed file means "desired
+*at this repository*", a bundle moved to user scope must **leave** it, and a bundle moved in
+must be added. Leaving the entry in place would make the move unstable — the materialization
+for the repository target is gone, so the next reconcile would see the bundle as desired and
+not materialized, and offer to reinstall it at the scope the user just moved it out of. Scope
+moves therefore touch both files, and they are the only operation in the table that edits
+desired state without the user asking for an install or an uninstall.
 
 **Honest cost.** Personal divergence lives as an uncommitted modification to a tracked file.
 It is fragile: `git checkout`, a merge, a rebase, or an IDE "discard changes" silently
@@ -1092,8 +1136,15 @@ disable `unifiedDeploy`") and no write proceeds. The schema enum gains `3.0.0`, 
 writer re-stamps a version it did not understand.
 
 A separate temporary filename for flagged state was rejected: it would need its own
-migration later, i.e. a second rename. Making slice 1 ship the complete v2-and-v3 lifecycle
-was rejected as well — the version gate is a few lines and buys the same safety.
+migration later, i.e. a second rename. Making slice 1 ship a **dual-format writer** — one
+that keeps reading and writing v2 alongside v3 — was rejected as well; the version gate is a
+few lines and buys the same safety.
+
+What slice 1 does ship is the **one-way** XDG shape migration (§8.3, §11): a v2 user lockfile
+is read, converted and rewritten as v3 on the first flag-on write, and from then on the gate
+is what protects it from a flag-off writer. Converting forward once is not the same as
+maintaining two formats, and the distinction is what keeps slice 1 small while still letting
+a flag-on uninstall find records a v2 install left behind.
 
 ### 5.13 One logical bundle key
 
@@ -1109,9 +1160,13 @@ layers' identities, and the schema cannot be settled without deciding this:
 So a version-bearing id would put the version in the key *and* the field, and a
 manifest id would silently collide across sources. Required before v3 migration:
 
-- **`logicalBundleKey`** is version-independent and source-qualified:
-  `{sourceId}/{manifestId}` (the source part omitted at user scope only when the lockfile
-  has a single source, for readability of hand-edited files — never in a committed file).
+- **`logicalBundleKey`** is version-independent and source-qualified: `{sourceId}/{manifestId}`,
+  **always, in every file and at every scope**. An earlier version of this spec allowed the
+  source part to be omitted at user scope when the lockfile had a single source, for
+  readability of hand-edited files. That is withdrawn: the key would then change shape the
+  moment a second source is added, so every existing key in that file would need rewriting —
+  a silent rekey of the one identifier §5.6, §5.13 and removal all join on, and exactly the
+  kind of later break NFR-4 forbids. Readability is not worth a mutable key.
 - A **collision policy**: two sources offering the same manifest id are two distinct keys,
   which is what makes §5.6's source-aware comparison expressible.
 - **Legacy alias handling**: migration maps an old version-bearing or bare id to the new key
@@ -1720,7 +1775,7 @@ assertion rather than a CLI-only check.
 | Repository root selection | Multi-root `.code-workspace`: the first git-repository folder wins; none a repository → refuse with the checked folders named (§4.9) |
 | Verification tiers | `doctor` with no cached manifest runs the local-state tier and **says** content verification is unavailable; with the cache it re-derives and catches a stale lockfile (§5.9) |
 | Non-default MCP profile | A server configured under a non-default VS Code profile is reported with its path, not migrated and not silently dropped (§6.1) |
-| Logical bundle key | A version-bearing extension id and a bare CLI `manifest.id` for the same bundle resolve to one key; two sources offering the same manifest id stay two keys (§5.13) |
+| Logical bundle key | A version-bearing extension id and a bare CLI `manifest.id` for the same bundle resolve to one key; two sources offering the same manifest id stay two keys; and a single-source user lockfile still writes the **source-qualified** key, so adding a second source rekeys nothing (§5.13) |
 | Lazy migration ordering | Opening a workspace writes nothing; first install migrates and deletes the legacy committed file |
 | Reconcile removal | Bundle dropped from committed desired state → files cleaned on next reconcile, nothing removed on open |
 | Portable replay | Lockfile written with a name-derived `sourceId` replays on a machine where that source is configured under a different name (P2) |
@@ -1750,6 +1805,10 @@ auto-update scheduler, **and startup source sync**). Three rules for these:
 - **A supported flag-on cell must fail, not skip.** Several legacy extension E2E tests skip
   when installation is unavailable or expected files are absent. For an explicitly supported
   cell that is a failure condition.
+- **No capability regresses inside the flag-on window.** A flag-on extension install in
+  slices 5 and 6 must still install the bundle's MCP servers through the retained legacy step,
+  asserted against the config file rather than against a call — this is what proves §2's
+  bridge rule holds until slice 7 removes it.
 
 Plus one replacement-specific case: the target-less updater picks the *first* installation
 matching a bundle id (`:59`), so its replacement needs a test where the **unwanted** target
@@ -1783,8 +1842,10 @@ commit/local-only bundles under one target.
 version-only tuple would miss), and that layout/transformer/`allowedKinds` changes
 deliberately do **not** (§5.6); a fresh clone with committed artifacts and no
 materialization — adoption versus repair, with locally edited files preserved; pin removal;
-scope move; uninstall from one target while another target still holds the bundle; two
-differently named targets resolving to one physical root.
+**scope move, asserting the committed entry leaves the repository file so a following
+reconcile does not re-offer the bundle at the scope it was just moved out of** (§5.4);
+uninstall from one target while another target still holds the bundle; two differently named
+targets resolving to one physical root.
 
 **No-write guarantees** — activation with auto-update enabled asserts no repository
 migration or write; startup **source sync** asserts the same independently of the update
@@ -1804,23 +1865,40 @@ E2E-testable on merge with `unifiedDeploy` on, inert with it off.
 
 | # | Slice | What becomes testable E2E |
 |---|---|---|
-| 1 | `app/deploy` + `PrimitiveKind` routing + lockfile `3.0.0` read/write **behind the §5.12 version gate** + **CLI user-scope install and uninstall for `vscode`** | `install X --target my-vscode` writes real files into `~/.copilot/{prompts,instructions,agents}` by manifest type, records desired + materialized state; `uninstall` removes exactly those paths; and flag-off commands against that state refuse loudly instead of corrupting it |
+| 1 | `app/deploy` + `PrimitiveKind` routing + lockfile `3.0.0` read/write **behind the §5.12 version gate** + **CLI user-scope install and uninstall for `vscode`** + **the XDG user lockfile's v2→v3 shape migration** (§8.3's last paragraph) | `install X --target my-vscode` writes real files into `~/.copilot/{prompts,instructions,agents}` by manifest type, records desired + materialized state; `uninstall` removes exactly those paths; an existing v2 XDG lockfile is migrated in place on that first write; and flag-off commands against that state refuse loudly instead of corrupting it |
 | 2 | Widen to **all 11 targets, user scope** | The golden placement matrix at user scope: kiro→`steering/`, claude-code→`commands/`, cursor→`rules/`, including the prefix-vs-manifest fix |
-| 3 | **CLI repository scope**, incl. git-exclude, commit modes and §4.9 root selection; **bypasses** `RepositoryScopeWriter` for the three Copilot targets | Repository installs at both commit modes, for all targets, through one writer |
+| 3 | **CLI repository scope**, incl. git-exclude, commit modes and §4.9 root selection; **bypasses** `RepositoryScopeWriter` for the three Copilot targets; **plus the lazy repository lockfile pair migration** — the rename, the §8.3 provenance rules and the §8.4 write/delete ordering | Repository installs at both commit modes, for all targets, through one writer; and upgrade paths from real extension-written and CLI-written committed lockfiles, including every interruption point. The migration cannot be later: this slice's flag-on install **is** an FR-16 trigger, and without it the legacy committed file would still own records a flag-on uninstall must find |
 | 4 | **CLI update, profile activate/deactivate, apply** onto the shared path | The producers §3.7 found outside the original deletion table; reconcile's removal half |
-| 5 | **Extension user scope** + `FileSystem` link-identity (§4.8) + §8.2 record classification and adoption + **the readers that depend on user-scope install truth** (`PromptLoader`'s cached-manifest and file reads, `RegistryStorage` consumers, marketplace and tree UI) | Real copies replacing symlinks in VS Code; a `local-skills` live source directory proven untouched; and the UI showing what was just installed |
-| 6 | **Extension repository scope** + its dependent readers (`LockfileManager` watchers and paired readers, update discovery, profiles) | Extension and CLI producing byte-identical repository output — the headline success criterion |
-| 7 | **MCP into shared deploy**, portable destinations | **CLI installs MCP servers for the first time**; extension writes `mcp-config.json`/`.mcp.json` |
+| 5 | **Extension user scope** + `FileSystem` link-identity (§4.8) + §8.2 eager user-record classification and adoption + **the readers that depend on user-scope install truth** (`PromptLoader`'s cached-manifest and file reads, `RegistryStorage` consumers, marketplace and tree UI); the legacy `McpServerManager` step **stays wired** (§2) | Real copies replacing symlinks in VS Code; a `local-skills` live source directory proven untouched; the UI showing what was just installed; and MCP servers still installed on the flag-on path |
+| 6 | **Extension repository scope** + its dependent readers (`LockfileManager` watchers and paired readers, update discovery, profiles); reuses slice 3's repository migration, so no new migration work; MCP still on the legacy step | Extension and CLI producing byte-identical repository output — the headline success criterion |
+| 7 | **MCP into shared deploy**, portable destinations; **removes the legacy `McpServerManager` bridge** from slices 5–6 | **CLI installs MCP servers for the first time**; extension writes `mcp-config.json`/`.mcp.json`; and §8.5's MCP migration, which is the part of the lockfile migration that could not land in slice 3 because the destinations did not exist yet |
 | 8 | **Download unification on `SourceAdapter`** + `resolveBundle` / `readBundleFiles` | CLI installs from `azure-devops` and `local` sources; binary assets survive local sources |
 | 9 | **Source identity P1–P3** | A lockfile written by one user replays for another whose source is named differently |
-| 10 | **Lockfile pair migration**: lazy repository, the rename, legacy provenance rules (§8.3) and the §8.4 ordering | Upgrade paths from real extension-written and CLI-written lockfiles, including every interruption point. Note the *user-record* classification and adoption already shipped in slice 5 — it cannot wait for this slice, because slice 5 changes installation truth |
-| 11 | **Flip `unifiedDeploy` to default on** | Nothing new; the v2 reader and every slice above must be in place first |
-| 12+ | **Deletions**, one area per PR | `UserScopeService`, `RepositoryScopeService`, `RepositoryScopeWriter`, `infra/resolvers`, `infra/downloaders`, APM adapters and runtime, prefix routing — each gated on an entry-point test showing no callers |
+| 10 | **Flip `unifiedDeploy` to default on** | Nothing new; the v2 reader and every slice above must be in place first |
+| 11+ | **Deletions**, one area per PR | `UserScopeService`, `RepositoryScopeService`, `RepositoryScopeWriter`, `infra/resolvers`, `infra/downloaders`, APM adapters and runtime, prefix routing — each gated on an entry-point test showing no callers |
 | — | **APM authoring retirement** (§7) — the validate command and `apm.schema.json` | Entirely independent PR, outside this sequence; shares no code with the lifecycle work |
 
+**There is deliberately no migration slice**, and an earlier version of this table had one
+(then slice 10) while slices 1, 3 and 6 already wrote `3.0.0` state for their surfaces. That
+was unsafe for the reason §2's migration rule now states: each of those flag-on installs is an
+FR-16 trigger, so each must migrate the state it is about to own. Migration is therefore split
+along the same seam as everything else — XDG shape in slice 1, the repository committed/local
+pair in slice 3, eager user records in slice 5, MCP destinations in slice 7 — and §8 is read
+as four obligations attached to four slices rather than one late PR.
+
 Slice 1 is the one that matters most: it puts a complete, inspectable install on disk, so
-every assumption in §4 and §5 gets tested against reality before the remaining eleven slices
+every assumption in §4 and §5 gets tested against reality before the nine slices that follow
 are built on them.
+
+**Slice 1 is verifiable by hand, by someone who did not write it** (NFR-6 means little
+otherwise). The recipe: configure one `vscode` user-scope target, enable
+`AI_PRIMITIVES_HUB_UNIFIED_DEPLOY`, install a fixture bundle declaring one prompt, one
+instruction and one agent with an id that differs from its filename stem, then inspect
+`~/.copilot/{prompts,instructions,agents}` for real files (not links) named from the
+normalized id, and the XDG lockfile for one desired entry plus one materialization record.
+Then `uninstall` and confirm those exact paths are gone and nothing else is. Then re-run the
+same command with the flag **off** and confirm it refuses with the §5.12 message and writes
+nothing.
 
 Two things sit outside the slice sequence because they gate it:
 
@@ -1876,7 +1954,10 @@ independent APM-authoring PR (§7, §14).
 - Retire the `workspace` installation scope, recording the cache, skills and MCP-scope
   semantics that change with it, and the §4.9 rule for selecting a repository root from a
   multi-root workspace.
-- **Amend ADR-0004.** Its decision to keep `prompt-registry.lock.json` rested on "no forced
+- **Amend ADR-0004.** The rename answers NFR-9, which asked whether it would *help or
+  complicate* migration rather than requiring it; the answer below is that it helps, and
+  RC-3's "the repo lockfile filename stays" is the constraint being amended, not overlooked.
+  ADR-0004's decision to keep `prompt-registry.lock.json` rested on "no forced
   migration for existing extension users or already-committed repository lockfiles". The
   role split voids that premise independently of any rename: the committed file's meaning
   changes either way. Given an unavoidable semantic break, a distinct filename means an
@@ -1910,7 +1991,7 @@ any of them as preservation.
 | **APM authoring** | validate command + `apm.schema.json` supported | retired, in an independent PR (§7) |
 | `workspace` scope | distinct cache, workspace skills dir, repository MCP scope | retired; folded into user |
 | Scope conflict | reached only from explicit scope-move commands | enforced on every install |
-| Drift protection | repository scope only, main lockfile only | all scopes, both files |
+| Drift protection | repository scope only, main lockfile only (`local-only` entries never checked) | all scopes and both commit modes, from `installedChecksum` in the local materialization file |
 | MCP destinations | user-profile `mcp.json`, `.vscode/mcp.json` | portable `mcp-config.json`, `.mcp.json` |
 | Input-requiring MCP servers | written, with a warning | skipped, with a warning |
 | MCP config backups | created by default on write | not created by migration |
@@ -1930,7 +2011,7 @@ marked unverified there and is not used to justify any lossy default.
 
 ### Accepted risks
 
-Two reviews have now been run against this design. The **first**, an executable-code audit of
+Three reviews have now been run against this design. The **first**, an executable-code audit of
 an earlier draft, recommended staging snapshots, trigger provenance plumbing, a full install
 signature, a legacy-destination locator, state locking and an ambiguity taxonomy. Its factual
 corrections are incorporated; those prescriptions were deliberately pruned back.
@@ -1939,6 +2020,15 @@ The **second** (see the header's review provenance) audited this design against 
 and explicitly declined to require cross-process locks, staged snapshots, deployment
 fingerprints or a legacy-destination reconstruction framework — so incorporating it does not
 reopen what the first pruning closed.
+
+The **third** was a consistency pass of this document against itself and against the
+requirements list. It added no machinery: it fixed a reversed deployment order in §3's
+diagram, a stale reconcile tuple and a stale drift row in this section, removed the
+conditional source-qualification that made §5.13's key mutable, stated the target-agnostic
+nature of desired state that FR-10/FR-11/FR-15 already imply, made scope moves edit desired
+state so they are stable under reconcile, and redistributed migration out of a single late
+slice into the slices whose writers make each piece of state authoritative. Net effect on
+NFR-1/NFR-3: one fewer schema variant, one fewer PR, no new mechanism.
 
 **NFR-3 re-audit.** The net effect of the second review on implementation size: five
 migration-only fields in the local record (§5.3), one operation table (§5.4), one identity
@@ -1952,7 +2042,7 @@ implementation.
 |---|---|
 | A failure after the overwrite step leaves files mixed between two versions; previous bytes are not restored | Idempotent redeploy; overwrites happen last; applied effects are reported (§9.2). Matches today's behavior, where update uninstalls before the new install succeeds |
 | A scheduled auto-update write could migrate a repository | Migration is invoked only from the three command handlers — a call-site rule, not a threaded flag (§8.1) |
-| A layout-override or transformer change does not trigger reconcile | Reconcile compares `(bundleId, version, targetType)` only; a user changing an override re-runs install (§5.6) |
+| A layout-override or transformer change does not trigger reconcile | Reconcile compares `(logicalBundleKey, version, sourceId, targetType)` and nothing else; a user changing an override re-runs install (§5.6) |
 | Orphaned files from old CLI-written entries are not recovered | Unproven destinations are left alone and reported unmanaged; no old-rules locator is built (§8.3) |
 | Simultaneous CLI and extension writes can lose a materialization entry — its path list, checksums or MCP cleanup ownership. **This is not re-derivable**, and may need manual repair | Unique-temp-name atomic writes prevent corruption, which is the part that is engineered; the loss itself is accepted and stated honestly rather than mitigated (§8.4) |
 | Personal divergence is an uncommitted edit to a tracked file, so `git checkout`, a merge or an IDE "discard changes" silently restores the team's version | Reconcile offers rather than acts, so the files follow only with a yes (§5.4, §5.6). Accepted in exchange for deleting the whole override layer |
@@ -1962,7 +2052,7 @@ implementation.
 | A `local-skills` install keeps a live link, so FR-21's real-copy rule is not universal | A named exception with a reason; the link-identity port capability stops any write reaching through it (§4.8) |
 | Workspace-scope records keep repository-local artifacts where they are, so their scope label and their location disagree until the lazy path runs | Reported, not silently relocated — moving files at activation is the diff FR-16 forbids (§8.2) |
 | MCP config backups are no longer created by migration | Read-modify-write merges preserve unrelated entries; nothing is wholesale replaced (§6.7) |
-| Legacy and unified paths coexist behind `unifiedDeploy` for the whole cutover — double maintenance, doubled test matrix | Bounded by the flag-flip and deletion PRs (§11 slices 11–12); accepted in exchange for E2E testing from slice 1 (§2) |
+| Legacy and unified paths coexist behind `unifiedDeploy` for the whole cutover — double maintenance, doubled test matrix | Bounded by the flag-flip and deletion PRs (§11 slices 10–11+); accepted in exchange for E2E testing from slice 1 (§2) |
 
 **Acceptance criteria, not established facts:** byte parity between layers, lockfile
 portability across machines, transaction safety, and migration idempotence. Current tests

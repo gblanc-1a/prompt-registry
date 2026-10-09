@@ -157,34 +157,53 @@ export async function deployBundle(
         continue;
       }
 
-      const relativePath = path.relative(placement.baseRoot, dest.to);
-      const sourceBytes = req.files!.get(dest.from);
-      if (sourceBytes === undefined) {
-        continue;
-      }
+      const shape = nameShapeForKind(dest.kind);
 
-      // checksum: SHA256 of the archive's extracted bytes.
-      const checksum = createHash('sha256').update(sourceBytes).digest('hex');
+      if (shape === 'directory') {
+        // Directory kind: record all files in the subtree, not just the primary file.
+        const sourcePrefix = path.posix.dirname(dest.from) + '/';
+        for (const [bundlePath, bytes] of req.files!) {
+          if (!bundlePath.startsWith(sourcePrefix)) {
+            continue;
+          }
+          const tail = bundlePath.slice(sourcePrefix.length);
+          const outPath = path.join(dest.to, tail);
+          const relativePath = path.relative(placement.baseRoot, outPath);
 
-      // installedChecksum: SHA256 of the actually-installed bytes (post-transform).
-      let installedChecksum: string;
-      if (nameShapeForKind(dest.kind) === 'directory') {
-        // For directory kinds, we need to read back what was written.
-        // For now, use the same checksum (no transformation for directory subtrees).
-        installedChecksum = checksum;
+          // checksum: SHA256 of the archive's extracted bytes.
+          const checksum = createHash('sha256').update(bytes).digest('hex');
+
+          // installedChecksum: SHA256 of actually-installed bytes (post-transform).
+          // Directory kinds copy byte-for-byte, so installedChecksum equals checksum.
+          const installedChecksum = checksum;
+
+          fileRecords.push({
+            path: relativePath,
+            checksum,
+            installedChecksum
+          });
+        }
       } else {
-        // For file kinds, compute checksum of written content.
-        const writtenBytes = satisfied.includes(dest.to)
-          ? await ports.fs.readFileBytes(dest.to)
-          : await ports.fs.readFileBytes(dest.to);
-        installedChecksum = createHash('sha256').update(writtenBytes).digest('hex');
-      }
+        // File kind: record the single file.
+        const relativePath = path.relative(placement.baseRoot, dest.to);
+        const sourceBytes = req.files!.get(dest.from);
+        if (sourceBytes === undefined) {
+          continue;
+        }
 
-      fileRecords.push({
-        path: relativePath,
-        checksum,
-        installedChecksum
-      });
+        // checksum: SHA256 of the archive's extracted bytes.
+        const checksum = createHash('sha256').update(sourceBytes).digest('hex');
+
+        // installedChecksum: SHA256 of the actually-installed bytes (post-transform).
+        const writtenBytes = await ports.fs.readFileBytes(dest.to);
+        const installedChecksum = createHash('sha256').update(writtenBytes).digest('hex');
+
+        fileRecords.push({
+          path: relativePath,
+          checksum,
+          installedChecksum
+        });
+      }
     }
 
     const localUpdated = upsertMaterialization(

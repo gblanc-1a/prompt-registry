@@ -6,3 +6,4 @@
  */
 export * from './json-lockfile-store';
 export * from './lockfile-v3';
+export * from './migrate-lockfile-v3';

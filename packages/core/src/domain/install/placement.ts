@@ -75,7 +75,7 @@ export interface PlacementDestination {
 }
 
 /** Context for resolving placements. */
-export interface PlacementContext {
+export interface PlacementResolutionContext {
   /** Absolute root of the target. */
   baseRoot: string;
   /** Layout's kind routes. */
@@ -161,7 +161,7 @@ export function normalizeManifestItems(
  */
 export function resolveDestinations(
   items: NormalizedPlacementItem[],
-  context: PlacementContext
+  context: PlacementResolutionContext
 ): ResolveDestinationsResult {
   const { baseRoot, kindRoutes, allowedKinds } = context;
   const { byKind, unknownKeys } = invertKindRoutes(kindRoutes);
@@ -179,7 +179,7 @@ export function resolveDestinations(
 
     // 2. Check if the layout has a route for this kind.
     const outputDir = byKind.get(item.kind);
-    if (!outputDir) {
+    if (outputDir === undefined) {
       skipped.push({ sourcePath: item.sourcePath, reason: 'unsupported-by-target' });
       continue;
     }

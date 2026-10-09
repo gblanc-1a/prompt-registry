@@ -122,15 +122,18 @@ describe('resolveDestinations', () => {
   });
 
   it('honors allowedKinds by canonical kind, with no alias round-trip', () => {
+    // Filter by 'steering', which has no route in vscodeUserContext, so items
+    // of other kinds are 'filtered' (not 'unsupported-by-target') only if
+    // allowedKinds is checked before the route lookup.
     const { items } = normalizeManifestItems(governed);
 
     const { destinations, skipped } = resolveDestinations(items, {
       ...vscodeUserContext,
-      allowedKinds: ['prompt']
+      allowedKinds: ['steering']
     });
 
-    expect(destinations.map((d) => d.kind)).toEqual(['prompt']);
-    expect(skipped.map((s) => s.reason)).toEqual(['filtered', 'filtered']);
+    expect(destinations).toEqual([]);
+    expect(skipped.map((s) => s.reason)).toEqual(['filtered', 'filtered', 'filtered']);
   });
 
   it('reports two ids that normalize to one destination (Review Focus 3)', () => {

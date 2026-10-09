@@ -3,24 +3,16 @@
  * @module deploy/types
  */
 import type {
+  AppStorage,
   ExtractedFiles,
-} from '@ai-primitives-hub/core';
-import type {
+  FileSystem,
   InstallationScope,
+  PlacementDestination,
   PrimitiveKind,
   RepositoryCommitMode,
   TargetLayout,
   TargetType,
 } from '@ai-primitives-hub/core';
-import type {
-  PlacementDestination,
-} from '@ai-primitives-hub/core';
-import type {
-  AppStorage,
-} from '../ports/app-storage';
-import type {
-  Filesystem,
-} from '../ports/filesystem';
 import type {
   MigrationSources,
 } from '../stores/migrate-lockfile-v3';
@@ -86,52 +78,43 @@ export interface DeployPlan {
   /** Destinations that already exist with identical bytes (no-op). */
   satisfied: string[];
   /** Untracked collisions (existing files we would overwrite). */
-  collisions: DeployConflict[];
+  collisions: { to: string; reason: 'untracked-existing' }[];
   /** Tracked destinations that have drifted from their installedChecksum. */
   drifted: string[];
   /** Tracked destinations that are missing. */
   missing: string[];
   /** Items skipped (unsupported-by-target, filtered, invalid-kind). */
-  skipped: { sourcePath: string; reason: string }[];
+  skipped: { from: string; reason: 'unsupported-by-target' | 'invalid-kind' | 'filtered' }[];
   /** Destinations claimed by more than one id. */
   duplicates: { to: string; ids: string[] }[];
   /** Unknown layout keys. */
   unknownLayoutKeys: string[];
+  /**
+   * Scope or shared-destination conflict (slice 3+).
+   * Typed but unreachable in slice 1.
+   */
+  conflict?: {
+    kind: 'scope' | 'shared-destination';
+    bundleId: string;
+    scope: 'user' | 'repository';
+    at?: string;
+    owner?: { targetName: string; bundleId: string };
+  };
   /** MCP plan (slice 7). */
   mcp: {
-    /** MCP servers to install. */
-    servers: {
-      /** Server name. */
-      name: string;
-      /** Configuration object. */
-      config: unknown;
-    }[];
+    /** Path to the MCP config file (slice 7). */
+    configPath?: string;
+    /** MCP server names to install. */
+    servers: string[];
     /** MCP servers skipped. */
-    skipped: {
-      /** Server name. */
-      name: string;
-      /** Reason. */
-      reason: string;
-    }[];
+    skipped: { name: string; reason: string }[];
   };
-}
-
-/** A deployment conflict. */
-export interface DeployConflict {
-  /** Destination path. */
-  to: string;
-  /** Conflict kind. */
-  kind?: 'shared-destination' | 'untracked-existing';
-  /** Conflict reason (for user-facing messages). */
-  reason?: string;
-  /** Other bundle claiming this destination (kind: shared-destination only, slice 3). */
-  otherBundle?: string;
 }
 
 /** Ports for deployment operations. */
 export interface DeployPorts {
   /** Filesystem port. */
-  fs: Filesystem;
+  fs: FileSystem;
   /** Environment variables. */
   env: Record<string, string | undefined>;
   /** Application storage port. */

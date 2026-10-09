@@ -139,12 +139,51 @@ describe('planDeploy', () => {
     expect(plan.collisions).toEqual([]);
   });
 
+  it('classifies directory-shaped kinds using existence only', async () => {
+    // skill/plugin/power are directory kinds; planDeploy must not call
+    // readFileBytes on them (which would be EISDIR).
+    // Use legacy manifest format to avoid full governed validation.
+    const skillManifest = `id: skills
+version: 1.0.0
+name: Skills
+prompts:
+  - id: my-skill
+    file: skills/my-skill/SKILL.md
+    tags: [skill]`;
+    const skillArchive = new Map([
+      ['deployment-manifest.yml', new TextEncoder().encode(skillManifest)],
+      ['skills/my-skill/SKILL.md', new TextEncoder().encode('# My Skill\n')]
+    ]);
+    const skillRequest = {
+      ...request(),
+      files: skillArchive,
+      placement: {
+        ...request().placement,
+        resolvedLayout: {
+          baseDir: '${HOME}/.copilot',
+          kindRoutes: { 'skills/': 'skills/' },
+          skipPaths: ['deployment-manifest.yml']
+        }
+      }
+    };
+    const files = new Map();
+
+    const plan = await planDeploy(skillRequest, readOnlyPorts(files));
+
+    expect(plan.destinations).toEqual([
+      { kind: 'skill', from: 'skills/my-skill/SKILL.md', to: '/home/u/.copilot/skills/my-skill' }
+    ]);
+    expect(plan.collisions).toEqual([]);
+  });
+
   it('reports drift when a tracked file no longer matches its installedChecksum', async () => {
     // Drift is a materialization fact, so it is read from the local file
     // only — the planner never needs the desired half to answer this.
+    // Use the hash of the source bytes so only the correct comparison passes.
+    const sourceHash = '4dd400c307f4ce1d359cd24c3af26d5ac348a7c3fe0f3fd0beabdf4d582ce67a';
     const files = new Map([
       ['/home/u/.copilot/prompts/hello.prompt.md', '# edited by the user\n'],
-      [LOCAL_FILE, seedLocal([{ path: 'prompts/hello.prompt.md', installedChecksum: 'notthehash' }])]
+      [LOCAL_FILE, seedLocal([{ path: 'prompts/hello.prompt.md', installedChecksum: sourceHash }])]
     ]);
 
     const plan = await planDeploy(request(), readOnlyPorts(files));

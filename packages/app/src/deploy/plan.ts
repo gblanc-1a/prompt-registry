@@ -8,9 +8,14 @@
 import {
   createHash,
 } from 'node:crypto';
+import * as posix from 'node:path/posix';
+import type {
+  ExtractedFiles,
+} from '@ai-primitives-hub/core';
 import {
   getInstallableBundleFiles,
   logicalBundleKey,
+  nameShapeForKind,
   normalizeManifestItems,
   RegistryError,
   resolveDestinations,
@@ -34,8 +39,8 @@ import type {
  * @param request - Deployment request.
  * @param ports - Read-only ports (fs, env, lockfileStore).
  * @returns The deployment plan.
- * @throws {RegistryError} DEPLOY.INVALID_REQUEST when neither bytes nor files is given.
- * @throws {RegistryError} DEPLOY.ARCHIVE_MISMATCH when expectedArchiveSha is present and doesn't match.
+ * @throws {RegistryError} BUNDLE.INVALID_DEPLOY_REQUEST when neither bytes nor files is given.
+ * @throws {RegistryError} BUNDLE.ARCHIVE_MISMATCH when expectedArchiveSha is present and doesn't match.
  */
 export async function planDeploy(
   request: DeployRequest,
@@ -43,10 +48,13 @@ export async function planDeploy(
 ): Promise<DeployPlan> {
   const { files, bytes, expectedArchiveSha, bundle, source, placement } = request;
 
+  // Compute bundle key once for both lockfile lookup and return value.
+  const bundleKey = logicalBundleKey({ sourceId: source.sourceId, manifestId: bundle.bundleId });
+
   // 1. Validate exactly one of bytes/files.
   if ((files === undefined) === (bytes === undefined)) {
     throw new RegistryError({
-      code: 'BUNDLE.INVALID_REQUEST',
+      code: 'BUNDLE.INVALID_DEPLOY_REQUEST',
       message: 'Deploy request must specify exactly one of bytes or files'
     });
   }
@@ -71,19 +79,22 @@ export async function planDeploy(
   }
 
   // 3. Extract or use provided files, validate manifest, narrow to installable.
-  let extractedFiles: Map<string, Uint8Array>;
+  let extractedFiles: ExtractedFiles;
   if (files === undefined) {
     // In a real implementation, we would extract from bytes here.
     // For this slice, the test only passes files.
     throw new RegistryError({
-      code: 'BUNDLE.INVALID_REQUEST',
+      code: 'BUNDLE.INVALID_DEPLOY_REQUEST',
       message: 'Archive extraction not yet implemented in slice 1'
     });
   } else {
     extractedFiles = files;
   }
 
-  const manifest = validateManifest(extractedFiles, { skipIntegrityCheck: true });
+  // Full validation runs on every plan: sha256 + byte size + complete
+  // inventory coverage. No skipIntegrityCheck option exists, and adding
+  // one is a core contract change outside this task.
+  const manifest = validateManifest(extractedFiles, {});
   const installableFiles = getInstallableBundleFiles(extractedFiles, manifest);
 
   // 4. Normalize manifest items and resolve destinations.
@@ -100,6 +111,9 @@ export async function planDeploy(
   });
 
   // 5. Read the lockfile pair to get materialization records.
+  // Note: readLockfileV3Pair throws UnsupportedLockfileVersionError on an
+  // un-migrated v2 local file, so planDeploy refuses rather than planning
+  // when migration has not run.
   const { pair } = await readLockfileV3Pair(
     ports.lockfileStore,
     ports.fs,
@@ -111,12 +125,11 @@ export async function planDeploy(
   const trackedFiles = new Map<string, { checksum: string }>();
   const targetRecord = local.targets[request.targetName];
   if (targetRecord) {
-    const bundleKey = logicalBundleKey({ sourceId: source.sourceId, manifestId: bundle.bundleId });
     const bundleRecord = targetRecord.bundles[bundleKey];
     if (bundleRecord) {
       for (const file of bundleRecord.files) {
         if (file.installedChecksum) {
-          const absolutePath = `${targetRecord.baseDir}/${file.path}`;
+          const absolutePath = posix.join(targetRecord.baseDir, file.path);
           trackedFiles.set(absolutePath, { checksum: file.installedChecksum });
         }
       }
@@ -130,39 +143,48 @@ export async function planDeploy(
   const missing: string[] = [];
 
   for (const dest of destinations) {
-    const { to, from } = dest;
+    const { to, from, kind } = dest;
     const exists = await ports.fs.exists(to);
     const tracked = trackedFiles.get(to);
+    const isDirectory = nameShapeForKind(kind) === 'directory';
 
     if (tracked) {
-      // Tracked file.
+      // Tracked destination.
       if (exists) {
-        // Check for drift: compare on-disk hash to installedChecksum.
-        const content = await ports.fs.readFileBytes(to);
-        const hash = createHash('sha256').update(content).digest('hex');
-        if (hash !== tracked.checksum) {
-          drifted.push(to);
+        if (!isDirectory) {
+          // Check for drift: compare on-disk hash to installedChecksum.
+          const content = await ports.fs.readFileBytes(to);
+          const hash = createHash('sha256').update(content).digest('hex');
+          if (hash !== tracked.checksum) {
+            drifted.push(to);
+          }
+          // Otherwise, the file is tracked and matches — will be overwritten.
         }
-        // Otherwise, the file is tracked and matches — will be overwritten.
+        // Directory kinds: existence check only; per-file drift is Task 10.
       } else {
         // Tracked but missing.
         missing.push(to);
       }
     } else {
-      // Untracked file.
+      // Untracked destination.
       if (exists) {
-        // Check if byte-identical.
-        const content = await ports.fs.readFileBytes(to);
-        const fileContent = installableFiles.get(from);
-        if (fileContent && arraysEqual(content, fileContent)) {
-          // Satisfied: already on disk with identical bytes.
-          satisfied.push(to);
-        } else {
-          // Collision: untracked and different.
+        if (isDirectory) {
+          // Directory kinds: present + untracked → collision.
           collisions.push({ to, reason: 'untracked-existing' });
+        } else {
+          // File kinds: check if byte-identical.
+          const content = await ports.fs.readFileBytes(to);
+          const fileContent = installableFiles.get(from);
+          if (fileContent && arraysEqual(content, fileContent)) {
+            // Satisfied: already on disk with identical bytes.
+            satisfied.push(to);
+          } else {
+            // Collision: untracked and different.
+            collisions.push({ to, reason: 'untracked-existing' });
+          }
         }
       }
-      // Otherwise, the file is untracked and absent — will be written.
+      // Otherwise, the destination is untracked and absent — will be written.
     }
   }
 
@@ -178,7 +200,6 @@ export async function planDeploy(
   }
 
   // 7. Return the plan.
-  const bundleKey = logicalBundleKey({ sourceId: source.sourceId, manifestId: bundle.bundleId });
   return {
     bundleKey,
     destinations,
@@ -187,7 +208,7 @@ export async function planDeploy(
     drifted,
     missing,
     skipped: [...rejected, ...skipped].map((s) => ({
-      sourcePath: s.sourcePath,
+      from: s.sourcePath,
       reason: s.reason
     })),
     duplicates,

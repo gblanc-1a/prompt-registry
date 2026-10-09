@@ -22,7 +22,6 @@ import {
 } from '@ai-primitives-hub/core';
 import type {
   Lockfile,
-  LockfileFsWithRename,
 } from './json-lockfile-store';
 import {
   emptyDesiredLockfileV3,
@@ -33,6 +32,7 @@ import {
 } from './lockfile-v3';
 import type {
   LocalLockfileV3,
+  LockfileFsWithRename,
   LockfileV3BundleRecord,
   LockfileV3DesiredEntry,
   LockfileV3Pair,

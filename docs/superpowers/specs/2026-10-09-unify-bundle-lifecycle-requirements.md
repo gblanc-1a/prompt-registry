@@ -37,19 +37,19 @@ designer added on their own initiative are deliberately **excluded** — see
 | FR-13 | Enumerate additional scenario combinations beyond those named, and produce a lockfile solution covering all of them. Additional or different files are permitted. | stated | "Do not hesitate to formulate additional combination hypothesis and come up with a lockfile solution that cover all of it. You can also consider using different /additional files." |
 | FR-14 | Present at least two distinct lockfile solutions with a recommendation and reasoning. | stated | "Propose me at least 2 different solutions and which one you recommend and why." |
 | FR-15 | The lockfile must support a future workflow where one CLI command installs to a specific target, avoiding the need to commit files for all harness types. | stated | "My goal later will be to with one cli command to install to a specific target (to avoid having to commit the files for all harness types)" |
-| FR-16 | Repository-level lockfile migration must occur **only** when an update or installation happens — never merely from opening the repository in VS Code — so no dangling change appears in the user's working tree. User-level migration is not subject to this restriction. | stated | "for lockfiles that are at repository level and not at user level the migration should happens only when an update / installation is happening to not create a dangling change for the user just open opening their repository in vscode" |
+| FR-16 | **AMENDED — see [§5](#5-amendments-after-review).** Repository-level lockfile migration must occur **only** when an update or installation happens — never merely from opening the repository in VS Code — so no dangling change appears in the user's working tree. User-level migration is not subject to this restriction. | stated | "for lockfiles that are at repository level and not at user level the migration should happens only when an update / installation is happening to not create a dangling change for the user just open opening their repository in vscode" |
 | FR-17 | Delete the legacy committed lockfile once migrated. | chosen | Selected "Delete it" (qualified by FR-16) |
 | FR-18 | Migration must properly account for the fact that most existing lockfiles were created by the VS Code extension, not the CLI, and that the two formats diverge today. | stated | "most lockfile that exist today would be lockfile created by the vscode extension as the cli is not widely used compared to the extension. Is the migration considering this properly ? As there are divergence between the lockfile of the extension and the one from the cli today." |
 | FR-19 | Cover all three installation scopes. | chosen | Selected "All three scopes" |
 | FR-20 | A shared lockfile is the single source of truth for what is installed at user scope. | chosen | Selected "Shared user lockfile" |
-| FR-21 | User-scope installs place real file copies, not symlinks. | chosen | Selected "Real file copies" |
+| FR-21 | **AMENDED — see [§5](#5-amendments-after-review).** User-scope installs place real file copies, not symlinks. | chosen | Selected "Real file copies" |
 | FR-22 | Workspace scope should behave like the repository installation scope, targeting the main repo of the workspace file. | stated | "actually workspace match more the repository installation scope targeting the main repo of the workspace file" |
 | FR-23 | Exactly one repository-style scope exists; the `workspace` label is retired. | chosen | Selected "One scope: repository" |
 | FR-24 | The one-shot transfer runs automatically at activation. | chosen | Selected "Automatic at activation" |
 | FR-25 | An `apm` source in an existing hub config or lockfile produces a warning and is skipped; the rest of the hub loads normally. | chosen | Selected "Warn and skip" |
 | FR-26 | MCP writes go to the portable destinations only. | chosen | Selected "Portable only" |
 | FR-27 | No committed per-file checksums; verification is by re-derivation. | chosen | Selected "No — re-derivation is enough" |
-| FR-28 | A developer may exclude a committed bundle and may pin a different version locally; local wins. | chosen | Selected "Exclude list + local version pin" |
+| FR-28 | **SUPERSEDED — see [§5](#5-amendments-after-review).** A developer may exclude a committed bundle and may pin a different version locally; local wins. | chosen | Selected "Exclude list + local version pin" |
 
 ## 2. Non-functional requirements
 
@@ -93,7 +93,7 @@ treat them as open to challenge rather than as fixed constraints:
 - the `app/deploy` module boundary and the "bundle bytes + scope" seam
 - manifest-driven routing on `PrimitiveKind`, and the naming rules per kind shape
 - the desired-vs-materialized lockfile split, schema `3.0.0`, and the two-file layout
-- `reconcile` and its `(bundleId, version, targetType)` comparison key
+- `reconcile` and its comparison key, now `(logicalBundleKey, version, sourceId, targetType)`
 - the `resolveBundle` / `readBundleFiles` / link-identity port additions
 - the `unifiedDeploy` feature flag and the twelve vertical slices
 - retiring the MCP tracking sidecar; folding MCP state into materialization records
@@ -104,7 +104,28 @@ Two of these were shaped by requester questions without being requested outright
 lockfile split answers FR-10/FR-11/FR-13, and the flag answers NFR-5/NFR-6. They should be
 reviewed as *proposed means* to those ends, not as the ends themselves.
 
-## 5. Suggested review questions
+## 5. Amendments after review
+
+An independent review (2026-10-09) audited the design against this list. Where design and
+requirement genuinely disagreed, the question went back to the requester. Their answers below
+**change this contract**, so a later reviewer should audit against the amended form. Rationale
+for each is in the design's §14.
+
+| ID | Change | Amended requirement |
+|---|---|---|
+| FR-16 | **Amended** | Repository migration may also be triggered by an **uninstall**. The binding constraint is unchanged: merely *opening* a repository must never migrate or write. Install, update and uninstall are the three permitted triggers; reconcile, the update scheduler and source sync are not |
+| FR-21 | **Amended by exception** | Bundle installs at user scope place real file copies. A `local-skills` install keeps its **live directory link**, because the link is the feature rather than the defect FR-3 reported. The exception is named and bounded; no other case links |
+| FR-28 | **Superseded** | There is no local desired state — no `excludes` list and no local version pin. The committed lockfile is the only desired state, and a developer who wants to diverge edits it and does not commit the diff. Git is the override mechanism |
+| FR-7 | **Extended** | APM authoring support (the validate command and `apm.schema.json`) is retired as well, in an **independent PR** outside the lifecycle delivery sequence |
+
+Four further requirements were **not** changed, but had an open interpretation that is now
+fixed: FR-22 (a multi-root workspace resolves to the first listed folder that is a git
+repository), FR-26 (portable-only concerns the four `servers`-keyed VS Code entries, not a
+claim about all 11 hosts), FR-27 (re-derivation has a local-state tier that always runs and a
+full tier that needs a cached manifest), and FR-18 (legacy non-default-profile MCP configs are
+reported rather than migrated).
+
+## 6. Suggested review questions
 
 1. Does each FR/NFR have a specific, locatable answer in the design, or only a gesture at one?
 2. Does the design satisfy NFR-1 / NFR-2 / NFR-3, or has it accumulated machinery the

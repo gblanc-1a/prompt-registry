@@ -18,6 +18,14 @@ import type {
   MigrationSources,
 } from '../stores/migrate-lockfile-v3';
 
+/** Identifies one logical bundle version (design §3.1, §5.13). Shared by deploy and undeploy requests so the shape is declared once. */
+export interface LogicalBundleRef {
+  /** Bundle ID. */
+  bundleId: string;
+  /** Semantic version. */
+  version: string;
+}
+
 /** Deployment request. */
 export interface DeployRequest {
   /** Extracted files, when the caller already has them. */
@@ -27,12 +35,7 @@ export interface DeployRequest {
   /** Expected archive checksum (sha256:hex), when verification is required. */
   expectedArchiveSha?: string;
   /** Bundle identity. */
-  bundle: {
-    /** Bundle ID. */
-    bundleId: string;
-    /** Semantic version. */
-    version: string;
-  };
+  bundle: LogicalBundleRef;
   /** Source identity. */
   source: {
     /** Source ID. */
@@ -143,19 +146,20 @@ export type DeployEvent =
   | { kind: 'place'; path: string }
   | { kind: 'state-write' };
 
-/** Undeployment request. */
+/** Undeployment request (design §3.1). */
 export interface UndeployRequest {
   /** Bundle key (sourceId/bundleId). */
   key: string;
   /** Bundle identity. */
-  bundle: {
-    /** Bundle ID. */
-    bundleId: string;
-    /** Semantic version. */
-    version: string;
-  };
-  /** Installation scope. */
-  scope: InstallationScope;
+  bundle: LogicalBundleRef;
+  /** Installation scope. Narrower than `InstallationScope`: the legacy 'workspace' scope has no v3 undeploy path. */
+  scope: 'user' | 'repository';
   /** Target name. */
   targetName: string;
+  /**
+   * Workspace root, required at repository scope (design §3.1). Unused by
+   * `undeployBundle` itself: the materialization record already carries its
+   * own `baseDir`, so no re-derivation from the workspace root is needed.
+   */
+  workspaceRoot?: string;
 }

@@ -46,6 +46,22 @@ View logs: `View → Output → AI Primitives Hub`
 - Check repository visibility (public/private)
 - Wait if rate-limited
 
+### CLI Says a Lockfile Was Written by a Newer Version
+
+A `status`, `update`, `install` or `uninstall` command of the `ai-primitives-hub` CLI stops with:
+
+```text
+<path>/ai-primitives-hub.lock.json was written by a newer version of AI Primitives Hub (lockfile schema 3.x). Upgrade AI Primitives Hub, or disable unifiedDeploy and retry.
+```
+
+The file named in the message lives in the CLI configuration directory (`${XDG_CONFIG_HOME:-~/.config}/ai-primitives-hub/`). It is in the new `3.0.0` format because an earlier `install` or `uninstall` ran with the experimental `AI_PRIMITIVES_HUB_UNIFIED_DEPLOY` switch enabled. Commands that do not understand that format refuse to run instead of guessing, and they change nothing. Your installed files are not affected.
+
+- **Upgrade the CLI.** This is the supported path: later releases teach more commands to read the new format.
+- **Run `install` and `uninstall` with the switch enabled** (`AI_PRIMITIVES_HUB_UNIFIED_DEPLOY=1`). With it set, they read and update this state. Unsetting the switch makes them refuse too, until it is set again.
+- **`status` and `update` cannot read this state yet,** whether or not the switch is set, so they keep refusing while the files exist.
+
+This release does not provide a downgrade procedure. The switch is off by default, so you only see this message if you turned it on. See [Installation Flow](../contributor-guide/architecture/installation-flow.md#unified-deploy-user-scope-behind-a-flag) for what the switch does.
+
 ### Hub Not Displaying After Selection
 
 If you selected a hub but it doesn't appear in the Registry Explorer:

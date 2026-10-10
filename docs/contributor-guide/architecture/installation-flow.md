@@ -84,6 +84,142 @@ flowchart TD
     U --> AA
 ```
 
+## Unified Deploy (User Scope, Behind a Flag)
+
+The flows above describe the extension and the legacy CLI path. A second path, the shared deploy pipeline in `packages/app/src/deploy/` (`planDeploy`, `deployBundle`, `undeployBundle`), is reachable from the CLI `install` and `uninstall` commands when a feature flag is enabled. See [ADR-0008](./adr/0008-unified-bundle-deploy-and-lockfile-v3.md) for the decision.
+
+**The flag is off by default, and the legacy path is unchanged.** With the flag unset, no command reads or writes the `3.0.0` lockfiles described here, and every command behaves as before. The VS Code extension does not use this path yet: its `promptregistry.unifiedDeploy` setting is wired in a later slice and is not available.
+
+### Enabling the flag
+
+Set `AI_PRIMITIVES_HUB_UNIFIED_DEPLOY` in the environment of the CLI process:
+
+| Value | Meaning |
+|-------|---------|
+| `1`, `true`, `yes` | Enabled (case-insensitive) |
+| `0`, `false`, `no`, unset, empty | Disabled (the default) |
+| anything else | Rejected as an error; the command does not run |
+
+The source-aware authentication variables in [Source Authentication](./authentication.md) are specific to GitHub credentials; this flag is unrelated to them.
+
+### Supported scope and targets
+
+- **User scope only.** An absent scope is treated as user, as the legacy path does. Any other scope, repository included, is refused with `BUNDLE.UNSUPPORTED_SCOPE` before the bundle, the network or any lockfile is read. The hint is to unset the variable. Repository scope arrives in a later slice, and a half-migrated repository is the one state that cannot converge, so it is refused rather than approximated.
+- **Targets.** Any target type whose layout resolves can be used. The verified, tested target in this slice is `vscode`, whose user-scope base directory is `~/.copilot` (`prompts/`, `instructions/`, `agents/`, `skills/`, and so on).
+- **Commands.** `install` (`--from <dir>`, a remote `<bundle> --source <owner/repo>`, and `--lockfile` replay) and `uninstall` (`--bundle`, `--all`). `uninstall --lockfile` and a bare `uninstall`, which auto-detects a lockfile, are refused with `BUNDLE.UNSUPPORTED_SCOPE` because they operate on lockfile files that may be repository state.
+
+### Pipeline
+
+```mermaid
+flowchart TD
+    A[install] --> B[Fetch and extract bundle]
+    B --> C[Validate manifest and file inventory]
+    C --> D{Dry run?}
+    D -->|Yes| P[planDeploy, read only]
+    P --> R{Lockfile is 2.x?}
+    R -->|Yes| S[Refuse: CONFIG.LOCKFILE_NOT_MIGRATED]
+    R -->|No| Q[Report the plan, write nothing]
+    D -->|No| E{Lockfile is 2.x?}
+    E -->|Yes| F[Migrate to the 3.0.0 pair]
+    E -->|No| G[Plan]
+    F --> G
+    G --> H{Tracked files modified?}
+    H -->|Yes, force not set| X[Refuse: BUNDLE.DEPLOY_DRIFT]
+    H -->|No, or force set| I[Place files]
+    I --> J[Record: write local file, then desired file]
+    J --> K[MCP servers and git exclude: later slices]
+```
+
+Notes on the order:
+
+- **Record before MCP.** The record is written before any MCP configuration edit, so a crash between them leaves a tracked entry with no server and never a live server with no owner (design §6.7, §9.2). MCP and git-exclude steps do not exist in this slice; the order is fixed now so a later slice inserts them after the record rather than reordering.
+- **Overwrites happen last**, after the bundle is extracted, validated and planned, so the common failures never reach existing files.
+- **Migration** runs before the plan, on a real run only. A dry run never migrates and never writes.
+
+### Placement
+
+- **Manifest-driven.** A file is named from the normalized manifest id and routed by the kind the manifest declares for it, not by its path prefix. A manifest item `reviewer` of kind `agent` stored at `agents/code-reviewer.agent.md` is installed as `agents/reviewer.agent.md`. An item declared `instructions` under `prompts/` lands in `instructions/`.
+- **Only declared items.** `README.md` and any file that is not a manifest item are never installed.
+- **Regular files, not links.** Each file is written, then read back and compared against the bytes intended (see [Binary Safety](#binary-safety-and-integrity-verification)).
+- **Skipped items** are reported with a reason: `unsupported-by-target`, `invalid-kind` or `filtered`.
+
+### Collisions, drift and `--force`
+
+| Situation | Without `--force` | With `--force` |
+|-----------|-------------------|----------------|
+| A file destination exists, has no record, and its bytes differ. For a skill, plugin or power directory: the directory exists and has no record | Reported under `collisions` and skipped. The install still exits `0`, with status `warning` | Overwritten |
+| A file destination exists, has no record, and is byte-identical to what would be written | `satisfied`: nothing is written, and the record is still created. This is what lets a retry converge | Same |
+| A destination has a record, and its bytes no longer match the recorded `installedChecksum` (locally modified) | The deploy is refused with `BUNDLE.DEPLOY_DRIFT`, naming the files | Overwritten |
+
+`--force` exists on `install` only and has no effect on `uninstall`. It is also inert when the flag is off.
+
+### Failure and retry
+
+Deploys are not transactional (design §9.2):
+
+- If a failure happens after an existing file was overwritten, the installation can contain mixed content. The overwritten bytes are not restored.
+- Files that the failed call created are removed.
+- Re-running the same command converges, because a byte-identical untracked file is `satisfied`.
+- The pair is written local first, then desired. If the desired write fails after the local write, a local record remains, and the retry converges.
+- An untracked skill, plugin or power directory is always reported as a collision, even when its contents are identical, so such a retry needs `--force`.
+
+### Records on disk
+
+At user scope the state is two files under the XDG config root, `${XDG_CONFIG_HOME:-~/.config}/ai-primitives-hub/`. Both carry `version: "3.0.0"` and are described by `lockfile-v3.schema.json`.
+
+| File | Role | Contents |
+|------|------|----------|
+| `ai-primitives-hub.lock.json` | Desired state, shareable | `$schema`, `version`, `bundles` keyed by `{sourceId}/{manifestId}` (`version`, `sourceId`, optional `archiveSha`), `sources` (`type`, `url`, optional `branch`, `collectionsPath`), optional `hubs`, `profiles`. No `targets`, `generatedAt`, `generatedBy`, `installedAt`, `baseDir` or per-file records |
+| `ai-primitives-hub.local.lock.json` | Materialization on this machine | `version`, `generatedAt`, `generatedBy`, optional `migration.lockfileV3`, and `targets[name]` with `targetType`, `scope`, `baseDir` and `bundles[key]` (`version`, `sourceId`, `installedAt`, optional `state` and `unmanagedReason`, and `files[]`) |
+
+Each `files[]` entry has a `path` relative to `baseDir` in POSIX form, a `checksum` of the bytes in the archive, and an `installedChecksum` of the bytes actually written, which differs when a transformer changed the content. Remote installs do not record `archiveSha` yet.
+
+```json
+{
+  "$schema": "https://github.com/AmadeusITGroup/ai-primitives-hub/schemas/lockfile-v3.schema.json",
+  "version": "3.0.0",
+  "bundles": { "local-web-dev/web-dev": { "version": "1.0.0", "sourceId": "local-web-dev" } },
+  "sources": { "local-web-dev": { "type": "local", "url": "/path/to/web-dev" } }
+}
+```
+
+The repository-scope files keep their `prompt-registry.*` names and the `2.0.0` schema until a later slice (see [Lockfile Management](#lockfile-management)).
+
+### Uninstall
+
+`uninstall --bundle <id|sourceId/bundleId> --target <name>` and `uninstall --all --target <name>`:
+
+- **Resolution.** A bare id resolves to the logical key `{sourceId}/{bundleId}` among that target's records. If two sources offer the same id, the command is refused with `BUNDLE.AMBIGUOUS_ID`, naming both keys; pass the full key. A bundle that is not installed produces a warning, exit code `0`, and writes nothing.
+- **Removal follows the record.** Only the recorded on-disk paths are removed, and nothing is recomputed from the manifest. Files the user wrote next to them are left alone. A recorded path that is absolute or escapes the base directory is skipped, never removed. Empty directories may remain.
+- **Desired state** for a key is dropped only when no other target still holds that bundle.
+- **`--all`** removes every bundle the target records. It never drops entries that are desired but not installed on the target; it lists them as `desiredOnly`. A named uninstall of such a key drops the desired entry. If a bundle fails midway, the output lists the bundles completed and a `failure` (`key`, `reason`), the later bundles are not attempted, and the exit code is non-zero.
+- **Unmanaged record.** If the target's record for the key is `state: 'unmanaged'`, uninstall drops the record, leaves its files in place, and reports the `unmanagedReason`.
+
+### `install --lockfile` replay
+
+With the flag on, `install --lockfile` accepts only the user desired file, compared as a resolved path. A repository lockfile, any other path, and a bare `install` that auto-detects a project `prompt-registry.lock.json` are refused with `BUNDLE.UNSUPPORTED_SCOPE`.
+
+Each desired entry is deployed from the source descriptor recorded under `sources`, at exactly the pinned version. If that version is absent from the source, the entry fails; the latest version is never substituted. The other entries continue, failures are reported as `failures: [{ key, reason }]`, and the exit code is `1` if any entry failed. `--dry-run` plans every entry and writes nothing.
+
+### Migration from a 2.x user lockfile
+
+An existing `2.x` file at `ai-primitives-hub.lock.json` is converted to the `3.0.0` pair on the first flag-on write, install or uninstall. The local half is written first, then the desired half, and `migration.lockfileV3: 'complete'` is written last, so an interrupted migration resumes by running the command again (design §8.3, §8.4).
+
+In this slice the migration does not try to prove where a legacy record's files went. Every migrated bundle, other than the one the triggering install is about to record afresh, is kept under the reserved `unmanaged` target as `state: 'unmanaged'`, with an `unmanagedReason` and its original file paths. Flag-on commands never delete those files. Uninstall works within one named target and these records are not under a configured target, so no uninstall in this slice reaches them. The migration report (`migration.migrated`, and `migration.unmanaged[]` with `key` and `reason`) is shown in JSON and text output.
+
+### Output
+
+`install` reports `target`, `bundle`, `written`, `skipped` and `lockfile`, plus `collisions`, `satisfied` and `migration`. The text output says `Updated <path>` only when a lockfile changed, and `Lockfile unchanged` otherwise.
+
+### Known limits in this slice
+
+- Deploys are not transactional (above).
+- Remote installs do not persist `archiveSha`.
+- The replay loop of `install --lockfile` and the `--all` loop of `uninstall` live in the CLI and move toward `app` later.
+- `uninstall --lockfile` and a bare `uninstall` are unsupported until repository scope lands.
+- Only `vscode` is a verified target.
+- `status`, `update` and any command without a flag-on path cannot read `3.0.0` state; see [Troubleshooting](../../user-guide/troubleshooting.md#cli-says-a-lockfile-was-written-by-a-newer-version).
+
 ## Binary Safety and Integrity Verification
 
 Bundle files are copied to the target byte-for-byte and verified after every write:
@@ -441,3 +577,5 @@ prompts:
 - [Adapters](./adapters.md) — URL vs Buffer installation
 - [MCP Integration](./mcp-integration.md) — MCP server installation
 - [Update System](./update-system.md) — Update checking and application
+- [ADR-0008: Unified Bundle Deploy and Lockfile 3.0.0](./adr/0008-unified-bundle-deploy-and-lockfile-v3.md) — Decision behind the flag-on path
+- [Source Authentication](./authentication.md) — Credentials used when fetching bundles

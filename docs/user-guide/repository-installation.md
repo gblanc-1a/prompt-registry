@@ -143,6 +143,19 @@ The local lockfile is automatically added to `.git/info/exclude` when created, e
 
 The local lockfile (`prompt-registry.local.lock.json`) is automatically excluded from Git and should not be committed.
 
+### CLI User-Scope Lockfiles (Preview)
+
+Installs made with the `ai-primitives-hub` CLI at user scope are recorded outside any repository, in the CLI configuration directory (`${XDG_CONFIG_HOME:-~/.config}/ai-primitives-hub/`). They never touch the repository lockfiles above, and the VS Code extension does not read them.
+
+By default the CLI keeps a single `ai-primitives-hub.lock.json` there. If you enable the experimental `AI_PRIMITIVES_HUB_UNIFIED_DEPLOY` switch, user-scope installs use a newer format that splits the record into two files by role:
+
+| File | What it is for | Safe to share? |
+|------|----------------|----------------|
+| `ai-primitives-hub.lock.json` | What you want installed: bundles, their versions, and the sources they come from | Yes. It holds nothing specific to your machine |
+| `ai-primitives-hub.local.lock.json` | What this machine actually installed: target, folder, every file written, and its checksums | No. It is specific to this machine |
+
+An existing `ai-primitives-hub.lock.json` in the older format is converted on the first `install` or `uninstall` run with the switch on. If a command then reports that a lockfile "was written by a newer version", see [Troubleshooting](./troubleshooting.md#cli-says-a-lockfile-was-written-by-a-newer-version).
+
 ## Moving Bundles Between Scopes
 
 Right-click an installed bundle in the Registry Explorer to access scope management options:

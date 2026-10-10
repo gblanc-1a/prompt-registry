@@ -93,12 +93,22 @@ checking its version.
 - **Negative:** deploys are not transactional (§9.2). A failure after an
   existing file was overwritten can leave mixed content, and bytes that were
   overwritten are not restored. Only files the failed call created are removed.
-  Re-running the same command converges, with one exception: an untracked
-  skill, plugin or power directory is always reported as a collision, even
-  when its contents are identical, so such a retry needs `--force`. A failed
-  desired-file write after a successful local write leaves a local record that
-  the retry converges.
-- **Negative, slice 1 only:** remote installs do not persist `archiveSha` yet;
+  Re-running the identical request converges when the files already equal what
+  would be written, including skill, plugin and power subtree files and upgrades
+  whose recorded checksums still describe the older version. Satisfied bytes
+  take precedence over drift because no overwrite is needed. Other tracked
+  differences remain protected; differing untracked files remain collisions.
+  Structured failures report the stage, written/created/removed paths and cleanup
+  outcomes. A failed desired-file write after a successful local write leaves a
+  recoverable local record.
+- **Positive:** directory ownership is per file, not per directory. Uninstall
+  preserves destinations another record still holds. Redeploy refuses a changed
+  target root, retires unchanged old-only files after state commits, and retains
+  modified old-only files with their records and reports them. Symbolic links
+  below the configured placement root are refused; replacement/adoption remains
+  a later slice.
+- **Negative, slice 1 only:** new remote installs do not persist `archiveSha` yet
+  (existing verified pins survive same-key, same-version redeploy);
   the replay loop of `install --lockfile` and the `--all` loop of `uninstall`
   live in `packages/cli` and move toward `app` later; flagged
   `uninstall --lockfile` and bare `uninstall` are refused until repository

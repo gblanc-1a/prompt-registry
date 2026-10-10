@@ -151,7 +151,7 @@ By default the CLI keeps a single `ai-primitives-hub.lock.json` there. If you en
 
 | File | What it is for | Safe to share? |
 |------|----------------|----------------|
-| `ai-primitives-hub.lock.json` | What you want installed: bundles, their versions, and the sources they come from | Yes. It holds nothing specific to your machine |
+| `ai-primitives-hub.lock.json` | What you want installed: bundles, their versions, and the sources they come from | When source URLs are portable. Local sources can contain absolute paths specific to your machine; review those before sharing |
 | `ai-primitives-hub.local.lock.json` | What this machine actually installed: target, folder, every file written, and its checksums | No. It is specific to this machine |
 
 An existing `ai-primitives-hub.lock.json` in the older format is converted on the first `install` or `uninstall` run with the switch on. If a command then reports that a lockfile "was written by a newer version", see [Troubleshooting](./troubleshooting.md#cli-says-a-lockfile-was-written-by-a-newer-version).

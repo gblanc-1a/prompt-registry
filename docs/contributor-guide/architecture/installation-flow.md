@@ -138,34 +138,38 @@ Notes on the order:
 
 - **Record before MCP.** The record is written before any MCP configuration edit, so a crash between them leaves a tracked entry with no server and never a live server with no owner (design §6.7, §9.2). MCP and git-exclude steps do not exist in this slice; the order is fixed now so a later slice inserts them after the record rather than reordering.
 - **Overwrites happen last**, after the bundle is extracted, validated and planned, so the common failures never reach existing files.
-- **Migration** runs before the plan, on a real run only. A dry run never migrates and never writes.
+- **Safety preflight** validates the inventory, destination link identities, target binding and source conflicts before migration can write. Migration then runs before the state-backed plan, on a real run only. A dry run never migrates and never writes.
 
 ### Placement
 
 - **Manifest-driven.** A file is named from the normalized manifest id and routed by the kind the manifest declares for it, not by its path prefix. A manifest item `reviewer` of kind `agent` stored at `agents/code-reviewer.agent.md` is installed as `agents/reviewer.agent.md`. An item declared `instructions` under `prompts/` lands in `instructions/`.
-- **Only declared items.** `README.md` and any file that is not a manifest item are never installed.
-- **Regular files, not links.** Each file is written, then read back and compared against the bytes intended (see [Binary Safety](#binary-safety-and-integrity-verification)).
+- **Validated inventory.** File kinds place declared items. Directory kinds expand installable files below the item's source root, including an archive-root `SKILL.md`. Governed metadata and ignored roles are excluded from planning, placement and recording.
+- **Regular files, not links.** Each file is written, then read back and compared against the bytes intended (see [Binary Safety](#binary-safety-and-integrity-verification)). A symbolic-link destination or ancestor below the configured root is refused with `BUNDLE.UNSAFE_DESTINATION`, even with `--force`; the configured root itself may be a directory link.
 - **Skipped items** are reported with a reason: `unsupported-by-target`, `invalid-kind` or `filtered`.
 
 ### Collisions, drift and `--force`
 
 | Situation | Without `--force` | With `--force` |
 |-----------|-------------------|----------------|
-| A file destination exists, has no record, and its bytes differ. For a skill, plugin or power directory: the directory exists and has no record | Reported under `collisions` and skipped. The install still exits `0`, with status `warning` | Overwritten |
-| A file destination exists, has no record, and is byte-identical to what would be written | `satisfied`: nothing is written, and the record is still created. This is what lets a retry converge | Same |
-| A destination has a record, and its bytes no longer match the recorded `installedChecksum` (locally modified) | The deploy is refused with `BUNDLE.DEPLOY_DRIFT`, naming the files | Overwritten |
+| A physical file destination exists, has no record, and its bytes differ, including a new child of a previously installed skill directory | Reported under `collisions` and skipped. The install still exits `0`, with status `warning` | Overwritten |
+| A physical file is byte-identical to what would be written, whether tracked or untracked, including directory subtree files | `satisfied`: nothing is written, and the record is still created or updated. This lets identical retries converge even when the old baseline differs | Same |
+| A recorded file differs from both its `installedChecksum` and the bytes this request would write | The deploy is refused with `BUNDLE.DEPLOY_DRIFT`, naming the files | Overwritten |
 
 `--force` exists on `install` only and has no effect on `uninstall`. It is also inert when the flag is off.
+
+Normalized items claiming one destination are deterministic: the first wins and later duplicates are skipped and reported as `duplicates`. A target whose recorded `baseDir` differs from the new placement root is refused before writes with `BUNDLE.TARGET_REBOUND`: uninstall first or restore the target path. A conflicting source type or URL cannot replace a descriptor still referenced by another desired key (`BUNDLE.SOURCE_CONFLICT`); uninstall the other bundle or choose a distinct source path.
+
+After successful redeploy, old-only inventory files are retired only when their bytes match their recorded `installedChecksum` and no other record owns them. Modified, shared or unsafe old-only paths are retained on disk and in the record and reported as `retained`, never silently forgotten.
 
 ### Failure and retry
 
 Deploys are not transactional (design §9.2):
 
 - If a failure happens after an existing file was overwritten, the installation can contain mixed content. The overwritten bytes are not restored.
-- Files that the failed call created are removed.
-- Re-running the same command converges for files, because a byte-identical untracked file is `satisfied`. Untracked skill, plugin or power directories are the exception (last bullet).
+- Cleanup removes only files the failed call created, including tracked-but-missing paths; previously existing files stay in place. Cleanup is best-effort and failures are reported.
+- Re-running the identical request converges for file kinds and directory kinds because byte-identical destinations are `satisfied`, even against an older installed checksum. A genuine edit whose bytes differ from the requested payload still requires `--force`.
 - The pair is written local first, then desired. If the desired write fails after the local write, a local record remains, and the retry converges.
-- An untracked skill, plugin or power directory is always reported as a collision, even when its contents are identical, so such a retry needs `--force`.
+- After effects begin, a `LifecycleError` extends `RegistryError`, preserves the original diagnostic/cause, and carries `details`, also serialized as `context.appliedEffects`: `stage`, `written`, `created`, `removed`, `cleanedUp`, and `cleanupFailures`. CLI JSON errors expose these effects in `data` and error context; text lists applied paths. Replay and bulk uninstall preserve the failing bundle's error context and exit non-zero. Pre-effect refusals remain unwrapped.
 
 ### Records on disk
 
@@ -173,10 +177,10 @@ At user scope the state is two files under the XDG config root, `${XDG_CONFIG_HO
 
 | File | Role | Contents |
 |------|------|----------|
-| `ai-primitives-hub.lock.json` | Desired state, shareable | `$schema`, `version`, `bundles` keyed by `{sourceId}/{manifestId}` (`version`, `sourceId`, optional `archiveSha`), `sources` (`type`, `url`, optional `branch`, `collectionsPath`), optional `hubs`, `profiles`. No `targets`, `generatedAt`, `generatedBy`, `installedAt`, `baseDir` or per-file records |
+| `ai-primitives-hub.lock.json` | Desired state, shareable when its source URLs are portable | `$schema`, `version`, `bundles` keyed by `{sourceId}/{manifestId}` (`version`, `sourceId`, optional `archiveSha`), `sources` (`type`, `url`, optional `branch`, `collectionsPath`), optional `hubs`, `profiles`. No `targets`, `generatedAt`, `generatedBy`, `installedAt`, `baseDir` or per-file records; local source URLs can be absolute machine paths |
 | `ai-primitives-hub.local.lock.json` | Materialization on this machine | `version`, `generatedAt`, `generatedBy`, optional `migration.lockfileV3`, and `targets[name]` with `targetType`, `scope`, `baseDir` and `bundles[key]` (`version`, `sourceId`, `installedAt`, optional `state` and `unmanagedReason`, and `files[]`) |
 
-Each `files[]` entry has a `path` relative to `baseDir` in POSIX form, a `checksum` of the bytes in the archive, and an `installedChecksum` of the bytes actually written, which differs when a transformer changed the content. Remote installs do not record `archiveSha` yet.
+Each `files[]` entry has a `path` relative to `baseDir` in POSIX form, a `checksum` of the bytes in the archive, and an `installedChecksum` of the bytes actually written, which differs when a transformer changed the content. New remote installs do not record `archiveSha` yet; a verified pin already present is preserved for the same key and version, and dropped on a version change.
 
 ```json
 {
@@ -194,26 +198,26 @@ The repository-scope files keep their `prompt-registry.*` names and the `2.0.0` 
 `uninstall --bundle <id|sourceId/bundleId> --target <name>` and `uninstall --all --target <name>`:
 
 - **Resolution.** A bare id resolves to the logical key `{sourceId}/{bundleId}` among that target's records. If two sources offer the same id, the command is refused with `BUNDLE.AMBIGUOUS_ID`, naming both keys; pass the full key. A bundle that is not installed produces a warning, exit code `0`, and writes nothing.
-- **Removal follows the record.** Only the recorded on-disk paths are removed, and nothing is recomputed from the manifest. Files the user wrote next to them are left alone. A recorded path that is absolute or escapes the base directory is skipped, never removed. Empty directories may remain.
+- **Removal follows the record.** Only recorded on-disk paths are removed; nothing is recomputed from the manifest. Untracked siblings stay. Noncanonical POSIX-relative paths (including backslashes, drive/UNC forms, absolute paths and dot segments), links and linked ancestors are skipped and reported. Paths another record still owns are skipped and reported as `shared`. Empty directories may remain.
 - **Desired state** for a key is dropped only when no other target still holds that bundle.
-- **`--all`** removes every bundle the target records. It never drops entries that are desired but not installed on the target; it lists them as `desiredOnly`. A named uninstall of such a key drops the desired entry. If a bundle fails midway, the output lists the bundles completed and a `failure` (`key`, `reason`), the later bundles are not attempted, and the exit code is non-zero.
+- **`--all`** removes every bundle the target records. It never drops entries desired but not installed on the target; it lists them as `desiredOnly`. A named uninstall of such a key drops desired intent. If a bundle fails midway, output lists completed bundles and a `failure` (`key`, `reason`, structured `error` when available), later bundles are not attempted, and the exit code is non-zero.
 - **Unmanaged record.** If the target's record for the key is `state: 'unmanaged'`, uninstall drops the record, leaves its files in place, and reports the `unmanagedReason`.
 
 ### `install --lockfile` replay
 
 With the flag on, `install --lockfile` accepts only the user desired file, compared as a resolved path. A repository lockfile, any other path, and a bare `install` that auto-detects a project `prompt-registry.lock.json` are refused with `BUNDLE.UNSUPPORTED_SCOPE`.
 
-Each desired entry is deployed from the source descriptor recorded under `sources`, at exactly the pinned version. If that version is absent from the source, the entry fails; the latest version is never substituted. The other entries continue, failures are reported as `failures: [{ key, reason }]`, and the exit code is `1` if any entry failed. `--dry-run` plans every entry and writes nothing.
+Each desired entry is deployed according to the recorded source descriptor's `type`, never a name-prefix guess, at exactly the pinned version. If that version is absent, the entry fails; latest is never substituted. Other entries continue, failures are reported as `failures: [{ key, reason, error? }]`, and the exit code is `1` if any entry failed. `--dry-run` plans every entry and writes nothing.
 
 ### Migration from a 2.x user lockfile
 
 An existing `2.x` file at `ai-primitives-hub.lock.json` is converted to the `3.0.0` pair on the first flag-on write, install or uninstall. The local half is written first, then the desired half, and `migration.lockfileV3: 'complete'` is written last, so an interrupted migration resumes by running the command again (design §8.3, §8.4).
 
-In this slice the migration does not try to prove where a legacy record's files went. Every migrated bundle, other than the one the triggering install is about to record afresh, is kept under the reserved `unmanaged` target as `state: 'unmanaged'`, with an `unmanagedReason` and its original file paths. Flag-on commands never delete those files. Uninstall works within one named target and these records are not under a configured target, so no uninstall in this slice reaches them. The migration report (`migration.migrated`, and `migration.unmanaged[]` with `key` and `reason`) is shown in JSON and text output.
+In this slice migration does not try to prove where legacy files went. Every migrated bundle except the triggering install is kept under reserved `unmanaged`, with `state: 'unmanaged'`, its reason and original paths. `uninstall --bundle <legacy-id|key> --target <real-target>` can clear a key held only there: files stay, the reason is shown, and its record and last desired entry are dropped. A real-target match wins; ambiguity still requires a full key. Bulk uninstall lists only the real target's records. Migration reports are shown in JSON and text. An existing unreadable or unsupported local half stops migration before writes; a readable v3 half remains resumable.
 
 ### Output
 
-`install` reports `target`, `bundle`, `written`, `skipped` and `lockfile`, plus `collisions`, `satisfied` and `migration`. The text output says `Updated <path>` only when a lockfile changed, and `Lockfile unchanged` otherwise.
+`install` reports `target`, `bundle`, `written`, `skipped` and `lockfile`, plus `collisions`, `satisfied` and `migration`, and non-empty `duplicates`, `retained` and `retired` lists. Text describes duplicate destinations and retained old files. It says `Updated <path>` only when a lockfile changed, and `Lockfile unchanged` otherwise.
 
 ### Known limits in this slice
 

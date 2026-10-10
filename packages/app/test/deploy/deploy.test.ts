@@ -259,6 +259,23 @@ describe('deployBundle', () => {
     expect(ports.files.has(ports.lockfileStore.localFile)).toBe(false);
   });
 
+  it('cleans only confirmed new files when the second placement fails after the first succeeded', async () => {
+    const ports = recordingPorts({ failWriteAt: 2 });
+    const first = '/home/u/.copilot/prompts/hello.prompt.md';
+    const second = '/home/u/.copilot/prompts/second.prompt.md';
+    const unrelated = '/home/u/.copilot/prompts/user.prompt.md';
+    ports.files.set(unrelated, '# user-owned\n');
+    await expect(deployBundle({ ...request(), files: twoItemArchive() }, ports)).rejects.toMatchObject({
+      code: 'BUNDLE.DEPLOY_FAILED',
+      context: { appliedEffects: {
+        stage: 'place', written: [first], created: [first], cleanedUp: [first], cleanupFailures: []
+      } }
+    });
+    expect(ports.files.has(first)).toBe(false);
+    expect(ports.files.has(second)).toBe(false);
+    expect(ports.files.get(unrelated)).toBe('# user-owned\n');
+  });
+
   it('preserves a pre-existing clean prompt after an upgrade fails at state-write', async () => {
     const ports = recordingPorts();
     await deployBundle(upgradePromptRequest(promptArchive('1.0.0', '# V1\n'), '1.0.0'), ports);

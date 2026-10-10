@@ -236,9 +236,13 @@ export async function deployBundle(req: DeployRequest, ports: DeployPorts): Prom
     }
     const cleanedUp: string[] = [];
     const cleanupFailures: { path: string; message: string }[] = [];
+    const confirmedCreated = created.filter((filePath) => written.includes(filePath));
     for (const filePath of created) {
       try {
         if (await ports.fs.exists(filePath)) {
+          if (!confirmedCreated.includes(filePath)) {
+            confirmedCreated.push(filePath);
+          }
           await ports.fs.remove(filePath);
           cleanedUp.push(filePath);
         }
@@ -252,7 +256,7 @@ export async function deployBundle(req: DeployRequest, ports: DeployPorts): Prom
     throw new LifecycleError('deploy', cause, {
       stage,
       written: [...written, ...state.written],
-      created: [...created, ...state.created],
+      created: [...confirmedCreated, ...state.created],
       cleanedUp: [...cleanedUp, ...state.cleanedUp],
       cleanupFailures: [...cleanupFailures, ...state.cleanupFailures],
       removed: [...retired, ...state.removed]

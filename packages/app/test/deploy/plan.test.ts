@@ -1,0 +1,215 @@
+import {
+  createHash,
+} from 'node:crypto';
+import {
+  describe,
+  expect,
+  it,
+} from 'vitest';
+import {
+  planDeploy,
+} from '../../src/deploy/plan';
+import {
+  LOCAL_FILE,
+  request,
+  seedLocal,
+} from './fixtures';
+
+const rejectOnWrite = (label: string) => () => {
+  throw new Error(`planDeploy must not write (${label})`);
+};
+
+/**
+ * Ports that reject every mutation, per §10: a dry-run guarantee is
+ * asserted by injecting ports that refuse to mutate, not by checking
+ * that an output file is absent.
+ * @param files
+ */
+const readOnlyPorts = (files: Map<string, string>) => ({
+  fs: {
+    readFile: async (p: string) => {
+      const v = files.get(p);
+      if (v === undefined) {
+        throw new Error(`ENOENT ${p}`);
+      }
+      return v;
+    },
+    readFileBytes: async (p: string) => new TextEncoder().encode(files.get(p) ?? ''),
+    exists: async (p: string) => files.has(p),
+    lstat: async () => ({ isDirectory: false, isFile: true, isSymbolicLink: false, size: 0, mtimeMs: 0 }),
+    stat: async () => ({ isDirectory: false, isFile: true, size: 0, mtimeMs: 0 }),
+    writeFile: rejectOnWrite('writeFile'),
+    writeFileBytes: rejectOnWrite('writeFileBytes'),
+    writeJson: rejectOnWrite('writeJson'),
+    mkdir: rejectOnWrite('mkdir'),
+    remove: rejectOnWrite('remove'),
+    rename: rejectOnWrite('rename'),
+    readJson: async (p: string) => JSON.parse(files.get(p) ?? 'null'),
+    readDir: async () => [],
+    readDirEntries: async () => []
+  },
+  env: { HOME: '/home/u' },
+  appStorage: {
+    getPaths: () => {
+      throw new Error('planDeploy must not resolve storage roots');
+    },
+    getState: rejectOnWrite('getState'),
+    setState: rejectOnWrite('setState')
+  },
+  // The pair, not a single file. Only these two strings change at
+  // repository scope — everything else about the store is identical.
+  lockfileStore: {
+    desiredFile: '/home/u/.config/ai-primitives-hub/ai-primitives-hub.lock.json',
+    localFile: '/home/u/.config/ai-primitives-hub/ai-primitives-hub.local.lock.json',
+    legacyFiles: []
+  }
+});
+
+describe('planDeploy', () => {
+  it('plans destinations without writing through any port', async () => {
+    const plan = await planDeploy(request(), readOnlyPorts(new Map()));
+
+    expect(plan.destinations).toEqual([
+      { kind: 'prompt', from: 'prompts/hello.prompt.md', to: '/home/u/.copilot/prompts/hello.prompt.md' }
+    ]);
+    expect(plan.collisions).toEqual([]);
+    expect(plan.satisfied).toEqual([]);
+  });
+
+  it('reports an untracked pre-existing destination as a collision, not drift', async () => {
+    const files = new Map([['/home/u/.copilot/prompts/hello.prompt.md', '# hand-written\n']]);
+
+    const plan = await planDeploy(request(), readOnlyPorts(files));
+
+    expect(plan.collisions).toEqual([
+      { to: '/home/u/.copilot/prompts/hello.prompt.md', reason: 'untracked-existing' }
+    ]);
+    expect(plan.drifted).toEqual([]);
+  });
+
+  it('reports an untracked but byte-identical destination as satisfied, not a collision', async () => {
+    // §9.3: the retry-after-a-failed-state-write case is a no-op.
+    const files = new Map([['/home/u/.copilot/prompts/hello.prompt.md', '# Hello Prompt\n']]);
+
+    const plan = await planDeploy(request(), readOnlyPorts(files));
+
+    expect(plan.satisfied).toEqual(['/home/u/.copilot/prompts/hello.prompt.md']);
+    expect(plan.collisions).toEqual([]);
+  });
+
+  it('classifies directory-shaped kinds using existence only', async () => {
+    // skill/plugin/power are directory kinds; planDeploy must not call
+    // readFileBytes on them (which would be EISDIR).
+    // Use legacy manifest format to avoid full governed validation.
+    const skillManifest = `id: skills
+version: 1.0.0
+name: Skills
+prompts:
+  - id: my-skill
+    file: skills/my-skill/SKILL.md
+    tags: [skill]`;
+    const skillArchive = new Map([
+      ['deployment-manifest.yml', new TextEncoder().encode(skillManifest)],
+      ['skills/my-skill/SKILL.md', new TextEncoder().encode('# My Skill\n')]
+    ]);
+    const skillRequest = {
+      ...request(),
+      files: skillArchive,
+      placement: {
+        ...request().placement,
+        resolvedLayout: {
+          baseDir: '${HOME}/.copilot',
+          kindRoutes: { 'skills/': 'skills/' },
+          skipPaths: ['deployment-manifest.yml']
+        }
+      }
+    };
+    const files = new Map();
+
+    const plan = await planDeploy(skillRequest, readOnlyPorts(files));
+
+    expect(plan.destinations).toEqual([
+      { kind: 'skill', from: 'skills/my-skill/SKILL.md', to: '/home/u/.copilot/skills/my-skill' }
+    ]);
+    expect(plan.collisions).toEqual([]);
+  });
+
+  it('reports drift when a tracked file no longer matches its installedChecksum', async () => {
+    // Drift is a materialization fact, so it is read from the local file
+    // only — the planner never needs the desired half to answer this.
+    const files = new Map([
+      ['/home/u/.copilot/prompts/hello.prompt.md', '# edited by the user\n'],
+      [LOCAL_FILE, seedLocal([{ path: 'prompts/hello.prompt.md', installedChecksum: 'wrong-hash' }])]
+    ]);
+
+    const plan = await planDeploy(request(), readOnlyPorts(files));
+
+    expect(plan.drifted).toEqual(['/home/u/.copilot/prompts/hello.prompt.md']);
+    expect(plan.collisions).toEqual([]);
+  });
+
+  it('a transformed file matching its installedChecksum is not drift', async () => {
+    // Design §5.8: installedChecksum exists to handle transformed files that
+    // differ from source bytes but match what was actually written. Drift is
+    // computed against installedChecksum, not source bytes.
+    //
+    // This test discriminates the correct implementation from one that compares
+    // on-disk bytes to source: on-disk content differs from source but matches
+    // installedChecksum, so correct implementation reports no drift while wrong
+    // implementation would report drift.
+    const transformedContent = '# Hello Prompt (transformed)\n';
+    const transformedHash = createHash('sha256').update(transformedContent).digest('hex');
+    const files = new Map([
+      ['/home/u/.copilot/prompts/hello.prompt.md', transformedContent],
+      [LOCAL_FILE, seedLocal([{ path: 'prompts/hello.prompt.md', installedChecksum: transformedHash }])]
+    ]);
+
+    const plan = await planDeploy(request(), readOnlyPorts(files));
+
+    expect(plan.drifted).toEqual([]);
+    expect(plan.collisions).toEqual([]);
+  });
+
+  it('reports a tracked file that has disappeared as missing', async () => {
+    const files = new Map([
+      [LOCAL_FILE, seedLocal([{ path: 'prompts/gone.prompt.md', installedChecksum: 'a'.repeat(64) }])]
+    ]);
+
+    const plan = await planDeploy(request(), readOnlyPorts(files));
+
+    expect(plan.missing).toEqual(['/home/u/.copilot/prompts/gone.prompt.md']);
+  });
+
+  it('plans from the local file alone when the desired half is absent', async () => {
+    // §8.4's legal intermediate state: local written, desired not yet.
+    const files = new Map([
+      ['/home/u/.copilot/prompts/hello.prompt.md', '# Hello Prompt\n'],
+      [LOCAL_FILE, seedLocal([{ path: 'prompts/hello.prompt.md', installedChecksum: 'notthehash' }])]
+    ]);
+
+    const plan = await planDeploy(request(), readOnlyPorts(files));
+
+    expect(plan.drifted).toEqual([]);
+    expect(plan.satisfied).toEqual(['/home/u/.copilot/prompts/hello.prompt.md']);
+  });
+
+  it('carries an empty MCP section — MCP joins shared deploy in slice 7', async () => {
+    const plan = await planDeploy(request(), readOnlyPorts(new Map()));
+
+    expect(plan.mcp).toEqual({ servers: [], skipped: [] });
+  });
+
+  it('refuses a request carrying neither bytes nor files', async () => {
+    const bad = { ...request(), files: undefined };
+
+    await expect(planDeploy(bad, readOnlyPorts(new Map())))
+      .rejects.toThrow(/exactly one of/);
+  });
+
+  it('compares expectedArchiveSha before planning any effect', async () => {
+    const bad = { ...request(), expectedArchiveSha: 'sha256:wrong' };
+
+    await expect(planDeploy(bad, readOnlyPorts(new Map())))
+      .rejects.toThrow(/archive/i);
+  });
+});

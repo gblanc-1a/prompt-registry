@@ -305,7 +305,7 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
       const lockfileBundleId = 'lockfile-bundle-v2.0.0';
       const mockLockfile = {
         $schema: 'https://github.com/AmadeusITGroup/prompt-registry/schemas/lockfile.schema.json',
-        version: '1.0.0',
+        version: '2.0.0',
         generatedAt: new Date().toISOString(),
         generatedBy: 'prompt-registry@1.0.0',
         bundles: {
@@ -401,7 +401,7 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
 
       const mockLockfile = {
         $schema: 'https://github.com/AmadeusITGroup/prompt-registry/schemas/lockfile.schema.json',
-        version: '1.0.0',
+        version: '2.0.0',
         generatedAt: new Date().toISOString(),
         generatedBy: 'prompt-registry@1.0.0',
         bundles: {
@@ -492,7 +492,7 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
 
       const mockLockfile = {
         $schema: 'https://github.com/AmadeusITGroup/prompt-registry/schemas/lockfile.schema.json',
-        version: '1.0.0',
+        version: '2.0.0',
         generatedAt: new Date().toISOString(),
         generatedBy: 'prompt-registry@1.0.0',
         bundles: {
@@ -551,7 +551,7 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
 
       const mockLockfile = {
         $schema: 'https://github.com/AmadeusITGroup/prompt-registry/schemas/lockfile.schema.json',
-        version: '1.0.0',
+        version: '2.0.0',
         generatedAt: new Date().toISOString(),
         generatedBy: 'prompt-registry@1.0.0',
         bundles: {
@@ -764,7 +764,7 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
 
       const mockLockfile = {
         $schema: 'https://github.com/AmadeusITGroup/prompt-registry/schemas/lockfile.schema.json',
-        version: '1.0.0',
+        version: '2.0.0',
         generatedAt: new Date().toISOString(),
         generatedBy: 'prompt-registry@1.0.0',
         bundles: {
@@ -866,7 +866,7 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
 
       const mockLockfile = {
         $schema: 'https://github.com/AmadeusITGroup/prompt-registry/schemas/lockfile.schema.json',
-        version: '1.0.0',
+        version: '2.0.0',
         generatedAt: new Date().toISOString(),
         generatedBy: 'prompt-registry@1.0.0',
         bundles: {
@@ -944,7 +944,7 @@ suite('E2E: Lockfile as Single Source of Truth Tests', () => {
 
       const mockLockfile = {
         $schema: 'https://github.com/AmadeusITGroup/prompt-registry/schemas/lockfile.schema.json',
-        version: '1.0.0',
+        version: '2.0.0',
         generatedAt: new Date().toISOString(),
         generatedBy: 'prompt-registry@1.0.0',
         bundles: {

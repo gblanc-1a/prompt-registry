@@ -20,10 +20,23 @@
 export interface FileStat {
   isDirectory: boolean;
   isFile: boolean;
-  /** Bytes; 0 for directories. */
+  /** Bytes for files; platform-dependent for directories (callers should not rely on it). */
   size: number;
   /** Last-modified time, epoch milliseconds. */
   mtimeMs: number;
+}
+
+/**
+ * `FileStat` plus link identity. Produced only by `lstat`, which does
+ * **not** follow symlinks — `stat` does, so it can never answer "is this
+ * path itself a link?".
+ *
+ * Required, not optional: shared `app` code needs it to refuse writing
+ * through a symlink into a cache or into a user's live source directory,
+ * and that guard is unimplementable without it (design 3.2, 4.8).
+ */
+export interface LinkStat extends FileStat {
+  isSymbolicLink: boolean;
 }
 
 /**
@@ -58,5 +71,21 @@ export interface FileSystem {
   /** Like `readDir`, but with type information — avoids a stat-per-entry scan. */
   readDirEntries(path: string): Promise<DirEntry[]>;
   stat(path: string): Promise<FileStat>;
+  /**
+   * Stat a path without following a final symlink.
+   *
+   * Note the limit this does not remove: a child path under a
+   * symlinked *directory* lstats as an ordinary file, so a caller
+   * guarding writes must walk the ancestors it is about to write
+   * under, not just the destination (design 4.8).
+   * @param path - Path to stat.
+   */
+  lstat(path: string): Promise<LinkStat>;
+  /**
+   * Rename (move) a file atomically from one path to another.
+   * @param from - Source path.
+   * @param to - Destination path.
+   */
+  rename(from: string, to: string): Promise<void>;
   remove(path: string, opts?: { recursive?: boolean }): Promise<void>;
 }

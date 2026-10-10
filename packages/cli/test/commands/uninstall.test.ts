@@ -16,6 +16,9 @@ import {
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {
+  resolveUserConfigPaths,
+} from '@ai-primitives-hub/app';
+import {
   NodeFileSystem,
 } from '@ai-primitives-hub/infra';
 import {
@@ -173,6 +176,24 @@ describe('uninstall command', () => {
     expect(envelope.data.removed.length).toBeGreaterThan(0);
     await expect(readFile(repositoryFile, 'utf8')).rejects.toThrow();
     await expect(readFile(envelope.data.lockfile, 'utf8')).rejects.toThrow();
+  });
+
+  it('uninstalls from an explicit --lockfile when unified deploy is off', async () => {
+    const lockfile = resolveUserConfigPaths({
+      HOME: workspace,
+      USERPROFILE: workspace,
+      XDG_CONFIG_HOME: path.join(workspace, 'xdg-config'),
+      XDG_CACHE_HOME: path.join(workspace, 'xdg-cache')
+    }).userLockfile;
+
+    const result = await run(['uninstall', '--lockfile', lockfile, '--target', 'copilot', '-o', 'json']);
+
+    expect(result.exitCode).toBe(0);
+    const { data } = parseJson<{ lockfile: string; uninstalled: number; bundles: { id: string; removed: number }[] }>(result.stdout);
+    expect(data.lockfile).toBe(lockfile);
+    expect(data.uninstalled).toBe(1);
+    expect(data.bundles).toEqual([{ id: 'local-foo', removed: 1 }]);
+    await expect(readFile(installedFile(), 'utf8')).rejects.toThrow();
   });
 
   it('--all removes every installed bundle for the target', async () => {

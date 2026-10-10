@@ -35,4 +35,11 @@ describe('resolveUserConfigPaths', () => {
     expect(paths.tokenCache).toBe(path.join(root, 'token'));
     expect(paths.userLockfile).toBe(path.join(root, 'ai-primitives-hub.lock.json'));
   });
+
+  it('resolves the user-scope lockfile pair under one XDG root', () => {
+    const paths = resolveUserConfigPaths({ XDG_CONFIG_HOME: '/cfg' });
+
+    expect(paths.userLockfile).toBe('/cfg/ai-primitives-hub/ai-primitives-hub.lock.json');
+    expect(paths.userLocalLockfile).toBe('/cfg/ai-primitives-hub/ai-primitives-hub.local.lock.json');
+  });
 });

@@ -100,6 +100,8 @@ const STUB_FS: FsAbstraction = {
   readDir: rejectFsCall,
   readDirEntries: rejectFsCall,
   stat: rejectFsCall,
+  lstat: rejectFsCall,
+  rename: rejectFsCall,
   remove: rejectFsCall
 };
 

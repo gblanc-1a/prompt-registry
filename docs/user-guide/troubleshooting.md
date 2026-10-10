@@ -46,6 +46,24 @@ View logs: `View → Output → AI Primitives Hub`
 - Check repository visibility (public/private)
 - Wait if rate-limited
 
+### CLI Says a Lockfile Was Written by a Newer Version
+
+A `status`, `update`, `install`, `uninstall`, `profile activate`, `profile deactivate` or `apply` command of the `ai-primitives-hub` CLI can stop with:
+
+```text
+<path>/ai-primitives-hub.lock.json was written by a newer version of AI Primitives Hub (lockfile schema 3.x). Upgrade AI Primitives Hub, or disable unifiedDeploy and retry.
+```
+
+The example file lives in the CLI configuration directory (`${XDG_CONFIG_HOME:-~/.config}/ai-primitives-hub/`). An earlier experimental switch-enabled install or uninstall wrote the `3.0.0` format. Commands that cannot read it refuse instead of guessing, before writing lockfiles or bundle files. `--dry-run` previews can return before this gate; a successful preview does not prove a subsequent real run can read the state.
+
+`profile activate`, `profile deactivate` and `apply` preflight every affected target's lockfiles before changing anything. A refusal leaves existing profiles active, activation records and hub state unchanged, and repository and user files untouched—even with mixed-scope targets. `apply` checks before hub sync too. Because older activation records do not identify their targets, reactivation conservatively checks all configured targets when a previous profile is active, including targets outside a new `--target` selection.
+
+- **Upgrade the CLI.** This is the supported path: later releases teach more commands to read the new format.
+- **Run `install` and `uninstall` with the switch enabled** (`AI_PRIMITIVES_HUB_UNIFIED_DEPLOY=1`). With it set, they read and update this state. Unsetting the switch makes them refuse too, until it is set again.
+- **`status`, `update`, `profile activate`, `profile deactivate` and `apply` cannot read this state yet,** whether or not the switch is set, so affected real runs keep refusing while the files exist.
+
+The message suggests disabling `unifiedDeploy`, but unsetting the switch does not restore access to state that a switch-enabled command already wrote as `3.0.0`: those commands keep refusing. This release does not provide a downgrade procedure. The switch is off by default, so you only see this message if you turned it on. See [Installation Flow](../contributor-guide/architecture/installation-flow.md#unified-deploy-user-scope-behind-a-flag) for what the switch does.
+
 ### Hub Not Displaying After Selection
 
 If you selected a hub but it doesn't appear in the Registry Explorer:

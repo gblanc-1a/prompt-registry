@@ -18,12 +18,22 @@
 import * as path from 'node:path';
 import {
   checksumFiles,
+  deployBundle,
+  type DeployPorts,
+  type DeployRequest,
+  type DeployResult,
   emptyLockfile,
   FileTreeTargetWriter,
   type Lockfile,
   type LockfileBundleEntry,
+  LockfileGenerationMismatchError,
   type LockfileSourceEntry,
+  type LockfileV3Pair,
+  migrateLockfileIfNeeded,
+  type PlacementContext,
+  planDeploy,
   readLockfile,
+  readLockfileV3Pair,
   resolveUserConfigPaths,
   type TargetWriter,
   TransformerRegistry,
@@ -46,6 +56,7 @@ import type {
 import {
   getInstallableBundleFiles,
   parseBundleSpec,
+  parseLogicalBundleKey,
   validateManifest,
 } from '@ai-primitives-hub/core';
 import {
@@ -73,6 +84,15 @@ import {
   ZipBundleExtractor,
 } from '@ai-primitives-hub/infra';
 import {
+  assertUnifiedDeploySupported,
+  buildDeployPorts,
+  buildPlacementContext,
+  renderMigration,
+  runtimeAssetRootFor,
+  transformerFor,
+  unifiedDeployRequested,
+} from '../deploy-wiring';
+import {
   Command,
   createHubManager,
   failWith,
@@ -91,6 +111,7 @@ import {
   type OutputFormat,
   readTargetsSafely,
   RegistryError,
+  renderAppliedEffects,
   resolveEffectiveTarget,
   resolveTarget,
   resolveTargetName,
@@ -268,6 +289,12 @@ export interface InstallOptions {
   /** Dry-run: validate + plan the install but write nothing. */
   dryRun?: boolean;
   /**
+   * Deploy over locally modified files and untracked collisions. Honored
+   * only when `AI_PRIMITIVES_HUB_UNIFIED_DEPLOY` is enabled; inert on the
+   * legacy path.
+   */
+  force?: boolean;
+  /**
    * Comma-separated allowlist of target names this run is permitted
    * to write to. Defense-in-depth for CI; refuses any --target outside
    * the set even if the target is configured.
@@ -354,6 +381,8 @@ export class InstallCommand extends BaseInstallCommand {
         --source <hub-id>       Hub ID to list bundles from (use with --interactive for selection)
         --interactive           Interactive mode: select bundles from a list
         --dry-run               Validate and plan without writing
+        --force                 Deploy over locally modified files and untracked collisions
+                                (only with AI_PRIMITIVES_HUB_UNIFIED_DEPLOY enabled; ignored otherwise)
         --scope <scope>         Installation scope (user or repository)
         --commit-mode <mode>    Commit mode for repository scope
         --verbose               Show detailed progress and error messages
@@ -373,6 +402,7 @@ export class InstallCommand extends BaseInstallCommand {
   public source = Option.String('--source');
   public interactive = Option.Boolean('--interactive', false);
   public dryRun = Option.Boolean('--dry-run');
+  public force = Option.Boolean('--force');
   public scope = Option.String('--scope');
   public commitMode = Option.String('--commit-mode');
   public verbose = Option.Boolean('--verbose', false);
@@ -392,6 +422,7 @@ export class InstallCommand extends BaseInstallCommand {
       target: this.target,
       from: this.from,
       dryRun: this.dryRun,
+      force: this.force,
       source: this.source,
       interactive: this.interactive,
       allowTarget: this.allowTarget,
@@ -842,6 +873,160 @@ function checkAllowTarget(targetName: string, opts: InstallOptions): void {
   }
 }
 
+interface UnifiedInstallArgs {
+  ctx: Context;
+  fmt: OutputFormat;
+  target: Target;
+  dryRun: boolean;
+  force: boolean;
+  request: Omit<DeployRequest, 'force'>;
+  /** Extra keys merged into the output `data` (e.g. remote `source` and `sha256`). */
+  extra?: Record<string, unknown>;
+}
+
+type UnifiedMigration = DeployResult['migration'];
+
+type RemoteSourceDescriptor = Pick<DeployRequest['source'], 'type' | 'url' | 'branch' | 'collectionsPath'>;
+
+/**
+ * Describe the source a remote install actually resolved from: the configured
+ * source's own URL when there is one, then the enterprise host the GitHub App
+ * preflight resolved, and only then the github.com slug recipe.
+ * @param repoSlug Resolved `owner/repo` slug.
+ * @param sourceConfig Configured source, when the install was source-aware.
+ * @param repositoryTarget Preflight-resolved repository target, when GitHub App auth is on.
+ * @returns Descriptor fields for `DeployRequest.source`.
+ */
+function remoteSourceDescriptor(
+  repoSlug: string,
+  sourceConfig: RegistrySource | undefined,
+  repositoryTarget: GitHubRepositoryTarget | undefined
+): RemoteSourceDescriptor {
+  const fallbackUrl = repositoryTarget === undefined
+    ? `https://github.com/${repoSlug}`
+    : `https://${repositoryTarget.host}/${repositoryTarget.owner}/${repositoryTarget.repository}`;
+  const branch = sourceConfig?.config?.branch;
+  const collectionsPath = sourceConfig?.config?.collectionsPath;
+  return {
+    type: sourceConfig?.type ?? 'github',
+    url: sourceConfig?.url === undefined || sourceConfig.url.length === 0 ? fallbackUrl : sourceConfig.url,
+    ...(typeof branch === 'string' && branch.length > 0 ? { branch } : {}),
+    ...(typeof collectionsPath === 'string' && collectionsPath.length > 0 ? { collectionsPath } : {})
+  };
+}
+
+/**
+ * Read the lockfile pair's raw contents, `null` for an absent file, so a run can
+ * report whether it actually changed them.
+ * @param ctx CLI context.
+ * @param paths Lockfile pair paths.
+ * @param paths.desiredFile Desired-state file path.
+ * @param paths.localFile Local materialization file path.
+ * @returns Raw contents of the desired and local files.
+ */
+async function snapshotLockfiles(
+  ctx: Context,
+  paths: { desiredFile: string; localFile: string }
+): Promise<(string | null)[]> {
+  return await Promise.all([paths.desiredFile, paths.localFile].map(
+    async (file) => await ctx.fs.exists(file) ? await ctx.fs.readFile(file) : null
+  ));
+}
+
+const unifiedPortsFor = (ctx: Context, target: Target): DeployPorts => ({
+  ...buildDeployPorts(ctx, { scope: 'user' }),
+  transformer: transformerFor(target)
+});
+
+const dryRunNotMigrated = (cause: LockfileGenerationMismatchError): RegistryError => new RegistryError({
+  code: 'CONFIG.LOCKFILE_NOT_MIGRATED',
+  message: `install: the lockfile at ${cause.file} is a v${cause.found} lockfile and has not been migrated to v${cause.expected}, so a dry run cannot plan against it.`,
+  hint: 'Run the install without --dry-run to migrate it — migration runs on install, never on a dry run.',
+  context: { file: cause.file, found: cause.found, expected: cause.expected },
+  cause
+});
+
+/**
+ * Flag-on install: plan (dry-run) or deploy through `app/deploy`, then render
+ * the legacy envelope keys plus `collisions`, `satisfied` and `migration`.
+ * @param args Install arguments.
+ * @returns Exit code.
+ */
+async function runUnifiedInstall(args: UnifiedInstallArgs): Promise<number> {
+  const {
+    ctx, fmt, target, dryRun, force, request, extra
+  } = args;
+  const ports = unifiedPortsFor(ctx, target);
+  const bundle = { id: request.bundle.bundleId, version: request.bundle.version };
+
+  if (dryRun) {
+    const plan = await planDeploy({ ...request, force }, ports).catch((cause: unknown) => {
+      // Migration runs on install, never on a dry run, so a v2 lockfile cannot be planned against.
+      throw cause instanceof LockfileGenerationMismatchError ? dryRunNotMigrated(cause) : cause;
+    });
+    formatOutput({
+      ctx,
+      command: 'install',
+      output: fmt,
+      status: 'ok',
+      data: {
+        dryRun: true,
+        target: target.name,
+        bundle,
+        files: [...(request.files?.keys() ?? [])],
+        destinations: plan.destinations.map((d) => d.to),
+        skipped: plan.skipped,
+        collisions: plan.collisions,
+        satisfied: plan.satisfied,
+        drifted: plan.drifted,
+        ...(plan.duplicates.length === 0 ? {} : { duplicates: plan.duplicates }),
+        ...extra
+      },
+      textRenderer: (d) => `Dry run: would install ${d.bundle.id}@${d.bundle.version} `
+        + `(${d.destinations.length} destination${d.destinations.length === 1 ? '' : 's'}, `
+        + `${d.collisions.length} collision${d.collisions.length === 1 ? '' : 's'}, `
+        + `${d.satisfied.length} already satisfied) into target "${d.target}".\n`
+    });
+    return 0;
+  }
+
+  const before = await snapshotLockfiles(ctx, ports.lockfileStore);
+  const result = await deployBundle({ ...request, force }, ports);
+  const after = await snapshotLockfiles(ctx, result.lockfiles);
+  const lockfileUpdated = before.some((content, i) => content !== after[i]);
+  formatOutput({
+    ctx,
+    command: 'install',
+    output: fmt,
+    status: result.collisions.length > 0 || result.retained.length > 0 || result.duplicates.length > 0 ? 'warning' : 'ok',
+    data: {
+      target: target.name,
+      bundle,
+      written: result.written,
+      skipped: result.skipped,
+      lockfile: result.lockfiles.desiredFile,
+      collisions: result.collisions,
+      satisfied: result.satisfied,
+      migration: result.migration,
+      ...(result.duplicates.length === 0 ? {} : { duplicates: result.duplicates }),
+      ...(result.retained.length === 0 ? {} : { retained: result.retained }),
+      ...(result.retired.length === 0 ? {} : { retired: result.retired }),
+      ...extra
+    },
+    warnings: result.collisions.length > 0
+      ? result.collisions.map((c) => `${c.to}: existing untracked file left in place (use --force to overwrite)`)
+      : undefined,
+    textRenderer: (d) => `Installed ${d.bundle.id}@${d.bundle.version} into target "${d.target}" `
+      + `(${d.written.length} written, ${d.skipped.length} skipped, ${d.satisfied.length} already satisfied, `
+      + `${d.collisions.length} collision${d.collisions.length === 1 ? '' : 's'}). `
+      + `${lockfileUpdated ? `Updated ${d.lockfile}.` : 'Lockfile unchanged.'}\n`
+      + result.duplicates.map((entry) => `Duplicate destination ${entry.to}: ${entry.ids.join(', ')}; first item wins, later items skipped.\n`).join('')
+      + (result.retained.length === 0 ? '' : `Retained old files with ownership (modified, shared or unsafe): ${result.retained.join(', ')}.\n`)
+      + renderMigration(d.migration)
+  });
+  return 0;
+}
+
 /**
  * Perform local install from directory.
  * @param opts Install options.
@@ -856,13 +1041,40 @@ async function performLocalInstall(
   ctx: Context,
   fmt: OutputFormat
 ): Promise<number> {
+  let unified = false;
   try {
     const effectiveTarget = resolveEffectiveTarget(ctx, target, opts);
+    // Refuse before any read: an unsupported scope must not touch the source tree or the lockfiles.
+    unified = unifiedDeployRequested(ctx);
+    if (unified) {
+      assertUnifiedDeploySupported(effectiveTarget);
+    }
     const files = await readLocalBundle(opts.from as string, ctx.fs);
     const manifest = validateManifest(files, {
       expectedId: opts.bundle ?? '',
       expectedVersion: undefined
     });
+    if (unified) {
+      return await runUnifiedInstall({
+        ctx,
+        fmt,
+        target: effectiveTarget,
+        dryRun: opts.dryRun === true,
+        force: opts.force === true,
+        request: {
+          files,
+          bundle: { bundleId: manifest.id, version: manifest.version },
+          source: {
+            sourceId: `local-${path.basename(opts.from as string)}`,
+            type: 'local',
+            url: path.resolve(ctx.cwd(), opts.from as string)
+          },
+          targetName: effectiveTarget.name,
+          runtimeAssetRoot: runtimeAssetRootFor(ctx),
+          placement: await buildPlacementContext(ctx, effectiveTarget)
+        }
+      });
+    }
     if (opts.dryRun === true) {
       formatOutput({
         ctx,
@@ -883,12 +1095,13 @@ async function performLocalInstall(
     const writerFactory = createWriterFactory(ctx, opts);
     const writer = writerFactory(effectiveTarget);
     const targetFiles = getInstallableBundleFiles(files, manifest);
+    const lockPath = lockfilePathForTarget(ctx, effectiveTarget);
+    // Read before the first write: a 3.0.0 lockfile must refuse here, not after the files are placed.
+    const existing = await readLockfile(lockPath, ctx.fs) ?? emptyLockfile('ai-primitives-hub-cli');
     const result = await writeTargetSafely(writer, effectiveTarget, targetFiles);
 
     const scope = effectiveTarget.scope;
     const commitMode = effectiveTarget.commitMode ?? 'commit';
-    const lockPath = lockfilePathForTarget(ctx, effectiveTarget);
-    const existing = await readLockfile(lockPath, ctx.fs) ?? emptyLockfile('ai-primitives-hub-cli');
     const localSourceId = `local-${path.basename(opts.from as string)}`;
     const entry: LockfileBundleEntry = {
       version: manifest.version,
@@ -927,6 +1140,9 @@ async function performLocalInstall(
     });
     return 0;
   } catch (cause) {
+    if (unified && cause instanceof RegistryError) {
+      throw cause;
+    }
     const raw = (cause as { code?: string }).code;
     const code = raw !== undefined && /^(BUNDLE|FS|NETWORK|USAGE|CONFIG)\.[A-Z0-9_]+$/.test(raw)
       ? raw
@@ -939,6 +1155,322 @@ async function performLocalInstall(
       cause: cause instanceof Error ? cause : undefined
     });
   }
+}
+
+const sourceDescriptorFrom = (src: LockfileSourceEntry): RemoteSourceDescriptor => ({
+  type: src.type,
+  url: src.url,
+  ...(src.branch === undefined ? {} : { branch: src.branch }),
+  ...(src.collectionsPath === undefined ? {} : { collectionsPath: src.collectionsPath })
+});
+
+const failureReason = (cause: unknown): string => cause instanceof Error ? cause.message : String(cause);
+
+/**
+ * Refuse any lockfile other than the user desired file. Replayed entries are recorded in the
+ * user pair, so replaying a repository-scoped or otherwise foreign file would write its bundles
+ * and source descriptors over unrelated user state. Paths are compared `path.resolve`d, so a
+ * `/./` or relative spelling of the user file is accepted; a symlink alias is not followed and is
+ * refused (conservative). Called before the file is read.
+ * @param ports Deploy ports; their lockfile store is the pair replayed entries are recorded in.
+ * @param lockPath Lockfile requested for replay.
+ * @param cwd Directory relative paths are resolved against.
+ * @throws {RegistryError} BUNDLE.UNSUPPORTED_SCOPE (Task 12's code: same cause, same remedy) for any other file.
+ */
+function assertReplayLockfileIsUserFile(ports: DeployPorts, lockPath: string, cwd: string): void {
+  const userFile = ports.lockfileStore.desiredFile;
+  if (path.resolve(cwd, lockPath) !== path.resolve(cwd, userFile)) {
+    throw new RegistryError({
+      code: 'BUNDLE.UNSUPPORTED_SCOPE',
+      message: `install: the lockfile ${lockPath} is not the user lockfile (${userFile}); repository-scoped and other lockfiles are not yet supported with unifiedDeploy enabled (slice 3).`,
+      hint: 'Unset AI_PRIMITIVES_HUB_UNIFIED_DEPLOY to use the current repository-scope path.',
+      context: { file: lockPath, userLockfile: userFile }
+    });
+  }
+}
+
+/**
+ * Read the user desired state to replay. A v2 user lockfile is migrated unless this is a
+ * dry run (migration runs on install, never on a dry run).
+ * @param ports Deploy ports (their lockfile store is the pair replayed entries are recorded in).
+ * @param dryRun Whether this is a dry run.
+ * @returns The desired state and the migration report, when one ran.
+ * @throws {RegistryError} CONFIG.LOCKFILE_NOT_MIGRATED for a v2 lockfile on a dry run.
+ */
+async function readReplayDesired(
+  ports: DeployPorts,
+  dryRun: boolean
+): Promise<{ desired: LockfileV3Pair['desired']; migration: UnifiedMigration }> {
+  const defaults = { generatedBy: ports.generatedBy ?? 'ai-primitives-hub', now: new Date().toISOString() };
+  try {
+    const { pair } = await readLockfileV3Pair(ports.lockfileStore, ports.fs, defaults);
+    return { desired: pair.desired, migration: null };
+  } catch (cause) {
+    if (!(cause instanceof LockfileGenerationMismatchError)) {
+      throw cause;
+    }
+    if (dryRun) {
+      throw dryRunNotMigrated(cause);
+    }
+    const { pair, report } = await migrateLockfileIfNeeded(ports.lockfileStore, ports.fs, defaults);
+    return { desired: pair.desired, migration: report };
+  }
+}
+
+interface ReplayRequestArgs {
+  key: string;
+  desired: LockfileV3Pair['desired'];
+  target: Target;
+  placement: PlacementContext;
+  ctx: Context;
+  http: HttpClient;
+  tokens: TokenProvider;
+  verbose: boolean;
+  sourceAwareDependencyCache?: SourceAwareInstallDependencyCache;
+}
+
+/**
+ * Build the deploy request for one desired entry: the source descriptor recorded in
+ * `desired.sources` is fetched with the legacy replay's `fetchFilesForSource`, and the exact
+ * recorded version is required of the result (design §3.2): an absent version fails, it never
+ * falls back to latest.
+ * @param args Entry and fetch dependencies.
+ * @returns The deploy request.
+ * @throws {Error} With an actionable reason when the entry cannot be replayed.
+ */
+async function buildReplayRequest(args: ReplayRequestArgs): Promise<Omit<DeployRequest, 'force'>> {
+  const { key, desired, target, placement, ctx, verbose } = args;
+  const entry = desired.bundles[key];
+  const parsed = parseLogicalBundleKey(key);
+  if (parsed === null) {
+    throw new Error(`"${key}" is not a {sourceId}/{bundleId} bundle key, so it cannot be replayed`);
+  }
+  if (parsed.sourceId !== entry.sourceId) {
+    throw new Error(`the key names source "${parsed.sourceId}" but the entry records sourceId "${entry.sourceId}"; fix the lockfile before replaying it`);
+  }
+  const src: LockfileSourceEntry | undefined = desired.sources[entry.sourceId];
+  if (src === undefined) {
+    throw new Error(`source "${entry.sourceId}" has no descriptor in the lockfile's sources, so it cannot be replayed`);
+  }
+  const files = await fetchFilesForSource(
+    src,
+    parsed.manifestId,
+    {
+      version: entry.version,
+      sourceId: entry.sourceId,
+      sourceType: src.type,
+      installedAt: new Date().toISOString(),
+      files: [],
+      ...(entry.archiveSha === undefined ? {} : { checksum: entry.archiveSha.replace(/^sha256:/, '') })
+    },
+    args.http,
+    args.tokens,
+    ctx,
+    verbose,
+    args.sourceAwareDependencyCache
+  );
+  if (files === null) {
+    throw new Error(`version ${entry.version} was not found in source "${entry.sourceId}" (${src.url}), `
+      + 'or its archive did not match the recorded checksum; the pin is exact, so no other version was substituted');
+  }
+  validateManifest(files, { expectedId: parsed.manifestId, expectedVersion: entry.version });
+  return {
+    files,
+    bundle: { bundleId: parsed.manifestId, version: entry.version },
+    source: { sourceId: entry.sourceId, ...sourceDescriptorFrom(src) },
+    targetName: target.name,
+    runtimeAssetRoot: runtimeAssetRootFor(ctx),
+    placement
+  };
+}
+
+/**
+ * Flag-on `install --lockfile`: replay each desired entry of a v3 lockfile through
+ * `app/deploy`, or plan it (read-only) on a dry run. One entry failing does not stop the
+ * others: each `deployBundle` is an independent, non-transactional operation (the pair is
+ * written local-first, then desired) that removes only the files it created on failure and does
+ * not restore bytes it overwrote (design §9.2), so a failed entry can leave partial state
+ * that the next replay converges.
+ * @param opts Install options.
+ * @param target Effective target (user scope, already checked).
+ * @param ctx CLI context.
+ * @param fmt Output format.
+ * @param lockPath Absolute path of the lockfile to replay.
+ * @returns Exit code: 1 when any entry failed.
+ */
+async function performUnifiedLockfileInstall(
+  opts: InstallOptions,
+  target: Target,
+  ctx: Context,
+  fmt: OutputFormat,
+  lockPath: string
+): Promise<number> {
+  const dryRun = opts.dryRun === true;
+  const force = opts.force === true;
+  const ports = unifiedPortsFor(ctx, target);
+  assertReplayLockfileIsUserFile(ports, lockPath, ctx.cwd());
+  const { desired, migration } = await readReplayDesired(ports, dryRun);
+  const placement = await buildPlacementContext(ctx, target);
+  const http = opts.http ?? new NodeHttpClient();
+  const tokens = opts.tokens ?? defaultTokenProvider(ctx.env);
+  const sourceAwareDependencyCache = isGitHubAppAuthEnabled(ctx.env)
+    ? createSourceAwareInstallDependencyCache(http, ctx)
+    : undefined;
+  const keys = Object.keys(desired.bundles);
+
+  const replayed: string[] = [];
+  const failures: { key: string; reason: string; error?: ReturnType<RegistryError['toJSON']> }[] = [];
+  const written: string[] = [];
+  const destinations: string[] = [];
+  const drifted: string[] = [];
+  const satisfied: string[] = [];
+  const skipped: { key: string; from: string; reason: string }[] = [];
+  const collisions: { to: string; reason: string }[] = [];
+  const duplicates: { to: string; ids: string[] }[] = [];
+
+  if (opts.verbose === true) {
+    ctx.stdout.write(`[verbose] Planning to replay ${keys.length} bundles\n`);
+  }
+
+  for (const key of keys) {
+    try {
+      const request = await buildReplayRequest({
+        key,
+        desired,
+        target,
+        placement,
+        ctx,
+        http,
+        tokens,
+        verbose: opts.verbose ?? false,
+        sourceAwareDependencyCache
+      });
+      if (dryRun) {
+        const plan = await planDeploy({ ...request, force }, ports);
+        destinations.push(...plan.destinations.map((d) => d.to));
+        drifted.push(...plan.drifted);
+        satisfied.push(...plan.satisfied);
+        skipped.push(...plan.skipped.map((s) => ({ key, ...s })));
+        collisions.push(...plan.collisions);
+        duplicates.push(...plan.duplicates);
+      } else {
+        const result = await deployBundle({ ...request, force }, ports);
+        written.push(...result.written);
+        satisfied.push(...result.satisfied);
+        skipped.push(...result.skipped.map((s) => ({ key, ...s })));
+        collisions.push(...result.collisions);
+        duplicates.push(...result.duplicates);
+      }
+      replayed.push(key);
+    } catch (cause) {
+      if (dryRun && cause instanceof LockfileGenerationMismatchError) {
+        throw dryRunNotMigrated(cause);
+      }
+      failures.push({ key, reason: failureReason(cause), ...(cause instanceof RegistryError ? { error: cause.toJSON() } : {}) });
+    }
+  }
+
+  const warnings = [
+    ...failures.map((f) => `${f.key}: ${f.reason}`),
+    ...collisions.map((c) => `${c.to}: existing untracked file left in place (use --force to overwrite)`)
+  ];
+  const failureText = (list: typeof failures): string => list.length === 0
+    ? '.\n'
+    : `; ${list.length} failure${list.length === 1 ? '' : 's'}:\n`
+      + list.map((f) => `  - ${f.key}: ${f.reason}\n${renderAppliedEffects(f.error?.context?.appliedEffects)}`).join('');
+  const status = warnings.length > 0 ? 'warning' : 'ok';
+
+  if (dryRun) {
+    formatOutput({
+      ctx,
+      command: 'install',
+      output: fmt,
+      status,
+      data: {
+        dryRun: true,
+        lockfile: lockPath,
+        target: target.name,
+        replayPlanned: keys.length,
+        wouldReplay: replayed,
+        destinations,
+        skipped,
+        collisions,
+        satisfied,
+        drifted,
+        failures,
+        ...(duplicates.length === 0 ? {} : { duplicates })
+      },
+      warnings: warnings.length > 0 ? warnings : undefined,
+      textRenderer: (d) => `Dry run: would replay ${d.wouldReplay.length}/${d.replayPlanned} bundles `
+        + `(${d.destinations.length} destination${d.destinations.length === 1 ? '' : 's'}, `
+        + `${d.collisions.length} collision${d.collisions.length === 1 ? '' : 's'}, `
+        + `${d.satisfied.length} already satisfied) into target "${d.target}"${failureText(d.failures)}`
+    });
+    return failures.length === 0 ? 0 : 1;
+  }
+
+  formatOutput({
+    ctx,
+    command: 'install',
+    output: fmt,
+    status,
+    data: {
+      lockfile: lockPath,
+      target: target.name,
+      replayPlanned: keys.length,
+      replayed,
+      failures,
+      written,
+      skipped,
+      collisions,
+      satisfied,
+      migration,
+      ...(duplicates.length === 0 ? {} : { duplicates })
+    },
+    warnings: warnings.length > 0 ? warnings : undefined,
+    textRenderer: (d) => `Replay: ${d.replayed.length}/${d.replayPlanned} bundles installed into target "${d.target}" `
+      + `(${d.written.length} written, ${d.satisfied.length} already satisfied, `
+      + `${d.collisions.length} collision${d.collisions.length === 1 ? '' : 's'})${failureText(d.failures)}`
+      + duplicates.map((entry) => `Duplicate destination ${entry.to}: first item wins, later items skipped.\n`).join('')
+      + renderMigration(d.migration)
+  });
+  return failures.length === 0 ? 0 : 1;
+}
+
+/**
+ * Flag-off `install --lockfile --dry-run`: say which entries a replay would install,
+ * without fetching or writing anything (not the writer, not the target state).
+ * @param lock Lockfile that would be replayed.
+ * @param lockPath Path of that lockfile.
+ * @param target Effective target.
+ * @param ctx CLI context.
+ * @param fmt Output format.
+ * @returns Exit code 0.
+ */
+function reportLockfileReplayPlan(
+  lock: Lockfile,
+  lockPath: string,
+  target: Target,
+  ctx: Context,
+  fmt: OutputFormat
+): number {
+  const wouldReplay = Object.keys(lock.bundles);
+  formatOutput({
+    ctx,
+    command: 'install',
+    output: fmt,
+    status: 'ok',
+    data: {
+      dryRun: true,
+      lockfile: lockPath,
+      target: target.name,
+      replayPlanned: wouldReplay.length,
+      wouldReplay
+    },
+    textRenderer: (d) => `Dry run: would replay ${d.replayPlanned} bundle${d.replayPlanned === 1 ? '' : 's'} `
+      + `from ${d.lockfile} into target "${d.target}".\n`
+  });
+  return 0;
 }
 
 /**
@@ -956,11 +1488,33 @@ async function performLockfileInstall(
   fmt: OutputFormat
 ): Promise<number> {
   const effectiveTarget = resolveEffectiveTarget(ctx, target, opts);
+  let unified: boolean;
+  try {
+    unified = unifiedDeployRequested(ctx);
+  } catch (cause) {
+    throw new RegistryError({
+      code: 'USAGE.INVALID_FLAG',
+      message: `install: ${failureReason(cause)}`,
+      hint: 'Set AI_PRIMITIVES_HUB_UNIFIED_DEPLOY to 1, true, yes, 0, false or no, or unset it.',
+      cause
+    });
+  }
+  // Refuse before reading any lockfile: an unsupported scope must not touch the user pair.
+  if (unified) {
+    assertUnifiedDeploySupported(effectiveTarget);
+  }
   const lockfile = opts.lockfile as string;
   const lockPath = path.isAbsolute(lockfile)
     ? lockfile
     : path.join(ctx.cwd(), lockfile);
+  if (unified) {
+    return await performUnifiedLockfileInstall(opts, effectiveTarget, ctx, fmt, lockPath);
+  }
   const lock = await readLockfile(lockPath, ctx.fs) ?? emptyLockfile('ai-primitives-hub-cli');
+  if (opts.dryRun === true) {
+    // Parity with the local and remote branches, which have always checked this (design §10).
+    return reportLockfileReplayPlan(lock, lockPath, effectiveTarget, ctx, fmt);
+  }
   const bundleIds = Object.keys(lock.bundles);
   const http = opts.http ?? new NodeHttpClient();
   const tokens = opts.tokens ?? defaultTokenProvider(ctx.env);
@@ -1034,6 +1588,11 @@ async function performRemoteInstall(
 ): Promise<number> {
   try {
     const effectiveTarget = resolveEffectiveTarget(ctx, target, opts);
+    // Refuse before any network, auth or lockfile effect.
+    const unified = unifiedDeployRequested(ctx);
+    if (unified) {
+      assertUnifiedDeploySupported(effectiveTarget);
+    }
     const spec = parseBundleSpec(opts.bundle as string);
     const repoSlug = opts.source ?? spec.sourceId;
     if (repoSlug === undefined || repoSlug.length === 0) {
@@ -1094,6 +1653,36 @@ async function performRemoteInstall(
       expectedId: opts.sourceConfig === undefined ? spec.bundleId : undefined,
       expectedVersion: spec.bundleVersion === 'latest' ? undefined : spec.bundleVersion
     });
+    if (unified) {
+      const sourceDescriptor = remoteSourceDescriptor(repoSlug, opts.sourceConfig, repositoryTarget);
+      return await runUnifiedInstall({
+        ctx,
+        fmt,
+        target: effectiveTarget,
+        dryRun: opts.dryRun === true,
+        force: opts.force === true,
+        // The planner only accepts extracted `files` today (`bytes` alone is refused,
+        // and both together are rejected), so the already-extracted tree is passed.
+        request: {
+          files,
+          bundle: { bundleId: manifest.id, version: manifest.version },
+          source: { sourceId: installable.ref.sourceId, ...sourceDescriptor },
+          targetName: effectiveTarget.name,
+          runtimeAssetRoot: runtimeAssetRootFor(ctx),
+          placement: await buildPlacementContext(ctx, effectiveTarget)
+        },
+        extra: {
+          source: {
+            type: sourceDescriptor.type,
+            repo: repoSlug,
+            sourceId: installable.ref.sourceId,
+            url: sourceDescriptor.url,
+            ...(sourceDescriptor.collectionsPath === undefined ? {} : { collectionsPath: sourceDescriptor.collectionsPath })
+          },
+          sha256: dl.sha256
+        }
+      });
+    }
     if (opts.dryRun === true) {
       formatOutput({
         ctx,
@@ -1117,11 +1706,12 @@ async function performRemoteInstall(
     const writerFactory = createWriterFactory(ctx, opts);
     const writer = writerFactory(effectiveTarget);
     const targetFiles = getInstallableBundleFiles(files, manifest);
+    const lockPath = lockfilePathForTarget(ctx, effectiveTarget);
+    // Read before the first write: a 3.0.0 lockfile must refuse here, not after the files are placed.
+    const existing = await readLockfile(lockPath, ctx.fs) ?? emptyLockfile('ai-primitives-hub-cli');
     const result = await writeTargetSafely(writer, effectiveTarget, targetFiles);
     const scope = effectiveTarget.scope;
     const commitMode = effectiveTarget.commitMode ?? 'commit';
-    const lockPath = lockfilePathForTarget(ctx, effectiveTarget);
-    const existing = await readLockfile(lockPath, ctx.fs) ?? emptyLockfile('ai-primitives-hub-cli');
     const entry: LockfileBundleEntry = {
       version: manifest.version,
       sourceId: installable.ref.sourceId,
@@ -1501,7 +2091,7 @@ function handleInstallError(
 /**
  * Fetch a bundle's extracted files from a lockfile source entry —
  * dispatches on `src.type` (`local`, or `github`/AwesomeCopilot via
- * `entry.sourceId`'s prefix) and resolves/downloads/extracts
+ * `entry.sourceId`'s prefix on the legacy flag-off path) and resolves/downloads/extracts
  * accordingly. Shared by lockfile replay (`replaySingleEntry`) and
  * `profile.ts`'s bundle activation loop.
  * @param src Lockfile source entry describing where to fetch from.
@@ -1534,8 +2124,7 @@ export async function fetchFilesForSource(
   if (src.type === 'github' || src.type === 'skills' || src.type === 'awesome-copilot') {
     // Check if this is an awesome-copilot source (detected by sourceId prefix)
     const isAwesomeCopilot = src.type === 'awesome-copilot'
-      || bundleId.startsWith('awesome-copilot-')
-      || entry.sourceId.startsWith('awesome-copilot-');
+      || (!unifiedDeployRequested(ctx) && (bundleId.startsWith('awesome-copilot-') || entry.sourceId.startsWith('awesome-copilot-')));
     const sourceConfig: RegistrySource = {
       id: entry.sourceId,
       name: entry.sourceId,

@@ -38,6 +38,7 @@ import {
 } from '../framework';
 import {
   buildHubMgr,
+  preflightProfileLockfiles,
   runProfileActivation,
 } from './profile';
 
@@ -91,6 +92,8 @@ export class ApplyCommand extends Command {
       }));
     }
 
+    const targets = await loadTargets(ctx);
+    await preflightProfileLockfiles(ctx, targets);
     if (!this.noSync) {
       try {
         await built.mgr.syncHub(cur.hubId);
@@ -112,7 +115,6 @@ export class ApplyCommand extends Command {
       }));
     }
 
-    const targets = await loadTargets(ctx);
     if (targets.length === 0) {
       return failWith(ctx, fmt, 'apply', new RegistryError({
         code: 'USAGE.MISSING_FLAG',

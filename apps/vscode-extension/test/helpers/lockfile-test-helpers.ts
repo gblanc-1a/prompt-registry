@@ -22,7 +22,7 @@ import {
  */
 export const LOCKFILE_DEFAULTS = {
   SCHEMA_URL: 'https://github.com/AmadeusITGroup/prompt-registry/schemas/lockfile.schema.json',
-  VERSION: '1.0.0',
+  VERSION: '2.0.0',
   GENERATED_BY: 'prompt-registry@1.0.0',
   SOURCE_TYPES: ['github', 'local', 'awesome-copilot', 'apm'] as const,
   COMMIT_MODES: ['commit', 'local-only'] as const
@@ -371,14 +371,14 @@ export const LockfileGenerators = {
   },
 
   /**
-   * Generate a valid semantic version string
+   * Generate a valid semantic version string with major 2, the only lockfile
+   * schema major that readLockfile accepts (also fine for bundle versions).
    */
   version: (): fc.Arbitrary<string> => {
     return fc.tuple(
       fc.integer({ min: 0, max: 99 }),
-      fc.integer({ min: 0, max: 99 }),
       fc.integer({ min: 0, max: 99 })
-    ).map(([major, minor, patch]) => `${major}.${minor}.${patch}`);
+    ).map(([minor, patch]) => `2.${minor}.${patch}`);
   },
 
   /**

@@ -98,15 +98,19 @@ Set `AI_PRIMITIVES_HUB_UNIFIED_DEPLOY` in the environment of the CLI process:
 |-------|---------|
 | `1`, `true`, `yes` | Enabled (case-insensitive) |
 | `0`, `false`, `no`, unset, empty | Disabled (the default) |
-| anything else | Rejected as an error; the command does not run |
+| anything else | Rejected as an error and the command does not run. This applies to `install` and `uninstall`, the only commands that read the flag; `status`, `update` and the rest never look at it |
 
 The source-aware authentication variables in [Source Authentication](./authentication.md) are specific to GitHub credentials; this flag is unrelated to them.
 
 ### Supported scope and targets
 
-- **User scope only.** An absent scope is treated as user, as the legacy path does. Any other scope, repository included, is refused with `BUNDLE.UNSUPPORTED_SCOPE` before the bundle, the network or any lockfile is read. The hint is to unset the variable. Repository scope arrives in a later slice, and a half-migrated repository is the one state that cannot converge, so it is refused rather than approximated.
+- **User scope only.** An absent scope is treated as user, as the legacy path does. Any other scope, repository included, is refused with `BUNDLE.UNSUPPORTED_SCOPE` before the bundle, the network or any lockfile is read. The hint is to unset the variable. Repository scope arrives in slice 3 and is refused under the flag until then.
 - **Targets.** Any target type whose layout resolves can be used. The verified, tested target in this slice is `vscode`, whose user-scope base directory is `~/.copilot` (`prompts/`, `instructions/`, `agents/`, `skills/`, and so on).
-- **Commands.** `install` (`--from <dir>`, a remote `<bundle> --source <owner/repo>`, and `--lockfile` replay) and `uninstall` (`--bundle`, `--all`). `uninstall --lockfile` and a bare `uninstall`, which auto-detects a lockfile, are refused with `BUNDLE.UNSUPPORTED_SCOPE` because they operate on lockfile files that may be repository state.
+- **Commands.** The flag-aware entry points are `install` and `uninstall`:
+  - `install --from <dir>`, a remote `<bundle> --source <owner/repo>` (or `owner/repo:<bundle>`), `--lockfile` replay, and the hub picker `--source <hub-id> --interactive`, which installs each selected bundle through the same remote path (`install.ts:842`).
+  - `install --source <hub-id>` without `--interactive` only lists bundles and installs nothing.
+  - `uninstall --bundle` and `uninstall --all`. `uninstall --lockfile` and a bare `uninstall`, which auto-detects a lockfile, are refused with `BUNDLE.UNSUPPORTED_SCOPE` because they operate on lockfile files that may be repository state.
+  - Not flag-aware: `status`, `update`, `profile activate` and `apply`. They always use the legacy lockfile path, so with `3.0.0` state present they refuse (see below).
 
 ### Pipeline
 
@@ -159,7 +163,7 @@ Deploys are not transactional (design §9.2):
 
 - If a failure happens after an existing file was overwritten, the installation can contain mixed content. The overwritten bytes are not restored.
 - Files that the failed call created are removed.
-- Re-running the same command converges, because a byte-identical untracked file is `satisfied`.
+- Re-running the same command converges for files, because a byte-identical untracked file is `satisfied`. Untracked skill, plugin or power directories are the exception (last bullet).
 - The pair is written local first, then desired. If the desired write fails after the local write, a local record remains, and the retry converges.
 - An untracked skill, plugin or power directory is always reported as a collision, even when its contents are identical, so such a retry needs `--force`.
 
@@ -227,7 +231,7 @@ Bundle files are copied to the target byte-for-byte and verified after every wri
 - **Binary-safe writes** — writers use the `FileSystem` port's `readFileBytes`/`writeFileBytes` for all payloads. Text payloads (strict UTF-8) may additionally pass through a target-specific `ResourceTransformer`; binary payloads (images, archives, office documents) are never decoded as text — a lossy UTF-8 round-trip replaces invalid sequences with U+FFFD and corrupts them.
 - **Post-write verification** — after each write, the installed file is re-read and compared against the bytes the writer intended to write (`verifyWrittenBytes` in `core`'s `domain/install/integrity`). A mismatch throws `FileIntegrityError` (`BUNDLE.INTEGRITY_MISMATCH`) instead of leaving a silently corrupted artifact.
 - **Upstream layers already verified** — zip entry CRC-32 is checked during extraction, and governed (`formatVersion: 1`) deployment manifests carry per-file `size` + `sha256` validated against the extracted bytes.
-- **Lockfile checksums** — `checksumFiles` hashes the extracted (archive) bytes, not the optionally transformed on-disk result. For untransformed files those values match; for transformed files a later user-modification check that compares on-disk hashes to the lockfile will currently report a mismatch. Recording a separate `installedChecksum` in `LockfileFileEntry` is a follow-up (issue #357 Stage 2) and is not part of this binary-safety change.
+- **Lockfile checksums** — `checksumFiles` hashes the extracted (archive) bytes, not the optionally transformed on-disk result. For untransformed files those values match; for transformed files a later user-modification check that compares on-disk hashes to the lockfile will currently report a mismatch. Recording a separate `installedChecksum` in `LockfileFileEntry` is a follow-up (issue #357 Stage 2) and is not part of this binary-safety change (legacy path; the flag-on path records it, see [Unified Deploy](#unified-deploy-user-scope-behind-a-flag)).
 
 ## Scope Selection
 

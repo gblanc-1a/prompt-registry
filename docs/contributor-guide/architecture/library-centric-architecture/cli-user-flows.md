@@ -637,7 +637,7 @@ flowchart LR
 | `install [bundle]` | Install bundle | `--from <path>`, `--target <name>`, `--lockfile <path>`, `--dry-run`, `--force` (only with `AI_PRIMITIVES_HUB_UNIFIED_DEPLOY` enabled: overwrite a pre-existing untracked destination file, and locally modified tracked files; ignored otherwise) |
 | `uninstall` | Uninstall bundle | `--lockfile <path>`, `--dry-run` |
 
-With `AI_PRIMITIVES_HUB_UNIFIED_DEPLOY` enabled (off by default), `install` and `uninstall` run through the shared deploy pipeline at user scope only; see [Unified Deploy](../installation-flow.md#unified-deploy-user-scope-behind-a-flag) for the behavior, including `--force`.
+With `AI_PRIMITIVES_HUB_UNIFIED_DEPLOY` enabled (off by default), only some commands run through the shared deploy pipeline, at user scope only: `install` (from a directory, remote, `--lockfile` replay, hub picker) and `uninstall --bundle`/`--all`. `status`, `update`, `profile activate`, `apply` and hub listing are unchanged. See [Unified Deploy](../installation-flow.md#unified-deploy-user-scope-behind-a-flag) for the exact behavior, including `--force`.
 
 ### Other Commands
 | Command | Purpose | Key Options |

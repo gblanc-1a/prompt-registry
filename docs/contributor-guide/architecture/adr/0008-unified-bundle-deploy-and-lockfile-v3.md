@@ -21,7 +21,8 @@ decision, not a preference.
 The existing lockfile also cannot carry the new model. Schema `2.0.0` mixes
 what a user wants (desired state) with what one machine did (materialization),
 stamps `generatedAt` and `installedAt` into a file that is meant to be shared,
-and is read by code that casts the parsed JSON without checking its version.
+and, before this slice, was read by code that cast the parsed JSON without
+checking its version.
 
 ## Decision
 
@@ -92,7 +93,10 @@ and is read by code that casts the parsed JSON without checking its version.
 - **Negative:** deploys are not transactional (§9.2). A failure after an
   existing file was overwritten can leave mixed content, and bytes that were
   overwritten are not restored. Only files the failed call created are removed.
-  Re-running the same command converges. A failed desired-file write after a
+  Re-running the same command converges, with one exception: an untracked
+  skill, plugin or power directory is always reported as a collision, even
+  when its contents are identical, so such a retry needs `--force`. A failed
+  desired-file write after a
   successful local write leaves a local record that the retry converges.
 - **Negative, slice 1 only:** remote installs do not persist `archiveSha` yet;
   the replay loop of `install --lockfile` and the `--all` loop of `uninstall`

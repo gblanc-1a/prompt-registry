@@ -138,7 +138,7 @@ suite('RepositoryScopeService', () => {
     const lockfilePath = path.join(workspaceRoot, lockfileName);
     const lockfile = {
       $schema: 'https://github.com/AmadeusITGroup/prompt-registry/schemas/lockfile.schema.json',
-      version: '1.0.0',
+      version: '2.0.0',
       generatedAt: new Date().toISOString(),
       generatedBy: 'prompt-registry@test',
       bundles: {

@@ -96,8 +96,8 @@ checking its version.
   Re-running the same command converges, with one exception: an untracked
   skill, plugin or power directory is always reported as a collision, even
   when its contents are identical, so such a retry needs `--force`. A failed
-  desired-file write after a
-  successful local write leaves a local record that the retry converges.
+  desired-file write after a successful local write leaves a local record that
+  the retry converges.
 - **Negative, slice 1 only:** remote installs do not persist `archiveSha` yet;
   the replay loop of `install --lockfile` and the `--all` loop of `uninstall`
   live in `packages/cli` and move toward `app` later; flagged

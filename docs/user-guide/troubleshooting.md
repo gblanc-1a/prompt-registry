@@ -48,13 +48,13 @@ View logs: `View → Output → AI Primitives Hub`
 
 ### CLI Says a Lockfile Was Written by a Newer Version
 
-A `status`, `update`, `install` or `uninstall` command of the `ai-primitives-hub` CLI stops with:
+A `status`, `update`, `install`, `uninstall`, `profile activate` or `apply` command of the `ai-primitives-hub` CLI stops with:
 
 ```text
 <path>/ai-primitives-hub.lock.json was written by a newer version of AI Primitives Hub (lockfile schema 3.x). Upgrade AI Primitives Hub, or disable unifiedDeploy and retry.
 ```
 
-The file named in the message lives in the CLI configuration directory (`${XDG_CONFIG_HOME:-~/.config}/ai-primitives-hub/`). It is in the new `3.0.0` format because an earlier `install` or `uninstall` ran with the experimental `AI_PRIMITIVES_HUB_UNIFIED_DEPLOY` switch enabled. Commands that do not understand that format refuse to run instead of guessing. `status`, `update`, `install` (local, remote or hub-picker, and `--lockfile`) and `uninstall` stop before they write any lockfile or bundle file, so your installed files are not affected. `profile activate` (and `apply`) also stop before writing any bundle file or lockfile, but if another profile was active, its activation record is cleared first.
+The file named in the message lives in the CLI configuration directory (`${XDG_CONFIG_HOME:-~/.config}/ai-primitives-hub/`). It is in the new `3.0.0` format because an earlier `install` or `uninstall` ran with the experimental `AI_PRIMITIVES_HUB_UNIFIED_DEPLOY` switch enabled. Commands that do not understand that format refuse to run instead of guessing. `status`, `update`, `install` (local, remote or hub-picker, and `--lockfile`) and `uninstall` stop before they write any lockfile or bundle file, so your installed files are not affected. `profile activate` and `apply` are different: they can already have changed state when they refuse. They first deactivate the active profile, which clears its activation record and marks it inactive in the hub (and, for repository-scope targets, removes its bundle files). With several targets they may also write bundle files and lockfiles for targets processed before the user-scope one.
 
 - **Upgrade the CLI.** This is the supported path: later releases teach more commands to read the new format.
 - **Run `install` and `uninstall` with the switch enabled** (`AI_PRIMITIVES_HUB_UNIFIED_DEPLOY=1`). With it set, they read and update this state. Unsetting the switch makes them refuse too, until it is set again.

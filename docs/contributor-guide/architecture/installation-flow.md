@@ -88,7 +88,7 @@ flowchart TD
 
 The flows above describe the extension and the legacy CLI path. A second path, the shared deploy pipeline in `packages/app/src/deploy/` (`planDeploy`, `deployBundle`, `undeployBundle`), is reachable from the CLI `install` and `uninstall` commands when a feature flag is enabled. See [ADR-0008](./adr/0008-unified-bundle-deploy-and-lockfile-v3.md) for the decision.
 
-**The flag is off by default, and the legacy path is unchanged.** With the flag unset, no command reads or writes the `3.0.0` lockfiles described here, and every command behaves as before. The VS Code extension does not use this path yet: its `promptregistry.unifiedDeploy` setting is wired in a later slice and is not available.
+**The flag is off by default, and the legacy path is unchanged.** With the flag unset, no command reads or writes the `3.0.0` lockfiles described here except to refuse on them (see [Troubleshooting](../../user-guide/troubleshooting.md#cli-says-a-lockfile-was-written-by-a-newer-version)), and every command otherwise behaves as before. The VS Code extension does not use this path yet: its `promptregistry.unifiedDeploy` setting is wired in a later slice and is not available.
 
 ### Enabling the flag
 
@@ -107,7 +107,7 @@ The source-aware authentication variables in [Source Authentication](./authentic
 - **User scope only.** An absent scope is treated as user, as the legacy path does. Any other scope, repository included, is refused with `BUNDLE.UNSUPPORTED_SCOPE` before the bundle, the network or any lockfile is read. The hint is to unset the variable. Repository scope arrives in slice 3 and is refused under the flag until then.
 - **Targets.** Any target type whose layout resolves can be used. The verified, tested target in this slice is `vscode`, whose user-scope base directory is `~/.copilot` (`prompts/`, `instructions/`, `agents/`, `skills/`, and so on).
 - **Commands.** The flag-aware entry points are `install` and `uninstall`:
-  - `install --from <dir>`, a remote `<bundle> --source <owner/repo>` (or `owner/repo:<bundle>`), `--lockfile` replay, and the hub picker `--source <hub-id> --interactive`, which installs each selected bundle through the same remote path (`install.ts:842`).
+  - `install --from <dir>`, a remote `<bundle> --source <owner/repo>` (or `owner/repo:<bundle>`), `--lockfile` replay, and the hub picker `--source <hub-id> --interactive`, which installs each selected bundle through the same remote path (`installSelectedBundles`).
   - `install --source <hub-id>` without `--interactive` only lists bundles and installs nothing.
   - `uninstall --bundle` and `uninstall --all`. `uninstall --lockfile` and a bare `uninstall`, which auto-detects a lockfile, are refused with `BUNDLE.UNSUPPORTED_SCOPE` because they operate on lockfile files that may be repository state.
   - Not flag-aware: `status`, `update`, `profile activate` and `apply`. They always use the legacy lockfile path, so with `3.0.0` state present they refuse (see below).

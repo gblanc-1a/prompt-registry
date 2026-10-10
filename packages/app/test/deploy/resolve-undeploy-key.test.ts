@@ -84,6 +84,44 @@ const resolve = (ports: RecordingPorts, typed: string, targetName = 'my-vscode')
   resolveUndeployKey({ targetName, typed }, ports);
 
 describe('resolveUndeployKey', () => {
+  describe('reserved unmanaged records', () => {
+    it.each(['src-a/web-dev', 'web-dev', 'web-dev-1.0.0'])('resolves %s found only under unmanaged without writing', async (typed) => {
+      const ports = recordingPorts();
+      seedV3(ports, { unmanaged: { 'src-a/web-dev': { sourceId: 'src-a' } } });
+      const before = snapshot(ports);
+      expect(await resolve(ports, typed)).toEqual({ kind: 'unmanaged', key: 'src-a/web-dev', version: '1.0.0' });
+      expect(snapshot(ports)).toEqual(before);
+      expect(mutations(ports)).toEqual([]);
+    });
+
+    it('prefers a real-target bare-id match over an unmanaged match from another source', async () => {
+      const ports = recordingPorts();
+      seedV3(ports, {
+        'my-vscode': { 'src-a/web-dev': { sourceId: 'src-a' } },
+        unmanaged: { 'src-b/web-dev': { sourceId: 'src-b' } }
+      });
+      expect(await resolve(ports, 'web-dev')).toMatchObject({ kind: 'match', key: 'src-a/web-dev' });
+    });
+
+    it('does not select unmanaged when another real target owns that same key', async () => {
+      const ports = recordingPorts();
+      seedV3(ports, {
+        other: { 'src-a/web-dev': { sourceId: 'src-a' } },
+        unmanaged: { 'src-a/web-dev': { sourceId: 'src-a' } }
+      });
+      expect(await resolve(ports, 'web-dev')).toEqual({ kind: 'none' });
+    });
+
+    it('keeps ambiguity between two unmanaged source-qualified keys', async () => {
+      const ports = recordingPorts();
+      seedV3(ports, { unmanaged: {
+        'src-a/web-dev': { sourceId: 'src-a' }, 'src-b/web-dev': { sourceId: 'src-b' }
+      } });
+      expect(await resolve(ports, 'web-dev')).toEqual({
+        kind: 'ambiguous', keys: ['src-a/web-dev', 'src-b/web-dev']
+      });
+    });
+  });
   describe('match', () => {
     it('resolves an exact full key to the recorded version and record', async () => {
       const ports = recordingPorts();
@@ -193,7 +231,7 @@ describe('resolveUndeployKey', () => {
       seedV2(ports, ['older-bundle']);
       const before = snapshot(ports);
 
-      expect(await resolve(ports, 'older-bundle')).toEqual({ kind: 'none' });
+      expect(await resolve(ports, 'older-bundle')).toEqual({ kind: 'unmanaged', key: 'legacy-source/older-bundle', version: '1.0.0' });
       expect(snapshot(ports)).toEqual(before);
       expect(mutations(ports)).toEqual([]);
       expect(ports.files.has(ports.lockfileStore.localFile)).toBe(false);

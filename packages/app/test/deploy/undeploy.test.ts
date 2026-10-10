@@ -1,3 +1,5 @@
+import * as posix from 'node:path/posix';
+import * as win32 from 'node:path/win32';
 import {
   describe,
   expect,
@@ -15,6 +17,7 @@ import {
   request,
   seedLocal,
   skillRequest,
+  symlinkPorts,
 } from './fixtures';
 
 const undeployRequest = () => ({
@@ -40,6 +43,100 @@ const writeCallCount = (calls: string[]): number =>
   calls.filter((c) => c.startsWith('writeFile:') || c.startsWith('writeFileBytes:')).length;
 
 describe('undeployBundle', () => {
+  it('reports an applied migration local write when undeploy fails before migration finishes', async () => {
+    const ports = recordingPorts({ failWriteAt: 2 });
+    ports.files.set(ports.lockfileStore.desiredFile, JSON.stringify({
+      version: '2.0.0', generatedAt: ports.now, generatedBy: 'test', bundles: {}, sources: {}
+    }));
+    await expect(undeployBundle(undeployRequest(), ports)).rejects.toMatchObject({
+      code: 'BUNDLE.UNDEPLOY_FAILED',
+      context: { appliedEffects: { stage: 'migrate', written: [ports.lockfileStore.localFile], removed: [] } },
+      cause: expect.any(Error)
+    });
+  });
+  it.each(['destination', 'ancestor'])('skips recorded paths reached through a linked %s', async (scenario) => {
+    const ports = symlinkPorts();
+    await deployBundle(request(), ports);
+    const destination = '/home/u/.copilot/prompts/hello.prompt.md';
+    const unsafe = scenario === 'destination' ? destination : '/home/u/.copilot/prompts';
+    const sourcePath = scenario === 'destination' ? '/live/prompt.md' : '/live/prompts/hello.prompt.md';
+    ports.links.set(unsafe, scenario === 'destination' ? sourcePath : '/live/prompts');
+    ports.files.set(sourcePath, '# live source\n');
+    const result = await undeployBundle(undeployRequest(), ports);
+    expect(result.removed).toEqual([]);
+    expect(result.skipped).toContain(destination);
+    expect(ports.files.get(sourcePath)).toBe('# live source\n');
+  });
+
+  it('rejects Windows traversal before reaching a native-normalizing remove boundary', async () => {
+    const ports = recordingPorts();
+    const outside = win32.normalize('C:/outside.txt');
+    ports.files.set(outside, '# outside\n');
+    ports.files.set(ports.lockfileStore.desiredFile, desiredSnapshot());
+    ports.files.set(ports.lockfileStore.localFile, seedLocal([
+      { path: '..\\outside.txt', installedChecksum: 'h' }
+    ]).replace('/home/u/.copilot', 'C:/root'));
+    const exists = ports.fs.exists.bind(ports.fs);
+    ports.fs.exists = async (destination) => ports.files.has(win32.normalize(destination)) || exists(destination);
+    ports.fs.remove = (destination) => {
+      ports.files.delete(win32.normalize(destination));
+      return Promise.resolve();
+    };
+    const result = await undeployBundle(undeployRequest(), ports);
+    expect(result.removed).toEqual([]);
+    expect(result.skipped).toHaveLength(1);
+    expect(ports.files.get(outside)).toBe('# outside\n');
+  });
+
+  const unsafeRecords = ['C:relative.txt', 'C:/absolute.txt', '\\\\server\\share\\file', 'nested\\file', 'a/../file', './file', 'a//file', ''];
+  it.each(unsafeRecords)('does not remove the noncanonical recorded path %s', async (recordedPath) => {
+    const ports = recordingPorts();
+    ports.files.set(ports.lockfileStore.desiredFile, desiredSnapshot());
+    ports.files.set(ports.lockfileStore.localFile, seedLocal([{ path: recordedPath, installedChecksum: 'h' }]));
+    const protectedPath = posix.join('/home/u/.copilot', recordedPath);
+    ports.files.set(protectedPath, '# protected\n');
+    const remove = ports.fs.remove.bind(ports.fs);
+    ports.fs.remove = async (destination, options) => {
+      if (!destination.includes('.lock.json')) {
+        throw new Error('unsafe path reached removal');
+      }
+      return remove(destination, options);
+    };
+    const result = await undeployBundle(undeployRequest(), ports);
+    expect(result.removed).toEqual([]);
+    expect(result.skipped).toHaveLength(1);
+    expect(ports.files.get(protectedPath)).toBe('# protected\n');
+  });
+  it('reports the paths already removed when a later removal fails', async () => {
+    const ports = recordingPorts();
+    await deployBundle(skillRequest(), ports);
+    const remove = ports.fs.remove.bind(ports.fs);
+    const first = '/home/u/.copilot/skills/my-skill/SKILL.md';
+    ports.fs.remove = async (destination) => {
+      if (destination.endsWith('config.json')) {
+        throw new Error('removal refused');
+      }
+      return remove(destination);
+    };
+
+    await expect(undeployBundle({
+      ...undeployRequest(), key: 'github-abc123/skills'
+    }, ports)).rejects.toMatchObject({
+      code: 'BUNDLE.UNDEPLOY_FAILED',
+      cause: expect.any(Error),
+      context: { appliedEffects: {
+        stage: 'remove',
+        removed: [first],
+        written: [],
+        created: [],
+        cleanedUp: [],
+        cleanupFailures: []
+      } }
+    });
+    expect(ports.files.has(first)).toBe(false);
+    expect(ports.files.has('/home/u/.copilot/skills/my-skill/config.json')).toBe(true);
+    expect(readPair(ports).local.targets['my-vscode'].bundles['github-abc123/skills']).toBeDefined();
+  });
   it('removes exactly the recorded paths and nothing else', async () => {
     const ports = recordingPorts();
     ports.files.set('/home/u/.copilot/prompts/unrelated.prompt.md', '# mine\n');
@@ -227,6 +324,26 @@ describe('undeployBundle', () => {
 
     const { local } = readPair(ports);
     expect(local.targets['other-vscode'].bundles['github-abc123/web-dev']).toBeDefined();
+    expect(await ports.fs.readFile('/home/u/.copilot/prompts/hello.prompt.md')).toBe('# Hello Prompt\n');
+  });
+
+  it('skips a shared physical destination owned by another logical bundle', async () => {
+    const ports = recordingPorts();
+    const req = request();
+    const first = await deployBundle(req, ports);
+    const other = await deployBundle({
+      ...req, source: { ...req.source, sourceId: 'github-other' }
+    }, ports);
+    const destination = '/home/u/.copilot/prompts/hello.prompt.md';
+    const result = await undeployBundle(undeployRequest(), ports);
+    expect(result.removed).toEqual([]);
+    expect(result.shared).toEqual([destination]);
+    expect(result.skipped).toEqual([destination]);
+    expect(await ports.fs.readFile(destination)).toBe('# Hello Prompt\n');
+    expect(readPair(ports).local.targets[req.targetName].bundles[other.key]).toBeDefined();
+    expect(readPair(ports).local.targets[req.targetName].bundles[first.key]).toBeUndefined();
+    await undeployBundle({ ...undeployRequest(), key: other.key }, ports);
+    expect(ports.files.has(destination)).toBe(false);
   });
 
   it('keeps the desired entry while another target still materializes the bundle', async () => {

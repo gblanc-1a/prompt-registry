@@ -29,6 +29,7 @@ import {
 import * as path from 'node:path';
 import {
   classifyLockfileVersion,
+  RegistryError,
   UnsupportedLockfileVersionError,
 } from '@ai-primitives-hub/core';
 import type {
@@ -389,7 +390,7 @@ export const upsertDesiredSource = (
 ): DesiredLockfileV3 => {
   const {
     type: _type, url: _url, branch: _branch, collectionsPath: _collectionsPath, ...unowned
-  } = lock.sources[sourceId] ?? {};
+  } = Object.hasOwn(lock.sources, sourceId) ? lock.sources[sourceId] : {};
   return {
     ...lock,
     sources: {
@@ -433,7 +434,13 @@ export const upsertMaterialization = (
   bundleId: string,
   record: LockfileV3BundleRecord
 ): LocalLockfileV3 => {
-  const existing = lock.targets[binding.targetName];
+  const existing = Object.hasOwn(lock.targets, binding.targetName) ? lock.targets[binding.targetName] : undefined;
+  if (existing !== undefined && existing.baseDir !== binding.baseDir) {
+    throw new RegistryError({
+      code: 'BUNDLE.TARGET_REBOUND',
+      message: `Target "${binding.targetName}" is bound to "${existing.baseDir}"; uninstall first or restore the target path before deploying at "${binding.baseDir}".`
+    });
+  }
   const targetRecord: LockfileV3TargetRecord = existing
     ? { ...existing, bundles: { ...existing.bundles, [bundleId]: record } }
     : {
@@ -464,7 +471,7 @@ export const removeMaterialization = (
   targetName: string,
   bundleId: string
 ): LocalLockfileV3 => {
-  const target = lock.targets[targetName];
+  const target = Object.hasOwn(lock.targets, targetName) ? lock.targets[targetName] : undefined;
   if (target === undefined) {
     return lock;
   }

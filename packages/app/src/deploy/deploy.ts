@@ -1,11 +1,7 @@
 /**
- * Deployment execution — place files, then record state.
- *
- * `deployBundle` is the write half of the pipeline: plan → deploy. The
- * planner provides read-only analysis; this module performs the actual
- * filesystem mutations and state writes. **The record-before-MCP order
- * is load-bearing** (§6.7, §9.2): a crash between them must leave a
- * tracked entry with no server, never a live server with no owner.
+ * Place validated physical files, then record local before desired state.
+ * Failure cleanup removes only paths created by this call; overwritten bytes
+ * are never restored. Identical retries converge through satisfied files.
  * @module deploy/deploy
  */
 import {
@@ -13,9 +9,6 @@ import {
 } from 'node:crypto';
 import * as path from 'node:path';
 import * as posix from 'node:path/posix';
-import type {
-  Target,
-} from '@ai-primitives-hub/core';
 import {
   decodeUtf8Strict,
   logicalBundleKey,
@@ -28,6 +21,7 @@ import {
   upsertDesiredSource,
   upsertMaterialization,
   writeLockfileV3Pair,
+  writeV3File,
 } from '../stores/lockfile-v3';
 import type {
   LockfileV3FileEntry,
@@ -35,473 +29,243 @@ import type {
 } from '../stores/lockfile-v3';
 import {
   migrateLockfileIfNeeded,
+  planLockfileMigration,
 } from '../stores/migrate-lockfile-v3';
 import type {
   MigrationReport,
 } from '../stores/migrate-lockfile-v3';
 import {
+  prepareDeployFiles,
+} from './inventory';
+import {
+  LifecycleError,
+} from './lifecycle-error';
+import {
+  otherOwnedPaths,
+} from './ownership';
+import {
+  assertDeploymentState,
+  assertDeployPayload,
   assertReplayableSource,
   planDeploy,
 } from './plan';
+import {
+  assertSafeDestinations,
+  resolveRecordedPath,
+  unsafeDestination,
+} from './safety';
+import {
+  runStateStage,
+  trackStateEffects,
+} from './state-effects';
 import type {
   DeployPorts,
   DeployRequest,
 } from './types';
 
-/** Deployment result. */
+/** Observable deployment outcome. */
 export interface DeployResult {
-  /** Bundle key that was deployed. */
   key: string;
-  /** Paths that were written. */
   written: string[];
-  /** Items that were skipped. */
   skipped: { from: string; reason: 'unsupported-by-target' | 'invalid-kind' | 'filtered' }[];
-  /** Untracked collisions (existing files we would overwrite). */
   collisions: { to: string; reason: 'untracked-existing' }[];
-  /** Paths that were already satisfied (byte-identical). */
   satisfied: string[];
-  /** Destinations claimed by more than one id. */
+  /** Old inventory paths preserved with their ownership because retirement was unsafe. */
+  retained: string[];
+  /** Unmodified old inventory files removed after state committed. */
+  retired: string[];
   duplicates: { to: string; ids: string[] }[];
-  /** Paths to the lockfiles. */
   lockfiles: LockfileV3Paths;
-  /** Migration report (null if no migration occurred). */
   migration: MigrationReport | null;
 }
 
 /**
- * Deploy a bundle: place files, then record state.
- *
- * Pipeline: migrate → plan → check drift → place → record → MCP → git-exclude.
- * Migration runs before plan because plan reads the lockfile, and the pair reader
- * throws on an un-migrated v2 local file. MCP and git-exclude are no-ops in slice 1,
- * but the call order is established now so slice 7 inserts rather than reorders.
- * **Records before any MCP effect** (§6.7, §9.2): a crash between them must leave a
- * tracked entry with no server, never a live server with no owner.
- *
- * On failure mid-write, removes only the files this call created and reports what was
- * applied. **Does not rollback overwritten bytes** (§9.2) — re-running the same command
- * converges because the planner reports byte-identical untracked files as `satisfied` (§9.3).
- * @param req - Deployment request.
- * @param ports - Deployment ports (fs, env, lockfileStore, etc.).
- * @returns Deployment result.
- * @throws {RegistryError} BUNDLE.DEPLOY_DRIFT when tracked files have drifted and force is not set.
- * @throws {RegistryError} BUNDLE.INVALID_DEPLOY_REQUEST when the source has no url (before any write).
+ * Deploy with per-file collision and drift protection. Records include only
+ * successfully placed or satisfied files, never an entire directory's siblings.
+ * @param req Deployment request.
+ * @param ports Filesystem, state and transformation boundaries.
+ * @returns Deployment outcome.
  */
-export async function deployBundle(
-  req: DeployRequest,
-  ports: DeployPorts
-): Promise<DeployResult> {
+export async function deployBundle(req: DeployRequest, ports: DeployPorts): Promise<DeployResult> {
   const { bundle, source, placement, force, commitMode } = req;
-  // Before migration: nothing may be written for a request that cannot be recorded.
   assertReplayableSource(source);
+  assertDeployPayload(req);
   const key = logicalBundleKey({ sourceId: source.sourceId, manifestId: bundle.bundleId });
-
-  // 1. Migrate lockfile if needed (before any write, so files are never a v2/v3 hybrid).
-  //    This must happen before planDeploy since plan reads the lockfile.
-  const generatedBy = ports.generatedBy ?? 'ai-primitives-hub';
   const now = ports.now ?? new Date().toISOString();
-  const { pair, report: migration } = await migrateLockfileIfNeeded(
-    ports.lockfileStore,
-    ports.fs,
-    { generatedBy, now, triggeredByKey: key }
-  );
-
-  // 2. Plan the deployment.
+  const inventory = prepareDeployFiles(req, ports);
+  const destinations = [...inventory.destinations.map((entry) => entry.to), ...inventory.files.map((entry) => entry.to)];
+  await assertSafeDestinations(ports.fs, placement.baseRoot, destinations);
+  const migrationOptions = { generatedBy: ports.generatedBy ?? 'ai-primitives-hub', now, triggeredByKey: key };
+  const preflight = await planLockfileMigration(ports.lockfileStore, ports.fs, migrationOptions);
+  assertDeploymentState(req, preflight.pair);
+  const state = trackStateEffects(ports.fs, ports.lockfileStore);
+  const { pair, report: migration } = await runStateStage('deploy', 'migrate', state, () =>
+    migrateLockfileIfNeeded(ports.lockfileStore, state.fs, migrationOptions));
   const plan = await planDeploy(req, ports);
-
-  // 3. Check for drift. Refuse unless force is set.
   if (plan.drifted.length > 0 && force !== true) {
     throw new RegistryError({
       code: 'BUNDLE.DEPLOY_DRIFT',
       message: `Cannot deploy: ${plan.drifted.length} file(s) have been locally modified: ${plan.drifted.join(', ')}`
     });
   }
-
-  // 4. Place files. Track what we write and what we create separately.
-  // `written` is the reported outcome; `created` is what gets cleaned up on failure.
+  await assertSafeDestinations(ports.fs, placement.baseRoot, destinations);
   const written: string[] = [];
   const created: string[] = [];
-  const satisfied: string[] = [];
-  const collisions: { to: string; reason: 'untracked-existing' }[] = [];
-
-  // Invariant: req.files is defined because planDeploy already threw if both files and bytes were absent.
-  const files = req.files!;
-
-  // Collect destinations to write (not in satisfied, and not in collisions unless force).
-  const toWrite = plan.destinations.filter((dest) => {
-    const shape = nameShapeForKind(dest.kind);
-    let alreadySatisfied = false;
-
-    if (shape === 'directory') {
-      // For directory kinds, check if ALL subtree files are satisfied.
-      // Build the list of expected subtree files and see if all are in plan.satisfied.
-      const sourcePrefix = posix.dirname(dest.from) + '/';
-      const subtreeFiles: string[] = [];
-      for (const [bundlePath] of files) {
-        if (bundlePath.startsWith(sourcePrefix)) {
-          const tail = bundlePath.slice(sourcePrefix.length);
-          const outPath = posix.join(dest.to, tail);
-          subtreeFiles.push(outPath);
-        }
-      }
-      alreadySatisfied = subtreeFiles.length > 0 && subtreeFiles.every((f) => plan.satisfied.includes(f));
-      if (alreadySatisfied) {
-        // Add all satisfied files to the result.
-        satisfied.push(...subtreeFiles);
-      }
-    } else {
-      alreadySatisfied = plan.satisfied.includes(dest.to);
-      if (alreadySatisfied) {
-        satisfied.push(dest.to);
-      }
-    }
-
-    if (alreadySatisfied) {
-      return false;
-    }
-    const hasCollision = plan.collisions.some((c) => c.to === dest.to);
-    if (hasCollision && !force) {
-      collisions.push({ to: dest.to, reason: 'untracked-existing' });
-      return false;
-    }
-    return true;
+  const retained: string[] = [];
+  const retired: string[] = [];
+  const satisfied = plan.satisfied;
+  const collisions = force === true ? [] : plan.collisions;
+  const accepted = inventory.files.filter((file) => !collisions.some((entry) => entry.to === file.to));
+  const result = (): DeployResult => ({
+    key, written, skipped: plan.skipped, collisions, satisfied, retained, retired, duplicates: plan.duplicates,
+    lockfiles: ports.lockfileStore, migration
   });
-
+  if (accepted.length === 0) {
+    return result();
+  }
+  let stage = 'place';
+  let effectsBegan = false;
   try {
-    for (const dest of toWrite) {
-      const shape = nameShapeForKind(dest.kind);
-
-      // Directory kind (skill, plugin, power): copy entire subtree preserving relative paths.
-      // File kind: write single file with optional transformation.
-      await (shape === 'directory'
-        ? writeDirectoryKind(req, dest, ports, plan, written, created)
-        : writeFileKind(req, dest, ports, plan, written, created));
+    for (const file of accepted) {
+      if (satisfied.includes(file.to)) {
+        continue;
+      }
+      const existedBefore = await ports.fs.exists(file.to);
+      ports.onEvent?.({ kind: 'place', path: file.to });
+      await assertSafeDestinations(ports.fs, placement.baseRoot, [file.to]);
+      effectsBegan = true;
+      await ports.fs.mkdir(path.dirname(file.to), { recursive: true });
+      if (!existedBefore) {
+        created.push(file.to);
+      }
+      const text = nameShapeForKind(file.kind) === 'directory' ? null : decodeUtf8Strict(file.installedBytes);
+      await (text === null ? ports.fs.writeFileBytes(file.to, file.installedBytes) : ports.fs.writeFile(file.to, text));
+      written.push(file.to);
+      await verifyWrittenBytes(ports.fs, file.to, file.installedBytes);
     }
-
-    // 5. Record state: upsert desired bundle, upsert materialization, write pair.
-    // Skip recording when all destinations were skipped (empty files array would orphan
-    // a re-deploy's existing record).
-    const allDestinations = [...toWrite.map((d) => d.to), ...satisfied];
-
-    if (allDestinations.length === 0) {
-      // All destinations skipped: return early without writing state.
-      return {
-        key,
-        written,
-        skipped: plan.skipped,
-        collisions,
-        satisfied,
-        duplicates: plan.duplicates,
-        lockfiles: ports.lockfileStore,
-        migration
-      };
-    }
-
+    stage = 'record';
+    const previousDesired = Object.hasOwn(pair.desired.bundles, key) ? pair.desired.bundles[key] : undefined;
     const desiredWithBundle = upsertDesiredBundle(pair.desired, key, {
       version: bundle.version,
       sourceId: source.sourceId,
-      // archiveSha only when bytes came from an immutable remote artifact.
-      // (unreachable in slice 1: planner throws when only bytes is given)
-      ...(req.bytes !== undefined && !isLocalSourceType(source.type) ? computeArchiveSha(req.bytes) : {})
+      ...(previousDesired?.version === bundle.version && previousDesired.archiveSha !== undefined
+        ? { archiveSha: previousDesired.archiveSha }
+        : {})
     });
-    // The bundle entry references `sources[sourceId]`; recording one without
-    // the other leaves intent that cannot be replayed (design §5.2).
     const desiredUpdated = upsertDesiredSource(desiredWithBundle, source.sourceId, {
       type: source.type,
       url: source.url,
       ...(source.branch === undefined ? {} : { branch: source.branch }),
       ...(source.collectionsPath === undefined ? {} : { collectionsPath: source.collectionsPath })
     });
-
-    // Build materialization record from ALL destinations (not just written),
-    // so a retry whose destinations are all satisfied still records state (§9.3).
     const fileRecords: LockfileV3FileEntry[] = [];
-
-    for (const dest of plan.destinations) {
-      const shape = nameShapeForKind(dest.kind);
-
-      // For directory kinds, check if the directory itself OR any file under it is in allDestinations.
-      // For file kinds, check if the destination itself is in allDestinations.
-      let shouldRecord = false;
-      if (shape === 'directory') {
-        shouldRecord = allDestinations.includes(dest.to);
-        if (!shouldRecord) {
-          // Also check if any subtree file is in allDestinations (for re-deploy case).
-          const dirPrefix = dest.to + '/';
-          shouldRecord = allDestinations.some((p) => p.startsWith(dirPrefix));
-        }
-      } else {
-        shouldRecord = allDestinations.includes(dest.to);
-      }
-
-      if (!shouldRecord) {
-        continue;
-      }
-
-      if (shape === 'directory') {
-        // Directory kind: record all files in the subtree, not just the primary file.
-        const sourcePrefix = posix.dirname(dest.from) + '/';
-        for (const [bundlePath, bytes] of files) {
-          if (!bundlePath.startsWith(sourcePrefix)) {
-            continue;
-          }
-          const tail = bundlePath.slice(sourcePrefix.length);
-          const outPath = posix.join(dest.to, tail);
-          const relativePath = posix.relative(placement.baseRoot, outPath);
-
-          // checksum: SHA256 of the archive's extracted bytes.
-          const checksum = createHash('sha256').update(bytes).digest('hex');
-
-          // installedChecksum: SHA256 of actually-installed bytes (post-transform).
-          // Directory kinds copy byte-for-byte, so installedChecksum equals checksum.
-          const installedChecksum = checksum;
-
-          fileRecords.push({
-            path: relativePath,
-            checksum,
-            installedChecksum
-          });
-        }
-      } else {
-        // File kind: record the single file.
-        const relativePath = posix.relative(placement.baseRoot, dest.to);
-        const sourceBytes = files.get(dest.from);
-        if (sourceBytes === undefined) {
+    for (const file of accepted) {
+      const bytes = await ports.fs.readFileBytes(file.to);
+      fileRecords.push({
+        path: posix.relative(placement.baseRoot, file.to),
+        checksum: createHash('sha256').update(file.sourceBytes).digest('hex'),
+        installedChecksum: createHash('sha256').update(bytes).digest('hex')
+      });
+    }
+    const oldTarget = Object.hasOwn(pair.local.targets, req.targetName) ? pair.local.targets[req.targetName] : undefined;
+    const oldRecord = oldTarget !== undefined && Object.hasOwn(oldTarget.bundles, key) ? oldTarget.bundles[key] : undefined;
+    const currentPaths = new Set(fileRecords.map((file) => file.path));
+    const oldOnly = (oldRecord?.files ?? []).filter((file) => !currentPaths.has(file.path));
+    // Retain ownership until retirement succeeds. A failed removal or final local write
+    // leaves recoverable records rather than silently forgetting files.
+    fileRecords.push(...oldOnly);
+    const localUpdated = upsertMaterialization(pair.local, {
+      targetName: req.targetName,
+      targetType: placement.targetType,
+      scope: placement.scope,
+      baseDir: placement.baseRoot,
+      ...(commitMode === undefined ? {} : { commitMode })
+    }, key, {
+      version: bundle.version,
+      sourceId: source.sourceId,
+      installedAt: now,
+      ...(commitMode === undefined ? {} : { commitMode }),
+      files: fileRecords
+    });
+    stage = 'state-write';
+    ports.onEvent?.({ kind: 'state-write' });
+    effectsBegan = true;
+    await writeLockfileV3Pair(ports.lockfileStore, { desired: desiredUpdated, local: localUpdated }, state.fs);
+    if (oldOnly.length > 0) {
+      stage = 'retire';
+      const shared = otherOwnedPaths(pair.local, req.targetName, key);
+      const dropped = new Set<string>();
+      for (const old of oldOnly) {
+        const resolved = resolveRecordedPath(placement.baseRoot, old.path);
+        if (!resolved.safe) {
+          retained.push(resolved.reportPath);
           continue;
         }
-
-        // checksum: SHA256 of the archive's extracted bytes.
-        const checksum = createHash('sha256').update(sourceBytes).digest('hex');
-
-        // installedChecksum: SHA256 of the actually-installed bytes (post-transform).
-        const writtenBytes = await ports.fs.readFileBytes(dest.to);
-        const installedChecksum = createHash('sha256').update(writtenBytes).digest('hex');
-
-        fileRecords.push({
-          path: relativePath,
-          checksum,
-          installedChecksum
-        });
+        const destination = resolved.absolutePath;
+        if (shared.has(destination) || await unsafeDestination(ports.fs, placement.baseRoot, destination) !== undefined) {
+          retained.push(destination);
+          continue;
+        }
+        if (!await ports.fs.exists(destination)) {
+          dropped.add(old.path);
+          continue;
+        }
+        const bytes = await ports.fs.readFileBytes(destination);
+        if (createHash('sha256').update(bytes).digest('hex') !== old.installedChecksum) {
+          retained.push(destination);
+          continue;
+        }
+        await ports.fs.remove(destination);
+        retired.push(destination);
+        dropped.add(old.path);
+      }
+      if (dropped.size > 0) {
+        stage = 'state-write';
+        const record = localUpdated.targets[req.targetName].bundles[key];
+        const finalLocal = upsertMaterialization(localUpdated, {
+          targetName: req.targetName, targetType: placement.targetType, scope: placement.scope, baseDir: placement.baseRoot
+        }, key, { ...record, files: record.files.filter((file) => !dropped.has(file.path)) });
+        await writeV3File(ports.lockfileStore.localFile, finalLocal, state.fs);
       }
     }
-
-    const localUpdated = upsertMaterialization(
-      pair.local,
-      {
-        targetName: req.targetName,
-        targetType: placement.targetType,
-        scope: placement.scope,
-        baseDir: placement.baseRoot,
-        ...(commitMode === undefined ? {} : { commitMode })
-      },
-      key,
-      {
-        version: bundle.version,
-        sourceId: source.sourceId,
-        installedAt: now,
-        ...(commitMode === undefined ? {} : { commitMode }),
-        files: fileRecords
-      }
-    );
-
-    // Emit state-write event before writing the pair.
-    ports.onEvent?.({ kind: 'state-write' });
-
-    await writeLockfileV3Pair(
-      ports.lockfileStore,
-      { desired: desiredUpdated, local: localUpdated },
-      ports.fs
-    );
-
-    // 6. MCP: no-op in slice 1 (slice 7 will insert here).
-    // The record has been written before this point (§6.7, §9.2).
-
-    // 7. git-exclude: no-op at user scope (slice 5).
-
-    return {
-      key,
-      written,
-      skipped: plan.skipped,
-      collisions,
-      satisfied,
-      duplicates: plan.duplicates,
-      lockfiles: ports.lockfileStore,
-      migration
-    };
+    // MCP and git-exclude join here in later slices, after the record.
+    return result();
   } catch (cause) {
-    // On failure, remove only the files this call created (not overwritten bytes, §9.2).
+    if (!effectsBegan && !state.started) {
+      throw cause;
+    }
+    const cleanedUp: string[] = [];
+    const cleanupFailures: { path: string; message: string }[] = [];
     for (const filePath of created) {
       try {
-        await ports.fs.remove(filePath);
-      } catch {
-        // Rollback is best effort; preserve the original failure.
-      }
-    }
-    throw cause;
-  }
-}
-
-/**
- * Redeploy a bundle with force semantics applied to drift.
- *
- * Equivalent to `deployBundle({ ...req, force: true }, ports)`.
- * @param req - Deployment request.
- * @param ports - Deployment ports.
- * @returns Deployment result.
- */
-export async function redeployBundle(
-  req: DeployRequest,
-  ports: DeployPorts
-): Promise<DeployResult> {
-  return deployBundle({ ...req, force: true }, ports);
-}
-
-/**
- * Write a single file-kind destination.
- * @param req - Deployment request.
- * @param dest - Destination to write.
- * @param dest.from
- * @param dest.to
- * @param dest.kind
- * @param ports - Deployment ports.
- * @param plan - Deployment plan (for tracking what existed before).
- * @param written - Accumulator for written paths (reported outcome).
- * @param created - Accumulator for created paths (cleanup target).
- */
-async function writeFileKind(
-  req: DeployRequest,
-  dest: { from: string; to: string; kind: string },
-  ports: DeployPorts,
-  plan: ReturnType<typeof planDeploy> extends Promise<infer T> ? T : never,
-  written: string[],
-  created: string[]
-): Promise<void> {
-  const bytes = req.files!.get(dest.from);
-  if (bytes === undefined) {
-    return;
-  }
-
-  // Determine if this file is being created (vs overwritten).
-  // A file is created if it's not in satisfied, collisions, drifted, or missing.
-  const existedBefore =
-    plan.satisfied.includes(dest.to)
-    || plan.collisions.some((c) => c.to === dest.to)
-    || plan.drifted.includes(dest.to)
-    || plan.missing.includes(dest.to);
-
-  // Emit place event before write.
-  ports.onEvent?.({ kind: 'place', path: dest.to });
-
-  await ports.fs.mkdir(path.dirname(dest.to), { recursive: true });
-
-  // Decode as UTF-8 strictly; if that fails, treat as binary.
-  const text = decodeUtf8Strict(bytes);
-  if (text === null) {
-    // Binary payload: write verbatim, never transform.
-    await ports.fs.writeFileBytes(dest.to, bytes);
-    await verifyWrittenBytes(ports.fs, dest.to, bytes);
-  } else {
-    // Text payload: apply transformer with fail-safe, then write.
-    let content = text;
-    if (ports.transformer !== undefined) {
-      try {
-        const target: Target = {
-          name: req.targetName,
-          type: req.placement.targetType,
-          scope: req.placement.scope
-        };
-        const result = ports.transformer.transform({
-          target,
-          filePath: dest.from,
-          content
+        if (await ports.fs.exists(filePath)) {
+          await ports.fs.remove(filePath);
+          cleanedUp.push(filePath);
+        }
+      } catch (cleanupCause) {
+        cleanupFailures.push({
+          path: filePath,
+          message: cleanupCause instanceof Error ? cleanupCause.message : String(cleanupCause)
         });
-        content = result.content;
-      } catch {
-        // Transformation failure: write the untransformed text (fail-safe).
       }
     }
-    await ports.fs.writeFile(dest.to, content);
-    await verifyWrittenBytes(ports.fs, dest.to, new TextEncoder().encode(content));
-  }
-
-  written.push(dest.to);
-  if (!existedBefore) {
-    created.push(dest.to);
-  }
-}
-
-/**
- * Write a directory-kind destination (skill, plugin, power).
- *
- * Copies every bundle file under the item's source prefix into the destination
- * directory, preserving each file's relative path, byte-for-byte with no
- * transformation (§4.4, controller ruling 4).
- * @param req - Deployment request.
- * @param dest - Destination to write.
- * @param dest.from
- * @param dest.to
- * @param dest.kind
- * @param ports - Deployment ports.
- * @param plan - Deployment plan (for tracking what existed before).
- * @param written - Accumulator for written paths (reported outcome).
- * @param created - Accumulator for created paths (cleanup target).
- */
-async function writeDirectoryKind(
-  req: DeployRequest,
-  dest: { from: string; to: string; kind: string },
-  ports: DeployPorts,
-  plan: ReturnType<typeof planDeploy> extends Promise<infer T> ? T : never,
-  written: string[],
-  created: string[]
-): Promise<void> {
-  // The destination 'to' is the directory itself.
-  // The source 'from' is the primary file (e.g., skills/my-skill/SKILL.md).
-  // We need to write all files under the source prefix (skills/my-skill/).
-  const sourcePrefix = posix.dirname(dest.from) + '/';
-
-  for (const [bundlePath, bytes] of req.files!) {
-    if (!bundlePath.startsWith(sourcePrefix)) {
-      continue;
-    }
-    const tail = bundlePath.slice(sourcePrefix.length);
-    const outPath = posix.join(dest.to, tail);
-
-    // For directory kinds, determine per-file whether it existed before.
-    // Check if this specific file path existed (not just the directory).
-    const existedBefore = await ports.fs.exists(outPath);
-
-    // Emit place event before write.
-    ports.onEvent?.({ kind: 'place', path: outPath });
-
-    await ports.fs.mkdir(path.dirname(outPath), { recursive: true });
-
-    // Directory kinds carry arbitrary assets — copy byte-for-byte, never transform.
-    await ports.fs.writeFileBytes(outPath, bytes);
-    await verifyWrittenBytes(ports.fs, outPath, bytes);
-
-    written.push(outPath);
-    if (!existedBefore) {
-      created.push(outPath);
-    }
+    throw new LifecycleError('deploy', cause, {
+      stage,
+      written: [...written, ...state.written],
+      created: [...created, ...state.created],
+      cleanedUp: [...cleanedUp, ...state.cleanedUp],
+      cleanupFailures: [...cleanupFailures, ...state.cleanupFailures],
+      removed: [...retired, ...state.removed]
+    });
   }
 }
 
 /**
- * Check if a source type is a local family (local adapters synthesize
- * archives non-deterministically, so archiveSha is omitted).
- * @param type - Source type.
- * @returns True if the source is local.
+ * Explicit forced redeployment.
+ * @param req Deployment request.
+ * @param ports Deployment boundaries.
+ * @returns Deployment outcome.
  */
-function isLocalSourceType(type: string): boolean {
-  return type === 'local' || type.startsWith('local-');
-}
-
-/**
- * Compute archive SHA256 from bytes.
- * @param bytes - Archive bytes.
- * @returns Object with archiveSha field.
- */
-function computeArchiveSha(bytes: Uint8Array): { archiveSha: string } {
-  const hash = createHash('sha256').update(bytes).digest('hex');
-  return { archiveSha: `sha256:${hash}` };
+export async function redeployBundle(req: DeployRequest, ports: DeployPorts): Promise<DeployResult> {
+  return deployBundle({ ...req, force: true }, ports);
 }

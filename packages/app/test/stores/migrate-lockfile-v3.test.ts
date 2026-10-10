@@ -3,6 +3,9 @@ import {
   expect,
   it,
 } from 'vitest';
+import type {
+  Lockfile,
+} from '../../src/stores/json-lockfile-store';
 import {
   convertV2ToPair,
   migrateLockfileIfNeeded,
@@ -70,6 +73,13 @@ const fakeFs = () => {
 };
 
 describe('convertV2ToPair', () => {
+  it('does not treat an inherited source name as a readable source descriptor', () => {
+    const v2: Lockfile = v2WithOneBundle();
+    v2.bundles['web-dev'].sourceId = 'constructor';
+    v2.sources = {};
+    const { report } = convertV2ToPair(v2, OPTS);
+    expect(report.unmanaged[0].reason).toBe('unrecoverable source descriptor');
+  });
   it('splits one v2 file into the two role halves', () => {
     const { pair } = convertV2ToPair(v2WithOneBundle(), OPTS);
 
@@ -178,6 +188,21 @@ describe('convertV2ToPair', () => {
 });
 
 describe('migrateLockfileIfNeeded', () => {
+  it.each([
+    { label: 'v4', content: JSON.stringify({ version: '4.0.0', targets: { valuable: {} } }), error: 'UnsupportedLockfileVersionError' },
+    { label: 'missing version', content: JSON.stringify({ targets: {} }), error: 'UnsupportedLockfileVersionError' },
+    { label: 'v2 local half', content: JSON.stringify({ version: '2.0.0', bundles: {} }), error: 'LockfileGenerationMismatchError' },
+    { label: 'malformed JSON', content: '{', error: 'SyntaxError' }
+  ])('refuses an existing $label local half before any migration write', async ({ content, error }) => {
+    const fs = fakeFs();
+    fs.files.set(userSources.desiredFile, JSON.stringify(v2WithOneBundle()));
+    fs.files.set(userSources.localFile, content);
+    const before = [...fs.files];
+
+    await expect(migrateLockfileIfNeeded(userSources, fs, OPTS)).rejects.toMatchObject({ name: error });
+    expect([...fs.files]).toEqual(before);
+    expect(fs.order).toEqual([]);
+  });
   it('returns a local-only v3 pair (no desired, no legacy) as it stands, with a null report and no write', async () => {
     const fs = fakeFs();
     const local = {

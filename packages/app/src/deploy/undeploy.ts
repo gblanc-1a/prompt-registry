@@ -8,7 +8,6 @@
  * went. The record is the only truth about what to delete.
  * @module deploy/undeploy
  */
-import * as posix from 'node:path/posix';
 import {
   removeDesiredBundle,
   removeMaterialization,
@@ -20,6 +19,20 @@ import {
 import type {
   MigrationReport,
 } from '../stores/migrate-lockfile-v3';
+import {
+  LifecycleError,
+} from './lifecycle-error';
+import {
+  otherOwnedPaths,
+} from './ownership';
+import {
+  resolveRecordedPath,
+  unsafeDestination,
+} from './safety';
+import {
+  runStateStage,
+  trackStateEffects,
+} from './state-effects';
 import type {
   DeployPorts,
   UndeployRequest,
@@ -33,6 +46,8 @@ export interface UndeployResult {
   removed: string[];
   /** Paths that were skipped (already absent, unmanaged, or unsafe to resolve). */
   skipped: string[];
+  /** Physical destinations still held by another target/bundle record. */
+  shared?: string[];
   /** Path to the lockfile. */
   lockfile: string;
   /** Migration report (null if no migration occurred). */
@@ -40,37 +55,6 @@ export interface UndeployResult {
   /** Reason the record was unmanaged, when `state === 'unmanaged'`. */
   unmanagedReason?: string;
 }
-
-/**
- * Resolve a recorded (contract-relative) path against its target's `baseDir`.
- *
- * Recorded paths are specified relative to `baseDir` (§5.7). A path that is
- * itself absolute, one whose `..` segments resolve outside `baseDir`, or one
- * that resolves to `baseDir` itself (e.g. `.`, `a/..`, `a/../`) violates that
- * contract — joining it anyway risks either re-prefixing an absolute path
- * onto `baseDir` (leaving the real file untouched while the record is
- * dropped), deleting something outside the target entirely, or handing
- * `baseDir` itself to a non-recursive `remove` (which rejects a directory on
- * the real filesystem, throwing before the record can be dropped). Such a
- * path is never removed.
- * @param baseDir - The target record's base directory.
- * @param recordedPath - The recorded file path.
- * @returns The safe absolute path, or the path to report when unsafe.
- */
-const resolveRecordedPath = (
-  baseDir: string,
-  recordedPath: string
-): { safe: true; absolutePath: string } | { safe: false; reportPath: string } => {
-  if (posix.isAbsolute(recordedPath)) {
-    return { safe: false, reportPath: recordedPath };
-  }
-  const joined = posix.normalize(posix.join(baseDir, recordedPath));
-  const relativeToBase = posix.relative(baseDir, joined);
-  if (relativeToBase === '' || relativeToBase === '..' || relativeToBase.startsWith('../')) {
-    return { safe: false, reportPath: joined };
-  }
-  return { safe: true, absolutePath: joined };
-};
 
 /**
  * Undeploy a bundle: remove recorded files and drop state.
@@ -113,11 +97,12 @@ export async function undeployBundle(
   //    No triggeredByKey: no bundle is being deployed, so nothing gets fresh paths.
   const generatedBy = ports.generatedBy ?? 'ai-primitives-hub';
   const now = ports.now ?? new Date().toISOString();
-  const { pair, report: migration } = await migrateLockfileIfNeeded(
+  const state = trackStateEffects(ports.fs, ports.lockfileStore);
+  const { pair, report: migration } = await runStateStage('undeploy', 'migrate', state, () => migrateLockfileIfNeeded(
     ports.lockfileStore,
-    ports.fs,
+    state.fs,
     { generatedBy, now }
-  );
+  ));
 
   // 2. Look up the target and bundle record (own properties only: a target or key named
   //    like an inherited property must not resolve to something on the prototype).
@@ -136,11 +121,11 @@ export async function undeployBundle(
     if (hasOrphanedDesiredEntry) {
       // Converge: drop the orphaned desired entry and write the pair again.
       const desiredWithoutOrphan = removeDesiredBundle(pair.desired, key);
-      await writeLockfileV3Pair(
+      await runStateStage('undeploy', 'state-write', state, () => writeLockfileV3Pair(
         ports.lockfileStore,
         { desired: desiredWithoutOrphan, local: pair.local },
-        ports.fs
-      );
+        state.fs
+      ));
       return {
         key,
         removed: [],
@@ -163,61 +148,96 @@ export async function undeployBundle(
 
   const removed: string[] = [];
   const skipped: string[] = [];
+  const shared: string[] = [];
+  const otherPaths = otherOwnedPaths(pair.local, targetName, key);
+  let stage = 'remove';
+  let effectsBegan = false;
 
+  try {
   // 3. If unmanaged, remove nothing but report every recorded path as skipped.
   //    Still drop the record: §8.3 retains it for cleanup and refcounting,
   //    but the user asked to uninstall, so the record goes while files stay.
-  if (bundleRecord.state === 'unmanaged') {
-    for (const fileEntry of bundleRecord.files) {
-      const resolved = resolveRecordedPath(targetRecord.baseDir, fileEntry.path);
-      skipped.push(resolved.safe ? resolved.absolutePath : resolved.reportPath);
-    }
-  } else {
+    if (bundleRecord.state === 'unmanaged') {
+      for (const fileEntry of bundleRecord.files) {
+        if (typeof targetRecord.baseDir !== 'string') {
+          skipped.push(fileEntry.path);
+          continue;
+        }
+        const resolved = resolveRecordedPath(targetRecord.baseDir, fileEntry.path);
+        skipped.push(resolved.safe ? resolved.absolutePath : resolved.reportPath);
+      }
+    } else {
     // 4. Otherwise, remove each recorded file. Absent, or unsafe to resolve
     //    against baseDir → skipped (never removed).
-    for (const fileEntry of bundleRecord.files) {
-      const resolved = resolveRecordedPath(targetRecord.baseDir, fileEntry.path);
-      if (!resolved.safe) {
-        skipped.push(resolved.reportPath);
-        continue;
-      }
-      const exists = await ports.fs.exists(resolved.absolutePath);
-      if (exists) {
-        await ports.fs.remove(resolved.absolutePath);
-        removed.push(resolved.absolutePath);
-      } else {
-        skipped.push(resolved.absolutePath);
+      for (const fileEntry of bundleRecord.files) {
+        const resolved = resolveRecordedPath(targetRecord.baseDir, fileEntry.path);
+        if (!resolved.safe) {
+          skipped.push(resolved.reportPath);
+          continue;
+        }
+        if (otherPaths.has(resolved.absolutePath)) {
+          shared.push(resolved.absolutePath);
+          skipped.push(resolved.absolutePath);
+          continue;
+        }
+        if (await unsafeDestination(ports.fs, targetRecord.baseDir, resolved.absolutePath) !== undefined) {
+          skipped.push(resolved.absolutePath);
+          continue;
+        }
+        const exists = await ports.fs.exists(resolved.absolutePath);
+        if (exists) {
+          effectsBegan = true;
+          await ports.fs.remove(resolved.absolutePath);
+          removed.push(resolved.absolutePath);
+        } else {
+          skipped.push(resolved.absolutePath);
+        }
       }
     }
+
+    // 5. Remove materialization, then remove desired bundle only if no other target
+    //    still materializes the key. Desired state is per-machine, not per-target.
+    const localUpdated = removeMaterialization(pair.local, targetName, key);
+
+    // Check if any other target still has this bundle.
+    const otherTargetHasBundle = Object.values(localUpdated.targets).some(
+      (target) => Object.hasOwn(target.bundles, key)
+    );
+
+    let desiredUpdated = pair.desired;
+    if (!otherTargetHasBundle) {
+      desiredUpdated = removeDesiredBundle(pair.desired, key);
+    }
+
+    // 6. Write the pair.
+    stage = 'state-write';
+    effectsBegan = true;
+    await writeLockfileV3Pair(
+      ports.lockfileStore,
+      { desired: desiredUpdated, local: localUpdated },
+      state.fs
+    );
+
+    return {
+      key,
+      removed,
+      skipped,
+      shared,
+      lockfile: ports.lockfileStore.localFile,
+      migration,
+      ...(bundleRecord.state === 'unmanaged' ? { unmanagedReason: bundleRecord.unmanagedReason } : {})
+    };
+  } catch (cause) {
+    if (!effectsBegan && !state.started) {
+      throw cause;
+    }
+    throw new LifecycleError('undeploy', cause, {
+      stage,
+      removed: [...removed, ...state.removed],
+      written: state.written,
+      created: state.created,
+      cleanedUp: state.cleanedUp,
+      cleanupFailures: state.cleanupFailures
+    });
   }
-
-  // 5. Remove materialization, then remove desired bundle only if no other target
-  //    still materializes the key. Desired state is per-machine, not per-target.
-  const localUpdated = removeMaterialization(pair.local, targetName, key);
-
-  // Check if any other target still has this bundle.
-  const otherTargetHasBundle = Object.values(localUpdated.targets).some(
-    (target) => target.bundles[key] !== undefined
-  );
-
-  let desiredUpdated = pair.desired;
-  if (!otherTargetHasBundle) {
-    desiredUpdated = removeDesiredBundle(pair.desired, key);
-  }
-
-  // 6. Write the pair.
-  await writeLockfileV3Pair(
-    ports.lockfileStore,
-    { desired: desiredUpdated, local: localUpdated },
-    ports.fs
-  );
-
-  return {
-    key,
-    removed,
-    skipped,
-    lockfile: ports.lockfileStore.localFile,
-    migration,
-    ...(bundleRecord.state === 'unmanaged' ? { unmanagedReason: bundleRecord.unmanagedReason } : {})
-  };
 }

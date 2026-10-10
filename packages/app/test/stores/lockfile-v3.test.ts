@@ -223,6 +223,11 @@ describe('writeLockfileV3Pair', () => {
 });
 
 describe('pure record helpers', () => {
+  it('refuses materialization upsert when an existing target root would be rebound', () => {
+    const local = upsertMaterialization(emptyLocalLockfileV3('cli', NOW), binding, 'src/web-dev', record());
+    expect(() => upsertMaterialization(local, { ...binding, baseDir: '/different/root' }, 'src/web-dev', record()))
+      .toThrow(/uninstall first|restore the target path/i);
+  });
   it('upsertDesiredBundle does not mutate its input', () => {
     const before = emptyDesiredLockfileV3();
 
@@ -278,6 +283,14 @@ describe('pure record helpers', () => {
 });
 
 describe('upsertDesiredSource', () => {
+  it('does not carry inherited descriptor fields into a newly owned source', () => {
+    const base = emptyDesiredLockfileV3();
+    Object.setPrototypeOf(base.sources, {
+      constructor: { type: 'github', url: 'https://inherited.example', credentialRef: 'inherited' }
+    });
+    const updated = upsertDesiredSource(base, 'constructor', { type: 'local', url: '/project' });
+    expect(updated.sources.constructor).toEqual({ type: 'local', url: '/project' });
+  });
   const withSource = (entry: Record<string, unknown>) => ({
     ...emptyDesiredLockfileV3(),
     sources: { src: entry as unknown as { type: string; url: string } }

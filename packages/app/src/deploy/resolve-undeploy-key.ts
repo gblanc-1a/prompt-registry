@@ -42,6 +42,7 @@ export interface TargetBundle {
 /** Outcome of resolving a typed bundle id. */
 export type UndeployKeyResolution =
   | ({ kind: 'match' } & TargetBundle)
+  | { kind: 'unmanaged'; key: string; version: string }
   | {
     /**
      * Desired state names the key but no target materializes it — a prior uninstall's
@@ -106,9 +107,18 @@ export const resolveUndeployKey = async (
   const { targetName, typed } = input;
   const pair = await previewPair(ports);
   const records = targetBundles(pair, targetName);
+  const unmanagedRecords = targetBundles(pair, 'unmanaged');
+  const unmanagedKeys = Object.keys(unmanagedRecords).filter((key) =>
+    !Object.entries(pair.local.targets).some(([name, target]) => name !== 'unmanaged' && Object.hasOwn(target.bundles, key)));
 
   if (Object.hasOwn(records, typed)) {
+    if (targetName === 'unmanaged') {
+      return { kind: 'unmanaged', key: typed, version: records[typed].version };
+    }
     return { kind: 'match', key: typed, version: records[typed].version, record: records[typed] };
+  }
+  if (unmanagedKeys.includes(typed)) {
+    return { kind: 'unmanaged', key: typed, version: unmanagedRecords[typed].version };
   }
   const desiredKeys = Object.keys(pair.desired.bundles);
   const orphanKeys = desiredKeys.filter((key) => !isMaterialized(pair, key));
@@ -118,7 +128,8 @@ export const resolveUndeployKey = async (
 
   const matchKeys = Object.keys(records).filter((key) => matchesBareId(key, typed));
   const orphanMatches = orphanKeys.filter((key) => matchesBareId(key, typed));
-  const keys = [...matchKeys, ...orphanMatches];
+  const unmanagedMatches = matchKeys.length === 0 ? unmanagedKeys.filter((key) => matchesBareId(key, typed)) : [];
+  const keys = [...matchKeys, ...orphanMatches, ...unmanagedMatches];
   if (keys.length === 0) {
     return { kind: 'none' };
   }
@@ -126,6 +137,9 @@ export const resolveUndeployKey = async (
     return { kind: 'ambiguous', keys };
   }
   const [only] = keys;
+  if (unmanagedMatches.includes(only) || (targetName === 'unmanaged' && matchKeys.includes(only))) {
+    return { kind: 'unmanaged', key: only, version: unmanagedRecords[only].version };
+  }
   return matchKeys.length === 1
     ? { kind: 'match', key: only, version: records[only].version, record: records[only] }
     : { kind: 'orphan', key: only, version: pair.desired.bundles[only].version };

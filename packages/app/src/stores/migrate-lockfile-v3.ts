@@ -26,6 +26,7 @@ import type {
 import {
   emptyDesiredLockfileV3,
   emptyLocalLockfileV3,
+  LockfileGenerationMismatchError,
   readLockfileV3Pair,
   writeLockfileV3Pair,
   writeV3File,
@@ -124,7 +125,7 @@ export const convertV2ToPair = (
     }
 
     // Determine the unmanaged reason.
-    const reason = v2.sources[entry.sourceId]
+    const reason = Object.hasOwn(v2.sources, entry.sourceId)
       ? 'destination could not be proven from bundle-relative path'
       : 'unrecoverable source descriptor';
 
@@ -263,16 +264,16 @@ export const planLockfileMigration = async (
   // Read the existing v3 local file if it exists (for resume).
   let existingLocal: LocalLockfileV3 | null = null;
   if (await fs.exists(sources.localFile)) {
-    try {
-      const existingContent = await fs.readFile(sources.localFile);
-      const existingParsed = JSON.parse(existingContent) as { version?: unknown };
-      const existingVerdict = classifyLockfileVersion(existingParsed.version);
-      if (existingVerdict.kind === 'readable' && existingVerdict.major === 3) {
-        existingLocal = existingParsed as LocalLockfileV3;
-      }
-    } catch {
-      // Ignore errors reading the existing local file.
+    const existingContent = await fs.readFile(sources.localFile);
+    const existingParsed = JSON.parse(existingContent) as { version?: unknown };
+    const existingVerdict = classifyLockfileVersion(existingParsed.version);
+    if (existingVerdict.kind !== 'readable') {
+      throw new UnsupportedLockfileVersionError(sources.localFile, existingVerdict);
     }
+    if (existingVerdict.major !== 3) {
+      throw new LockfileGenerationMismatchError(sources.localFile, existingVerdict.major, 3);
+    }
+    existingLocal = existingParsed as LocalLockfileV3;
   }
 
   // Union: existing-new wins per bundle key (§8.4).
@@ -295,7 +296,7 @@ export const planLockfileMigration = async (
       for (const [bundleKey, bundleRecord] of Object.entries(targetRecord.bundles)) {
         if (!existingKeys.has(bundleKey)) {
           // Ensure the target exists in the union.
-          if (!unionedTargets[targetName]) {
+          if (!Object.hasOwn(unionedTargets, targetName)) {
             unionedTargets[targetName] = { ...targetRecord, bundles: {} };
           }
           unionedTargets[targetName].bundles[bundleKey] = bundleRecord;

@@ -5,6 +5,7 @@
 import {
   createHash,
 } from 'node:crypto';
+import * as posix from 'node:path/posix';
 import {
   dump as dumpYaml,
 } from 'js-yaml';
@@ -79,7 +80,7 @@ export const request = (): DeployRequest => ({
 export const skillRequest = (): DeployRequest => ({
   files: skillArchive(),
   bundle: { bundleId: 'skills', version: '1.0.0' },
-  source: { sourceId: 'github-abc123', type: 'github', url: 'https://github.com/owner/skills' },
+  source: { sourceId: 'github-abc123', type: 'github', url: 'https://github.com/owner/repo' },
   targetName: 'my-vscode',
   runtimeAssetRoot: '/home/u/.config/ai-primitives-hub/runtime',
   placement: {
@@ -138,10 +139,11 @@ export function twoItemArchive(): Map<string, Uint8Array> {
     ],
     provenance: {
       source: 'https://github.com/example/web-dev',
-      governance: {
-        attestations: [],
-        provenance: { ref: '', url: '', commit: '' }
-      }
+      revision: '0123456789abcdef0123456789abcdef01234567',
+      collectionPath: 'collections/governed.collection.yml',
+      sourceSnapshotPath,
+      license: 'Test-License',
+      licensePath: 'LICENSE'
     },
     files: fileEntries
   };
@@ -178,6 +180,40 @@ prompts:
     ['skills/my-skill/SKILL.md', encoder.encode('# My Skill\n')],
     ['skills/my-skill/config.json', encoder.encode('{"enabled": true}\n')],
     ['skills/my-skill/binary.dat', binaryContent]
+  ]);
+}
+
+/** A governed skill with non-installable children beside its entry point. */
+export function governedSkillArchive(): Map<string, Uint8Array> {
+  const encoder = new TextEncoder();
+  const archive = {
+    'skills/my-skill/SKILL.md': '# Governed skill\n',
+    'skills/my-skill/private.json': '{}',
+    'skills/my-skill/notes.md': '# Metadata\n',
+    'README.md': '# Skills\n',
+    LICENSE: 'Test license',
+    'metadata/source.yml': 'id: skills\n'
+  };
+  const manifest = {
+    formatVersion: 1, id: 'skills', version: '1.0.0', name: 'Skills', readme: 'README.md',
+    items: [{ id: 'my-skill', path: 'skills/my-skill/SKILL.md', kind: 'skill' }],
+    prompts: [{ id: 'my-skill', file: 'skills/my-skill/SKILL.md', type: 'skill' }],
+    provenance: {
+      source: 'https://github.com/owner/repo',
+      revision: '0123456789abcdef0123456789abcdef01234567',
+      collectionPath: 'collections/skills.yml', sourceSnapshotPath: 'metadata/source.yml',
+      license: 'Test-License', licensePath: 'LICENSE'
+    },
+    files: Object.entries(archive).map(([filePath, content]) => ({
+      path: filePath,
+      role: filePath.endsWith('SKILL.md') ? 'installable' : (filePath.endsWith('private.json') ? 'ignored' : 'metadata'),
+      size: encoder.encode(content).length,
+      sha256: `sha256:${createHash('sha256').update(content).digest('hex')}`
+    }))
+  };
+  return new Map([
+    ['deployment-manifest.yml', encoder.encode(dumpYaml(manifest))],
+    ...Object.entries(archive).map(([filePath, content]) => [filePath, encoder.encode(content)] as const)
   ]);
 }
 
@@ -260,7 +296,7 @@ export const upgradePromptRequest = (files: Map<string, Uint8Array>, version: st
 export const upgradeSkillRequest = (files: Map<string, Uint8Array>, version: string): DeployRequest => ({
   files,
   bundle: { bundleId: 'skills', version },
-  source: { sourceId: 'github-abc123', type: 'github', url: 'https://github.com/owner/skills' },
+  source: { sourceId: 'github-abc123', type: 'github', url: 'https://github.com/owner/repo' },
   targetName: 'my-vscode',
   runtimeAssetRoot: '/home/u/.config/ai-primitives-hub/runtime',
   placement: {
@@ -411,6 +447,43 @@ export const recordingPorts = (opts?: { now?: string; failWriteAt?: number }): R
 
   return ports;
 };
+
+/** A filesystem boundary that follows symbolic links for reads, writes and removal. */
+export function symlinkPorts(): RecordingPorts & { links: Map<string, string> } {
+  const ports = recordingPorts();
+  const links = new Map<string, string>();
+  const resolve = (input: string): string => {
+    let current = posix.normalize(input);
+    for (let depth = 0; depth < 20; depth++) {
+      const candidate = current;
+      const match = [...links].find(([linkPath]) => candidate === linkPath || candidate.startsWith(`${linkPath}/`));
+      if (match === undefined) {
+        return current;
+      }
+      const [link, target] = match;
+      current = posix.join(target, current.slice(link.length));
+    }
+    throw new Error('symlink loop');
+  };
+  const original = ports.fs;
+  ports.fs = {
+    ...original,
+    readFile: (destination) => original.readFile(resolve(destination)),
+    readFileBytes: (destination) => original.readFileBytes(resolve(destination)),
+    exists: (destination) => original.exists(resolve(destination)),
+    writeFile: (destination, content) => original.writeFile(resolve(destination), content),
+    writeFileBytes: (destination, bytes) => original.writeFileBytes(resolve(destination), bytes),
+    remove: (destination, options) => original.remove(resolve(destination), options),
+    lstat: async (destination) => {
+      const identity = posix.join(resolve(posix.dirname(destination)), posix.basename(destination));
+      if (links.has(identity)) {
+        return { isDirectory: false, isFile: false, isSymbolicLink: true, size: 0, mtimeMs: 0 };
+      }
+      return original.lstat(resolve(destination));
+    }
+  };
+  return Object.assign(ports, { links });
+}
 
 /**
  * Read both halves of the pair a test's ports wrote.

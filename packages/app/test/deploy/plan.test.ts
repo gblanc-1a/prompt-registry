@@ -189,7 +189,8 @@ prompts:
 
     const plan = await planDeploy(request(), readOnlyPorts(files));
 
-    expect(plan.drifted).toEqual(['/home/u/.copilot/prompts/hello.prompt.md']);
+    expect(plan.drifted).toEqual([]);
+    expect(plan.satisfied).toEqual(['/home/u/.copilot/prompts/hello.prompt.md']);
   });
 
   it('carries an empty MCP section — MCP joins shared deploy in slice 7', async () => {
@@ -201,14 +202,14 @@ prompts:
   it('refuses a request carrying neither bytes nor files', async () => {
     const bad = { ...request(), files: undefined };
 
-    await expect(planDeploy(bad as never, readOnlyPorts(new Map()) as never))
+    await expect(planDeploy(bad, readOnlyPorts(new Map())))
       .rejects.toThrow(/exactly one of/);
   });
 
   it('compares expectedArchiveSha before planning any effect', async () => {
     const bad = { ...request(), expectedArchiveSha: 'sha256:wrong' };
 
-    await expect(planDeploy(bad as never, readOnlyPorts(new Map()) as never))
+    await expect(planDeploy(bad, readOnlyPorts(new Map())))
       .rejects.toThrow(/archive/i);
   });
 });

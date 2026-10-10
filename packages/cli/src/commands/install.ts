@@ -111,6 +111,7 @@ import {
   type OutputFormat,
   readTargetsSafely,
   RegistryError,
+  renderAppliedEffects,
   resolveEffectiveTarget,
   resolveTarget,
   resolveTargetName,
@@ -978,6 +979,7 @@ async function runUnifiedInstall(args: UnifiedInstallArgs): Promise<number> {
         collisions: plan.collisions,
         satisfied: plan.satisfied,
         drifted: plan.drifted,
+        ...(plan.duplicates.length === 0 ? {} : { duplicates: plan.duplicates }),
         ...extra
       },
       textRenderer: (d) => `Dry run: would install ${d.bundle.id}@${d.bundle.version} `
@@ -996,7 +998,7 @@ async function runUnifiedInstall(args: UnifiedInstallArgs): Promise<number> {
     ctx,
     command: 'install',
     output: fmt,
-    status: result.collisions.length > 0 ? 'warning' : 'ok',
+    status: result.collisions.length > 0 || result.retained.length > 0 || result.duplicates.length > 0 ? 'warning' : 'ok',
     data: {
       target: target.name,
       bundle,
@@ -1006,6 +1008,9 @@ async function runUnifiedInstall(args: UnifiedInstallArgs): Promise<number> {
       collisions: result.collisions,
       satisfied: result.satisfied,
       migration: result.migration,
+      ...(result.duplicates.length === 0 ? {} : { duplicates: result.duplicates }),
+      ...(result.retained.length === 0 ? {} : { retained: result.retained }),
+      ...(result.retired.length === 0 ? {} : { retired: result.retired }),
       ...extra
     },
     warnings: result.collisions.length > 0
@@ -1014,7 +1019,10 @@ async function runUnifiedInstall(args: UnifiedInstallArgs): Promise<number> {
     textRenderer: (d) => `Installed ${d.bundle.id}@${d.bundle.version} into target "${d.target}" `
       + `(${d.written.length} written, ${d.skipped.length} skipped, ${d.satisfied.length} already satisfied, `
       + `${d.collisions.length} collision${d.collisions.length === 1 ? '' : 's'}). `
-      + `${lockfileUpdated ? `Updated ${d.lockfile}.` : 'Lockfile unchanged.'}\n${renderMigration(d.migration)}`
+      + `${lockfileUpdated ? `Updated ${d.lockfile}.` : 'Lockfile unchanged.'}\n`
+      + result.duplicates.map((entry) => `Duplicate destination ${entry.to}: ${entry.ids.join(', ')}; first item wins, later items skipped.\n`).join('')
+      + (result.retained.length === 0 ? '' : `Retained old files with ownership (modified, shared or unsafe): ${result.retained.join(', ')}.\n`)
+      + renderMigration(d.migration)
   });
   return 0;
 }
@@ -1311,13 +1319,14 @@ async function performUnifiedLockfileInstall(
   const keys = Object.keys(desired.bundles);
 
   const replayed: string[] = [];
-  const failures: { key: string; reason: string }[] = [];
+  const failures: { key: string; reason: string; error?: ReturnType<RegistryError['toJSON']> }[] = [];
   const written: string[] = [];
   const destinations: string[] = [];
   const drifted: string[] = [];
   const satisfied: string[] = [];
   const skipped: { key: string; from: string; reason: string }[] = [];
   const collisions: { to: string; reason: string }[] = [];
+  const duplicates: { to: string; ids: string[] }[] = [];
 
   if (opts.verbose === true) {
     ctx.stdout.write(`[verbose] Planning to replay ${keys.length} bundles\n`);
@@ -1343,19 +1352,21 @@ async function performUnifiedLockfileInstall(
         satisfied.push(...plan.satisfied);
         skipped.push(...plan.skipped.map((s) => ({ key, ...s })));
         collisions.push(...plan.collisions);
+        duplicates.push(...plan.duplicates);
       } else {
         const result = await deployBundle({ ...request, force }, ports);
         written.push(...result.written);
         satisfied.push(...result.satisfied);
         skipped.push(...result.skipped.map((s) => ({ key, ...s })));
         collisions.push(...result.collisions);
+        duplicates.push(...result.duplicates);
       }
       replayed.push(key);
     } catch (cause) {
       if (dryRun && cause instanceof LockfileGenerationMismatchError) {
         throw dryRunNotMigrated(cause);
       }
-      failures.push({ key, reason: failureReason(cause) });
+      failures.push({ key, reason: failureReason(cause), ...(cause instanceof RegistryError ? { error: cause.toJSON() } : {}) });
     }
   }
 
@@ -1363,9 +1374,10 @@ async function performUnifiedLockfileInstall(
     ...failures.map((f) => `${f.key}: ${f.reason}`),
     ...collisions.map((c) => `${c.to}: existing untracked file left in place (use --force to overwrite)`)
   ];
-  const failureText = (list: { key: string; reason: string }[]): string => list.length === 0
+  const failureText = (list: typeof failures): string => list.length === 0
     ? '.\n'
-    : `; ${list.length} failure${list.length === 1 ? '' : 's'}:\n${list.map((f) => `  - ${f.key}: ${f.reason}\n`).join('')}`;
+    : `; ${list.length} failure${list.length === 1 ? '' : 's'}:\n`
+      + list.map((f) => `  - ${f.key}: ${f.reason}\n${renderAppliedEffects(f.error?.context?.appliedEffects)}`).join('');
   const status = warnings.length > 0 ? 'warning' : 'ok';
 
   if (dryRun) {
@@ -1385,7 +1397,8 @@ async function performUnifiedLockfileInstall(
         collisions,
         satisfied,
         drifted,
-        failures
+        failures,
+        ...(duplicates.length === 0 ? {} : { duplicates })
       },
       warnings: warnings.length > 0 ? warnings : undefined,
       textRenderer: (d) => `Dry run: would replay ${d.wouldReplay.length}/${d.replayPlanned} bundles `
@@ -1411,12 +1424,15 @@ async function performUnifiedLockfileInstall(
       skipped,
       collisions,
       satisfied,
-      migration
+      migration,
+      ...(duplicates.length === 0 ? {} : { duplicates })
     },
     warnings: warnings.length > 0 ? warnings : undefined,
     textRenderer: (d) => `Replay: ${d.replayed.length}/${d.replayPlanned} bundles installed into target "${d.target}" `
       + `(${d.written.length} written, ${d.satisfied.length} already satisfied, `
-      + `${d.collisions.length} collision${d.collisions.length === 1 ? '' : 's'})${failureText(d.failures)}${renderMigration(d.migration)}`
+      + `${d.collisions.length} collision${d.collisions.length === 1 ? '' : 's'})${failureText(d.failures)}`
+      + duplicates.map((entry) => `Duplicate destination ${entry.to}: first item wins, later items skipped.\n`).join('')
+      + renderMigration(d.migration)
   });
   return failures.length === 0 ? 0 : 1;
 }
@@ -2075,7 +2091,7 @@ function handleInstallError(
 /**
  * Fetch a bundle's extracted files from a lockfile source entry —
  * dispatches on `src.type` (`local`, or `github`/AwesomeCopilot via
- * `entry.sourceId`'s prefix) and resolves/downloads/extracts
+ * `entry.sourceId`'s prefix on the legacy flag-off path) and resolves/downloads/extracts
  * accordingly. Shared by lockfile replay (`replaySingleEntry`) and
  * `profile.ts`'s bundle activation loop.
  * @param src Lockfile source entry describing where to fetch from.
@@ -2108,8 +2124,7 @@ export async function fetchFilesForSource(
   if (src.type === 'github' || src.type === 'skills' || src.type === 'awesome-copilot') {
     // Check if this is an awesome-copilot source (detected by sourceId prefix)
     const isAwesomeCopilot = src.type === 'awesome-copilot'
-      || bundleId.startsWith('awesome-copilot-')
-      || entry.sourceId.startsWith('awesome-copilot-');
+      || (!unifiedDeployRequested(ctx) && (bundleId.startsWith('awesome-copilot-') || entry.sourceId.startsWith('awesome-copilot-')));
     const sourceConfig: RegistrySource = {
       id: entry.sourceId,
       name: entry.sourceId,

@@ -71,6 +71,7 @@ export {
   RegistryError,
   isRegistryError,
   renderError,
+  renderAppliedEffects,
   failWith,
   generateTargetHint,
   readTargetsSafely,

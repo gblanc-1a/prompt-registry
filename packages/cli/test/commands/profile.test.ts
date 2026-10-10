@@ -12,6 +12,7 @@
 import {
   mkdir,
   mkdtemp,
+  readdir,
   readFile,
   rm,
   writeFile,
@@ -32,6 +33,9 @@ import {
   it,
 } from 'vitest';
 import {
+  ApplyCommand,
+} from '../../src/commands/apply';
+import {
   HubAddCommand,
   HubSyncCommand,
   HubUseCommand,
@@ -50,12 +54,16 @@ import {
   runCommand,
 } from '../../src/framework';
 import {
+  RecordingFs,
+} from '../fixtures/recording-fs';
+import {
   createGovernedReleaseArchive,
   createLegacyReleaseArchive,
   writeReleaseArchive,
 } from '../fixtures/release-archives';
 
 const COMMAND_CLASSES = [
+  ApplyCommand,
   TargetAddCommand,
   HubAddCommand,
   HubUseCommand,
@@ -78,11 +86,11 @@ describe('profile activate/deactivate', () => {
   let targetDir: string;
   let hubConfigFile: string;
 
-  const run = (argv: string[]): ReturnType<typeof runCommand> => runCommand(argv, {
+  const run = (argv: string[], fs: NodeFileSystem = new NodeFileSystem()): ReturnType<typeof runCommand> => runCommand(argv, {
     commandClasses: COMMAND_CLASSES,
     context: {
       cwd: workspace,
-      fs: new NodeFileSystem(),
+      fs,
       env: {
         HOME: workspace,
         USERPROFILE: workspace,
@@ -142,6 +150,49 @@ profiles:
 
   afterEach(async () => {
     await rm(workspace, { recursive: true, force: true });
+  });
+
+  const snapshotTree = async (): Promise<[string, string][]> => {
+    const entries = await readdir(workspace, { recursive: true, withFileTypes: true });
+    return Promise.all(entries.filter((entry) => entry.isFile()).map(async (entry) => {
+      const file = path.join(entry.parentPath, entry.name);
+      return [path.relative(workspace, file), (await readFile(file)).toString('base64')] as [string, string];
+    }));
+  };
+
+  const gatedCommands = [
+    ['profile', 'activate', 'backend'],
+    ['apply', '--no-sync'],
+    ['apply'],
+    ['profile', 'deactivate']
+  ].map((argv) => ({ argv, label: argv.join(' ') }));
+  it.each(gatedCommands)('$label preflights mixed repository/user targets before any profile or file mutation', async ({ argv }) => {
+    const repository = path.join(workspace, 'repository');
+    await mkdir(repository);
+    expect((await run([
+      'target', 'add', 'repo', '--type', 'vscode', '--scope', 'repository', '--workspace-root', repository, '-o', 'json'
+    ])).exitCode).toBe(0);
+    expect((await run(['profile', 'activate', 'backend', '-o', 'json'])).exitCode).toBe(0);
+    const userLockfile = resolveUserConfigPaths({ HOME: workspace, XDG_CONFIG_HOME: path.join(workspace, 'xdg-config') }).userLockfile;
+    await writeFile(userLockfile, JSON.stringify({ version: '3.0.0', bundles: {}, sources: {} }));
+    const before = await snapshotTree();
+    const recording = new RecordingFs(workspace);
+
+    const result = await run([...argv, '-o', 'json'], recording);
+    expect(result.exitCode).not.toBe(0);
+    expect(recording.writes).toEqual([]);
+    expect(await snapshotTree()).toEqual(before);
+    const current = await run(['profile', 'current', '-o', 'json']);
+    expect(parseJson<{ active: { profileId: string } }>(current.stdout).data.active.profileId).toBe('backend');
+  });
+
+  it('profile activation dry-run previews can return before the v3 gate without mutations', async () => {
+    expect((await run(['profile', 'activate', 'backend', '-o', 'json'])).exitCode).toBe(0);
+    const userLockfile = resolveUserConfigPaths({ HOME: workspace, XDG_CONFIG_HOME: path.join(workspace, 'xdg-config') }).userLockfile;
+    await writeFile(userLockfile, JSON.stringify({ version: '3.0.0', bundles: {}, sources: {} }));
+    const recording = new RecordingFs(workspace);
+    expect((await run(['profile', 'activate', 'backend', '--dry-run', '-o', 'json'], recording)).exitCode).toBe(0);
+    expect(recording.writes).toEqual([]);
   });
 
   it('lists the seeded profile', async () => {

@@ -237,6 +237,59 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
     await rm(workspace, { recursive: true, force: true });
   });
 
+  it.each(['json', 'text'])('reports removed paths when a bundle removal fails midway in %s output', async (output) => {
+    const [first, second] = await writeManaged('prompts/a.prompt.md', 'prompts/b.prompt.md');
+    await writeV3({ 'src-a/local-foo': record({
+      sourceId: 'src-a', files: [{ path: 'prompts/a.prompt.md' }, { path: 'prompts/b.prompt.md' }]
+    }) });
+    const fs = new RecordingFs(workspace);
+    fs.failOnce('remove', (file) => file === second, new Error('EACCES during removal'));
+    const result = await run(['uninstall', '--bundle', 'local-foo', '--target', 'my-vscode', '-o', output], flagOn, fs);
+    expect(result.exitCode).toBe(1);
+    expect(await exists(first)).toBe(false);
+    expect(await exists(second)).toBe(true);
+    if (output === 'json') {
+      expect(parse<{ stage: string; removed: string[] }>(result.stdout).data).toMatchObject({
+        stage: 'remove', removed: [first]
+      });
+    } else {
+      expect(result.stderr).toContain('removed:');
+      expect(result.stderr).toContain(first);
+    }
+  });
+
+  it('bulk uninstall preserves the failed bundle applied-effects details in JSON', async () => {
+    const [first, second] = await writeManaged('prompts/a.prompt.md', 'prompts/b.prompt.md');
+    await writeV3({ 'src-a/local-foo': record({
+      sourceId: 'src-a', files: [{ path: 'prompts/a.prompt.md' }, { path: 'prompts/b.prompt.md' }]
+    }) });
+    const fs = new RecordingFs(workspace);
+    fs.failOnce('remove', (file) => file === second, new Error('EACCES during removal'));
+    const result = await uninstall(['--all'], fs);
+    expect(result.exitCode).toBe(1);
+    expect(parse<{ failure: { error: { context: { appliedEffects: { removed: string[] } } } } }>(result.stdout).data.failure.error.context.appliedEffects.removed)
+      .toEqual([first]);
+  });
+
+  it('clears a migrated unmanaged legacy id from a real target while leaving its files and showing the reason', async () => {
+    const [legacyFile] = await writeManaged('legacy.prompt.md');
+    const legacyId = 'legacy-bundle-1.0.0';
+    await seedV2(legacyId, [{ path: 'legacy.prompt.md', checksum: 'legacy-source-hash' }]);
+    const before = await readFile(legacyFile, 'utf8');
+    await install();
+    const local = await readLocal();
+    const key = 'legacy-source/legacy-bundle';
+    const reason = local.targets.unmanaged.bundles[key].unmanagedReason;
+    expect(reason).toBeDefined();
+
+    const result = await run(['uninstall', '--bundle', legacyId, '--target', 'my-vscode']);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain(reason);
+    expect((await readLocal()).targets.unmanaged?.bundles[key]).toBeUndefined();
+    expect((await readDesired()).bundles[key]).toBeUndefined();
+    expect(await readFile(legacyFile, 'utf8')).toBe(before);
+  });
+
   describe('--bundle', () => {
     it('removes exactly the files the flag-on install wrote, and drops both lockfile entries', async () => {
       const written = await install();
@@ -569,7 +622,7 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
       expect(recording.writes).toEqual([]);
     });
 
-    it('over a v2 lockfile previews without migrating: nothing to uninstall is reported and nothing is written', async () => {
+    it('over a v2 lockfile previews unmanaged cleanup without migrating or removing files', async () => {
       await seedV2('local-foo', []);
       const before = await readFile(paths().userLockfile, 'utf8');
       const recording = new RecordingFs();
@@ -578,16 +631,18 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
 
       expect(result.exitCode).toBe(0);
       const envelope = parse<unknown>(result.stdout);
-      expect(envelope.status).toBe('warning');
-      // The dry-run migrated nothing, so it neither claims a migration nor surfaces migration reasons.
-      expect(envelope.data).toEqual({ target: 'my-vscode', bundle: 'local-foo', reason: 'not found in lockfile' });
+      expect(envelope.status).toBe('ok');
+      expect(envelope.data).toEqual({
+        dryRun: true, target: 'my-vscode', bundle: 'local-foo', key: 'legacy-source/local-foo', files: [], unmanaged: true
+      });
       expect(recording.writes).toEqual([]);
       await expect(readFile(paths().userLockfile, 'utf8')).resolves.toBe(before);
       expect(await exists(paths().userLocalLockfile)).toBe(false);
 
       const text = await run(['uninstall', '--bundle', 'local-foo', '--target', 'my-vscode', '--dry-run'], flagOn, recording);
 
-      expect(text.stdout).toBe('Bundle "local-foo" is not installed in target "my-vscode". Nothing to uninstall.\n');
+      expect(text.stdout).toContain('Would drop the migrated unmanaged record "legacy-source/local-foo"');
+      expect(text.stdout).toContain('its files stay in place');
       expect(recording.writes).toEqual([]);
       await expect(readFile(paths().userLockfile, 'utf8')).resolves.toBe(before);
     });
@@ -783,7 +838,7 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
       expect(envelope.status).toBe('warning');
       expect(envelope.data.uninstalled).toBe(1);
       expect(envelope.data.bundles).toEqual([{ id: alpha.key, removed: 1, skipped: 0 }]);
-      expect(envelope.data.failure).toEqual({ key: beta.key, reason: 'EIO: simulated remove failure' });
+      expect(envelope.data.failure).toMatchObject({ key: beta.key, reason: 'EIO: simulated remove failure' });
       expect(envelope.warnings).toEqual([`${beta.key}: EIO: simulated remove failure`]);
       expect(await exists(alpha.file)).toBe(false);
       expect(await exists(beta.file)).toBe(true);
@@ -880,14 +935,14 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
       }, null, 2));
     };
 
-    it('leaves a v2-only store byte-identical, with nothing written, when the bundle is not installed in the target', async () => {
+    it('leaves a v2-only store byte-identical when the typed bundle id does not exist', async () => {
       await mkdir(path.dirname(destination()), { recursive: true });
       await writeFile(destination(), '# legacy\n');
       await seedV2('local-foo', [{ path: 'prompts/hello.prompt.md', checksum: 'sha256:abc' }]);
       const before = await readFile(paths().userLockfile, 'utf8');
       const recording = new RecordingFs();
 
-      const json = await uninstall(['--bundle', 'local-foo'], recording);
+      const json = await uninstall(['--bundle', 'absent'], recording);
 
       expect(json.exitCode).toBe(0);
       const envelope = parse<{ reason: string }>(json.stdout);

@@ -77,6 +77,7 @@ interface UnifiedInstallData {
   lockfile: string;
   collisions: { to: string; reason: string }[];
   satisfied: string[];
+  duplicates?: { to: string; ids: string[] }[];
   migration: { migrated: string[]; unmanaged: { key: string; reason: string }[] } | null;
 }
 
@@ -138,6 +139,48 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
 
   afterEach(async () => {
     await rm(workspace, { recursive: true, force: true });
+  });
+
+  it.each(['json', 'text'])('reports normalized duplicates and keeps the first payload in %s output', async (output) => {
+    await writeFile(path.join(bundleDir, 'deployment-manifest.yml'),
+      'id: local-foo\nversion: 1.0.0\nname: Duplicates\nprompts:\n'
+      + '  - id: hello world\n    file: prompts/first.md\n    type: prompt\n'
+      + '  - id: hello-world\n    file: prompts/last.md\n    type: prompt\n');
+    await writeFile(path.join(bundleDir, 'prompts', 'first.md'), '# first\n');
+    await writeFile(path.join(bundleDir, 'prompts', 'last.md'), '# last\n');
+    const result = await run(['install', 'local-foo', '--from', bundleDir, '--target', 'my-vscode', '-o', output], flagOn);
+    const duplicate = path.join(workspace, '.copilot', 'prompts', 'hello-world.prompt.md');
+    expect(result.exitCode).toBe(0);
+    expect(await readFile(duplicate, 'utf8')).toBe('# first\n');
+    if (output === 'json') {
+      expect(parse<UnifiedInstallData>(result.stdout).data.duplicates).toEqual([
+        { to: duplicate, ids: ['hello world', 'hello-world'] }
+      ]);
+    } else {
+      expect(result.stdout).toContain('Duplicate destination');
+      expect(result.stdout).toContain(duplicate);
+      expect(result.stdout).toContain('first');
+    }
+  });
+
+  it.each(['json', 'text'])('renders applied effects after a state-write failure in %s output and exits nonzero', async (output) => {
+    const fs = new RecordingFs(workspace);
+    const local = resolveUserConfigPaths(env).userLocalLockfile;
+    fs.failOnce('writeFile', (file) => file.startsWith(`${local}.`), new Error('ENOSPC at state write'));
+    const result = await run(['install', 'local-foo', '--from', bundleDir, '--target', 'my-vscode', '-o', output], flagOn, fs);
+    expect(result.exitCode).toBe(1);
+    expect(await exists(destination())).toBe(false);
+    if (output === 'json') {
+      const envelope = parse<{ stage: string; written: string[]; created: string[]; cleanedUp: string[] }>(result.stdout);
+      expect(envelope.data).toMatchObject({
+        stage: 'state-write', written: [destination()], created: [destination()], cleanedUp: [destination()]
+      });
+      expect(envelope.errors[0].code).toBe('BUNDLE.DEPLOY_FAILED');
+    } else {
+      expect(result.stderr).toContain('written:');
+      expect(result.stderr).toContain('cleaned up:');
+      expect(result.stderr).toContain(destination());
+    }
   });
 
   it('installs through the deploy path and emits the legacy keys plus collisions, satisfied and migration', async () => {
@@ -349,6 +392,26 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
       edit(desired);
       await writeFile(lockfilePath(), JSON.stringify(desired, null, 2));
     };
+
+    it('replay preserves a failed bundle applied-effects details in its JSON failures', async () => {
+      await installOnce();
+      await rm(destination());
+      const fs = new RecordingFs(workspace);
+      fs.failOnce('rename', (file) => file === resolveUserConfigPaths(env).userLocalLockfile, new Error('state rename refused'));
+      const result = await replay([], fs);
+      expect(result.exitCode).toBe(1);
+      const data = parse<{ failures: { error: { context: { appliedEffects: { written: string[]; cleanedUp: string[] } } } }[] }>(result.stdout).data;
+      const local = resolveUserConfigPaths(env).userLocalLockfile;
+      const temporary = fs.writes.find((file) => file.startsWith(`${local}.`) && file.endsWith('.tmp'));
+      if (temporary === undefined) {
+        throw new Error('The failed rename must follow a successful temporary state-file write');
+      }
+      expect(data.failures[0].error.context.appliedEffects).toMatchObject({
+        written: [destination()], cleanedUp: [destination(), temporary]
+      });
+      expect(await exists(destination())).toBe(false);
+      expect(await exists(temporary)).toBe(false);
+    });
 
     it('replays the desired state a prior flag-on install recorded, restoring a deleted file', async () => {
       await installOnce();
@@ -866,6 +929,25 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
         expect(data.failures).toEqual([]);
         expect(httpCalls).toContain('https://api.github.com/repos/owner/repo/releases');
         await expect(readFile(destination(), 'utf8')).resolves.toContain('Hello Prompt');
+      });
+
+      it('replays a recorded github descriptor despite an awesome-copilot sourceId prefix', async () => {
+        await writeDesired('1.0.0');
+        const file = resolveUserConfigPaths(env).userLockfile;
+        const misleading = 'awesome-copilot-misleading';
+        const desired = JSON.parse(await readFile(file, 'utf8')) as {
+          bundles: Record<string, { version: string; sourceId: string }>;
+          sources: Record<string, { type: string; url: string }>;
+        };
+        desired.bundles = { [`${misleading}/${remoteBundleId}`]: { version: '1.0.0', sourceId: misleading } };
+        desired.sources = { [misleading]: { type: 'github', url: 'https://github.com/owner/repo' } };
+        await writeFile(file, JSON.stringify(desired));
+        const result = await replayRemote(new NodeFileSystem());
+        expect(result.exitCode).toBe(0);
+        expect(parse<{ replayed: string[] }>(result.stdout).data.replayed).toEqual([`${misleading}/${remoteBundleId}`]);
+        expect(httpCalls).toContain('https://api.github.com/repos/owner/repo/releases');
+        expect(httpCalls.some((url) => url.includes('/contents/'))).toBe(false);
+        expect(await readFile(destination(), 'utf8')).toContain('Hello Prompt');
       });
 
       it('fails closed when the pinned version is not a release, and never downloads the latest instead', async () => {

@@ -68,6 +68,7 @@ import {
   type OutputFormat,
   readTargetsSafely,
   RegistryError,
+  renderAppliedEffects,
   resolveTarget,
   resolveTargetName,
   validateInputs,
@@ -530,6 +531,15 @@ async function runUnifiedBundleUninstall(
   }
 
   const { key, version } = resolution;
+  if (dryRun && resolution.kind === 'unmanaged') {
+    formatOutput({
+      ctx, command: 'uninstall', output: fmt, status: 'ok',
+      data: { dryRun: true, target: target.name, bundle: typed, key, files: [], unmanaged: true },
+      textRenderer: (d) => `[dry-run] Would drop the migrated unmanaged record "${d.key}"; its files stay in place.\n`
+        + 'Run without --dry-run to apply.\n'
+    });
+    return 0;
+  }
   if (dryRun) {
     const record = resolution.kind === 'match' ? resolution.record : undefined;
     const unmanaged = record?.state === 'unmanaged';
@@ -567,7 +577,7 @@ async function runUnifiedBundleUninstall(
     key,
     bundle: { bundleId: bundleHalf(key), version },
     scope: 'user',
-    targetName: target.name
+    targetName: resolution.kind === 'unmanaged' ? 'unmanaged' : target.name
   }, ports);
   const reported = result.migration;
   formatOutput({
@@ -648,7 +658,7 @@ async function runUnifiedAllUninstall(
 
   // Keys are snapshotted above, so a failure leaves the later bundles untouched and unattempted.
   const results: UndeployResult[] = [];
-  let failure: { key: string; reason: string } | undefined;
+  let failure: { key: string; reason: string; error?: ReturnType<RegistryError['toJSON']> } | undefined;
   for (const bundle of bundles) {
     try {
       results.push(await undeployBundle({
@@ -658,7 +668,7 @@ async function runUnifiedAllUninstall(
         targetName: target.name
       }, ports));
     } catch (cause) {
-      failure = { key: bundle.key, reason: failureReason(cause) };
+      failure = { key: bundle.key, reason: failureReason(cause), ...(cause instanceof RegistryError ? { error: cause.toJSON() } : {}) };
       break;
     }
   }
@@ -708,9 +718,10 @@ async function runUnifiedAllUninstall(
         .join('')
         + (d.failure === undefined
           ? ''
-          : `Failed on ${d.failure.key}: ${d.failure.reason}. ${notAttempted} later bundle${notAttempted === 1 ? '' : 's'} not attempted.\n`)
-        + desiredOnlyNote
-        + renderMigration(migration)
+          : `Failed on ${d.failure.key}: ${d.failure.reason}. ${notAttempted} later bundle${notAttempted === 1 ? '' : 's'} not attempted.\n`
+            + renderAppliedEffects(d.failure.error?.context?.appliedEffects))
+          + desiredOnlyNote
+          + renderMigration(migration)
   });
   return failure === undefined ? 0 : 1;
 }

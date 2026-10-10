@@ -412,7 +412,7 @@ describe('unified deploy, CLI user scope, vscode', () => {
    * @param keepBytes Whether the placed files survive the failed install.
    */
   const failingStateWrite = (lockfile: string, keepBytes: boolean): RecordingFs => {
-    const failing = new RecordingFs();
+    const failing = new RecordingFs(workspace);
     failing.failOnce('rename', (file) => file === lockfile, new Error('injected state-write failure'));
     if (keepBytes) {
       for (const relative of EXPECTED_TREE) {

@@ -1,6 +1,9 @@
 import {
   NodeFileSystem,
 } from '@ai-primitives-hub/infra';
+import {
+  createBoundary,
+} from './bounded-fs';
 
 /** Mutating operations a {@link RecordingFs} can be told to fail. */
 export type FailableOp = 'writeFile' | 'writeFileBytes' | 'mkdir' | 'rename' | 'remove';
@@ -22,6 +25,17 @@ export class RecordingFs extends NodeFileSystem {
   public readonly contentReads: string[] = [];
   public readonly writes: string[] = [];
   private readonly injected: InjectedFailure[] = [];
+  private readonly isInside: ((file: string) => boolean) | undefined;
+
+  /**
+   * Create a RecordingFs, optionally fenced into one directory.
+   * @param boundary Optional existing directory; when given, existence probes cannot see outside it
+   *   (see `createBoundary`), which stops upward config/layouts/lockfile discovery there.
+   */
+  public constructor(boundary?: string) {
+    super();
+    this.isInside = boundary === undefined ? undefined : createBoundary(boundary);
+  }
 
   private maybeFail(op: FailableOp, file: string): void {
     const index = this.injected.findIndex((rule) => rule.op === op && rule.matches(file));
@@ -56,7 +70,7 @@ export class RecordingFs extends NodeFileSystem {
 
   public override async exists(file: string): Promise<boolean> {
     this.reads.push(file);
-    return await super.exists(file);
+    return (this.isInside?.(file) ?? true) && await super.exists(file);
   }
 
   public override async readDir(dir: string): Promise<string[]> {

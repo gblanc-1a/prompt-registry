@@ -515,6 +515,28 @@ describe('unified deploy, CLI user scope, vscode', () => {
     expect(await listTree(copilotDir)).toEqual(treeBefore);
   });
 
+  it('flag-off local install against 3.0.0 state fails loudly before writing any bundle file', async () => {
+    await runFlagOn(INSTALL_ARGV);
+    const before = [
+      await readFile(desiredLockfile, 'utf8'),
+      await readFile(localLockfile, 'utf8')
+    ];
+    // Drop the bundle's files so a flag-off install has something visible to write.
+    await rm(copilotDir, { recursive: true, force: true });
+    expect(await listTree(copilotDir)).toEqual([]);
+
+    const result = await runFlagOff(INSTALL_ARGV);
+
+    expect(result.exitCode).not.toBe(0);
+    expect(result.stdout + result.stderr).toMatch(/newer version of AI Primitives Hub/);
+    expect(result.stdout + result.stderr).toContain(desiredLockfile);
+    expect(await listTree(copilotDir)).toEqual([]);
+    expect([
+      await readFile(desiredLockfile, 'utf8'),
+      await readFile(localLockfile, 'utf8')
+    ]).toEqual(before);
+  });
+
   it('writes a 2.0.0 desired lockfile and no local half with the flag off', async () => {
     const result = await runFlagOff(INSTALL_ARGV);
 

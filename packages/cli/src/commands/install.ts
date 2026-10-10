@@ -1087,12 +1087,13 @@ async function performLocalInstall(
     const writerFactory = createWriterFactory(ctx, opts);
     const writer = writerFactory(effectiveTarget);
     const targetFiles = getInstallableBundleFiles(files, manifest);
+    const lockPath = lockfilePathForTarget(ctx, effectiveTarget);
+    // Read before the first write: a 3.0.0 lockfile must refuse here, not after the files are placed.
+    const existing = await readLockfile(lockPath, ctx.fs) ?? emptyLockfile('ai-primitives-hub-cli');
     const result = await writeTargetSafely(writer, effectiveTarget, targetFiles);
 
     const scope = effectiveTarget.scope;
     const commitMode = effectiveTarget.commitMode ?? 'commit';
-    const lockPath = lockfilePathForTarget(ctx, effectiveTarget);
-    const existing = await readLockfile(lockPath, ctx.fs) ?? emptyLockfile('ai-primitives-hub-cli');
     const localSourceId = `local-${path.basename(opts.from as string)}`;
     const entry: LockfileBundleEntry = {
       version: manifest.version,
@@ -1689,11 +1690,12 @@ async function performRemoteInstall(
     const writerFactory = createWriterFactory(ctx, opts);
     const writer = writerFactory(effectiveTarget);
     const targetFiles = getInstallableBundleFiles(files, manifest);
+    const lockPath = lockfilePathForTarget(ctx, effectiveTarget);
+    // Read before the first write: a 3.0.0 lockfile must refuse here, not after the files are placed.
+    const existing = await readLockfile(lockPath, ctx.fs) ?? emptyLockfile('ai-primitives-hub-cli');
     const result = await writeTargetSafely(writer, effectiveTarget, targetFiles);
     const scope = effectiveTarget.scope;
     const commitMode = effectiveTarget.commitMode ?? 'commit';
-    const lockPath = lockfilePathForTarget(ctx, effectiveTarget);
-    const existing = await readLockfile(lockPath, ctx.fs) ?? emptyLockfile('ai-primitives-hub-cli');
     const entry: LockfileBundleEntry = {
       version: manifest.version,
       sourceId: installable.ref.sourceId,

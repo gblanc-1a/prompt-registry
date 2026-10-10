@@ -748,8 +748,12 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
     };
     const tokens = { getToken: () => Promise.resolve(undefined) };
 
-    const runRemote = async (argv: string[], fs: NodeFileSystem = new NodeFileSystem()): Promise<{ exitCode: number; stdout: string }> => {
-      const ctx = createTestContext({ cwd: workspace, fs, env: { ...env, ...flagOn } });
+    const runRemote = async (
+      argv: string[],
+      fs: NodeFileSystem = new NodeFileSystem(),
+      flag: Record<string, string> = flagOn
+    ): Promise<{ exitCode: number; stdout: string }> => {
+      const ctx = createTestContext({ cwd: workspace, fs, env: { ...env, ...flag } });
       const exitCode = await runCli(argv, {
         ctx,
         name: 'ai-primitives-hub',
@@ -799,6 +803,30 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
 
       expect(result.exitCode).toBe(0);
       expect(parse<UnifiedInstallData>(result.stdout).data.migration?.unmanaged).toHaveLength(1);
+    });
+
+    it('flag-off remote install over 3.0.0 state fails loudly before writing any bundle file', async () => {
+      const installArgv = ['install', remoteBundleId, '--source', 'owner/repo', '--target', 'my-vscode', '-o', 'json'];
+      expect((await runRemote(installArgv)).exitCode).toBe(0);
+      const userPaths = resolveUserConfigPaths(env);
+      const before = [
+        await readFile(userPaths.userLockfile, 'utf8'),
+        await readFile(userPaths.userLocalLockfile, 'utf8')
+      ];
+      // Drop the bundle's file so a flag-off install has something visible to write.
+      await rm(destination());
+      const recording = new RecordingFs();
+
+      const result = await runRemote(installArgv, recording, {});
+
+      expect(result.exitCode).not.toBe(0);
+      expect(parse<null>(result.stdout).errors[0].message).toMatch(/newer version of AI Primitives Hub/);
+      expect(recording.writes).toEqual([]);
+      expect(await exists(destination())).toBe(false);
+      expect([
+        await readFile(userPaths.userLockfile, 'utf8'),
+        await readFile(userPaths.userLocalLockfile, 'utf8')
+      ]).toEqual(before);
     });
 
     it('records github.com as the source URL when no source is configured', async () => {

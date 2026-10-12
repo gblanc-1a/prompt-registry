@@ -110,6 +110,45 @@ describe('classifyLegacyIdentity', () => {
       expect(result.evidence.originalLocalRoot).toBe('/Users/alice/agents');
     }
   });
+
+  it('rejects credential values in diagnostic source references', () => {
+    const result = classifyLegacyIdentity({
+      legacyKey: 'legacy-agent',
+      sourceId: 'https://github.com/acme/agents?token=credential-placeholder',
+      descriptor: {
+        type: 'github',
+        url: 'https://github.com/acme/agents'
+      },
+      version: '1.0.0'
+    });
+
+    expect(result.kind).toBe('unresolved');
+    if (result.kind === 'unresolved') {
+      expect(result.desired.sourceRef).toBeUndefined();
+      expect(JSON.stringify(result.desired)).not.toContain('credential-placeholder');
+    }
+  });
+
+  it('rejects credential values and arbitrary fields in shared selector evidence', () => {
+    const result = classifyLegacyIdentity({
+      legacyKey: 'legacy-agent',
+      sourceId: 'legacy-source',
+      descriptor: {
+        type: 'github',
+        url: 'https://github.com/acme/agents',
+        ref: 'releases?api_key=credential-placeholder',
+        customMetadata: 'unmodeled-selector'
+      },
+      version: '1.0.0'
+    });
+
+    expect(result.kind).toBe('unresolved');
+    if (result.kind === 'unresolved') {
+      expect(result.desired.descriptor?.selectors).toBeUndefined();
+      expect(JSON.stringify(result.desired)).not.toContain('credential-placeholder');
+      expect(JSON.stringify(result.desired)).not.toContain('unmodeled-selector');
+    }
+  });
 });
 
 describe('planIdentityMappings', () => {
@@ -140,6 +179,59 @@ describe('planIdentityMappings', () => {
     ]);
 
     expect(result.every((decision) => decision.kind === 'unresolved')).toBe(true);
+    const keys = result.flatMap((decision) =>
+      decision.kind === 'unresolved' ? [legacyIdentityRetentionKey(decision.evidence)] : []
+    );
+    expect(new Set(keys).size).toBe(2);
+  });
+
+  it('treats conflicting MCP destinations as incompatible identity mappings', () => {
+    const materialization = (configPath: string, server: string) => [{
+      targetName: 'cursor-user',
+      targetType: 'cursor' as const,
+      baseDir: '/home/user/.cursor',
+      files: [{ path: 'agents/reviewer.md', checksum: 'same', installedChecksum: 'same-installed' }],
+      mcp: { configPath, servers: [server] }
+    }];
+    const result = planIdentityMappings([
+      {
+        legacyKey: 'old-a/reviewer',
+        version: '1.0.0',
+        proven,
+        materializations: materialization('.config/first.json', 'first-server')
+      },
+      {
+        legacyKey: 'old-b/reviewer',
+        version: '1.0.0',
+        proven,
+        materializations: materialization('.config/second.json', 'second-server')
+      }
+    ]);
+
+    expect(result.every((decision) => decision.kind === 'unresolved')).toBe(true);
+  });
+
+  it('uses each conflicting materialization projection in its local retention key', () => {
+    const decision = classifyLegacyIdentity({
+      legacyKey: 'old-source/reviewer',
+      version: '1.0.0'
+    });
+    if (decision.kind !== 'unresolved') {
+      throw new Error('Expected unproven identity to remain unresolved.');
+    }
+    const first = {
+      targetName: 'cursor-user',
+      targetType: 'cursor' as const,
+      baseDir: '/home/user/.cursor',
+      files: [{ path: 'agents/reviewer.md', checksum: 'baseline-a', installedChecksum: 'installed-a' }]
+    };
+    const second = {
+      ...first,
+      files: [{ path: 'agents/reviewer.md', checksum: 'baseline-b', installedChecksum: 'installed-b' }]
+    };
+
+    expect(legacyIdentityRetentionKey(decision.evidence, first))
+      .not.toBe(legacyIdentityRetentionKey(decision.evidence, second));
   });
 
   it('does not collapse same-basename local roots into one identity or retention key', () => {

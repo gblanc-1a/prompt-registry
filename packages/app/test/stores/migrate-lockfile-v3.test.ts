@@ -563,6 +563,124 @@ describe('planLockfileMigration', () => {
 });
 
 describe('offline portable identity migration', () => {
+  it('unions remaining legacy intent with an already-written desired generation', async () => {
+    const fs = fakeFs();
+    const oldLockfilePath = '/work/prompt-registry.lock.json';
+    const oldLocalLockfilePath = '/work/prompt-registry.local.lock.json';
+    const sourceId = sourceKey(verifiedSource.identity, verifiedSource.type);
+    const currentDesired = {
+      version: '3.0.0',
+      bundles: {
+        [verifiedLogicalKey]: {
+          version: '9.0.0',
+          sourceKey: sourceId,
+          resolution: { kind: 'unpinned', reason: 'verified newer intent' }
+        }
+      },
+      sources: { [sourceId]: verifiedSource }
+    };
+    const oldLocalLockfile = v2WithOneBundle();
+    oldLocalLockfile.bundles = {
+      'local-only': {
+        ...oldLocalLockfile.bundles['web-dev'],
+        installedAt: '2026-03-01T00:00:00.000Z'
+      }
+    };
+    fs.files.set(userSources.desiredFile, JSON.stringify(currentDesired));
+    fs.files.set(oldLockfilePath, JSON.stringify(v2WithOneBundle()));
+    fs.files.set(oldLocalLockfilePath, JSON.stringify(oldLocalLockfile));
+
+    const plan = await planLockfileMigration({
+      ...userSources,
+      legacyFiles: [oldLockfilePath, oldLocalLockfilePath]
+    }, fs, OPTS);
+
+    expect(plan.pendingWrite).toBe(true);
+    expect(plan.pair.desired.bundles[verifiedLogicalKey].version).toBe('9.0.0');
+    expect(plan.pair.desired.unresolved).toEqual([
+      expect.objectContaining({ originalKey: 'web-dev', version: '1.0.0' })
+    ]);
+  });
+
+  it('retains conflicting baselines as separate complete materializations', async () => {
+    const fs = fakeFs();
+    const repoSources = {
+      ...userSources,
+      legacyFiles: ['/work/older-local.lock.json']
+    };
+    const branchPair = branchEraV3Pair();
+    const firstLocal = branchPair.local;
+    const secondLocal = structuredClone(branchPair.local);
+    const secondRecord = secondLocal.targets['cursor-user'].bundles[legacyRuntimeKey];
+    secondRecord.files = [{
+      path: 'agents/reviewer.md',
+      checksum: 'd'.repeat(64),
+      installedChecksum: 'e'.repeat(64)
+    }];
+    fs.files.set(repoSources.desiredFile, JSON.stringify(branchPair.desired));
+    fs.files.set(repoSources.localFile, JSON.stringify(firstLocal));
+    fs.files.set(repoSources.legacyFiles[0], JSON.stringify(secondLocal));
+
+    const plan = await planLockfileMigration(repoSources, fs, {
+      ...OPTS,
+      identityEvidence: [{
+        legacyKey: legacyRuntimeKey,
+        version: '1.0.0',
+        sourceId: 'computer-specific',
+        proven: { source: verifiedSource, logicalBundleId: 'reviewer' }
+      }]
+    });
+
+    const retained = Object.entries(plan.pair.local.targets['cursor-user'].bundles)
+      .filter(([key]) => key.startsWith('unresolved/'));
+    expect(retained).toHaveLength(2);
+    expect(retained.map(([, record]) => record.files[0].checksum).toSorted())
+      .toEqual([FILE_DIGEST, 'd'.repeat(64)].toSorted());
+    expect(retained.map(([, record]) => record.files[0].installedChecksum).toSorted())
+      .toEqual([INSTALLED_DIGEST, 'e'.repeat(64)].toSorted());
+  });
+
+  it('preserves the local historical pin when it disagrees with desired intent', async () => {
+    const fs = fakeFs();
+    const branchPair = branchEraV3Pair();
+    const desiredPin = {
+      kind: 'pinned' as const,
+      provider: 'github-release' as const,
+      version: '1.0.0',
+      releaseId: '1',
+      assetId: '11',
+      archiveSha256: ARCHIVE_DIGEST
+    };
+    const localPin = {
+      ...desiredPin,
+      releaseId: '3',
+      assetId: '33',
+      archiveSha256: 'd'.repeat(64)
+    };
+    branchPair.desired.bundles[legacyRuntimeKey].resolution = desiredPin;
+    branchPair.local.targets['cursor-user'].bundles[legacyRuntimeKey].resolution = localPin;
+    fs.files.set(userSources.desiredFile, JSON.stringify(branchPair.desired));
+    fs.files.set(userSources.localFile, JSON.stringify(branchPair.local));
+
+    const plan = await planLockfileMigration(userSources, fs, {
+      ...OPTS,
+      identityEvidence: [{
+        legacyKey: legacyRuntimeKey,
+        version: '1.0.0',
+        sourceId: 'computer-specific',
+        proven: { source: verifiedSource, logicalBundleId: 'reviewer' }
+      }]
+    });
+
+    expect(plan.pair.desired.unresolved).toEqual([
+      expect.objectContaining({ originalKey: legacyRuntimeKey, knownResolution: desiredPin })
+    ]);
+    const localRecord = Object.values(plan.pair.local.targets['cursor-user'].bundles)
+      .find((record) => record.files.some((file) => file.path === 'agents/reviewer.md'));
+    expect(localRecord?.state).toBe('unmanaged');
+    expect(localRecord?.legacy?.knownResolution).toEqual(localPin);
+  });
+
   it('downgrades noncanonical legacy pins to strict evidence without losing their digest', async () => {
     const fs = fakeFs();
     const branchPair = branchEraV3Pair();
@@ -640,6 +758,142 @@ describe('offline portable identity migration', () => {
     });
     expect(JSON.stringify(record.legacy)).toContain('computer-specific');
     expect(fs.order).toEqual([]);
+  });
+
+  it('ignores stale old-generation ownership after amended v3 completion', async () => {
+    const fs = fakeFs();
+    const oldLockfilePath = '/work/prompt-registry.lock.json';
+    const sourceId = sourceKey(verifiedSource.identity, verifiedSource.type);
+    const desired = {
+      version: '3.0.0',
+      bundles: {
+        [verifiedLogicalKey]: {
+          version: '1.0.0',
+          sourceKey: sourceId,
+          resolution: { kind: 'unpinned', reason: 'already converted' }
+        }
+      },
+      sources: { [sourceId]: verifiedSource }
+    };
+    const local = {
+      version: '3.0.0',
+      generatedAt: NOW,
+      generatedBy: OPTS.generatedBy,
+      migration: { lockfileV3: 'complete' },
+      targets: {}
+    };
+    fs.files.set(userSources.desiredFile, JSON.stringify(desired));
+    fs.files.set(userSources.localFile, JSON.stringify(local));
+    fs.files.set(oldLockfilePath, JSON.stringify(v2WithOneBundle()));
+
+    const plan = await planLockfileMigration({
+      ...userSources,
+      legacyFiles: [oldLockfilePath]
+    }, fs, OPTS);
+
+    expect(plan.pendingWrite).toBe(true);
+    expect(plan.pair.desired.bundles[verifiedLogicalKey]).toEqual(desired.bundles[verifiedLogicalKey]);
+    expect(plan.pair.desired.unresolved).toBeUndefined();
+    expect(Object.values(plan.pair.local.targets).flatMap((target) => Object.values(target.bundles)))
+      .toEqual([]);
+  });
+
+  it('retains independently known outer digests beside a partial resolution', async () => {
+    const fs = fakeFs();
+    const branchPair = branchEraV3Pair();
+    branchPair.desired.bundles[legacyRuntimeKey].resolution = {
+      kind: 'pinned',
+      provider: 'github-release',
+      version: '1.0.0',
+      releaseId: '7',
+      assetId: '77'
+    };
+    branchPair.desired.bundles[legacyRuntimeKey].sourceContentSha256 = '1'.repeat(64);
+    branchPair.desired.bundles[legacyRuntimeKey].manifestSha256 = '2'.repeat(64);
+    fs.files.set(userSources.desiredFile, JSON.stringify(branchPair.desired));
+    fs.files.set(userSources.localFile, JSON.stringify(branchPair.local));
+
+    const plan = await planLockfileMigration(userSources, fs, OPTS);
+
+    expect(plan.pair.desired.unresolved?.[0].knownResolution).toMatchObject({
+      kind: 'unpinned',
+      evidence: {
+        knownPins: {
+          provider: 'github-release',
+          releaseId: '7',
+          assetId: '77'
+        },
+        knownDigests: {
+          archiveSha256: ARCHIVE_DIGEST,
+          sourceContentSha256: '1'.repeat(64),
+          manifestSha256: '2'.repeat(64)
+        }
+      }
+    });
+  });
+
+  it('retains incompatible MCP destinations under separate local keys', async () => {
+    const fs = fakeFs();
+    const repoSources = {
+      ...userSources,
+      legacyFiles: ['/work/older-local.lock.json']
+    };
+    const branchPair = branchEraV3Pair();
+    const secondLocal = structuredClone(branchPair.local);
+    const secondRecord = secondLocal.targets['cursor-user'].bundles[legacyRuntimeKey];
+    secondRecord.mcpConfigPath = '.config/second-mcp.json';
+    secondRecord.mcpServers = ['second-server'];
+    branchPair.local.targets['cursor-user'].bundles[legacyRuntimeKey].mcpConfigPath = '.config/first-mcp.json';
+    branchPair.local.targets['cursor-user'].bundles[legacyRuntimeKey].mcpServers = ['first-server'];
+    fs.files.set(repoSources.desiredFile, JSON.stringify(branchPair.desired));
+    fs.files.set(repoSources.localFile, JSON.stringify(branchPair.local));
+    fs.files.set(repoSources.legacyFiles[0], JSON.stringify(secondLocal));
+
+    const plan = await planLockfileMigration(repoSources, fs, {
+      ...OPTS,
+      identityEvidence: [{
+        legacyKey: legacyRuntimeKey,
+        version: '1.0.0',
+        sourceId: 'computer-specific',
+        proven: { source: verifiedSource, logicalBundleId: 'reviewer' }
+      }]
+    });
+
+    const retained = Object.entries(plan.pair.local.targets['cursor-user'].bundles)
+      .filter(([key]) => key.startsWith('unresolved/'));
+    expect(retained).toHaveLength(2);
+    expect(retained.map(([, record]) => record.mcpConfigPath).toSorted())
+      .toEqual(['.config/first-mcp.json', '.config/second-mcp.json']);
+    expect(retained.map(([, record]) => record.mcpServers?.[0]).toSorted())
+      .toEqual(['first-server', 'second-server']);
+  });
+
+  it('removes temporary mappings but retains permanent unmanaged evidence', async () => {
+    const fs = fakeFs();
+    const branchPair = branchEraV3Pair();
+    branchPair.local.targets['cursor-user'].bundles[legacyRuntimeKey].files = [{
+      path: 'agents/reviewer.md',
+      checksum: FILE_DIGEST
+    }];
+    fs.files.set(userSources.desiredFile, JSON.stringify(branchPair.desired));
+    fs.files.set(userSources.localFile, JSON.stringify(branchPair.local));
+
+    const migrated = await migrateLockfileIfNeeded(userSources, fs, {
+      ...OPTS,
+      identityEvidence: [{
+        legacyKey: legacyRuntimeKey,
+        version: '1.0.0',
+        sourceId: 'computer-specific',
+        proven: { source: verifiedSource, logicalBundleId: 'reviewer' }
+      }]
+    });
+    const record = migrated.pair.local.targets['cursor-user'].bundles[verifiedLogicalKey];
+    const resumed = await planLockfileMigration(userSources, fs, OPTS);
+
+    expect(record.state).toBe('unmanaged');
+    expect(record.legacy?.originalKey).toBe(legacyRuntimeKey);
+    expect(record.legacy?.portableDescriptor).toBeUndefined();
+    expect(resumed.pendingWrite).toBe(false);
   });
 
   it('retains unproven old-v3 identity and complete materialization without publishing fake sources', async () => {

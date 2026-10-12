@@ -103,6 +103,8 @@ const SOURCE_KEY_PATTERN = /^src-[a-f0-9]{64}$/;
 const HTTP_PROTOCOLS = new Set(['http:', 'https:']);
 const CREDENTIAL_QUERY_KEY = /(token|password|passwd|secret|signature|credential|auth|api[_-]?key)/i;
 const LEGACY_KEY_QUERY_PARAMETER = /(^|[_-])(?:api[_-]?)?key/i;
+const CREDENTIAL_ASSIGNMENT =
+  /(token|password|passwd|secret|signature|credential|authorization|auth|api[_-]?key)\s*[:=]\s*(?:bearer\s+)?[^&\s;]+/i;
 const GITHUB_REPOSITORY_ID_PATTERN = /^[1-9]\d*$/;
 const AZURE_REPOSITORY_ID_PATTERN = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i;
 const LOCAL_SOURCE_TYPES = new Set<RetainedSourceType>([
@@ -127,6 +129,15 @@ export const isCredentialFreeHttpUrl = (value: string): boolean => {
       CREDENTIAL_QUERY_KEY.test(key) || LEGACY_KEY_QUERY_PARAMETER.test(key)
     ));
 };
+
+/**
+ * Check a retained diagnostic reference or selector value for credential material.
+ * URL values use the same validation as portable source locators.
+ * @param value
+ */
+export const isSafeDiagnosticValue = (value: string): boolean =>
+  !CREDENTIAL_ASSIGNMENT.test(value)
+  && (!/^https?:\/\//i.test(value) || isCredentialFreeHttpUrl(value));
 
 const invalidIdentity = (message: string): RegistryError => new RegistryError({
   code: 'BUNDLE.INVALID_SOURCE_IDENTITY',

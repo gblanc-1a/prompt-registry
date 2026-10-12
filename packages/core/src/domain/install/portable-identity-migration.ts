@@ -21,6 +21,7 @@ import type {
 import {
   assertSourceKey,
   isCredentialFreeHttpUrl,
+  isSafeDiagnosticValue,
   sourceKey,
 } from '../source/portable-identity';
 import type {
@@ -103,6 +104,14 @@ export type LegacyIdentityDecision =
 
 const SECRET_FIELD = /(token|password|passwd|secret|signature|credential|authorization|auth|api[_-]?key)/i;
 const LOCAL_TYPES = new Set(['local', 'local-awesome-copilot', 'local-skills']);
+const LEGACY_SELECTOR_FIELDS = new Set([
+  'branch',
+  'ref',
+  'tag',
+  'collectionsPath',
+  'skillsPath',
+  'indexFile'
+]);
 
 const isAbsoluteOrMachinePath = (value: string): boolean =>
   value.startsWith('/')
@@ -131,10 +140,12 @@ const canonicalize = (value: unknown): unknown => {
 const stableJson = (value: unknown): string => JSON.stringify(canonicalize(value));
 
 const safeSourceRef = (value: string | undefined): string | undefined => {
-  if (value === undefined || value.length === 0 || isAbsoluteOrMachinePath(value)) {
-    return undefined;
-  }
-  if (/(?:https?:\/\/)[^/\s:@]+:[^/\s@]+@/i.test(value)) {
+  if (
+    value === undefined
+    || value.length === 0
+    || isAbsoluteOrMachinePath(value)
+    || !isSafeDiagnosticValue(value)
+  ) {
     return undefined;
   }
   return value;
@@ -148,12 +159,16 @@ const safeDescriptor = (
   }
   const result: LegacySourceDescriptorEvidence = {};
   const type = descriptor.type;
-  if (typeof type === 'string' && type.length > 0) {
+  if (typeof type === 'string' && /^[a-z][a-z0-9-]*$/i.test(type)) {
     result.type = type;
   }
 
   const locatorCandidate = descriptor.locator ?? descriptor.url;
-  if (typeof locatorCandidate === 'string' && !isAbsoluteOrMachinePath(locatorCandidate)) {
+  if (
+    typeof locatorCandidate === 'string'
+    && !isAbsoluteOrMachinePath(locatorCandidate)
+    && isSafeDiagnosticValue(locatorCandidate)
+  ) {
     if (/^https?:\/\//i.test(locatorCandidate)) {
       if (isCredentialFreeHttpUrl(locatorCandidate)) {
         result.locator = locatorCandidate;
@@ -166,18 +181,12 @@ const safeDescriptor = (
   const selectors: Record<string, string> = {};
   for (const [key, value] of Object.entries(descriptor)) {
     if (
-      key === 'type'
-      || key === 'url'
-      || key === 'locator'
-      || key === 'identity'
-      || key === 'config'
-      || key === 'root'
-      || key === 'localRoot'
-      || key === 'path'
+      !LEGACY_SELECTOR_FIELDS.has(key)
       || SECRET_FIELD.test(key)
       || typeof value !== 'string'
       || value.length === 0
       || isAbsoluteOrMachinePath(value)
+      || !isSafeDiagnosticValue(value)
     ) {
       continue;
     }
@@ -241,15 +250,47 @@ const unresolved = (
  * Build deterministic local retention key material for an unresolved identity.
  * The reason and a temporary portable mapping are intentionally excluded.
  * @param evidence - Local legacy identity evidence.
+ * @param materialization
  */
-export const legacyIdentityRetentionKey = (evidence: LegacyIdentityEvidence): string => {
+export const legacyIdentityRetentionKey = (
+  evidence: LegacyIdentityEvidence,
+  materialization?: LegacyMaterializationEvidence
+): string => {
   const identityEvidence = {
     originalKey: evidence.originalKey,
     sourceRef: evidence.sourceRef,
     descriptor: evidence.descriptor,
     version: evidence.version,
     knownResolution: evidence.knownResolution,
-    originalLocalRoot: evidence.originalLocalRoot
+    originalLocalRoot: evidence.originalLocalRoot,
+    ...(materialization === undefined
+      ? {}
+      : {
+        materialization: {
+          targetName: materialization.targetName,
+          targetType: materialization.targetType,
+          baseDir: materialization.baseDir,
+          files: materialization.files
+            .map((file) => ({
+              path: file.path,
+              checksum: file.checksum,
+              installedChecksum: file.installedChecksum
+            }))
+            .toSorted((left, right) =>
+              compareText(left.path, right.path)
+              || compareText(left.checksum ?? '', right.checksum ?? '')
+              || compareText(left.installedChecksum ?? '', right.installedChecksum ?? '')
+            ),
+          ...(materialization.mcp === undefined
+            ? {}
+            : {
+              mcp: {
+                configPath: materialization.mcp.configPath,
+                servers: [...materialization.mcp.servers].toSorted(compareText)
+              }
+            })
+        }
+      })
   };
   const digest = createHash('sha256').update(stableJson(identityEvidence), 'utf8').digest('hex');
   return `unresolved/${digest}`;
@@ -292,30 +333,34 @@ const materializationsConflict = (
 ): boolean => {
   const byTarget = new Map<string, LegacyMaterializationEvidence[]>();
   const byBaseDir = new Map<string, LegacyMaterializationEvidence[]>();
+  const materializations = new Map<string, LegacyMaterializationEvidence>();
   for (const input of inputs) {
     for (const materialization of input.materializations ?? []) {
-      const sameName = byTarget.get(materialization.targetName) ?? [];
-      if (sameName.some((previous) =>
-        previous.targetType !== materialization.targetType
-        || previous.baseDir !== materialization.baseDir
-      )) {
-        return true;
-      }
-      sameName.push(materialization);
-      byTarget.set(materialization.targetName, sameName);
-
-      const sameBase = byBaseDir.get(materialization.baseDir) ?? [];
-      if (sameBase.some((previous) =>
-        previous.targetName !== materialization.targetName
-        || (previous.targetType !== undefined
-          && materialization.targetType !== undefined
-          && previous.targetType !== materialization.targetType)
-      )) {
-        return true;
-      }
-      sameBase.push(materialization);
-      byBaseDir.set(materialization.baseDir, sameBase);
+      materializations.set(stableJson(materialization), materialization);
     }
+  }
+  for (const materialization of materializations.values()) {
+    const sameName = byTarget.get(materialization.targetName) ?? [];
+    if (sameName.some((previous) =>
+      previous.targetType !== materialization.targetType
+      || previous.baseDir !== materialization.baseDir
+    )) {
+      return true;
+    }
+    sameName.push(materialization);
+    byTarget.set(materialization.targetName, sameName);
+
+    const sameBase = byBaseDir.get(materialization.baseDir) ?? [];
+    if (sameBase.some((previous) =>
+      previous.targetName !== materialization.targetName
+      || (previous.targetType !== undefined
+        && materialization.targetType !== undefined
+        && previous.targetType !== materialization.targetType)
+    )) {
+      return true;
+    }
+    sameBase.push(materialization);
+    byBaseDir.set(materialization.baseDir, sameBase);
   }
 
   for (const records of byTarget.values()) {
@@ -336,6 +381,18 @@ const materializationsConflict = (
           checksum: previous?.checksum ?? file.checksum,
           installedChecksum: previous?.installedChecksum ?? file.installedChecksum
         });
+      }
+    }
+    const mcpRecords = records.flatMap((record) => record.mcp === undefined ? [] : [record.mcp]);
+    for (let index = 0; index < mcpRecords.length; index += 1) {
+      for (const other of mcpRecords.slice(index + 1)) {
+        if (mcpRecords[index].configPath !== other.configPath) {
+          return true;
+        }
+        const servers = new Set(mcpRecords[index].servers);
+        if (other.servers.some((server) => servers.has(server))) {
+          return true;
+        }
       }
     }
   }

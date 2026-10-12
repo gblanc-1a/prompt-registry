@@ -433,22 +433,46 @@ const historicalUnpinnedResolution = (
   };
 };
 
+const historicalResolutionFromEntry = (
+  resolution: JsonObject,
+  entry: JsonObject,
+  version: string
+): BundleResolution => historicalUnpinnedResolution({
+  ...resolution,
+  archiveSha: entry.archiveSha,
+  archiveSha256: entry.archiveSha256,
+  checksum: entry.checksum,
+  sourceContentSha256: entry.sourceContentSha256,
+  manifestSha256: entry.manifestSha256
+}, version);
+
 const getKnownResolution = (entry: JsonObject, version: string): BundleResolution | undefined => {
   const raw = entry.resolution;
   const resolution = getObject(raw);
   if (resolution && isStrictBundleResolution(raw)) {
     if (resolution.kind === 'unpinned') {
-      return historicalUnpinnedResolution(resolution, version);
+      return historicalResolutionFromEntry(resolution, entry, version);
     }
     try {
       assertResolutionVersion(raw, version);
+      const outerDigests = [
+        ['archiveSha256', entry.archiveSha256 ?? entry.archiveSha ?? entry.checksum],
+        ['sourceContentSha256', entry.sourceContentSha256],
+        ['manifestSha256', entry.manifestSha256]
+      ] as const;
+      if (outerDigests.some(([name, outerDigest]) => {
+        const normalized = normalizeSha256(outerDigest);
+        return normalized !== undefined && normalized !== resolution[name];
+      })) {
+        return historicalResolutionFromEntry(resolution, entry, version);
+      }
       return raw;
     } catch {
-      return historicalUnpinnedResolution(resolution, version);
+      return historicalResolutionFromEntry(resolution, entry, version);
     }
   }
   if (resolution) {
-    return historicalUnpinnedResolution(resolution, version);
+    return historicalResolutionFromEntry(resolution, entry, version);
   }
   const digest = entry.archiveSha ?? entry.checksum;
   if (typeof digest === 'string' && isSafeHistoricalValue(digest)) {
@@ -506,6 +530,51 @@ const hasLegacyLocalShape = (raw: JsonObject): boolean => {
     });
   });
 };
+
+const hasAmendedDesiredShape = (raw: JsonObject | null): boolean =>
+  raw !== null
+  && raw.version === '3.0.0'
+  && isObject(raw.bundles)
+  && Object.entries(raw.bundles).every(([key, entryValue]) => {
+    const entry = getObject(entryValue);
+    const parts = parseLogicalBundleKey(key);
+    return entry !== undefined
+      && parts !== null
+      && entry.sourceKey === parts.sourceKey
+      && typeof entry.version === 'string'
+      && entry.resolution !== undefined
+      && !('sourceId' in entry);
+  });
+
+const hasAmendedLocalShape = (raw: JsonObject | null): boolean =>
+  raw !== null
+  && raw.version === '3.0.0'
+  && isObject(raw.targets)
+  && Object.values(raw.targets).every((targetValue) => {
+    const target = getObject(targetValue);
+    return target !== undefined
+      && isObject(target.bundles)
+      && Object.entries(target.bundles).every(([key, recordValue]) => {
+        const record = getObject(recordValue);
+        if (!record) {
+          return false;
+        }
+        const parts = parseLogicalBundleKey(key);
+        if (
+          parts !== null
+          && record.sourceKey === parts.sourceKey
+          && record.resolution !== undefined
+          && !('sourceId' in record)
+        ) {
+          return true;
+        }
+        return /^unresolved\/[a-f0-9]{64}$/.test(key)
+          && record.state === 'unmanaged'
+          && record.sourceKey === undefined
+          && record.resolution === undefined
+          && isObject(record.legacy);
+      });
+  });
 
 const sourceIdFor = (key: string, entry: JsonObject): string | undefined => {
   const recorded = getString(entry.sourceId);
@@ -613,10 +682,33 @@ const collectSnapshot = async (
       .filter(({ path }) => path !== desiredSource?.path)
       .find(({ raw }) => isObject(raw.targets) || raw.version === '2.0.0');
   const local = localSource?.raw ?? null;
+  const completedAmendedPair = getObject(local?.migration)?.lockfileV3 === 'complete'
+    && hasAmendedDesiredShape(desired)
+    && hasAmendedLocalShape(local);
 
   const legacyDesired: DesiredLegacyRow[] = [];
-  if (desired && isObject(desired.bundles) && (desired.version === '2.0.0' || hasLegacyDesiredShape(desired))) {
-    for (const [legacyKey, value] of Object.entries(desired.bundles)) {
+  const isLegacyDesiredSource = ({ raw }: { raw: JsonObject }): boolean =>
+    raw.version === '2.0.0' || hasLegacyDesiredShape(raw);
+  const legacyDesiredSources = new Map<string, (typeof desiredCandidates)[number]>();
+  if (!completedAmendedPair) {
+    if (desiredSource && isLegacyDesiredSource(desiredSource)) {
+      legacyDesiredSources.set(desiredSource.path, desiredSource);
+    }
+    if (desiredSource?.path === sources.desiredFile) {
+      const priorDesiredSource = desiredCandidates.find(({ path, raw }) =>
+        path !== sources.desiredFile
+        && (raw.version === '2.0.0' || hasLegacyDesiredShape(raw))
+      );
+      if (priorDesiredSource) {
+        legacyDesiredSources.set(priorDesiredSource.path, priorDesiredSource);
+      }
+    }
+  }
+  for (const { raw: sourceDocument } of legacyDesiredSources.values()) {
+    if (!isObject(sourceDocument.bundles)) {
+      continue;
+    }
+    for (const [legacyKey, value] of Object.entries(sourceDocument.bundles)) {
       const entry = getObject(value);
       if (!entry) {
         continue;
@@ -626,18 +718,24 @@ const collectSnapshot = async (
         legacyKey,
         entry,
         sourceId,
-        sourceDescriptor: descriptorFor(desired, sourceId),
-        sourceDocument: desired
+        sourceDescriptor: descriptorFor(sourceDocument, sourceId),
+        sourceDocument
       });
     }
+  }
+  if (legacyDesired.length > 0) {
     migrationRequired = true;
   }
 
   const legacyLocal: LocalLegacyRow[] = [];
-  const localSources = localCandidates.filter(({ raw }) =>
-    raw.version === '2.0.0' || hasLegacyLocalShape(raw)
-  );
-  if (desired?.version === '2.0.0' && !localSources.some(({ path }) => path === desiredSource?.path)) {
+  const localSources = completedAmendedPair
+    ? []
+    : localCandidates.filter(({ raw }) => raw.version === '2.0.0' || hasLegacyLocalShape(raw));
+  if (
+    !completedAmendedPair
+    && desired?.version === '2.0.0'
+    && !localSources.some(({ path }) => path === desiredSource?.path)
+  ) {
     localSources.push({ path: desiredSource?.path ?? sources.desiredFile, raw: desired });
   }
   for (const { raw } of localSources) {
@@ -655,11 +753,12 @@ const collectSnapshot = async (
           }
           const sourceId = sourceIdFor(legacyKey, entry)
             ?? legacyDesired.find((row) => row.legacyKey === legacyKey)?.sourceId;
+          const desiredEvidence = legacyDesired.find((row) => row.legacyKey === legacyKey);
           legacyLocal.push({
             legacyKey,
             entry,
             sourceId,
-            sourceDescriptor: descriptorFor(sourceDocument, sourceId),
+            sourceDescriptor: descriptorFor(sourceDocument, sourceId) ?? desiredEvidence?.sourceDescriptor,
             targetName,
             target,
             sourceDocument
@@ -675,11 +774,12 @@ const collectSnapshot = async (
         }
         const sourceId = sourceIdFor(legacyKey, entry)
           ?? legacyDesired.find((row) => row.legacyKey === legacyKey)?.sourceId;
+        const desiredEvidence = legacyDesired.find((row) => row.legacyKey === legacyKey);
         legacyLocal.push({
           legacyKey,
           entry,
           sourceId,
-          sourceDescriptor: descriptorFor(sourceDocument, sourceId),
+          sourceDescriptor: descriptorFor(sourceDocument, sourceId) ?? desiredEvidence?.sourceDescriptor,
           targetName: UNMANAGED_TARGET_KEY,
           target,
           sourceDocument
@@ -708,6 +808,10 @@ const collectSnapshot = async (
     })
     : false;
   if (activeLocal) {
+    migrationRequired = true;
+  }
+
+  if (completedAmendedPair && sources.legacyFiles.some((path) => documents.has(path))) {
     migrationRequired = true;
   }
 
@@ -742,7 +846,7 @@ const makeIdentityRows = (
   snapshot: MigrationSnapshot,
   options: LockfileMigrationOptions
 ): IdentityPlanRow[] => {
-  const groups = new Map<string, IdentityPlanRow>();
+  const rows: IdentityPlanRow[] = [];
   const supplied = new Map<string, VerifiedLegacyIdentityEvidence>();
   if (snapshot.local && isObject(snapshot.local.targets)) {
     for (const targetValue of Object.values(snapshot.local.targets)) {
@@ -773,7 +877,8 @@ const makeIdentityRows = (
               version,
               sourceId: getString(legacy.sourceRef),
               proven: { source: portableDescriptor, logicalBundleId: parts.logicalBundleId },
-              knownResolution: getKnownResolution({ resolution: record.resolution }, version)
+              knownResolution: getKnownResolution({ resolution: legacy.knownResolution }, version)
+                ?? getKnownResolution({ resolution: record.resolution }, version)
             }
           );
         } catch {
@@ -795,42 +900,34 @@ const makeIdentityRows = (
     localRow?: LocalLegacyRow
   ): void => {
     const version = getString(entry.version) ?? getString(desiredRow?.entry.version) ?? '';
-    const identity = {
+    const suppliedEvidence = supplied.get(`${legacyKey}\u0000${version}\u0000${sourceId ?? ''}`)
+      ?? supplied.get(`${legacyKey}\u0000\u0000`);
+    const storedResolution = resolutionForInput(entry, version);
+    const desiredResolution = desiredRow === undefined || desiredRow.entry === entry
+      ? undefined
+      : resolutionForInput(desiredRow.entry, version);
+    const knownResolution = storedResolution
+      ?? desiredResolution
+      ?? suppliedEvidence?.knownResolution;
+    const root = localRootFor(descriptor);
+    const input: LegacyIdentityInput = {
       legacyKey,
       version,
-      sourceId,
-      descriptor
+      ...(sourceId === undefined ? {} : { sourceId }),
+      ...(descriptor === undefined ? {} : { descriptor }),
+      ...(root === undefined ? {} : { originalLocalRoot: root }),
+      ...(knownResolution === undefined ? {} : { knownResolution }),
+      ...(suppliedEvidence?.proven === undefined ? {} : { proven: suppliedEvidence.proven }),
+      ...(localRow === undefined ? {} : { materializations: [materializationEvidence(localRow)] })
     };
-    const groupKey = stableJson(identity);
-    let row = groups.get(groupKey);
-    if (!row) {
-      const suppliedEvidence = supplied.get(`${legacyKey}\u0000${version}\u0000${sourceId ?? ''}`)
-        ?? supplied.get(`${legacyKey}\u0000\u0000`);
-      const root = localRootFor(descriptor);
-      const knownResolution = suppliedEvidence?.knownResolution
-        ?? resolutionForInput(entry, version)
-        ?? (desiredRow ? resolutionForInput(desiredRow.entry, version) : undefined)
-        ;
-      const input: LegacyIdentityInput = {
-        legacyKey,
-        version,
-        ...(sourceId === undefined ? {} : { sourceId }),
-        ...(descriptor === undefined ? {} : { descriptor }),
-        ...(root === undefined ? {} : { originalLocalRoot: root }),
-        ...(knownResolution === undefined ? {} : { knownResolution }),
-        ...(suppliedEvidence?.proven === undefined ? {} : { proven: suppliedEvidence.proven })
-      };
-      row = { input, desiredRows: [], localRows: [] };
-      groups.set(groupKey, row);
-    }
-    if (desiredRow !== undefined && !row.desiredRows.includes(desiredRow)) {
+    const row: IdentityPlanRow = { input, desiredRows: [], localRows: [] };
+    if (desiredRow !== undefined && localRow === undefined) {
       row.desiredRows.push(desiredRow);
     }
-    if (localRow !== undefined && !row.localRows.includes(localRow)) {
+    if (localRow !== undefined) {
       row.localRows.push(localRow);
-      const materials = row.input.materializations ?? [];
-      row.input.materializations = [...materials, materializationEvidence(localRow)];
     }
+    rows.push(row);
   };
 
   for (const desiredRow of snapshot.legacyDesired) {
@@ -852,7 +949,7 @@ const makeIdentityRows = (
       localRow
     );
   }
-  return [...groups.values()];
+  return rows;
 };
 
 const materializationRecord = (
@@ -1131,11 +1228,18 @@ const decisionForInput = (
       return mapped;
     }
   }
+  const expected = classifyLegacyIdentity({ ...input, proven: undefined });
+  if (expected.kind !== 'unresolved') {
+    return expected;
+  }
   const unresolved = decisions.find((decision) =>
     decision.kind === 'unresolved'
     && decision.evidence.originalKey === input.legacyKey
     && decision.evidence.version === input.version
-    && (decision.evidence.sourceRef === undefined || decision.evidence.sourceRef === input.sourceId)
+    && decision.evidence.sourceRef === expected.evidence.sourceRef
+    && stableJson(decision.evidence.descriptor) === stableJson(expected.evidence.descriptor)
+    && stableJson(decision.evidence.knownResolution) === stableJson(input.knownResolution)
+    && decision.evidence.originalLocalRoot === input.originalLocalRoot
   );
   return unresolved ?? classifyLegacyIdentity(input);
 };
@@ -1244,8 +1348,11 @@ const buildPair = (
       if (row.desiredRows.length > 0) {
         (desired.unresolved ??= []).push(decision.desired);
       }
-      const key = legacyIdentityRetentionKey(decision.evidence);
       for (const localRow of row.localRows) {
+        const key = legacyIdentityRetentionKey(
+          decision.evidence,
+          materializationEvidence(localRow)
+        );
         const targetName = localRow.targetName === UNMANAGED_TARGET_KEY
           ? UNMANAGED_TARGET_KEY
           : localRow.targetName;
@@ -1323,9 +1430,15 @@ const removeTemporaryMappings = (local: LocalLockfileV3): void => {
   for (const target of Object.values(local.targets)) {
     for (const record of Object.values(target.bundles)) {
       if (
-        (!('state' in record) || record.state !== 'unmanaged')
-        && record.legacy?.portableDescriptor !== undefined
+        record.sourceKey === undefined
+        || record.resolution === undefined
+        || record.legacy?.portableDescriptor === undefined
       ) {
+        continue;
+      }
+      if ('state' in record && record.state === 'unmanaged') {
+        delete record.legacy.portableDescriptor;
+      } else {
         delete record.legacy;
       }
     }

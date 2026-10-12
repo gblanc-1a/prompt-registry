@@ -1,5 +1,11 @@
 # Unified Bundle Lifecycle — Step 0 + Slice 1 Implementation Plan
 
+**Identity instructions superseded (2026-10-12):** use the
+[portable source identity amendment plan](2026-10-12-portable-source-identity.md)
+for source keys, logical IDs, artifact pins and identity migration. The remaining
+placement/safety instructions below retain their original scope; do not implement
+the historical `{sourceId}/{manifestId}` contract as the amended v3 format.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Land the design's Step 0 prerequisites and Slice 1 — a complete, hand-verifiable CLI user-scope install and uninstall for the `vscode` target, writing lockfile `3.0.0` behind the `AI_PRIMITIVES_HUB_UNIFIED_DEPLOY` flag, with the XDG user lockfile's v2→v3 shape migration.
@@ -4429,4 +4435,3 @@ Run before handoff; findings fixed inline.
 **Review Focus coverage.** #1 → Task 1 Steps 5–6 and Task 15's flag-off loop. #2 → Task 2's unknown-key test and Task 9's `unknownLayoutKeys`. #3 → Task 3 Step 5 and Task 9's `duplicates`. #4 → Task 4's two slash tests. #5 → Task 8's convergence and untouched-v2 tests, plus Task 15's injected state-write failure.
 
 **Known gap, stated rather than hidden.** §4.4's Copilot-suffix rule is not target-aware, and §4.4/§13 treat host *discovery* of `.prompt.md`/`.agent.md` on Kiro and Claude Code as an external premise to validate manually per host before the flag flips. Slice 1 only touches `vscode`, where the convention is native, so nothing here depends on that premise — but it must be validated before slice 2 widens to the other ten targets, and it is not this plan's to close.
-

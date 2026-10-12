@@ -1,7 +1,7 @@
 # Unify the bundle lifecycle across CLI and extension
 
 - **Date:** 2026-10-09
-- **Status:** Source-identity amendment agreed on 2026-10-10; written revision awaiting review
+- **Status:** Source-identity amendment agreed on 2026-10-10; written revision approved on 2026-10-12
 - **Scope:** install / uninstall / update for all scopes, bundle fetching, MCP server installation, and a one-shot migration of existing extension installs
 - **Review provenance:** an independent review audited this design against
   [the requester-stated requirements](./2026-10-09-unify-bundle-lifecycle-requirements.md).
@@ -136,8 +136,8 @@ A single repository can contain both, since the extension and CLI can each insta
 it, and `generatedBy` records only the last writer. The extension's
 `LockfileSourceEntry` also omits `collectionsPath` entirely, which app's includes.
 
-**Generated `sourceId` is deterministic for hub sources, but is not a complete portable
-identity contract.** Hub-loaded sources get
+**The existing generated `sourceId` is deterministic for hub sources, but its inputs
+do not define a reliable adapter-specific identity.** Hub-loaded sources get
 `generateHubSourceId` → `{type}-{sha256(type:normalizedUrl:branch:collectionsPath)[0:12]}`,
 documented as "Portable: Not tied to user's hub configuration". Manually added sources
 (`source-commands.ts:533`) get `generateSanitizedId(name)`, derived from the user-typed

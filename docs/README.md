@@ -49,6 +49,7 @@ Marketplace and registry for Copilot prompt bundles in VS Code.
 - **[Releasing](contributor-guide/releasing.md)** — Release process
 - **[Golden Path Test Cases](contributor-guide/testing/golden-path.md)** — The three mandatory manual scenarios, and the release gate
 - **[Full Test Plan](contributor-guide/testing/test-plan.md)** — All 19 plans, for area-by-area manual coverage
+- **[Portable Source Identity Plan](superpowers/plans/2026-10-12-portable-source-identity.md)** — Proposed implementation sequence for the amended v3 lifecycle identity contract
 
 ---
 

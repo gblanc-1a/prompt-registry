@@ -4,7 +4,7 @@
 takes on renaming the committed repository lockfile (see [Consequences](#consequences)).
 
 **Source-identity amendment (2026-10-10):** conversationally agreed; revised written
-specification awaiting review. The amended decision below is the target contract,
+specification approved on 2026-10-12. The amended decision below is the target contract,
 not a claim that the branch implementation already writes it.
 
 ## Context

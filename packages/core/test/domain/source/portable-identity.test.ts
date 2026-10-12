@@ -190,8 +190,12 @@ describe('portable source identity', () => {
     'apiToken',
     'clientSecret',
     'APITOKEN',
-    'ClientSECRET'
-  ])('rejects credential query parameter key %s regardless of compound spelling or case', (key) => {
+    'ClientSECRET',
+    'key',
+    'Key',
+    'access_key',
+    'access-key'
+  ])('rejects credential query parameter key %s regardless of spelling or case', (key) => {
     const source = sourceAt(`https://github.com/team/repo?${key}=placeholder`);
     const portableKey = sourceKey(releaseIdentity('https://github.com', '42'), 'github');
 

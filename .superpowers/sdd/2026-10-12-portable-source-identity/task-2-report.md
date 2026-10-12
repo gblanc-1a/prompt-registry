@@ -142,3 +142,40 @@ These failures are recorded without weakening the new types or expanding into th
 
 - Message: `fix(core): restore credential query-key filtering`
 - `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`
+
+## Fix round 3
+
+### Regression addressed
+
+- Restored the earlier core guard's bare and separator-prefixed `key` matching alongside the substring matcher. The shared core predicate now rejects `key`, `Key`, `access_key`, and `access-key` in active source locators and shared legacy evidence.
+- The filters are intentionally combined: the substring matcher retains the old store guard's broad terms and the later compound-token/secret, `passwd`, and `signature` fixes; the boundary-aware matcher restores the old core guard's key clause. Neither replaces the other, so previously rejected names remain rejected.
+- Added parameterized tests through core's `assertSourceKey()` and the app's public pair writer. The app test checks active descriptors and legacy evidence; the existing cases for compound/mixed-case credentials, `X-Amz-Signature`, and `passwd` remain in place.
+
+### RED/GREEN evidence
+
+- **RED — core:** `pnpm -C packages/core exec vitest run --reporter=dot test/domain/source/portable-identity.test.ts` — exit 1; **4 failed, 22 passed (26 total)**. `key`, `Key`, `access_key`, and `access-key` did not throw from `assertSourceKey()`.
+- **RED — app:** `pnpm -C packages/app exec vitest run --reporter=dot test/stores/lockfile-v3.test.ts test/stores/lockfile-v3-schema.test.ts` — exit 1; **1 file failed, 1 passed; 4 failed, 70 passed (74 total)**. The pair writer resolved for all four active-descriptor cases instead of rejecting.
+- **GREEN — core build:** `pnpm -C packages/core run build` — exit 0 (`tsc`).
+- **GREEN — core:** `pnpm -C packages/core exec vitest run --reporter=dot test/domain/source/portable-identity.test.ts` — **1 file passed, 26 tests passed**.
+- **GREEN — app:** `pnpm -C packages/app exec vitest run --reporter=dot test/stores/lockfile-v3.test.ts test/stores/lockfile-v3-schema.test.ts` — **2 files passed, 74 tests passed**. This exercises both active descriptors and shared legacy evidence for all parameterized names.
+
+### Validation
+
+- `pnpm -C packages/core run lint:fix` — exit 0; existing warnings, no errors.
+- `pnpm -C packages/app run lint:fix` — exit 0; existing warnings, no errors.
+- `git diff --check` — passed.
+- Broader suites were not rerun; previously recorded legacy wire-shape and deferred Task 3/6 failures remain outside this fix's scope.
+
+### Files changed
+
+- `packages/core/src/domain/source/portable-identity.ts`
+- `packages/core/test/domain/source/portable-identity.test.ts`
+- `packages/app/test/stores/lockfile-v3.test.ts`
+- `.superpowers/sdd/2026-10-12-portable-source-identity/task-2-report.md`
+
+### Self-review and concerns
+
+- Compared the previous core matcher with the prior app store matcher: the substring filter still covers the store terms and the later compound/`passwd`/`signature` cases; the added boundary-aware matcher covers the core guard's otherwise-lost bare or separator-prefixed key clause. This is the union of established rejections, not a replacement policy.
+- `isCredentialFreeHttpUrl()` remains the single core predicate used for active descriptors and shared evidence. No schema policy or unrelated files changed.
+- Commit: `fix(core): preserve union of credential query-key guards`
+- `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`

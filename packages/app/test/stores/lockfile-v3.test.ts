@@ -523,8 +523,12 @@ describe('strict amended v3 wire contract', () => {
     'apiToken',
     'clientSecret',
     'APITOKEN',
-    'ClientSECRET'
-  ])('rejects compound or mixed-case credential query keys in active descriptors and legacy evidence: %s', async (key) => {
+    'ClientSECRET',
+    'key',
+    'Key',
+    'access_key',
+    'access-key'
+  ])('rejects credential query keys in active descriptors and legacy evidence: %s', async (key) => {
     const locator = `https://example.com/archive?${key}=placeholder`;
     const activeFs = fakeFs();
     const active = strictDesired();

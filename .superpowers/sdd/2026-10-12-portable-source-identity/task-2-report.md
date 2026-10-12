@@ -98,3 +98,47 @@ These failures are recorded without weakening the new types or expanding into th
 
 - `fix(app): enforce v3 lockfile identity invariants`
 - `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`
+
+## Fix round 2
+
+### Regression addressed
+
+- Restored case-insensitive substring matching for credential query-key names in the shared core HTTP(S) locator validator. Compound names such as `apiToken` and `clientSecret` are rejected again; the existing `passwd` and `signature` rejection coverage remains intact.
+- The shared validator continues to protect both active descriptors and shared legacy locator evidence. No JSON Schema or URL policy changes were needed: `remoteLocator` already rejects query strings, and schema coverage now explicitly exercises the compound/mixed-case keys.
+
+### RED/GREEN evidence
+
+- **RED — core:** `pnpm -C packages/core exec vitest run --reporter=dot test/domain/source/portable-identity.test.ts` — exit 1; **4 failed, 18 passed**. `apiToken`, `clientSecret`, `APITOKEN`, and `ClientSECRET` unexpectedly passed credential validation.
+- **RED — app:** `pnpm -C packages/app exec vitest run --reporter=dot test/stores/lockfile-v3.test.ts test/stores/lockfile-v3-schema.test.ts` — exit 1; **4 failed, 66 passed**. The in-memory pair writer resolved instead of rejecting each active descriptor containing those keys; schema tests passed.
+- **Regression-preservation check:** the first app rerun after restoring the previous substring filter exposed **2 failed, 68 passed**: existing `X-Amz-Signature` and `passwd` legacy-evidence tests became accepted. The shared pattern retains both `signature` and `passwd` along with the prior substring terms.
+- **GREEN:** `pnpm -C packages/core run build` — exit 0.
+- **GREEN — core:** `pnpm -C packages/core exec vitest run --reporter=dot test/domain/source/portable-identity.test.ts` — **1 file passed, 22 tests passed**.
+- **GREEN — app:** `pnpm -C packages/app exec vitest run --reporter=dot test/stores/lockfile-v3.test.ts test/stores/lockfile-v3-schema.test.ts` — **2 files passed, 70 tests passed**.
+
+### Broader validation and concerns
+
+- `pnpm -C packages/core run lint:fix` and `pnpm -C packages/app run lint:fix` — both exited 0; existing warnings remain.
+- `git diff --check` — passed.
+- Full core suite — **1 file failed, 24 passed; 6 tests failed, 334 passed**. The failures are the six legacy wire-shape expectations in `test/domain/install/lockfile-version.test.ts`, unrelated to the shared locator predicate.
+- Full app suite — **5 files failed, 60 passed; 155 tests failed, 810 passed**. Failures remain in the previously recorded deploy/plan/undeploy/resolve-undeploy-key and migration suites, which exercise deferred Tasks 3/6 shapes.
+- App build was not rerun; its known downstream Task 3/6 type errors are recorded above.
+
+### Files changed
+
+- `packages/core/src/domain/source/portable-identity.ts`
+- `packages/core/test/domain/source/portable-identity.test.ts`
+- `packages/app/test/stores/lockfile-v3.test.ts`
+- `packages/app/test/stores/lockfile-v3-schema.test.ts`
+- `.superpowers/sdd/2026-10-12-portable-source-identity/task-2-report.md`
+
+### Self-review
+
+- Credential keys are filtered case-insensitively by substring, preserving the prior broad rejection behavior while retaining `passwd` and `signature` protection from round 1.
+- Runtime tests verify the public pair writer refuses both active descriptors and shared legacy evidence before writing either file. Schema tests cover both record locations for the compound and mixed-case query keys.
+- The schema is unchanged because its remote locator format excludes all query strings; scope stayed limited to credential-key validation and regression coverage.
+- No unrelated production files or schema policy were changed.
+
+### Fix commit
+
+- Message: `fix(core): restore credential query-key filtering`
+- `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`

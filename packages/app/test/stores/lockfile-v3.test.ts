@@ -519,6 +519,39 @@ describe('strict amended v3 wire contract', () => {
       .rejects.toThrow(/credential|secret/i);
   });
 
+  it.each([
+    'apiToken',
+    'clientSecret',
+    'APITOKEN',
+    'ClientSECRET'
+  ])('rejects compound or mixed-case credential query keys in active descriptors and legacy evidence: %s', async (key) => {
+    const locator = `https://example.com/archive?${key}=placeholder`;
+    const activeFs = fakeFs();
+    const active = strictDesired();
+    active.sources[PORTABLE_SOURCE_KEY].locator = locator;
+
+    await expect(writeLockfileV3Pair(userPaths, {
+      desired: active,
+      local: strictLocal()
+    }, activeFs)).rejects.toThrow(/credential|secret/i);
+    expect(activeFs.files.size).toBe(0);
+
+    const evidenceFs = fakeFs();
+    const evidence = strictDesired();
+    evidence.unresolved = [{
+      originalKey: 'legacy-source/web-dev',
+      version: '1.0.0',
+      reason: 'The old source locator could not be safely migrated.',
+      descriptor: { type: 'github', locator }
+    }];
+
+    await expect(writeLockfileV3Pair(userPaths, {
+      desired: evidence,
+      local: strictLocal()
+    }, evidenceFs)).rejects.toThrow(/credential|secret/i);
+    expect(evidenceFs.files.size).toBe(0);
+  });
+
   it('accepts the portable workspace-root sentinel in legacy evidence', async () => {
     const mockFs = fakeFs();
     const desired = strictDesired();

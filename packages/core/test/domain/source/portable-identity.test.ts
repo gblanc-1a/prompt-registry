@@ -186,6 +186,18 @@ describe('portable source identity', () => {
       .toThrow(RegistryError);
   });
 
+  it.each([
+    'apiToken',
+    'clientSecret',
+    'APITOKEN',
+    'ClientSECRET'
+  ])('rejects credential query parameter key %s regardless of compound spelling or case', (key) => {
+    const source = sourceAt(`https://github.com/team/repo?${key}=placeholder`);
+    const portableKey = sourceKey(releaseIdentity('https://github.com', '42'), 'github');
+
+    expect(() => assertSourceKey(portableKey, source)).toThrow(RegistryError);
+  });
+
   it('rejects identity paths that cannot be safely represented', () => {
     const invalidIdentity: SourceIdentity = {
       kind: 'artifactory-index',

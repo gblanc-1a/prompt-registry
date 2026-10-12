@@ -312,10 +312,17 @@ describe('lockfile v3 schema', () => {
     })).toBe(true);
   });
 
-  it('rejects query parameters parsed as a remote locator hostname', () => {
+  it.each([
+    'access_token',
+    'apiToken',
+    'clientSecret',
+    'APITOKEN',
+    'ClientSECRET'
+  ])('rejects remote locators with credential query parameter key %s', (key) => {
+    const locator = `https://example.com?${key}=placeholder`;
     const credentialedSource = {
       ...githubSource,
-      locator: 'https://example.com?access_token=placeholder'
+      locator
     };
     const credentialedEvidence = {
       ...desired(releasePin),
@@ -323,7 +330,7 @@ describe('lockfile v3 schema', () => {
         originalKey: 'legacy-source/web-dev',
         version: '1.0.0',
         reason: 'A locator with query credentials is not portable evidence.',
-        descriptor: { type: 'github', locator: 'https://example.com?access_token=placeholder' }
+        descriptor: { type: 'github', locator }
       }]
     };
 

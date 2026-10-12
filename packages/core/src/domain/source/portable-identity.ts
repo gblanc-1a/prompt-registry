@@ -101,7 +101,7 @@ export type LocalSourceLocation =
 
 const SOURCE_KEY_PATTERN = /^src-[a-f0-9]{64}$/;
 const HTTP_PROTOCOLS = new Set(['http:', 'https:']);
-const CREDENTIAL_QUERY_KEY = /(^|[_-])(access[_-]?)?token|(^|[_-])auth(orization)?|(^|[_-])(api[_-]?)?key|(^|[_-])(password|passwd|secret|signature|credential)([_-]|$)/i;
+const CREDENTIAL_QUERY_KEY = /(token|password|passwd|secret|signature|credential|auth|api[_-]?key)/i;
 const GITHUB_REPOSITORY_ID_PATTERN = /^[1-9]\d*$/;
 const AZURE_REPOSITORY_ID_PATTERN = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i;
 const LOCAL_SOURCE_TYPES = new Set<RetainedSourceType>([

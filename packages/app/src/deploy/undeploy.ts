@@ -15,6 +15,7 @@ import {
 } from '../stores/lockfile-v3';
 import {
   migrateLockfileIfNeeded,
+  planLockfileMigration,
 } from '../stores/migrate-lockfile-v3';
 import type {
   MigrationReport,
@@ -59,10 +60,9 @@ export interface UndeployResult {
 /**
  * Undeploy a bundle: remove recorded files and drop state.
  *
- * Pipeline: migrate → lookup → remove-files → record-removal.
- * Migration runs first (no triggeredByKey) because uninstall is a permitted
- * migration trigger (FR-16), and a flag-on uninstall must be able to find
- * records a v2 install left behind.
+ * Pipeline: preview → lookup → migrate-if-owned → remove-files → record-removal.
+ * Migration is a permitted explicit trigger, but an offline lookup that finds
+ * no matching record must not persist unrelated legacy state.
  *
  * **Removal iterates recorded paths only, no recomputation** (§5.7): the
  * record's `files[].path` joined to its `baseDir` is the only source of
@@ -93,16 +93,42 @@ export async function undeployBundle(
 ): Promise<UndeployResult> {
   const { key, targetName } = req;
 
-  // 1. Migrate lockfile if needed (before any lookup, so we can find v2 records).
-  //    No triggeredByKey: no bundle is being deployed, so nothing gets fresh paths.
+  // 1. Preview migration without writes so a no-match lookup stays read-only.
   const generatedBy = ports.generatedBy ?? 'ai-primitives-hub';
   const now = ports.now ?? new Date().toISOString();
+  const migrationOptions = { generatedBy, now };
+  const preview = await planLockfileMigration(ports.lockfileStore, ports.fs, migrationOptions);
+  const previewTarget = Object.hasOwn(preview.pair.local.targets, targetName)
+    ? preview.pair.local.targets[targetName]
+    : undefined;
+  const previewRecord = previewTarget !== undefined && Object.hasOwn(previewTarget.bundles, key)
+    ? previewTarget.bundles[key]
+    : undefined;
+  const previewOrphan = Object.hasOwn(preview.pair.desired.bundles, key)
+    && !Object.values(preview.pair.local.targets).some((target) => Object.hasOwn(target.bundles, key));
+
+  if (previewRecord === undefined && !previewOrphan) {
+    return {
+      key,
+      removed: [],
+      skipped: [],
+      lockfile: ports.lockfileStore.localFile,
+      migration: null
+    };
+  }
+
+  let pair = preview.pair;
+  let migration: MigrationReport | null = null;
   const state = trackStateEffects(ports.fs, ports.lockfileStore);
-  const { pair, report: migration } = await runStateStage('undeploy', 'migrate', state, () => migrateLockfileIfNeeded(
-    ports.lockfileStore,
-    state.fs,
-    { generatedBy, now }
-  ));
+  if (preview.pendingWrite) {
+    const migrated = await runStateStage('undeploy', 'migrate', state, () => migrateLockfileIfNeeded(
+      ports.lockfileStore,
+      state.fs,
+      migrationOptions
+    ));
+    pair = migrated.pair;
+    migration = migrated.report;
+  }
 
   // 2. Look up the target and bundle record (own properties only: a target or key named
   //    like an inherited property must not resolve to something on the prototype).

@@ -43,16 +43,20 @@ const writeCallCount = (calls: string[]): number =>
   calls.filter((c) => c.startsWith('writeFile:') || c.startsWith('writeFileBytes:')).length;
 
 describe('undeployBundle', () => {
-  it('reports an applied migration local write when undeploy fails before migration finishes', async () => {
+  it('does not migrate an empty legacy store when an uninstall lookup has no match', async () => {
     const ports = recordingPorts({ failWriteAt: 2 });
-    ports.files.set(ports.lockfileStore.desiredFile, JSON.stringify({
+    const legacy = JSON.stringify({
       version: '2.0.0', generatedAt: ports.now, generatedBy: 'test', bundles: {}, sources: {}
-    }));
-    await expect(undeployBundle(undeployRequest(), ports)).rejects.toMatchObject({
-      code: 'BUNDLE.UNDEPLOY_FAILED',
-      context: { appliedEffects: { stage: 'migrate', written: [ports.lockfileStore.localFile], removed: [] } },
-      cause: expect.any(Error)
     });
+    ports.files.set(ports.lockfileStore.desiredFile, legacy);
+
+    const result = await undeployBundle(undeployRequest(), ports);
+
+    expect(result.removed).toEqual([]);
+    expect(result.migration).toBeNull();
+    expect(ports.files.get(ports.lockfileStore.desiredFile)).toBe(legacy);
+    expect(ports.files.has(ports.lockfileStore.localFile)).toBe(false);
+    expect(writeCallCount(ports.calls)).toBe(0);
   });
   it.each(['destination', 'ancestor'])('skips recorded paths reached through a linked %s', async (scenario) => {
     const ports = symlinkPorts();
@@ -275,6 +279,36 @@ describe('undeployBundle', () => {
     expect(ports.files.get(ports.lockfileStore.desiredFile)).toBe(desiredBefore);
   });
 
+  it('does not persist legacy migration when an offline uninstall lookup matches nothing', async () => {
+    const ports = recordingPorts();
+    const legacy = JSON.stringify({
+      version: '2.0.0',
+      generatedAt: ports.now,
+      generatedBy: 'test',
+      bundles: {
+        'historical-agent': {
+          version: '1.0.0',
+          sourceId: 'machine-source',
+          sourceType: 'github',
+          installedAt: ports.now,
+          checksum: 'a'.repeat(64),
+          files: [{ path: 'agents/historical.md', checksum: 'b'.repeat(64) }]
+        }
+      },
+      sources: {
+        'machine-source': { type: 'github', url: 'https://github.com/acme/agents' }
+      }
+    });
+    ports.files.set(ports.lockfileStore.desiredFile, legacy);
+
+    const result = await undeployBundle({ ...undeployRequest(), key: 'unrelated/absent' }, ports);
+
+    expect(result.removed).toEqual([]);
+    expect(ports.files.get(ports.lockfileStore.desiredFile)).toBe(legacy);
+    expect(ports.files.has(ports.lockfileStore.localFile)).toBe(false);
+    expect(writeCallCount(ports.calls)).toBe(0);
+  });
+
   it('creates no lockfile files when undeploying from a fresh store', async () => {
     const ports = recordingPorts();
     // No prior deploy: this store has never had a lockfile written at all.
@@ -359,29 +393,27 @@ describe('undeployBundle', () => {
     expect(desired.bundles['github-abc123/web-dev']).toBeDefined();
   });
 
-  it('migrates a v2 lockfile before an uninstall, since uninstall is a migration trigger', async () => {
-    // FR-16 permits migration on install, update *and* uninstall; a flag-on
-    // uninstall must be able to find records a v2 install left behind.
+  it('does not persist unrelated v2 intent when an uninstall cannot prove an ownership match', async () => {
     const ports = recordingPorts();
-    ports.files.set(ports.lockfileStore.desiredFile, JSON.stringify({
+    const legacy = JSON.stringify({
       $schema: 'x', version: '2.0.0', generatedAt: 'x', generatedBy: 'x',
       bundles: {
         'web-dev': {
           version: '1.0.0', sourceId: 'github-abc123', sourceType: 'github',
-          installedAt: 'x', files: [{ path: 'prompts/hello.prompt.md', checksum: 'h' }]
+          installedAt: ports.now, files: [{ path: 'prompts/hello.prompt.md', checksum: 'a'.repeat(64) }]
         }
       },
       sources: { 'github-abc123': { type: 'github', url: 'https://github.com/owner/repo' } }
-    }));
+    });
+    ports.files.set(ports.lockfileStore.desiredFile, legacy);
 
     const result = await undeployBundle(undeployRequest(), ports);
 
-    const { desired } = readPair(ports);
-    expect(desired.version).toBe('3.0.0');
-    // The record went unmanaged (bundle-relative path, unprovable), so the
-    // files are left alone and reported rather than guessed at.
     expect(result.removed).toEqual([]);
-    expect(result.migration?.unmanaged.map((u) => u.key)).toEqual(['github-abc123/web-dev']);
+    expect(result.migration).toBeNull();
+    expect(ports.files.get(ports.lockfileStore.desiredFile)).toBe(legacy);
+    expect(ports.files.has(ports.lockfileStore.localFile)).toBe(false);
+    expect(writeCallCount(ports.calls)).toBe(0);
   });
 
   it('does not remove files for an unmanaged record, surfaces the reason, and still drops the record', async () => {

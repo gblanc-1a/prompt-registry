@@ -1,4 +1,10 @@
 import {
+  sourceKey,
+} from '@ai-primitives-hub/core';
+import type {
+  PortableSourceDescriptor,
+} from '@ai-primitives-hub/core';
+import {
   describe,
   expect,
   it,
@@ -33,8 +39,8 @@ const v2WithOneBundle = () => ({
       sourceId: 'github-abc123',
       sourceType: 'github',
       installedAt: '2026-01-01T00:00:00.000Z',
-      checksum: 'sha256:archivebytes',
-      files: [{ path: 'prompts/hello.prompt.md', checksum: 'archivehash' }]
+      checksum: 'a'.repeat(64),
+      files: [{ path: 'prompts/hello.prompt.md', checksum: 'b'.repeat(64) }]
     }
   },
   sources: {
@@ -72,13 +78,92 @@ const fakeFs = () => {
   };
 };
 
+const verifiedSource: PortableSourceDescriptor = {
+  type: 'github',
+  identity: {
+    kind: 'github-releases',
+    origin: 'https://github.com',
+    repositoryId: '12345'
+  },
+  locator: 'https://github.com/acme/agents'
+};
+const verifiedLogicalKey = `${sourceKey(verifiedSource.identity, verifiedSource.type)}/reviewer`;
+const legacyRuntimeKey = 'computer-specific/acme.reviewer@1.0.0';
+const ARCHIVE_DIGEST = 'a'.repeat(64);
+const FILE_DIGEST = 'b'.repeat(64);
+const INSTALLED_DIGEST = 'c'.repeat(64);
+const verifiedIdentityEvidence = [{
+  legacyKey: legacyRuntimeKey,
+  proven: { source: verifiedSource, logicalBundleId: 'reviewer' }
+}];
+
+const branchEraV3Pair = () => ({
+  desired: {
+    version: '3.0.0',
+    generatedAt: NOW,
+    generatedBy: OPTS.generatedBy,
+    migration: { lockfileV3: 'complete' },
+    bundles: {
+      [legacyRuntimeKey]: {
+        version: '1.0.0',
+        sourceId: 'computer-specific',
+        archiveSha: ARCHIVE_DIGEST
+      }
+    },
+    sources: {
+      'computer-specific': {
+        type: 'github',
+        url: 'https://github.com/acme/agents',
+        branch: 'main'
+      }
+    },
+    hubs: { shared: { name: 'Shared', url: 'https://example.com/hub.yml' } },
+    profiles: { defaults: { name: 'Defaults', bundleIds: [legacyRuntimeKey] } }
+  },
+  local: {
+    version: '3.0.0',
+    generatedAt: NOW,
+    generatedBy: OPTS.generatedBy,
+    migration: { lockfileV3: 'complete' },
+    targets: {
+      'cursor-user': {
+        targetType: 'cursor',
+        scope: 'user',
+        baseDir: '/home/user/.cursor',
+        bundles: {
+          [legacyRuntimeKey]: {
+            version: '1.0.0',
+            sourceId: 'computer-specific',
+            installedAt: NOW,
+            commitMode: 'local-only',
+            files: [{
+              path: 'agents/reviewer.md',
+              checksum: FILE_DIGEST,
+              installedChecksum: INSTALLED_DIGEST
+            }],
+            mcpConfigPath: '.copilot/mcp-config.json',
+            mcpServers: ['reviewer-mcp']
+          }
+        }
+      }
+    }
+  }
+});
+
 describe('convertV2ToPair', () => {
-  it('does not treat an inherited source name as a readable source descriptor', () => {
+  it('retains unverified legacy refs instead of creating portable source IDs from old URLs', () => {
     const v2: Lockfile = v2WithOneBundle();
     v2.bundles['web-dev'].sourceId = 'constructor';
     v2.sources = {};
-    const { report } = convertV2ToPair(v2, OPTS);
-    expect(report.unmanaged[0].reason).toBe('unrecoverable source descriptor');
+    const { pair, report } = convertV2ToPair(v2, OPTS);
+    expect(report.unmanaged).toHaveLength(1);
+    expect(pair.desired.sources).toEqual({});
+    expect(pair.desired.bundles).toEqual({});
+    expect(pair.desired.unresolved?.[0]).toMatchObject({
+      originalKey: 'web-dev',
+      sourceRef: 'constructor',
+      version: '1.0.0'
+    });
   });
   it('splits one v2 file into the two role halves', () => {
     const { pair } = convertV2ToPair(v2WithOneBundle(), OPTS);
@@ -89,38 +174,46 @@ describe('convertV2ToPair', () => {
     expect('bundles' in pair.local).toBe(false);
   });
 
-  it('carries desired state across with sourceType and installedAt dropped', () => {
+  it('preserves original desired intent as unresolved when source and manifest proof are absent', () => {
     const { pair } = convertV2ToPair(v2WithOneBundle(), OPTS);
 
-    expect(pair.desired.bundles['github-abc123/web-dev'])
-      .toEqual({ version: '1.0.0', sourceId: 'github-abc123', archiveSha: 'sha256:archivebytes' });
-    expect(pair.desired.sources['github-abc123'].type).toBe('github');
+    expect(pair.desired.bundles).toEqual({});
+    expect(pair.desired.sources).toEqual({});
+    expect(pair.desired.unresolved).toHaveLength(1);
+    expect(pair.desired.unresolved?.[0]).toMatchObject({
+      originalKey: 'web-dev',
+      sourceRef: 'github-abc123',
+      version: '1.0.0',
+      knownResolution: {
+        kind: 'unpinned',
+        evidence: { knownDigests: { archiveSha256: 'a'.repeat(64) } }
+      }
+    });
   });
 
-  it('keys both halves by the logical bundle key, not the legacy id', () => {
+  it('uses deterministic reserved keys for unproven materializations', () => {
     const { pair } = convertV2ToPair(v2WithOneBundle(), OPTS);
+    const materializations = pair.local.targets[UNMANAGED_TARGET_KEY].bundles;
 
-    expect(Object.keys(pair.desired.bundles)).toEqual(['github-abc123/web-dev']);
-    expect(Object.keys(pair.local.targets[UNMANAGED_TARGET_KEY].bundles))
-      .toEqual(['github-abc123/web-dev']);
+    expect(Object.keys(pair.desired.bundles)).toEqual([]);
+    expect(Object.keys(materializations)).toHaveLength(1);
+    expect(Object.keys(materializations)[0]).toMatch(/^unresolved\/[a-f0-9]{64}$/);
+    expect(materializations[Object.keys(materializations)[0]]).toMatchObject({
+      state: 'unmanaged',
+      legacy: { originalKey: 'web-dev', sourceRef: 'github-abc123' }
+    });
   });
 
-  it('retains a CLI record as unmanaged rather than inventing a destination', () => {
+  it('preserves recorded file hashes without pretending they are installed-byte baselines', () => {
     const { pair, report } = convertV2ToPair(v2WithOneBundle(), OPTS);
+    const [key] = Object.keys(pair.local.targets[UNMANAGED_TARGET_KEY].bundles);
+    const record = pair.local.targets[UNMANAGED_TARGET_KEY].bundles[key];
 
     expect(report.unmanaged).toHaveLength(1);
-    expect(report.unmanaged[0].key).toBe('github-abc123/web-dev');
-    expect(report.unmanaged[0].reason).toContain('destination could not be proven');
-    const rec = pair.local.targets[UNMANAGED_TARGET_KEY].bundles['github-abc123/web-dev'];
-    expect(rec.state).toBe('unmanaged');
-    expect(rec.files.map((f) => f.path)).toEqual(['prompts/hello.prompt.md']);
-  });
-
-  it('never rebaselines: the archive hash survives as checksum, not installedChecksum', () => {
-    const { pair } = convertV2ToPair(v2WithOneBundle(), OPTS);
-
-    const file = pair.local.targets[UNMANAGED_TARGET_KEY].bundles['github-abc123/web-dev'].files[0];
-    expect(file.checksum).toBe('archivehash');
+    expect(report.unmanaged[0].key).toBe(key);
+    expect(record.files.map((entry) => entry.path)).toEqual(['prompts/hello.prompt.md']);
+    const file = record.files[0];
+    expect(file.checksum).toBe('b'.repeat(64));
     expect(file.installedChecksum).toBeUndefined();
   });
 
@@ -130,8 +223,8 @@ describe('convertV2ToPair', () => {
 
     const { pair } = convertV2ToPair(v2, OPTS);
 
-    expect(pair.local.targets[UNMANAGED_TARGET_KEY].bundles['github-abc123/web-dev'].commitMode)
-      .toBe('local-only');
+    const [key] = Object.keys(pair.local.targets[UNMANAGED_TARGET_KEY].bundles);
+    expect(pair.local.targets[UNMANAGED_TARGET_KEY].bundles[key].commitMode).toBe('local-only');
   });
 
   it('marks a bundle whose source descriptor is missing as unmanaged for that reason', () => {
@@ -139,18 +232,26 @@ describe('convertV2ToPair', () => {
 
     const { report } = convertV2ToPair(broken, OPTS);
 
-    expect(report.unmanaged[0].reason).toContain('source descriptor');
+    expect(report.unmanaged[0].reason).toContain('verified');
   });
 
-  it('omits the triggering bundle from materialization — the deploy records it fresh', () => {
+  it('omits only a proven triggering bundle from materialization', () => {
+    const portableKey = `${sourceKey(verifiedSource.identity, verifiedSource.type)}/web-dev`;
     const { pair, report } = convertV2ToPair(v2WithOneBundle(), {
-      ...OPTS, triggeredByKey: 'github-abc123/web-dev'
+      ...OPTS,
+      triggeredByKey: portableKey,
+      identityEvidence: [{
+        legacyKey: 'web-dev',
+        sourceId: 'github-abc123',
+        version: '1.0.0',
+        proven: { source: verifiedSource, logicalBundleId: 'web-dev' }
+      }]
     });
 
     expect(report.unmanaged).toEqual([]);
-    expect(report.migrated).toEqual(['github-abc123/web-dev']);
+    expect(report.migrated).toEqual([portableKey]);
     expect(pair.local.targets[UNMANAGED_TARGET_KEY]).toBeUndefined();
-    expect(pair.desired.bundles['github-abc123/web-dev']).toBeDefined();
+    expect(pair.desired.bundles[portableKey]).toBeDefined();
   });
 
   it('carries hubs and profiles into the desired half untouched', () => {
@@ -205,6 +306,7 @@ describe('migrateLockfileIfNeeded', () => {
   });
   it('returns a local-only v3 pair (no desired, no legacy) as it stands, with a null report and no write', async () => {
     const fs = fakeFs();
+    const activeSourceKey = sourceKey(verifiedSource.identity, verifiedSource.type);
     const local = {
       version: '3.0.0',
       generatedAt: '2026-10-09T12:00:00.000Z',
@@ -214,11 +316,12 @@ describe('migrateLockfileIfNeeded', () => {
         'my-vscode': {
           baseDir: '/home/u/.copilot',
           bundles: {
-            'github-abc123/web-dev': {
+            [verifiedLogicalKey]: {
               version: '1.0.0',
-              sourceId: 'github-abc123',
+              sourceKey: activeSourceKey,
+              resolution: { kind: 'unpinned', reason: 'not pinned' },
               installedAt: '2026-10-09T12:00:00.000Z',
-              files: [{ path: 'prompts/hello.prompt.md' }]
+              files: [{ path: 'prompts/hello.prompt.md', installedChecksum: 'c'.repeat(64) }]
             }
           }
         }
@@ -252,8 +355,11 @@ describe('migrateLockfileIfNeeded', () => {
 
     const { report } = await migrateLockfileIfNeeded(userSources, fs, OPTS);
 
-    expect(report?.unmanaged.map((u) => u.key)).toEqual(['github-abc123/web-dev']);
+    expect(report?.unmanaged).toHaveLength(1);
+    expect(report?.unmanaged[0].key).toMatch(/^unresolved\/[a-f0-9]{64}$/);
     expect(JSON.parse(fs.files.get(userSources.desiredFile) as string).version).toBe('3.0.0');
+    expect(JSON.parse(fs.files.get(userSources.desiredFile) as string).unresolved[0].originalKey)
+      .toBe('web-dev');
     expect(JSON.parse(fs.files.get(userSources.localFile) as string).version).toBe('3.0.0');
   });
 
@@ -301,27 +407,20 @@ describe('migrateLockfileIfNeeded', () => {
       .toEqual(afterFirst);
   });
 
-  it('resumes an interruption between the local and desired writes (Review Focus 5)', async () => {
-    // §8.4: until the marker is set, materialization is the new local file
-    // unioned with legacy, existing-new winning per key — so a half-done
-    // migration must preserve the existing-new record and discard the
-    // legacy-derived duplicate.
+  it('preserves already-portable materializations while retaining unrelated v2 rows', async () => {
     const fs = fakeFs();
     const v2 = v2WithOneBundle();
-    // Add a second bundle that will be in the v2 file.
     v2.bundles['other-bundle'] = {
       version: '2.0.0',
       sourceId: 'github-abc123',
       sourceType: 'github',
       installedAt: '2026-02-01T00:00:00.000Z',
-      checksum: 'sha256:otherbytes',
-      files: [{ path: 'other.md', checksum: 'otherhash' }]
+      checksum: 'd'.repeat(64),
+      files: [{ path: 'other.md', checksum: 'e'.repeat(64) }]
     };
     fs.files.set(userSources.desiredFile, JSON.stringify(v2));
 
-    // Seed the partial local file with:
-    // 1. An existing-new record for web-dev under a real target (with installedChecksum)
-    // 2. An existing-new unmanaged record for third-bundle (with installedChecksum) - regression test
+    const activeSourceKey = sourceKey(verifiedSource.identity, verifiedSource.type);
     const partialLocal = {
       version: '3.0.0',
       generatedAt: OPTS.now,
@@ -332,24 +431,16 @@ describe('migrateLockfileIfNeeded', () => {
           scope: 'user',
           baseDir: '/real/path',
           bundles: {
-            'github-abc123/web-dev': {
+            [verifiedLogicalKey]: {
               version: '1.0.0',
-              sourceId: 'github-abc123',
+              sourceKey: activeSourceKey,
+              resolution: { kind: 'unpinned', reason: 'existing verified identity' },
               installedAt: '2026-01-01T00:00:00.000Z',
-              files: [{ path: '/real/path/hello.prompt.md', checksum: 'realhash', installedChecksum: 'installedhash' }]
-            }
-          }
-        },
-        [UNMANAGED_TARGET_KEY]: {
-          baseDir: '',
-          bundles: {
-            'github-abc123/third-bundle': {
-              version: '3.0.0',
-              sourceId: 'github-abc123',
-              installedAt: '2026-03-01T00:00:00.000Z',
-              state: 'unmanaged',
-              unmanagedReason: 'carried from first run',
-              files: [{ path: 'third.md', checksum: 'thirdhash', installedChecksum: 'thirdinstalled' }]
+              files: [{
+                path: 'hello.prompt.md',
+                checksum: 'f'.repeat(64),
+                installedChecksum: '1'.repeat(64)
+              }]
             }
           }
         }
@@ -359,16 +450,11 @@ describe('migrateLockfileIfNeeded', () => {
 
     const { pair } = await migrateLockfileIfNeeded(userSources, fs, OPTS);
 
-    // Existing-new record wins (has installedChecksum, is under 'real-target').
-    expect(pair.local.targets['real-target'].bundles['github-abc123/web-dev'].files[0].installedChecksum)
-      .toBe('installedhash');
-    // Legacy-derived unmanaged copy is removed (de-duplicated per bundle key).
-    expect(pair.local.targets[UNMANAGED_TARGET_KEY]?.bundles['github-abc123/web-dev']).toBeUndefined();
-    // other-bundle still exists in unmanaged (legacy-derived, not de-duplicated).
-    expect(pair.local.targets[UNMANAGED_TARGET_KEY].bundles['github-abc123/other-bundle']).toBeDefined();
-    // third-bundle survives with its installedChecksum intact (existing-new unmanaged record).
-    expect(pair.local.targets[UNMANAGED_TARGET_KEY].bundles['github-abc123/third-bundle'].files[0].installedChecksum)
-      .toBe('thirdinstalled');
+    expect(pair.local.targets['real-target'].bundles[verifiedLogicalKey].files[0].installedChecksum)
+      .toBe('1'.repeat(64));
+    expect(Object.keys(pair.local.targets[UNMANAGED_TARGET_KEY].bundles)).toHaveLength(2);
+    expect(pair.desired.unresolved?.map((intent) => intent.originalKey))
+      .toEqual(['other-bundle', 'web-dev']);
     expect(JSON.parse(fs.files.get(userSources.localFile) as string).migration)
       .toEqual({ lockfileV3: 'complete' });
   });
@@ -456,8 +542,10 @@ describe('planLockfileMigration', () => {
     const plan = await planLockfileMigration(repoSources, fs, OPTS);
 
     expect(plan.pendingWrite).toBe(true);
-    expect(plan.report?.unmanaged.map((u) => u.key)).toEqual(['github-abc123/web-dev']);
-    expect(Object.keys(plan.pair.desired.bundles)).toEqual(['github-abc123/web-dev']);
+    expect(plan.report?.unmanaged).toHaveLength(1);
+    expect(plan.report?.unmanaged[0].key).toMatch(/^unresolved\/[a-f0-9]{64}$/);
+    expect(Object.keys(plan.pair.desired.bundles)).toEqual([]);
+    expect(plan.pair.desired.unresolved?.[0].originalKey).toBe('web-dev');
     expect([...fs.files.entries()]).toEqual(before);
     expect(fs.order).toEqual([]);
   });
@@ -471,5 +559,227 @@ describe('planLockfileMigration', () => {
     const plan = await planLockfileMigration(userSources, fs, OPTS);
 
     expect(plan).toMatchObject({ pendingWrite: false, report: null });
+  });
+});
+
+describe('offline portable identity migration', () => {
+  it('downgrades noncanonical legacy pins to strict evidence without losing their digest', async () => {
+    const fs = fakeFs();
+    const branchPair = branchEraV3Pair();
+    branchPair.desired.bundles[legacyRuntimeKey].resolution = {
+      kind: 'pinned',
+      provider: 'github-release',
+      version: '1.0.0',
+      releaseId: 'release-123',
+      assetId: 'asset-456',
+      archiveSha256: `sha256:${ARCHIVE_DIGEST}`,
+      legacyMetadata: 'branch-era'
+    };
+    fs.files.set(userSources.desiredFile, JSON.stringify(branchPair.desired));
+    fs.files.set(userSources.localFile, JSON.stringify(branchPair.local));
+
+    const result = await migrateLockfileIfNeeded(userSources, fs, {
+      ...OPTS,
+      identityEvidence: verifiedIdentityEvidence
+    });
+
+    expect(result.pair.desired.bundles[verifiedLogicalKey].resolution).toMatchObject({
+      kind: 'unpinned',
+      evidence: {
+        knownPins: {
+          provider: 'github-release',
+          releaseId: 'release-123',
+          assetId: 'asset-456'
+        },
+        knownDigests: { archiveSha256: ARCHIVE_DIGEST }
+      }
+    });
+  });
+
+  it('rekeys branch-era v3 state using supplied proof and preserves ownership and known evidence', async () => {
+    const fs = fakeFs();
+    const branchPair = branchEraV3Pair();
+    fs.files.set(userSources.desiredFile, JSON.stringify(branchPair.desired));
+    fs.files.set(userSources.localFile, JSON.stringify(branchPair.local));
+
+    const plan = await planLockfileMigration(userSources, fs, {
+      ...OPTS,
+      identityEvidence: verifiedIdentityEvidence
+    });
+
+    expect(plan.pendingWrite).toBe(true);
+    expect(plan.pair.desired.bundles[verifiedLogicalKey]).toEqual({
+      version: '1.0.0',
+      sourceKey: sourceKey(verifiedSource.identity, verifiedSource.type),
+      resolution: {
+        kind: 'unpinned',
+        reason: expect.any(String),
+        evidence: { knownDigests: { archiveSha256: ARCHIVE_DIGEST } }
+      }
+    });
+    expect(plan.pair.desired.sources[sourceKey(verifiedSource.identity, verifiedSource.type)])
+      .toEqual(verifiedSource);
+    expect(plan.pair.desired.hubs).toEqual(branchPair.desired.hubs);
+    expect(plan.pair.desired.profiles).toEqual(branchPair.desired.profiles);
+    const record = plan.pair.local.targets['cursor-user'].bundles[verifiedLogicalKey];
+    expect(record).toMatchObject({
+      version: '1.0.0',
+      sourceKey: sourceKey(verifiedSource.identity, verifiedSource.type),
+      commitMode: 'local-only',
+      mcpConfigPath: '.copilot/mcp-config.json',
+      mcpServers: ['reviewer-mcp'],
+      files: [{
+        path: 'agents/reviewer.md',
+        checksum: FILE_DIGEST,
+        installedChecksum: INSTALLED_DIGEST
+      }],
+      legacy: {
+        originalKey: legacyRuntimeKey,
+        portableDescriptor: verifiedSource
+      }
+    });
+    expect(JSON.stringify(record.legacy)).toContain('computer-specific');
+    expect(fs.order).toEqual([]);
+  });
+
+  it('retains unproven old-v3 identity and complete materialization without publishing fake sources', async () => {
+    const fs = fakeFs();
+    const branchPair = branchEraV3Pair();
+    fs.files.set(userSources.desiredFile, JSON.stringify(branchPair.desired));
+    fs.files.set(userSources.localFile, JSON.stringify(branchPair.local));
+
+    const plan = await planLockfileMigration(userSources, fs, OPTS);
+
+    expect(plan.pendingWrite).toBe(true);
+    expect(plan.pair.desired.bundles).toEqual({});
+    expect(plan.pair.desired.sources).toEqual({});
+    expect(plan.pair.desired.unresolved).toHaveLength(1);
+    expect(plan.pair.desired.unresolved?.[0]).toMatchObject({
+      originalKey: legacyRuntimeKey,
+      sourceRef: 'computer-specific',
+      version: '1.0.0'
+    });
+    const unresolvedKey = Object.keys(plan.pair.local.targets['cursor-user'].bundles)[0];
+    expect(unresolvedKey).toMatch(/^unresolved\/[a-f0-9]{64}$/);
+    expect(plan.pair.local.targets['cursor-user'].bundles[unresolvedKey]).toMatchObject({
+      state: 'unmanaged',
+      files: [{
+        path: 'agents/reviewer.md',
+        checksum: FILE_DIGEST,
+        installedChecksum: INSTALLED_DIGEST
+      }],
+      mcpConfigPath: '.copilot/mcp-config.json',
+      mcpServers: ['reviewer-mcp']
+    });
+    const sharedEvidence = JSON.stringify(plan.pair.desired);
+    expect(sharedEvidence).not.toContain('/home/user');
+    expect(sharedEvidence).not.toContain('secret');
+    expect(sharedEvidence).not.toContain('token');
+  });
+
+  it('restarts offline after the local-first write despite a stale complete marker', async () => {
+    const fs = fakeFs();
+    const branchPair = branchEraV3Pair();
+    fs.files.set(userSources.desiredFile, JSON.stringify(branchPair.desired));
+    fs.files.set(userSources.localFile, JSON.stringify(branchPair.local));
+    const rename = fs.rename;
+    let failAfterLocalWrite = true;
+    fs.rename = async (from: string, to: string) => {
+      await rename(from, to);
+      if (to === userSources.localFile && failAfterLocalWrite) {
+        failAfterLocalWrite = false;
+        throw new Error('simulated interruption after local write');
+      }
+    };
+
+    await expect(migrateLockfileIfNeeded(userSources, fs, {
+      ...OPTS,
+      identityEvidence: verifiedIdentityEvidence
+    })).rejects.toThrow('simulated interruption');
+    const pendingLocal = JSON.parse(fs.files.get(userSources.localFile) as string);
+    expect(pendingLocal.migration).toBeUndefined();
+    expect(JSON.parse(fs.files.get(userSources.desiredFile) as string).bundles[legacyRuntimeKey])
+      .toBeDefined();
+
+    fs.rename = rename;
+    const resumed = await migrateLockfileIfNeeded(userSources, fs, OPTS);
+
+    expect(resumed.pair.desired.bundles[verifiedLogicalKey]).toBeDefined();
+    expect(resumed.pair.local.targets['cursor-user'].bundles[verifiedLogicalKey].mcpServers)
+      .toEqual(['reviewer-mcp']);
+    expect(resumed.pair.local.targets['cursor-user'].bundles[verifiedLogicalKey].legacy)
+      .toBeUndefined();
+    expect(resumed.pair.local.migration).toEqual({ lockfileV3: 'complete' });
+  });
+
+  it('previews legacy state without writes and returns deterministic desired bytes across clocks', async () => {
+    const fs = fakeFs();
+    const branchPair = branchEraV3Pair();
+    fs.files.set(userSources.desiredFile, JSON.stringify(branchPair.desired));
+    fs.files.set(userSources.localFile, JSON.stringify(branchPair.local));
+    const before = [...fs.files.entries()];
+
+    const first = await planLockfileMigration(userSources, fs, {
+      ...OPTS,
+      identityEvidence: verifiedIdentityEvidence
+    });
+    const second = await planLockfileMigration(userSources, fs, {
+      ...OPTS,
+      now: '2027-05-05T05:05:05.000Z',
+      identityEvidence: verifiedIdentityEvidence
+    });
+
+    expect(first.pendingWrite).toBe(true);
+    expect(JSON.stringify(first.pair.desired)).toBe(JSON.stringify(second.pair.desired));
+    expect([...fs.files.entries()]).toEqual(before);
+    expect(fs.order).toEqual([]);
+  });
+
+  it.each([1, 2, 3, 4, 5])('restarts offline after migration effect %i and preserves ownership', async (failAfter) => {
+    const fs = fakeFs();
+    const repoSources = {
+      desiredFile: '/work/ai-primitives-hub.lock.json',
+      localFile: '/work/ai-primitives-hub.local.lock.json',
+      legacyFiles: ['/work/prompt-registry.lock.json', '/work/prompt-registry.local.lock.json']
+    };
+    fs.files.set(repoSources.legacyFiles[0], JSON.stringify(v2WithOneBundle()));
+    fs.files.set(repoSources.legacyFiles[1], JSON.stringify({
+      ...v2WithOneBundle(),
+      bundles: {}
+    }));
+    const rename = fs.rename;
+    const remove = fs.remove;
+    let effect = 0;
+    const interruptAfterEffect = (): void => {
+      effect += 1;
+      if (effect === failAfter) {
+        throw new Error(`interrupted after effect ${failAfter}`);
+      }
+    };
+    fs.rename = async (from: string, to: string) => {
+      await rename(from, to);
+      interruptAfterEffect();
+    };
+    fs.remove = async (path: string) => {
+      await remove(path);
+      interruptAfterEffect();
+    };
+
+    await expect(migrateLockfileIfNeeded(repoSources, fs, OPTS))
+      .rejects.toThrow(`interrupted after effect ${failAfter}`);
+
+    fs.rename = rename;
+    fs.remove = remove;
+    const restarted = await migrateLockfileIfNeeded(repoSources, fs, OPTS);
+    const intent = restarted.pair.desired.unresolved?.find((item) => item.originalKey === 'web-dev');
+    const localRecord = Object.values(restarted.pair.local.targets)
+      .flatMap((target) => Object.values(target.bundles))
+      .find((record) => record.files.some((file) => file.path === 'prompts/hello.prompt.md'));
+
+    expect(intent?.version).toBe('1.0.0');
+    expect(localRecord?.files[0].checksum).toBe('b'.repeat(64));
+    expect(restarted.pair.local.migration).toEqual({ lockfileV3: 'complete' });
+    expect(fs.files.has(repoSources.legacyFiles[0])).toBe(false);
+    expect(fs.files.has(repoSources.legacyFiles[1])).toBe(false);
   });
 });

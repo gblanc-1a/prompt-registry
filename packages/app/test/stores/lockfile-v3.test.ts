@@ -1,6 +1,10 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import {
+  sourceKey as portableSourceKey,
+} from '@ai-primitives-hub/core';
 import type {
+  BundleResolution,
   PortableSourceDescriptor,
 } from '@ai-primitives-hub/core';
 import Ajv from 'ajv';
@@ -380,7 +384,11 @@ describe('upsertDesiredSource', () => {
   });
 
   it('rejects a descriptor stored under a non-matching portable source key', () => {
-    expect(() => upsertDesiredSource(emptyDesiredLockfileV3(), 'src-'.concat('0'.repeat(64)), PORTABLE_SOURCE))
+    expect(() => upsertDesiredSource(
+      emptyDesiredLockfileV3(),
+      'src-'.concat('0'.repeat(64)),
+      structuredClone(PORTABLE_SOURCE)
+    ))
       .toThrow(/does not match|source key/i);
   });
 
@@ -419,7 +427,7 @@ describe('upsertDesiredSource', () => {
 describe('strict amended v3 wire contract', () => {
   const strictDesired = () => ({
     ...emptyDesiredLockfileV3(),
-    sources: { [PORTABLE_SOURCE_KEY]: PORTABLE_SOURCE },
+    sources: { [PORTABLE_SOURCE_KEY]: structuredClone(PORTABLE_SOURCE) },
     bundles: {
       [PORTABLE_BUNDLE_KEY]: {
         version: '1.0.0',
@@ -489,7 +497,181 @@ describe('strict amended v3 wire contract', () => {
     (desired.sources[PORTABLE_SOURCE_KEY].identity as { repositoryId: string }).repositoryId = '99999';
     mockFs.files.set(userPaths.desiredFile, JSON.stringify(desired));
 
-    await expect(readLockfileV3Pair(userPaths, mockFs, DEFAULTS)).rejects.toThrow();
+    await expect(readLockfileV3Pair(userPaths, mockFs, DEFAULTS))
+      .rejects.toThrow(/source descriptor.*invalid|does not match/i);
+  });
+
+  it.each([
+    'https://example.com/archive?X-Amz-Signature=placeholder',
+    'https://example.com/archive?passwd=placeholder'
+  ])('rejects secret-bearing legacy locator evidence: %s', async (locator) => {
+    const mockFs = fakeFs();
+    const desired = strictDesired();
+    desired.unresolved = [{
+      originalKey: 'legacy-source/web-dev',
+      version: '1.0.0',
+      reason: 'The old source locator could not be safely migrated.',
+      descriptor: { type: 'github', locator }
+    }];
+    mockFs.files.set(userPaths.desiredFile, JSON.stringify(desired));
+
+    await expect(readLockfileV3Pair(userPaths, mockFs, DEFAULTS))
+      .rejects.toThrow(/credential|secret/i);
+  });
+
+  it('accepts the portable workspace-root sentinel in legacy evidence', async () => {
+    const mockFs = fakeFs();
+    const desired = strictDesired();
+    desired.unresolved = [{
+      originalKey: 'local-source/web-dev',
+      version: '1.0.0',
+      reason: 'The workspace root is retained as migration evidence.',
+      descriptor: { type: 'local', locator: '.' }
+    }];
+    mockFs.files.set(userPaths.desiredFile, JSON.stringify(desired));
+
+    const { pair } = await readLockfileV3Pair(userPaths, mockFs, DEFAULTS);
+
+    expect(pair.desired.unresolved).toEqual(desired.unresolved);
+  });
+
+  it('rejects live resolution when the desired source is not local-skills', async () => {
+    const mockFs = fakeFs();
+    const desired = strictDesired();
+    (desired.bundles[PORTABLE_BUNDLE_KEY] as unknown as Record<string, unknown>).resolution = {
+      kind: 'live',
+      selector: 'skills/example'
+    };
+    mockFs.files.set(userPaths.desiredFile, JSON.stringify(desired));
+
+    await expect(readLockfileV3Pair(userPaths, mockFs, DEFAULTS))
+      .rejects.toThrow(/resolution.*source|source.*resolution/i);
+  });
+
+  it('accepts each resolution only under a compatible source family', async () => {
+    const sourceExamples: [PortableSourceDescriptor, BundleResolution][] = [
+      [PORTABLE_SOURCE, PINNED_RESOLUTION],
+      [
+        {
+          type: 'skills',
+          identity: {
+            kind: 'github-tree',
+            origin: 'https://github.com',
+            repositoryId: '12345',
+            ref: 'main',
+            skillsPath: 'skills'
+          },
+          locator: 'https://github.com/example/repo'
+        },
+        {
+          kind: 'pinned',
+          provider: 'github-tree',
+          version: '1.0.0',
+          commitSha: 'c'.repeat(40),
+          bundlePath: 'skills/example',
+          sourceContentSha256: 'd'.repeat(64)
+        }
+      ],
+      [
+        {
+          type: 'azure-devops',
+          identity: {
+            kind: 'azure-devops-tree',
+            namespace: 'org/project',
+            repositoryId: '12345678-1234-1234-1234-123456789abc',
+            ref: 'main',
+            collectionsPath: 'collections'
+          },
+          locator: 'https://dev.azure.com/org/project/_git/repo'
+        },
+        {
+          kind: 'pinned',
+          provider: 'azure-devops-tree',
+          version: '1.0.0',
+          commitId: 'e'.repeat(40),
+          collectionPath: 'collections/example',
+          sourceContentSha256: 'f'.repeat(64)
+        }
+      ],
+      [
+        {
+          type: 'artifactory',
+          identity: {
+            kind: 'artifactory-index',
+            root: 'https://packages.example/repository/ai',
+            indexFile: 'index.json'
+          },
+          locator: 'https://packages.example/repository/ai'
+        },
+        {
+          kind: 'pinned',
+          provider: 'artifactory-object',
+          version: '1.0.0',
+          manifestPath: 'bundles/example/manifest.yml',
+          manifestSize: 12,
+          manifestSha256: 'a'.repeat(64),
+          archivePath: 'bundles/example/archive.zip',
+          archiveSize: 34,
+          archiveSha256: 'b'.repeat(64)
+        }
+      ],
+      [
+        {
+          type: 'local',
+          identity: { kind: 'workspace-local', root: '.' },
+          locator: '.'
+        },
+        {
+          kind: 'pinned',
+          provider: 'local-snapshot',
+          version: '1.0.0',
+          bundleSelector: 'bundles/example',
+          sourceContentSha256: 'c'.repeat(64)
+        }
+      ],
+      [
+        {
+          type: 'local-skills',
+          identity: { kind: 'workspace-local', root: '.', skillsPath: 'skills' },
+          locator: '.'
+        },
+        { kind: 'live', selector: 'skills/example' }
+      ],
+      [PORTABLE_SOURCE, { kind: 'unpinned', reason: 'Historical provider evidence is incomplete.' }]
+    ];
+
+    for (const [source, resolution] of sourceExamples) {
+      const sourceKey = portableSourceKey(source.identity, source.type);
+      const bundleKey = `${sourceKey}/web-dev`;
+      const desired = {
+        ...emptyDesiredLockfileV3(),
+        sources: { [sourceKey]: source },
+        bundles: {
+          [bundleKey]: { version: '1.0.0', sourceKey, resolution }
+        }
+      };
+      const mockFs = fakeFs();
+      mockFs.files.set(userPaths.desiredFile, JSON.stringify(desired));
+
+      await expect(readLockfileV3Pair(userPaths, mockFs, DEFAULTS))
+        .resolves.toMatchObject({ pair: { desired: { bundles: { [bundleKey]: { resolution } } } } });
+    }
+  });
+
+  it.each([
+    ['checksum', { checksum: 'a'.repeat(64) }],
+    ['installed checksum', { installedChecksum: 'a'.repeat(64) }],
+    ['migration marker', { adoptedAtMigration: true }]
+  ])('rejects %s metadata on linked materialization files', async (_name, metadata) => {
+    const mockFs = fakeFs();
+    const local = strictLocal();
+    const linkedRecord = local.targets['my-vscode'].bundles[PORTABLE_BUNDLE_KEY] as unknown as Record<string, unknown>;
+    linkedRecord.linked = true;
+    linkedRecord.files = [{ path: 'skills/example', ...metadata }];
+    mockFs.files.set(userPaths.localFile, JSON.stringify(local));
+
+    await expect(readLockfileV3Pair(userPaths, mockFs, DEFAULTS))
+      .rejects.toThrow(/path-only|file entry|unsupported field/i);
   });
 
   it('rejects a desired version that disagrees with its pinned resolution', async () => {

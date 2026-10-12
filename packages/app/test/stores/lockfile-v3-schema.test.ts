@@ -27,7 +27,53 @@ const githubSource = {
   locator: 'https://github.com/example/repo'
 };
 
-const desired = (resolution: Record<string, unknown>, source = githubSource) => ({
+const githubTreeSource = {
+  type: 'skills',
+  identity: {
+    kind: 'github-tree',
+    origin: 'https://github.com',
+    repositoryId: '12345',
+    ref: 'main',
+    skillsPath: 'skills'
+  },
+  locator: 'https://github.com/example/repo'
+};
+
+const azureDevOpsSource = {
+  type: 'azure-devops',
+  identity: {
+    kind: 'azure-devops-tree',
+    namespace: 'org/project',
+    repositoryId: '12345678-1234-1234-1234-123456789abc',
+    ref: 'main',
+    collectionsPath: 'collections'
+  },
+  locator: 'https://dev.azure.com/org/project/_git/repo'
+};
+
+const artifactorySource = {
+  type: 'artifactory',
+  identity: {
+    kind: 'artifactory-index',
+    root: 'https://packages.example/repository/ai',
+    indexFile: 'index.json'
+  },
+  locator: 'https://packages.example/repository/ai'
+};
+
+const localSource = {
+  type: 'local',
+  identity: { kind: 'workspace-local', root: '.' },
+  locator: '.'
+};
+
+const localSkillsSource = {
+  type: 'local-skills',
+  identity: { kind: 'workspace-local', root: '.', skillsPath: 'skills' },
+  locator: '.'
+};
+
+const desired = (resolution: Record<string, unknown>, source: Record<string, unknown> = githubSource) => ({
   $schema: 'https://github.com/AmadeusITGroup/ai-primitives-hub/schemas/lockfile-v3.schema.json',
   version: '3.0.0',
   sources: { [SOURCE_KEY]: source },
@@ -80,7 +126,7 @@ const releasePin = {
 };
 
 const resolutionExamples = [
-  ['GitHub release pin', releasePin],
+  ['GitHub release pin', releasePin, githubSource],
   ['GitHub tree pin', {
     kind: 'pinned',
     provider: 'github-tree',
@@ -89,7 +135,7 @@ const resolutionExamples = [
     bundlePath: 'collections/web-dev',
     sourceContentSha256: 'd'.repeat(64),
     externalInputs: [{ identity: 'shared/prompts', sourceContentSha256: 'e'.repeat(64) }]
-  }],
+  }, githubTreeSource],
   ['Azure DevOps tree pin', {
     kind: 'pinned',
     provider: 'azure-devops-tree',
@@ -97,7 +143,7 @@ const resolutionExamples = [
     commitId: 'f'.repeat(40),
     collectionPath: 'collections/web-dev',
     sourceContentSha256: 'd'.repeat(64)
-  }],
+  }, azureDevOpsSource],
   ['Artifactory object pin', {
     kind: 'pinned',
     provider: 'artifactory-object',
@@ -108,18 +154,18 @@ const resolutionExamples = [
     archivePath: 'bundles/web-dev/archive.zip',
     archiveSize: 1024,
     archiveSha256: 'b'.repeat(64)
-  }],
+  }, artifactorySource],
   ['local snapshot pin', {
     kind: 'pinned',
     provider: 'local-snapshot',
     version: '1.0.0',
     bundleSelector: 'collections/web-dev',
     sourceContentSha256: 'c'.repeat(64)
-  }],
+  }, localSource],
   ['live selection', {
     kind: 'live',
     selector: 'skills/my-skill'
-  }],
+  }, localSkillsSource],
   ['unpinned historical evidence', {
     kind: 'unpinned',
     reason: 'The original provider pin was unavailable during migration.',
@@ -127,12 +173,12 @@ const resolutionExamples = [
       knownDigests: { archiveSha256: 'a'.repeat(64) },
       manifestVersion: '1.0.0'
     }
-  }]
+  }, githubSource]
 ] as const;
 
 describe('lockfile v3 schema', () => {
-  it.each(resolutionExamples)('accepts the %s resolution shape', (_name, resolution) => {
-    expect(validate(desired(resolution))).toBe(true);
+  it.each(resolutionExamples)('accepts the %s resolution shape for its source family', (_name, resolution, source) => {
+    expect(validate(desired(resolution, source))).toBe(true);
     expect(validate.errors).toBeNull();
   });
 
@@ -252,6 +298,46 @@ describe('lockfile v3 schema', () => {
       identity: { kind: 'external-local', bindingName: 'team-source' },
       locator: 'team-source'
     }))).toBe(true);
+  });
+
+  it('accepts the portable workspace-root sentinel in legacy evidence', () => {
+    expect(validate({
+      ...desired(releasePin),
+      unresolved: [{
+        originalKey: 'local-source/web-dev',
+        version: '1.0.0',
+        reason: 'The workspace root is retained as migration evidence.',
+        descriptor: { type: 'local', locator: '.' }
+      }]
+    })).toBe(true);
+  });
+
+  it('rejects query parameters parsed as a remote locator hostname', () => {
+    const credentialedSource = {
+      ...githubSource,
+      locator: 'https://example.com?access_token=placeholder'
+    };
+    const credentialedEvidence = {
+      ...desired(releasePin),
+      unresolved: [{
+        originalKey: 'legacy-source/web-dev',
+        version: '1.0.0',
+        reason: 'A locator with query credentials is not portable evidence.',
+        descriptor: { type: 'github', locator: 'https://example.com?access_token=placeholder' }
+      }]
+    };
+
+    expect(validate(desired(releasePin, credentialedSource))).toBe(false);
+    expect(validate(credentialedEvidence)).toBe(false);
+  });
+
+  it('requires linked materialization file entries to contain only paths', () => {
+    const linked = local();
+    const entry = linked.targets['my-vscode'].bundles[BUNDLE_KEY] as unknown as Record<string, unknown>;
+    entry.linked = true;
+    entry.files = [{ path: 'skills/my-skill', checksum: 'a'.repeat(64) }];
+
+    expect(validate(linked)).toBe(false);
   });
 
   it('rejects absolute local locators, secret config fields, unknown sources, and secret evidence', () => {

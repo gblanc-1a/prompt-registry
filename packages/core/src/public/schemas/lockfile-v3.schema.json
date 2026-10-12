@@ -266,7 +266,7 @@
     "remoteLocator": {
       "type": "string",
       "format": "uri",
-      "pattern": "^https?://[^/@]+(?:/[^?#]*)?$"
+      "pattern": "^https?://[^/?#@]+(?:/[^?#]*)?$"
     },
     "githubId": {
       "type": "string",
@@ -471,7 +471,7 @@
         "locator": {
           "type": "string",
           "minLength": 1,
-          "pattern": "^(?:(?:https?://[^/@]+(?:/[^?#]*)?)|(?:\\.|(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*://)(?!.*(?:^|/)\\.{1,2}(?:/|$)).+))$"
+          "pattern": "^(?:(?:https?://[^/?#@]+(?:/[^?#]*)?)|(?:\\.|(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*://)(?!.*(?:^|/)\\.{1,2}(?:/|$)).+))$"
         },
         "selectors": {
           "type": "object",
@@ -558,7 +558,7 @@
       "allOf": [
         {
           "if": { "properties": { "linked": { "const": true } }, "required": ["linked"] },
-          "then": { "properties": { "files": { "items": { "not": { "required": ["installedChecksum"] } } } } },
+          "then": { "properties": { "files": { "items": { "$ref": "#/definitions/pathOnlyFileEntry" } } } },
           "else": { "properties": { "files": { "items": { "required": ["installedChecksum"] } } } }
         }
       ]
@@ -582,6 +582,12 @@
         "complete": { "const": true },
         "legacy": { "$ref": "#/definitions/legacyIdentityEvidence" }
       },
+      "allOf": [
+        {
+          "if": { "properties": { "linked": { "const": true } }, "required": ["linked"] },
+          "then": { "properties": { "files": { "items": { "$ref": "#/definitions/pathOnlyFileEntry" } } } }
+        }
+      ],
       "oneOf": [
         { "required": ["sourceKey", "resolution"] },
         {
@@ -608,6 +614,18 @@
         "checksum": { "$ref": "#/definitions/fileChecksum" },
         "installedChecksum": { "$ref": "#/definitions/fileChecksum" },
         "adoptedAtMigration": { "const": true }
+      }
+    },
+    "pathOnlyFileEntry": {
+      "type": "object",
+      "required": ["path"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^(?!/)(?![A-Za-z]:)(?!.*\\\\)(?!.*(?:^|/)\\.{1,2}(?:/|$)).+$"
+        }
       }
     },
     "fileChecksum": {

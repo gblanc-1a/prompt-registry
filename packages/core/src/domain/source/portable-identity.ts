@@ -108,6 +108,23 @@ const LOCAL_SOURCE_TYPES = new Set<RetainedSourceType>([
   'local', 'local-awesome-copilot', 'local-skills'
 ]);
 
+/**
+ * Check an HTTP(S) locator for embedded or query-string credentials.
+ * @param value
+ */
+export const isCredentialFreeHttpUrl = (value: string): boolean => {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return false;
+  }
+  return HTTP_PROTOCOLS.has(url.protocol)
+    && url.username === ''
+    && url.password === ''
+    && ![...url.searchParams.keys()].some((key) => CREDENTIAL_QUERY_KEY.test(key));
+};
+
 const invalidIdentity = (message: string): RegistryError => new RegistryError({
   code: 'BUNDLE.INVALID_SOURCE_IDENTITY',
   message,
@@ -343,8 +360,6 @@ const canonicalize = (value: unknown): unknown => {
 
 const validateLocator = (source: PortableSourceDescriptor): void => {
   const locator = requireText(source.locator, 'Source locator');
-  const hasCredentialQuery = (candidate: URL): boolean => [...candidate.searchParams.keys()]
-    .some((key) => CREDENTIAL_QUERY_KEY.test(key));
   if (LOCAL_SOURCE_TYPES.has(source.type)) {
     if (source.identity.kind === 'workspace-local') {
       if (!isPortableRelativeLocator(locator, true) || locator !== source.identity.root) {
@@ -361,13 +376,7 @@ const validateLocator = (source: PortableSourceDescriptor): void => {
     }
     throw invalidIdentity(`Local adapter "${source.type}" requires a workspace-local or external-local identity.`);
   }
-  let url: URL;
-  try {
-    url = new URL(locator);
-  } catch {
-    throw invalidLocator(`Source locator ${JSON.stringify(locator)} is not a valid URL.`);
-  }
-  if (!HTTP_PROTOCOLS.has(url.protocol) || url.username !== '' || url.password !== '' || hasCredentialQuery(url)) {
+  if (!isCredentialFreeHttpUrl(locator)) {
     throw invalidLocator('Source locator must be an HTTP(S) URL without embedded credentials.');
   }
 };

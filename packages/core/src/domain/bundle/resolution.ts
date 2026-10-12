@@ -134,6 +134,57 @@ const resolutionVersionError = (version: string, recordedVersion: string): Regis
   hint: 'Resolve the exact requested bundle version and do not substitute a different artifact.'
 });
 
+const resolutionMatchesSource = (
+  source: PortableSourceDescriptor,
+  resolution: BundleResolution
+): boolean => {
+  if (resolution.kind === 'unpinned') {
+    return true;
+  }
+  if (resolution.kind === 'live') {
+    return source.type === 'local-skills'
+      && (source.identity.kind === 'workspace-local' || source.identity.kind === 'external-local');
+  }
+  switch (resolution.provider) {
+    case 'github-release': {
+      return source.type === 'github' && source.identity.kind === 'github-releases';
+    }
+    case 'github-tree': {
+      return (source.type === 'skills' || source.type === 'awesome-copilot')
+        && source.identity.kind === 'github-tree';
+    }
+    case 'azure-devops-tree': {
+      return source.type === 'azure-devops' && source.identity.kind === 'azure-devops-tree';
+    }
+    case 'artifactory-object': {
+      return source.type === 'artifactory' && source.identity.kind === 'artifactory-index';
+    }
+    case 'local-snapshot': {
+      return (source.type === 'local' || source.type === 'local-awesome-copilot' || source.type === 'local-skills')
+        && (source.identity.kind === 'workspace-local' || source.identity.kind === 'external-local');
+    }
+  }
+  return false;
+};
+
+/**
+ * Enforce that a selected resolution can be produced by its portable source family.
+ * @param source
+ * @param resolution
+ */
+export const assertResolutionSourceCompatibility = (
+  source: PortableSourceDescriptor,
+  resolution: BundleResolution
+): void => {
+  if (!resolutionMatchesSource(source, resolution)) {
+    throw new RegistryError({
+      code: 'BUNDLE.RESOLUTION_SOURCE_MISMATCH',
+      message: `Resolution ${resolution.kind === 'pinned' ? resolution.provider : resolution.kind} is incompatible with source type "${source.type}" and identity "${source.identity.kind}".`,
+      hint: 'Use a provider resolution supported by the source family; live resolutions are only supported by local-skills.'
+    });
+  }
+};
+
 const stableJson = (value: unknown): string => {
   if (Array.isArray(value)) {
     return `[${value.map((item) => stableJson(item)).join(',')}]`;

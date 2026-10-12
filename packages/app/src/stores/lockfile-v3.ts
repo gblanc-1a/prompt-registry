@@ -28,9 +28,11 @@ import {
 } from 'node:crypto';
 import * as path from 'node:path';
 import {
+  assertResolutionSourceCompatibility,
   assertResolutionVersion,
   assertSourceKey,
   classifyLockfileVersion,
+  isCredentialFreeHttpUrl,
   parseLogicalBundleKey,
   sourceKey as portableSourceKey,
   RegistryError,
@@ -464,17 +466,10 @@ const validateSafeLegacyDescriptor = (value: unknown, file: string): void => {
       invalidV3Shape(file, 'shared legacy descriptor evidence cannot contain an absolute local root.');
     }
     if (/^https?:\/\//i.test(locator)) {
-      let parsed: URL;
-      try {
-        parsed = new URL(locator);
-      } catch {
-        return invalidV3Shape(file, 'legacy descriptor evidence.locator must be a credential-free URL.');
+      if (!isCredentialFreeHttpUrl(locator)) {
+        invalidV3Shape(file, 'legacy descriptor evidence.locator must be a credential-free HTTP(S) URL.');
       }
-      if (parsed.username !== '' || parsed.password !== ''
-        || [...parsed.searchParams.keys()].some((key) => /(token|password|secret|credential|auth|api[_-]?key)/i.test(key))) {
-        invalidV3Shape(file, 'legacy descriptor evidence.locator cannot contain credentials or secret query parameters.');
-      }
-    } else if (!isRelativePosixPath(locator)) {
+    } else if (locator !== '.' && !isRelativePosixPath(locator)) {
       invalidV3Shape(file, 'legacy descriptor evidence.locator must be portable and relative.');
     }
   }
@@ -702,20 +697,25 @@ const validateFileEntries = (
   value: unknown,
   label: string,
   file: string,
-  requireInstalledChecksum: boolean
+  requireInstalledChecksum: boolean,
+  pathOnly: boolean
 ): void => {
   if (!Array.isArray(value)) {
     invalidV3Shape(file, `${label} must be an array.`);
   }
   for (const item of value as unknown[]) {
     const entry = requireObject(item, `${label} item`, file);
-    requireExactKeys(
-      entry,
-      ['path', 'checksum', 'installedChecksum', 'adoptedAtMigration'],
-      ['path'],
-      `${label} item`,
-      file
-    );
+    if (pathOnly) {
+      requireExactKeys(entry, ['path'], ['path'], `${label} item`, file);
+    } else {
+      requireExactKeys(
+        entry,
+        ['path', 'checksum', 'installedChecksum', 'adoptedAtMigration'],
+        ['path'],
+        `${label} item`,
+        file
+      );
+    }
     const relativePath = requireString(entry.path, `${label}.path`, file);
     if (!isRelativePosixPath(relativePath)) {
       invalidV3Shape(file, `${label}.path must be a canonical relative POSIX path.`);
@@ -805,7 +805,13 @@ const validateMaterialization = (value: unknown, key: string, file: string): Loc
     const resolution = record.resolution as BundleResolution;
     assertResolutionVersion(resolution, record.version as string);
   }
-  validateFileEntries(record.files, `materialization ${key}.files`, file, !hasState && record.linked !== true);
+  validateFileEntries(
+    record.files,
+    `materialization ${key}.files`,
+    file,
+    !hasState && record.linked !== true,
+    record.linked === true
+  );
   return record as unknown as LockfileV3BundleRecord;
 };
 
@@ -840,6 +846,14 @@ const validateDesiredState = (value: unknown, file: string): DesiredLockfileV3 =
     }
     const resolution = validateResolution(entry.resolution, file);
     assertResolutionVersion(resolution, entry.version as string);
+    try {
+      assertResolutionSourceCompatibility(sources[sourceKey] as PortableSourceDescriptor, resolution);
+    } catch (error) {
+      invalidV3Shape(
+        file,
+        `desired bundle ${key} has a resolution incompatible with its source: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
   }
   if (desired.unresolved !== undefined) {
     if (!Array.isArray(desired.unresolved)) {

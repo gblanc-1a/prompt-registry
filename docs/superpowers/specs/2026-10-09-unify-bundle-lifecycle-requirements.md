@@ -50,6 +50,10 @@ designer added on their own initiative are deliberately **excluded** — see
 | FR-26 | MCP writes go to the portable destinations only. | chosen | Selected "Portable only" |
 | FR-27 | No committed per-file checksums; verification is by re-derivation. | chosen | Selected "No — re-derivation is enough" |
 | FR-28 | **SUPERSEDED — see [§5](#5-amendments-after-review).** A developer may exclude a committed bundle and may pin a different version locally; local wins. | chosen | Selected "Exclude list + local version pin" |
+| FR-29 | Use adapter-specific source identity: a releases adapter must not depend on an artificial branch/ref selector; its source is repository plus adapter. | stated | "we can rely on github releases for example and not necessarily a branch or reference. So for a release I believe it should be something like Repo+adapter" |
+| FR-30 | Identify the resolved GitHub release using its provider release ID, not merely a tag or semantic version. | chosen | Selected "provider-release-id" |
+| FR-31 | Apply the portable identity contract across retained adapters, not just GitHub releases. | chosen | Selected "all-adapters"; subsequently agreed to the compatibility correction preserving APM retirement |
+| FR-32 | Accommodate the Artifactory distribution model proposed in AmadeusITGroup/ai-primitives-hub#437. | stated | "you can have a look to propose a solution that would be compatible with it" |
 
 ## 2. Non-functional requirements
 
@@ -93,7 +97,7 @@ treat them as open to challenge rather than as fixed constraints:
 - the `app/deploy` module boundary and the "bundle bytes + scope" seam
 - manifest-driven routing on `PrimitiveKind`, and the naming rules per kind shape
 - the desired-vs-materialized lockfile split, schema `3.0.0`, and the two-file layout
-- `reconcile` and its comparison key, now `(logicalBundleKey, version, sourceId, targetType)`
+- `reconcile` and its comparison key, now `(logicalBundleKey, version, sourceKey, resolution, targetType)`
 - the `resolveBundle` / `readBundleFiles` / link-identity port additions
 - the `unifiedDeploy` feature flag and the vertical slice sequence
 - retiring the MCP tracking sidecar; folding MCP state into materialization records
@@ -117,6 +121,18 @@ for each is in the design's §14.
 | FR-21 | **Amended by exception** | Bundle installs at user scope place real file copies. A `local-skills` install keeps its **live directory link**, because the link is the feature rather than the defect FR-3 reported. The exception is named and bounded; no other case links |
 | FR-28 | **Superseded** | There is no local desired state — no `excludes` list and no local version pin. The committed lockfile is the only desired state, and a developer who wants to diverge edits it and does not commit the diff. Git is the override mechanism |
 | FR-7 | **Extended** | APM authoring support (the validate command and `apm.schema.json`) is retired as well, in an **independent PR** outside the lifecycle delivery sequence |
+| FR-12 | **Clarified and extended, 2026-10-10** | Active v3 source/bundle references are independent of local registry IDs and hub declaration IDs. Use portable adapter-specific identity; separate upgrade-stable logical bundle keys from artifact-resolution pins. GitHub repository renames retain identity only when provider IDs match |
+| FR-18 | **Clarified, 2026-10-10** | Source-identity migration remains offline-capable, per record and resumable. Missing provider identity is preserved as unresolved/unmanaged evidence; missing historical pins are not fabricated or treated as a whole-file migration prerequisite |
+| NFR-4 | **Clarified, 2026-10-10** | Settle the portable identity/resolution schema before further v3 writers ship, rather than defer it to slice 9. The requester confirmed v3 is branch-only; amend that unshipped format, not a released generation |
+
+The 2026-10-10 source-identity discussion approved the GitHub identity section, then the
+all-adapter section revised for Artifactory, then the compatibility corrections against
+the existing lifecycle plan ("agreed"). The written amendment remains subject to review.
+Those choices include adapter-specific artifact pins with checksums, separate Artifactory
+provenance/channel identity, workspace-relative local roots and explicit external bindings,
+and artifact-aware reconcile without a local desired-state override layer. They do not
+authorize implementation before the revised written spec and implementation plan are
+reviewed. See design §14, decisions 13–18.
 
 Four further requirements were **not** changed, but had an open interpretation that is now
 fixed: FR-22 (a multi-root workspace resolves to the first listed folder that is a git
@@ -143,3 +159,9 @@ reported rather than migrated).
    implemented, or does it merely defer one?
 7. NFR-6: is slice 1 genuinely E2E-testable on merge, by someone who did not write it?
 8. Are any FRs answered only for one delivery layer when the requirement implies both?
+9. Do GitHub source/logical identities survive a verified rename and a new release,
+   while release/asset pins and digests still enforce the exact selected artifact?
+10. Can Artifactory replay run without GitHub access, preserve catalog/manifest identity
+    separately and reject provider fallback, using the existing published-object contract?
+11. Does missing identity evidence preserve install/MCP ownership and team intent without
+    making uninstall, status, doctor or ordinary reads network-dependent?

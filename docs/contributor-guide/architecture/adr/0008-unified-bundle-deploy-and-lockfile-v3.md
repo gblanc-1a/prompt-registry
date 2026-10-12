@@ -3,6 +3,10 @@
 **Status:** Accepted. Expected to be superseded in part by the decision slice 3
 takes on renaming the committed repository lockfile (see [Consequences](#consequences)).
 
+**Source-identity amendment (2026-10-10):** conversationally agreed; revised written
+specification awaiting review. The amended decision below is the target contract,
+not a claim that the branch implementation already writes it.
+
 ## Context
 
 The bundle lifecycle has two independent implementations, one in `packages/cli`
@@ -43,9 +47,15 @@ checking its version.
    `packages/core/src/public/schemas/lockfile-v3.schema.json`; the existing
    `lockfile.schema.json` keeps validating `2.x` files.
 
-3. **One logical bundle key: `{sourceId}/{manifestId}`.** It is
-   version-independent, source-qualified, and identical in both files, so two
-   sources offering the same manifest id are two distinct keys.
+3. **One portable logical bundle key: `{sourceKey}/{logicalBundleId}`.** It is
+   version-independent, source-qualified, and identical in both files. `sourceKey`
+   is a deterministic encoding of adapter-specific structured identity, never a
+   local registry `sourceId` or hub declaration ID. For GitHub releases, source
+   identity is provider origin + provider repository ID + adapter, and the
+   logical bundle ID is the manifest ID. For Artifactory, source identity is
+   its normalized root + effective index path + adapter, and the logical ID
+   is its catalog bundle ID. Tree/local selectors are adapter-specific.
+   Full normalization, binding and collision rules live in design §§5.10–5.13.
 
 4. **A dual-surfaced `unifiedDeploy` flag, default off, with a read-time
    version gate.** The CLI surface is the `AI_PRIMITIVES_HUB_UNIFIED_DEPLOY`
@@ -56,6 +66,22 @@ checking its version.
    major fails loudly with an actionable message and nothing is written, and no
    writer re-stamps a version it did not understand. Flag-off code can
    therefore never misread or clobber flag-on state.
+
+5. **Separate logical identity from exact artifact resolution.** Desired entries and
+   materializations carry adapter-specific resolutions: GitHub release ID/asset
+   ID/archive digest; tree commit/selector/content digest; Artifactory published
+   manifest/archive paths, sizes and digests; or a local snapshot content digest.
+   Legacy unpinned and intentionally live content remain explicit states.
+   Missing objects and integrity mismatches never select latest or another channel.
+   Reconcile compares resolution as well as source/logical identity and version,
+   without introducing a layout/configuration fingerprint.
+
+6. **Preserve record-based, offline-capable migration and cleanup.** Convert source
+   and logical identity only where evidence proves it. Preserve unknown desired
+   intent as unresolved evidence and installed ownership as unmanaged records;
+   do not fabricate provider IDs or historical pins. Uninstall and local-state
+   status/doctor do not require provider metadata. Keep the existing lazy
+   repository triggers and local-first resumable pair ordering.
 
 ## Alternatives considered
 
@@ -76,6 +102,13 @@ checking its version.
   Rejected: the version gate buys the same safety in a few lines. The one-way
   migration of a `2.x` user lockfile on the first flagged write is not a
   second format to maintain.
+- **Copy hub declaration IDs into shared keys:** rejected because they are scoped
+  aliases, are not globally unique, and do not exist for direct installs.
+- **Use raw URLs as the sole identity:** rejected for provider-backed repositories
+  because a rename changes the locator and different adapters/refs/content selectors
+  can expose different sources. Artifactory currently has no durable catalog ID,
+  so its root/index identity remains locator-based and root moves require explicit
+  remapping, not unverified redirect-based equivalence.
 
 ## Consequences
 
@@ -113,6 +146,19 @@ checking its version.
   live in `packages/cli` and move toward `app` later; flagged
   `uninstall --lockfile` and bare `uninstall` are refused until repository
   scope arrives; and `vscode` is the only verified target.
+- **Source-identity amendment, not yet implemented:** the branch-era slice-1
+  `sourceId`/`archiveSha` shape must be replaced before further supported v3 writers
+  ship. V3 has not been released, so its schema can be amended in place; old
+  branch shapes are migration inputs, not valid payloads for the amended writer.
+  Identity contracts/recording can no longer wait until slice 9.
+- **Positive:** local names and hub membership no longer determine shared identity.
+  A GitHub rename with a verified matching repository ID preserves logical keys.
+  Artifactory remains an explicit channel compatible with
+  [AmadeusITGroup/ai-primitives-hub#437](https://github.com/AmadeusITGroup/ai-primitives-hub/pull/437);
+  upstream provenance never authorizes runtime GitHub fallback or channel merging.
+- **Negative:** unresolved migration evidence and resolution variants enlarge the
+  wire contract. This retains existing intent/ownership without adding a journal,
+  a second desired-state layer, remote migration prerequisites or rollback.
 - **Unchanged until slice 3:** the repository lockfile keeps its
   `prompt-registry.lock.json` / `prompt-registry.local.lock.json` names and the
   `2.0.0` schema, so [ADR-0004](./0004-cli-only-rebrand-keep-lockfile-and-extension-identity-stable.md)
@@ -133,3 +179,10 @@ checking its version.
    not produce.
 4. Revisit this decision if the two-file write needs real atomicity, or if the
    committed-file rename in slice 3 changes the filenames named here.
+5. Core defines portable identity, normalization and resolution contracts; infra
+   acquires provider metadata and verifies source/artifact identity; app carries
+   the resolved result into deploy. Delivery layers keep local source configuration
+   and credential UX, but do not duplicate identity rules.
+6. Amend the existing lifecycle spec and its requirements together. Preserve APM
+   retirement, explicit reconcile, offline verification and per-record migration;
+   test portable identity and pins through each supported production entry point.

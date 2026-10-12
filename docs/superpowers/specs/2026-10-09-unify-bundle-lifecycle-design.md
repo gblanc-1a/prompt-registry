@@ -1,7 +1,7 @@
 # Unify the bundle lifecycle across CLI and extension
 
 - **Date:** 2026-10-09
-- **Status:** Revised after an independent executable-code review; awaiting approval
+- **Status:** Source-identity amendment agreed on 2026-10-10; written revision awaiting review
 - **Scope:** install / uninstall / update for all scopes, bundle fetching, MCP server installation, and a one-shot migration of existing extension installs
 - **Review provenance:** an independent review audited this design against
   [the requester-stated requirements](./2026-10-09-unify-bundle-lifecycle-requirements.md).
@@ -10,6 +10,16 @@
   **amend** a previously stated requirement. A third pass then checked this document against
   itself and against the requirements list; it changed no decision and added no machinery —
   its corrections are summarized at the head of §13's accepted risks.
+
+**2026-10-10 amendment.** Branch testing exposed that retaining registry `sourceId` in
+v3's foundational key does not fully satisfy FR-12. The requester approved separating
+portable source identity, logical bundle identity, and adapter-specific artifact pins,
+including compatibility with
+[AmadeusITGroup/ai-primitives-hub#437](https://github.com/AmadeusITGroup/ai-primitives-hub/pull/437).
+The compatibility review preserves offline/per-record migration, APM retirement, and
+the absence of a local desired-state override. §§3, 5, 8, 10, 11 and 14 incorporate that
+decision. V3 has only been used on this development branch: its schema can be amended
+before release; this is not permission to change a shipped schema incompatibly.
 
 ## 1. Problem
 
@@ -126,12 +136,17 @@ A single repository can contain both, since the extension and CLI can each insta
 it, and `generatedBy` records only the last writer. The extension's
 `LockfileSourceEntry` also omits `collectionsPath` entirely, which app's includes.
 
-**`sourceId` is portable for hub sources and not for manual ones.** Hub-loaded sources get
+**Generated `sourceId` is deterministic for hub sources, but is not a complete portable
+identity contract.** Hub-loaded sources get
 `generateHubSourceId` → `{type}-{sha256(type:normalizedUrl:branch:collectionsPath)[0:12]}`,
 documented as "Portable: Not tied to user's hub configuration". Manually added sources
 (`source-commands.ts:533`) get `generateSanitizedId(name)`, derived from the user-typed
 display name — so a teammate replaying the lockfile has a different id, and the id carries
 no `{type}-` prefix for `install.ts:1538`'s type sniffing to read.
+The shared hash also equates `master` with `main`, lowercases paths irrespective of
+provider semantics, and changes when a repository URL changes. Branch-era local CLI
+installs use a directory basename, which can collide across unrelated roots. A
+deterministic registry handle is therefore not sufficient evidence of source identity.
 
 ### 1.2 Defects found during design, fixed by this work
 
@@ -340,6 +355,10 @@ per delivery layer.
                    extract → validate → place → record → MCP → git-exclude
 ```
 
+The adapter set also accommodates the explicit Artifactory distribution channel from
+the referenced PR when integrated. That integration does not reinstate retired APM
+adapters or make Artifactory a transparent GitHub fallback.
+
 The **record → MCP** order in that last stage is load-bearing, not incidental: a crash
 between them must leave a tracked entry with no server, never a live server with no owner
 (§6.7, §9.2). Any diagram or implementation that records last is wrong.
@@ -359,7 +378,8 @@ interface DeployRequest {
   files?: ExtractedFiles;          // local sources and `--from <dir>`; exactly one of the two
   expectedArchiveSha?: string;     // compared before any write; see §5.2 for when it exists
   bundle: LogicalBundleRef;        // { bundleId, version } — §5.13
-  source: ResolvedSource;          // { sourceId, type, url, branch?, collectionsPath? }
+  source: ResolvedSource;          // { sourceKey, descriptor: PortableSourceDescriptor }
+  resolution: BundleResolution;   // pinned, unpinned, or live; §5.2
   placement: PlacementContext;     // below — everything placement actually depends on
   targetName: string;              // key of the local materialization record
   commitMode?: 'commit' | 'local-only';
@@ -426,7 +446,7 @@ adapter is forced to change — plus a **third on `FileSystem`** that is not opt
 
 | Port | Method | Default | Implemented directly by | Why |
 |---|---|---|---|---|
-| `SourceAdapter` | `resolveBundle?(spec)` | filter over `fetchBundles()` | `GitHubAdapter` | Keeps `install owner/repo:foo@1.2.3` at one API call |
+| `SourceAdapter` | `resolveBundle?(spec)` | filter over `fetchBundles()` | `GitHubAdapter` | Avoids a catalog walk for an exactly addressable release |
 | `SourceAdapter` | `readBundleFiles?(bundle)` | unzip `downloadBundle()` | `LocalAdapter`, `LocalSkillsAdapter`, `LocalAwesomeCopilotAdapter` | Removes the zip round-trip and the text-mode `archiver` read those three document as binary-unsafe |
 | `FileSystem` | link identity (`lstat`, or a symlink flag on `stat`) | none — new capability | the infra filesystem adapter | Without it, shared `app` code cannot detect a symlinked **parent** and the §4.8 guard is unimplementable |
 
@@ -437,7 +457,10 @@ adapter is forced to change — plus a **third on `FileSystem`** that is not opt
 needs. An ADR records the overrule rather than silently contradicting the module doc.
 
 **The one-call property is conditional, and the acceptance case must say so.** A release tag
-and asset that are exactly addressable support a direct lookup. Existing version-bearing
+and asset that are exactly addressable support a direct lookup once source identity is
+known. Resolving a previously unknown provider repository ID can require a separate
+metadata request; reuse that result within the operation rather than promising one
+request for a first install. Existing version-bearing
 ids, `latest` requests, aliases, manifest-derived asset names and nonstandard tags can still
 need the catalog fallback. `resolveBundle` does not guarantee a single request for every
 supported spec, and the §10 test is scoped to the directly addressable case.
@@ -450,6 +473,13 @@ pin into silently different installed bytes — which defeats the portable-repla
 an explicit version, and every lockfile replay, requires an **exact** logical-id and version
 match; `latest` is selected only when it is requested or the version is omitted. The resolved
 identity and version are then carried into deployment, not re-resolved.
+
+Resolution also carries the portable source descriptor, the adapter's logical bundle
+ID, and the artifact pin into `DeployRequest`. Identity acquisition belongs in `infra`
+behind core contracts and is orchestrated by `app`; deploy consumes the resolved result.
+Adapters must not satisfy the new contract by wrapping a local registry ID or silently
+returning a different artifact. `undeploy`, local-state verification and lockfile reads
+do not acquire provider identity or require authentication/network access.
 
 ### 3.3 What each delivery layer keeps
 
@@ -783,6 +813,8 @@ The role split is clean: **what the team wants** is committed, **what this machi
 not. No *content* key appears in both files — `bundles`, `sources`, `hubs` and `profiles`
 exist only in the committed file, `targets` only in the local one. Both carry `version`,
 because both are versioned wire formats subject to the §5.12 gate.
+Migration may also retain `unresolved` desired evidence in the committed half (§8.3);
+it is not materialization or a second override map.
 
 **User scope uses the same two files, rooted under XDG** —
 `${XDG_CONFIG_HOME:-$HOME/.config}/ai-primitives-hub/ai-primitives-hub.lock.json` for
@@ -806,14 +838,15 @@ live. Role-splitting deletes that entire class of problem instead of defending a
 ```ts
 {
   $schema, version: "3.0.0",
-  bundles: { "<logicalBundleKey>": { version, sourceId, archiveSha? } },
-  sources: { "<deterministicSourceId>": { type, url, branch?, collectionsPath? } },
+  bundles: { "<logicalBundleKey>": { version, sourceKey, resolution } },
+  sources: { "<sourceKey>": PortableSourceDescriptor },
+  unresolved?: LegacyDesiredIntent[], // retained migration evidence, not active intent
   hubs?, profiles?
 }
 ```
 
 `installedAt` and `sourceType` leave the bundle entry: the first is per-machine churn, the
-second is already `sources[sourceId].type`. **There is no `installs` section, ever.** The
+second is already `sources[sourceKey].type`. **There is no `installs` section, ever.** The
 whole file is small, hand-editable, and is exactly what `install --lockfile --target <t>`
 consumes.
 
@@ -825,14 +858,56 @@ makes the file genuinely byte-comparable, which is also what lets §10's CLI-vs-
 parity test assert equality without defining a normalization step. Both fields stay in the
 local file, where churn is invisible.
 
-**`archiveSha` is optional provenance, renamed from `checksum` to stop it reading as a
-verification contract.** It is only trustworthy for sources with immutable release bytes.
-Local adapters synthesize ZIPs through `archiver`, which supplies the current date when no
-timestamp is given and enumerates without a defined order, so the *same* logical payload can
-hash differently on two machines; same-version mutable local content can change outright.
-Rule: record it when the bytes came from an immutable remote artifact, omit it otherwise,
-and when `DeployRequest.expectedArchiveSha` is present compare it **before any deployment
-effect**. Never treat its absence as a failure.
+**Artifact resolution is separate from logical identity.** `BundleResolution` is a
+discriminated contract with three states:
+
+- **Pinned:** an adapter-specific pin from the table below. Every recorded ID, selector
+  and digest is enforced; a missing object or mismatch fails before placement and never
+  selects `latest` or another channel. New remote installs record this state after
+  resolving and verifying the selected content, unless unpinnable external inputs
+  require the explicitly reported unpinned limitation below.
+- **Unpinned:** an entry with a proven source and logical bundle identity,
+  but insufficient evidence of the exact artifact or all selected inputs. Normally
+  this is legacy evidence; an adapter unable to pin external inputs must also report
+  this limitation rather than claim reproducibility. It records a human-readable
+  reason and any known archive digest as evidence. Migration never invents missing
+  pins or fails merely because they are absent. Explicit install/update can resolve the
+  exact logical ID/version and create a new pin; that is reported as a new resolution,
+  not proof of the historically installed bytes. Reads never do so.
+- **Live:** the named `local-skills` link exception. It is explicitly mutable and is
+  not repaired into a snapshot or claimed reproducible.
+
+| Adapter family | Pinned resolution |
+|---|---|
+| GitHub releases | Provider release ID, selected asset ID, archive SHA-256; tag retained for display and version checked against the manifest |
+| GitHub tree (`skills`, `awesome-copilot`) | Commit SHA, bundle/collection path and a deterministic source-content digest |
+| Azure DevOps collections | Commit ID, collection selector and a deterministic source-content digest |
+| Artifactory | Exact version plus manifest/archive relative paths, sizes and SHA-256 digests from the validated published index |
+| Local snapshots | Deterministic source-content digest and bundle selector; no synthetic ZIP hash |
+
+IDs alone do not guarantee immutable content. GitHub supports release lookup by
+[`release_id`](https://docs.github.com/en/rest/releases/releases#get-a-release), but the
+archive digest remains required for new pinned releases. Artifactory pins reuse the
+PR's `PublishedObject` contract; the live index is not re-evaluated to pick another
+object at replay. If it is consulted for validation, it cannot override the recorded pin.
+For collection inputs outside the pinned repository, retain and verify the selected
+input identities/digests too; unavailable pinning is reported as unpinned rather than
+claiming a commit SHA covers those external inputs. An unpinned resolution with
+recorded digests still enforces those digests; missing pin metadata is not permission
+to ignore integrity evidence.
+
+Source-content digests use a sorted inventory of POSIX-relative file paths and raw
+bytes, with length-delimited entries, before target transformations. Archive timestamps,
+enumeration order and absolute roots do not participate. This avoids making local
+`archiver` output a cross-machine identity. No committed installed-file checksums are
+introduced: FR-27 and §5.9's offline tiers remain unchanged.
+
+This replaces branch-era `archiveSha?` with the resolution contract. Known legacy
+digests are preserved, including on unpinned entries, and
+`DeployRequest.expectedArchiveSha` still verifies archive bytes before deployment
+effects. Its absence is not itself a failure for migrated or intentionally live content.
+`unresolved` retains only legacy desired rows whose source or logical identity cannot
+be proven (§8.3); it is not another set of active bundle keys or an override layer.
 
 ### 5.3 Local file — materialization only
 
@@ -846,7 +921,8 @@ effect**. Never treat its absence as a failure.
       commitMode,                                  // default for this target
       bundles: { "<logicalBundleKey>": {
         version,
-        sourceId,                                  // resolved source actually deployed, §5.6
+        sourceKey,                                 // required for managed records
+        resolution,                                // actual installed resolution, §5.6
         installedAt,
         commitMode?,                               // per-bundle override of the target default
         state?: 'unmanaged',                       // §8.3; absent means managed
@@ -854,12 +930,24 @@ effect**. Never treat its absence as a failure.
         linked?: true,                             // local-skills live link, §4.8
         files: [{ path, checksum?, installedChecksum?, adoptedAtMigration?: true }],
         mcpConfigPath?, mcpServers?,
-        complete?: true                            // per-record migration marker, §8.4
+        complete?: true,                           // per-record migration marker, §8.4
+        legacy?: LegacyIdentityEvidence            // unmanaged or incomplete migration, §8.3
       } }
     }
   }
 }
 ```
+
+Managed records require `sourceKey` and `resolution`. An unmanaged record without a
+provable portable identity omits those fields and retains `legacy` evidence instead;
+its reserved `unresolved/<evidenceDigest>` key is not accepted as an active logical
+bundle key. The evidence digest is deterministic, never a fabricated provider identity.
+This extends the existing unmanaged fallback rather than adding a migration journal.
+Absolute source-directory bindings remain in machine configuration, not this file.
+During an incomplete rekey, converted records can also retain temporary `legacy`
+evidence with the proven portable descriptor so the old/new key mapping survives a
+restart. Remove that temporary evidence only after both halves preserve the conversion;
+unmanaged evidence remains (§8.4).
 
 `targetName` is safe as a key here precisely because this file is never shared. In a
 committed file it would not be: two developers installing for the same host under locally
@@ -869,7 +957,7 @@ refcount — each record would believe it owned them. Note the converse limit: u
 resolve to one physical root. That is what §6.6's membership guard and §3.1's
 `shared-destination` conflict exist for.
 
-Five of these fields exist only because migration needs somewhere to put what it cannot
+These fields exist because migration needs somewhere to put what it cannot
 convert, and §8 would otherwise be promising retention with no shape to retain it in:
 
 - **`state: 'unmanaged'` + `unmanagedReason`.** §8.3's single fallback rule — unproven
@@ -887,11 +975,14 @@ convert, and §8 would otherwise be promising retention with no shape to retain 
 - **`complete`** per record and `migration.lockfileV3` per repository are what make
   migration resumable without a journal (§8.4).
 - **`linked`** records the §4.8 exception, so nothing later "repairs" the link into a copy.
+- **`legacy`** retains unproven source/bundle evidence without presenting a registry
+  handle as a portable identity, and temporarily retains a proven rekey mapping while
+  the pair conversion is incomplete. It is not a permanent alias for managed records.
 
 `installedChecksum` is optional for exactly one reason: a `linked: true` record writes no
 bytes of its own, so there is nothing to baseline. Its `files` entries carry `path` only, and
 drift detection skips them — the user owns that tree and editing it is the feature. For every
-other record `installedChecksum` is required, and a managed record missing it is a migration
+other managed record `installedChecksum` is required, and a managed record missing it is a migration
 defect, not a permitted shape.
 
 ### 5.4 Desired state has one source, and git is the override mechanism
@@ -903,7 +994,8 @@ A developer who wants something different from the team edits that file (through
 the extension, like any other operation) and then decides what to do with the resulting
 diff: **commit it** to propagate the change, or **leave/revert it** to keep the divergence
 local. Uninstalling a bundle the team committed is a one-line deletion the developer simply
-does not commit. Pinning a different version is a one-field edit they do not commit.
+does not commit. Pinning a different version replaces the version and its resolved
+artifact pin together; that diff can likewise remain uncommitted.
 
 This supersedes the earlier `excludes`-list-plus-local-pin model (FR-28, §14). What it buys:
 no `excludes`, no `local.bundles`, no local `sources` map, no precedence rules, no
@@ -914,11 +1006,11 @@ being answered. Operation semantics reduce to one table:
 |---|---|---|
 | Install a bundle not yet desired | add `bundles` entry + its `sources` descriptor | add a record for the chosen target |
 | Install an already-desired bundle for another target | unchanged | add a record for that target |
-| Update to a new version | `version` changes | record rewritten at the new version |
+| Update to a new version | `version` and `resolution` change together | record rewritten with the actual new resolution |
 | Uninstall while another target **on this machine** still holds it | unchanged | remove that target's record only |
 | Uninstall the last materialization on this machine | entry removed | record removed |
-| Pin a different version | `version` edited | redeploy at the pinned version |
-| Switch a bundle to a different source | `sourceId` edited (+ descriptor) | redeploy; `sourceId` on the record follows (§5.6) |
+| Pin a different version | explicitly resolve that version and replace its pin; a hand-edited version with an inconsistent pin fails validation | redeploy at the pinned version |
+| Switch a bundle to a different source | replace the source-qualified key, descriptor reference and resolution together | explicitly redeploy/retire the old materialization; never silently merge channels (§5.6) |
 | Change `commitMode` | **unchanged** | `commitMode` changes, `.git/info/exclude` recomputed |
 | Move a bundle between scopes | entry **removed** when the bundle leaves repository scope, **added** when it enters | old record removed, new one added |
 | Activate / deactivate a profile | the batch of installs and uninstalls it implies | likewise |
@@ -981,13 +1073,19 @@ desired state and commits, B pulls, and B's files are cleaned the next time B re
 
 **The comparison is not pure bundle-id set subtraction** — the same id at a different
 version, or from a different source, must redeploy. Reconcile compares
-**`(logicalBundleKey, version, sourceId, targetType)`**, and a mismatch means redeploy.
+**`(logicalBundleKey, version, sourceKey, resolution, targetType)`**, and a mismatch means
+redeploy. Resolution comparison uses normalized artifact identity and digests, not display
+tags, timestamps, credential references or locator spelling.
 
-`sourceId` is in the tuple because source selection is part of desired bundle identity and is
+`sourceKey` is in the tuple because source selection is part of desired bundle identity and is
 already represented in the schema. Without it: desired state says `b@1.0.0` from source A,
 someone edits it to source B's *different* `b@1.0.0`, the tuple is unchanged, and reconcile
 leaves source A's bytes installed forever. That is a wrong-content bug, not a missed
 optimization — which is what distinguishes it from the next paragraph.
+Likewise, a changed release/asset/digest at the same version is a content change and
+cannot be hidden by a version-only comparison. The local record stores what actually
+deployed; desired state cannot stand in for that evidence. An unpinned entry does not
+authorize dropping a known installed pin or guessing another artifact on open.
 
 Layout, transformer and `allowedKinds` changes are deliberately **not** tracked; a user who
 changes a layout override re-runs install explicitly. No deployment signature or
@@ -1030,8 +1128,9 @@ is the one being adopted.
 - `installedChecksum` — hash of the bytes **actually written** (post-transform). Drift
   detection compares against this.
 - `checksum` — hash of the **source** bytes from the archive, per file. Retained for
-  provenance; not load-bearing, and optional for the same reason `archiveSha` is (§5.2).
-  Distinct from the bundle-level `archiveSha`, which hashes the whole artifact.
+  provenance; not load-bearing, and optional when source bytes were unavailable during
+  migration. Distinct from a resolution's archive digest, which hashes the whole artifact,
+  or source-content digest, which hashes the selected source inventory.
 
 The split is required because `LockfileFileEntry.checksum` currently means opposite things
 depending on the writer: the extension stores `calculateFileChecksum(targetPath)` — the
@@ -1065,41 +1164,79 @@ This is new behavior requiring its own delivery, not an acceptance statement abo
 code: `runStatus` (`status.ts:124`) reads lockfile entries without checking installed files,
 and `runDoctorChecks` (`doctor.ts:186`) runs environment and configuration checks only.
 
-### 5.10 Source identity — three prerequisites
+### 5.10 Source identity — portable identity, not registry handles
 
-`sourceId` portability is currently split in two. Hub-loaded sources get
-`generateHubSourceId` → `{type}-{sha256(type:normalizedUrl:branch:collectionsPath)[0:12]}`,
-documented as "Portable: Not tied to user's hub configuration". Manually added sources
-(`source-commands.ts:533`) get `generateSanitizedId(name)` — derived from the user-typed
-**display name**, so non-portable, and carrying no `{type}-` prefix. Three fixes:
+`PortableSourceDescriptor` contains `type`, a structured adapter-specific `identity`,
+a credential-free `locator`, and the relevant non-secret adapter configuration. The
+identity alone determines `sourceKey`: `src-` plus the full SHA-256 of its canonical JSON
+representation including adapter type. Canonical serialization sorts object properties
+and omits irrelevant selectors; it does not concatenate ambiguous colon-delimited values.
+Keys are slash-free. A key/descriptor mismatch is invalid, never silently rewritten.
+Registry `sourceId`, source display name, hub membership, credentials, and target names
+are excluded. No reader infers adapter type from the key prefix.
 
-- **P1** `source-commands.ts:533` uses `generateSourceId(type, url, config)`; the display
-  name stays in `name`, where it belongs. Ids become portable by construction.
-- **P2** Sources resolve by **identity** `(type, normalizedUrl, branch, collectionsPath)`
-  rather than by id, and `checkAndOfferMissingSources`' stub handler is implemented so the
-  dialog actually adds what it offers.
+| Source family | Identity inputs |
+|---|---|
+| GitHub releases | Provider origin (scheme, host, effective port), provider repository ID, adapter type; no branch or collections defaults |
+| GitHub tree (`skills`, `awesome-copilot`) | Provider origin, repository ID, adapter type, effective configured ref and the content selectors actually used by that adapter |
+| Azure DevOps | Provider namespace, repository ID, adapter type, effective ref and collections path |
+| Artifactory | Adapter type, normalized source-root URL and effective `indexFile` (default `index-v1.json`); no branch or collections defaults |
+| Workspace-local sources | Adapter type, workspace-relative root and relevant selectors, anchored to the selected workspace root |
+| External local sources | Adapter type, explicit lockfile-scoped binding name and relevant selectors; actual root supplied by machine-local source configuration |
 
-  **P2 cannot universally recover legacy extension rows, and the spec must not promise it.**
-  The extension writes `url: bundle.downloadUrl || bundle.manifestUrl`
-  (`bundle-installer.ts:209`) — a **release-asset or manifest URL**, not the configured
-  repository origin — and records no `branch` or `collectionsPath`. The CLI, by contrast,
-  stores the repository URL. So for GitHub rows written by the extension, normalization and
-  deterministic ids cannot reconstruct origin, branch or collections configuration that was
-  never recorded. Required policy: write full canonical source descriptors for **new**
-  entries; recover legacy descriptors **only where unambiguous**; otherwise retain the row,
-  mark it unmanaged, and report the missing origin metadata. Local-directory sources stay
-  machine- and path-dependent regardless of id determinism.
-- **P3** Delete the type sniffing at `install.ts:1538`
-  (`entry.sourceId.startsWith('awesome-copilot-')`), which silently misclassifies a
-  name-derived id as plain `github`. Read the required `src.type` from `lock.sources`.
+Use actual adapter defaults consistently in both deliveries. A ref of `master` is not
+`main`; an omitted ref resolves to the adapter's effective ref, not a universal default.
+For a source following the repository default branch, establish that effective branch
+at resolution and record it explicitly. Ref/path case is preserved unless the provider
+defines it otherwise. Generic URL normalization cannot discard scheme, non-default port,
+or case-sensitive path segments, and must not admit credentials.
 
-Deterministic ids are written only when something else is already being written (§9); P2
-makes a read-time rewrite unnecessary.
+**Repository renames.** A GitHub locator can follow a permitted redirect during source
+resolution, but the returned repository ID must match the recorded ID before adopting
+the new locator. The portable key and logical bundle key then stay unchanged. Reuse or
+replacement of an old URL by another repository fails explicitly. Provider identity
+checks are not moved into uninstall, status, doctor or ordinary reads.
 
-A prior instance of this same bug already exists in the codebase:
-`sourceId-normalization-v2` was needed because v1 lowercased only the host, so
-differently-cased URLs produced different ids. It deliberately does not rewrite lockfiles
-and relies on dual-read. P2 generalizes that approach instead of adding a third id format.
+**Artifactory compatibility.** The referenced PR publishes a provider-neutral static
+`index-v1.json`: `source.id`, catalog bundle IDs/versions, and `PublishedObject`
+path/size/SHA-256 descriptors, plus optional `canonicalSource` and `revision`. Reuse
+that contract and its strict source-root/path confinement rather than add native JFrog
+APIs. Preserve path case and scheme/effective port. Index `source.id` and hub declaration
+IDs are validated aliases, not globally unique source identities.
+
+GitHub and Artifactory remain distinct distribution identities even for byte-identical
+archives. `canonicalSource`/`revision` are optional upstream provenance, not authority
+to switch channels or fetch GitHub at runtime. An Artifactory pin does not require
+GitHub release/asset IDs. The current index exposes no durable server-side catalog ID:
+moving its root requires explicit remapping, not automatic redirect-based equivalence.
+Authentication mode and external credential references are delivery configuration,
+never key material; secret values never enter either lockfile.
+
+**Local binding limits.** Workspace-relative roots move with a clone. External roots
+require an explicit named binding to the local configured source; do not match by
+basename, resolve relative roots against process CWD, or persist absolute roots in
+desired state. Missing or conflicting bindings produce actionable errors. Bindings
+provide location only, not a second desired source/version map; the lockfile's selectors
+and digests remain authoritative. A live link remains deliberately mutable (§4.8).
+External binding names are scoped to the owning lockfile; identical names in different
+lockfiles do not prove source equivalence for scope-move or conflict decisions.
+Use an explicit binding association and the resolved root on that machine when joining
+such sources across scopes. Never infer global equality from the binding name alone.
+
+**Hub/profile compatibility.** Keep hub author IDs and local registry handles in their
+existing configuration models. Translate references at the shared resolution boundary
+to the portable source/logical bundle key, validating the declared source rather than
+assuming ID equality. The missing-sources dialog must actually add or bind the source
+it offers. This is not unification of hub/profile management or configuration models.
+Only unresolved migration evidence retains legacy aliases (§8.3); active v3 fields
+never carry a registry `sourceId`.
+
+Legacy extension rows can contain only release-asset/manifest URLs, with missing
+origin/selectors/provider IDs. Recovery is allowed only where existing evidence is
+unambiguous; no read-time network call or rewrite is added. Retain what cannot be
+proven as unmanaged/unresolved rather than substitute a URL hash for a provider ID.
+Retired APM adapters remain retired (§7). Identity acquisition for retained adapters
+can be staged, but the v3 contract must be settled before its writers ship (§11).
 
 ### 5.11 Rules, surfaced identically by both layers
 
@@ -1152,6 +1289,12 @@ migration later, i.e. a second rename. Making slice 1 ship a **dual-format write
 that keeps reading and writing v2 alongside v3 — was rejected as well; the version gate is a
 few lines and buys the same safety.
 
+The branch-era and amended v3 shapes also require validation after the major-version
+gate: `sourceId`-shaped state is migration input, never a valid payload for a new writer.
+Because v3 is unshipped, amend `lockfile-v3.schema.json` in place and retire the old
+writer rather than advertise compatibility to an older branch build. Do not extend this
+policy to a released wire format.
+
 What slice 1 does ship is the **one-way** XDG shape migration (§8.3, §11): a v2 user lockfile
 is read, converted and rewritten as v3 on the first flag-on write, and from then on the gate
 is what protects it from a flag-off writer. Converting forward once is not the same as
@@ -1172,17 +1315,28 @@ layers' identities, and the schema cannot be settled without deciding this:
 So a version-bearing id would put the version in the key *and* the field, and a
 manifest id would silently collide across sources. Required before v3 migration:
 
-- **`logicalBundleKey`** is version-independent and source-qualified: `{sourceId}/{manifestId}`,
+- **`logicalBundleKey`** is version-independent and source-qualified:
+  `{sourceKey}/{logicalBundleId}`,
   **always, in every file and at every scope**. An earlier version of this spec allowed the
   source part to be omitted at user scope when the lockfile had a single source, for
   readability of hand-edited files. That is withdrawn: the key would then change shape the
   moment a second source is added, so every existing key in that file would need rewriting —
   a silent rekey of the one identifier §5.6, §5.13 and removal all join on, and exactly the
   kind of later break NFR-4 forbids. Readability is not worth a mutable key.
-- A **collision policy**: two sources offering the same manifest id are two distinct keys,
+- For GitHub releases, `logicalBundleId` is the validated manifest ID, independent of
+  release ID, tag and asset ID. For Artifactory it is the published catalog bundle ID.
+  Replication currently constructs catalog IDs such as `owner-repo-manifestId`; retain
+  that exact ID for index/profile lookup and validate the archive's manifest ID separately.
+  Do not infer manifest identity by stripping owner/repository prefixes. Other retained
+  adapters expose their stable collection/skill/manifest selector as the logical ID.
+  Both key components are non-empty and slash-free; path selectors stay in descriptors
+  and pins, not in an ambiguously concatenated key.
+- A **collision policy**: two sources offering the same logical id are two distinct keys,
   which is what makes §5.6's source-aware comparison expressible.
-- **Legacy alias handling**: migration maps an old version-bearing or bare id to the new key
-  and records nothing else; the alias is not retained.
+- **Legacy alias handling**: migrate to the new key only when the source and logical ID
+  are proven. Do not derive a manifest ID merely by stripping a version suffix from a
+  namespaced runtime ID. Successfully converted aliases are discarded; unresolved ones
+  survive only as diagnostic migration evidence, not active identities (§8.3).
 
 The same key is used for desired intent, materialization, update selection, removal and
 scope conflicts. This is foundational identity — not the deployment signature §5.6 declines
@@ -1446,7 +1600,7 @@ Lazy repository migration exists so that merely opening a repository in VS Code 
 produces a dangling working-tree change. Rules that follow:
 
 - **No write-on-read for repository scope.** Opening a workspace reads legacy files in
-  place and changes nothing — including the P1/P2 id rewrite, which happens only when
+  place and changes nothing — including portable-identity rekeying, which happens only when
   something else is already being written.
 - **Reconcile on open is read-only** (§5.6), and read-only reconcile alone is not enough:
   `UpdateScheduler:186` reaches `autoUpdateBundles` when
@@ -1584,12 +1738,62 @@ target when exactly one matches the resolved destination root; otherwise record 
 materialization as **unmanaged with explicit paths**, which still supports cleanup and
 refcounting but is excluded from reconcile until the user binds it.
 
-**Carried over unchanged:** `version`, `sourceId`, `installedAt`. **Not** `sourceType` — it
-no longer lives on the bundle entry (§5.2) but on `sources[sourceId].type`, so migration
-must *synthesize a source descriptor* from the legacy row. Where the legacy row cannot
-supply one — the extension's release-asset URLs, no `branch`, no `collectionsPath` (§5.10) —
-the descriptor records what is known, and the bundle row falls to the unmanaged rule rather
-than inventing an origin.
+**Carried over unchanged:** `version`, `installedAt`, proven file paths and stored
+checksums. `sourceId` is legacy evidence, not a portable key. Source type moves to the
+source descriptor for converted entries; incomplete legacy descriptors are retained as
+evidence rather than upgraded into fabricated provider identities.
+
+**Identity migration is per record and offline-capable.** V2 and branch-era v3 records
+use the same proof rules. Prepare a mapping using available descriptors, cached provider
+metadata and manifests; do not query a provider merely to migrate, clean up or read state.
+The bundle being explicitly resolved for install/update can use that operation's verified
+metadata, but its evidence does not prove the identity of unrelated rows.
+
+- Source identity and logical ID both proven: rekey desired intent and every affected
+  materialization consistently. A complete historical pin is carried unchanged.
+  An incomplete pin becomes `resolution: { kind: 'unpinned', reason, ...knownEvidence }`;
+  it does not invalidate otherwise proven installation ownership.
+- Identity not proven: retain desired intent in `unresolved`, and retain materialization
+  under its deterministic `unresolved/<evidenceDigest>` key with `state: 'unmanaged'`
+  and `legacy` evidence. Do not publish a fake active source descriptor.
+- Multiple old keys resolving to one portable key: merge only compatible intent and
+  materialization. Differing versions, conflicting pins, incompatible target bindings
+  or contradictory baselines are reported and preserved as unresolved/unmanaged;
+  no last-row-wins selection or baseline replacement is allowed.
+
+`LegacyDesiredIntent` retains the original bundle key, source reference and descriptor
+when known, version, known archive pin and an actionable reason. `LegacyIdentityEvidence`
+on a local record retains the original source/bundle references and source descriptor
+when available, plus the proven portable descriptor for an incomplete successful rekey.
+Unresolved desired descriptors must omit secrets and absolute local roots; those roots
+remain machine-local evidence and require an explicit binding. Legacy source references
+are retained only as diagnostic evidence, an explicit exception to the prohibition on
+active local identifiers. Never copy an unvalidated arbitrary legacy object into shared
+state. A digest of canonical original identity evidence forms the reserved key; include the original bundle version and known pin so contradictory rows do not
+collapse onto one retention key, and exclude volatile generation timestamps and reasons.
+Local evidence may include its original
+source root to distinguish unrelated same-basename directories; that digest is only a
+local retention key, not a portable source key.
+Sort converted maps and unresolved evidence deterministically, and deduplicate exact
+evidence copies, so interruptions or different traversal orders do not create new rows.
+Neither evidence shape is a second desired-state override or a registry alias table.
+
+Unresolved desired rows are retained in the shared file because omitting them would lose
+team intent when legacy files are deleted. Replay reports them explicitly and may
+process independent resolved entries; it never silently treats them as satisfied.
+Unmanaged materializations still participate in file/MCP ownership protection and
+record-based cleanup, but are not automatically reconciled as removed merely because
+they cannot be joined to an active key. Cleanup never requires provider identity.
+Explicit resolution/binding can replace the corresponding evidence row with a verified
+portable entry; no read-time rewrite is introduced.
+
+**Missing historical artifact pins are not evidence of corruption.** Adoption preserves
+the old installed baseline and does not claim that today's release is what was installed.
+An explicit install/update can establish a new exact resolution at the requested
+logical ID/version and report that choice before applying it. Existing managed paths
+remain drift-protected; no fresh baseline is silently substituted. No separate re-lock
+command is required by this design, and activation migration does not download or resolve
+unpinned content solely to complete its metadata.
 
 `commitMode` cannot simply become a target-level field: a single target can today hold both
 committed and `local-only` bundles, so the mode is recorded **per materialized bundle**
@@ -1623,6 +1827,31 @@ the marker, legacy is ignored entirely and any legacy file still present is dele
 
 Resume is then trivial and needs no journal: re-run the steps in order. Steps 1 and 2 are
 idempotent rewrites, 3 and 4 tolerate an already-absent file.
+
+**Identity rekeying uses the same resumable pair, not a second transaction model.**
+Calculate mappings and conflicts before the first write. During an incomplete migration,
+compare new and legacy records through proven identity mappings or their reserved evidence
+keys, not raw old/new key equality; otherwise a renamed key duplicates ownership on resume.
+If a usable new desired file exists, preserve its already resolved entries and union
+remaining legacy evidence rather than overwrite verified pins with unpinned legacy rows.
+Do not delete legacy state until both halves preserve all affected intent and ownership.
+This does not make one unresolved source a whole-file network prerequisite.
+
+Branch-era v3 changes keys under the same filenames and can already have
+`lockfileV3: 'complete'`. That marker alone does not prove portable-identity conversion.
+Inspect both halves' entry shapes, including `legacy` evidence, on every migration read:
+old `sourceId` records are migration inputs even when the earlier marker is present.
+Normalize in memory for previews and write only at the existing permitted triggers.
+Clear the earlier completion marker for a pending conversion. In the local-first write,
+retain each converted record's temporary old references and proven portable descriptor
+in `legacy`, so a restart can reconstruct the desired mapping without provider access.
+Local-first rekeying can temporarily leave an old desired half with a new local half;
+the reader must join them through the same evidence/mapping rules and resume without
+losing records. Once the desired half is written and all ownership is preserved, remove
+temporary evidence from managed records and write the completion marker last.
+Only after both halves are converted can an ordinary new writer accept their amended
+v3 shapes; the migration writer alone permits the documented intermediate evidence.
+No branch-era writer remains in the released application.
 
 The user-scope XDG migration has the same hazard in a different form — it changes schema
 under the **same filename** — which is why §5.12's version gate is a prerequisite rather
@@ -1777,8 +2006,8 @@ assertion rather than a CLI-only check.
 | **Golden placement matrix** — fixture bundles × 11 targets × 2 scopes → expected path set | Highest-value test in the plan; locks every placement decision in §4 and §6. The existing fixture covers prompts and instructions only, so richer fixtures are a prerequisite: every canonical kind, a directory kind with binary assets, and a deliberate path-prefix/manifest-kind mismatch — which is what makes the §4.5 non-Copilot repository changes visible |
 | Layout inversion guard, every target × scope | No kind maps to two different output directories; future layout edits fail loudly |
 | CLI vs extension byte-identical | Drive `deploy` through both wirings, assert identical tree and both lockfiles. The actual success criterion |
-| Committed file carries no local identifiers | No `targetName`, `baseDir`, `installedAt`, `files`, `generatedAt` or `generatedBy` appears in `ai-primitives-hub.lock.json` — the last two matter for the parity and determinism assertions |
-| Desired state is the committed file | Uninstall deletes the entry; reverting the file and reconciling **offers** the reinstall rather than performing it; a version edited and not committed deploys the edited version (§5.4) |
+| Committed active state carries no local identifiers | No `targetName`, `baseDir`, `installedAt`, `files`, `generatedAt`, `generatedBy`, absolute source root or registry handle appears in active desired entries; diagnostic legacy references appear only in `unresolved` evidence, never as active keys |
+| Desired state is the committed file | Uninstall deletes the entry; reverting the file and reconciling **offers** the reinstall rather than performing it; changing version and its pin in an uncommitted diff deploys that resolution, while an inconsistent version/pin fails (§5.4) |
 | Legacy extension lockfile migration | Production-shaped `prompt-registry.lock.json` with on-disk `path` + on-disk `checksum` → `installedChecksum` **equals the stored hash**, so a pre-existing local modification is still reported after migration |
 | Legacy CLI lockfile migration | Bundle-relative `path` + archive `checksum` → retained **unmanaged**, files untouched, reported with the bundle name. No old-destination reconstruction (§8.3). Only the bundle whose install triggered the migration gets fresh paths and checksums |
 | **Mixed legacy lockfile** | One file with both writers' entries → proven-extension rows preserve their stored baseline; CLI and ambiguous rows go unmanaged. Includes the trap case: a CLI bundle-relative path that *also* exists in the repository must **not** be treated as proven |
@@ -1790,16 +2019,46 @@ assertion rather than a CLI-only check.
 | Logical bundle key | A version-bearing extension id and a bare CLI `manifest.id` for the same bundle resolve to one key; two sources offering the same manifest id stay two keys; and a single-source user lockfile still writes the **source-qualified** key, so adding a second source rekeys nothing (§5.13) |
 | Lazy migration ordering | Opening a workspace writes nothing; first install migrates and deletes the legacy committed file |
 | Reconcile removal | Bundle dropped from committed desired state → files cleaned on next reconcile, nothing removed on open |
-| Portable replay | Lockfile written with a name-derived `sourceId` replays on a machine where that source is configured under a different name (P2) |
+| Portable replay | CLI and extension resolve the same configured source to the same portable key regardless of registry name, handle or hub membership; migrated name-derived aliases are resolved only when evidence proves the mapping |
 | No type inference from id | **Misleading** id: `src.type: 'github'` with id `awesome-copilot-xyz` must fetch through the **github** path. The naive case (`src.type: 'awesome-copilot'`, id `team-prompts`) already passes today and proves nothing |
 | Drift on transformed content | The issue #357 Stage 2 case `installedChecksum` fixes, for CLI-written entries |
 | Symlink replacement | Pre-place a symlink, deploy, assert the cache is untouched and the destination is a regular file |
 | Shared-destination refcount | Two targets → one `.mcp.json`; uninstall one, the other's servers survive |
 | Binary assets through local sources | `readBundleFiles` preserves bytes where the `archiver` text path corrupted them |
-| `resolveBundle` call count | `install owner/repo:foo@1.2.3` against an **exactly addressable** tag and asset does not walk the release catalog; aliases, `latest` and nonstandard tags still fall back correctly (§3.2) |
+| `resolveBundle` call count | An **exactly addressable** tag/asset with known source identity avoids the catalog walk; a first install may also fetch repository metadata, which is reused. Aliases, `latest` and nonstandard tags still fall back correctly (§3.2) |
 | Pinned version fails closed | A lockfile pin whose version is absent from the source **fails**; it must never install latest. Covers both of today's divergent behaviors (§3.2) |
 | User-scope migration | Fixture `AppStorage` install JSONs + cache + symlinks → real files, materialization records, symlinks gone, JSON records removed; second run is a no-op. One case per record kind in §8.2 |
 | Unknown source type | `apm` in a hub config → warn, skip, rest of the hub loads; **and** in a lockfile → replay reports unmanaged retention, not a silent `null`; **and** schema enum validation does not reject the whole config |
+
+**Portable identity and exact-resolution acceptance cases** apply through the registered
+CLI/extension entry points for each supported slice, not only helper-level hash tests:
+
+- Direct and hub imports of the same GitHub releases source agree on source/logical keys.
+  A new release changes its pin, not its logical key. Different adapter types remain
+  distinct; ref/path selectors only distinguish adapters that actually consume them.
+- A repository rename/transfer with a matching provider ID preserves identity; the
+  old URL pointing at a different repository fails. Host/port differences remain
+  distinct. Relevant case-sensitive paths and `main`/`master` never collapse.
+- Same-version release/asset changes affect reconcile; missing pinned releases/assets
+  and checksum mismatches fail without latest/channel fallback or placement effects.
+- Artifactory replay works without GitHub access using recorded object paths, sizes and
+  digests, even when the index's current selection changes. Different `indexFile`,
+  source-root path case or effective port yields a different source key; credential
+  references and hub aliases do not. Catalog and manifest IDs are independently
+  validated. Equivalent GitHub/Artifactory bytes do not merge channel identities.
+- Workspace-local sources survive different clone roots. External local sources require
+  explicit bindings; missing bindings fail actionably and same basenames do not match.
+  Snapshot digests ignore ZIP timestamps/order, while live links remain mutable.
+- Tree content is fetched at the pinned commit, including pinned external collection
+  inputs where present; an incomplete external-input pin is never reported reproducible.
+- V2 and branch-era v3 conversion retain unproven source/logical identities, historical
+  pins and file/MCP ownership. Duplicate rekeys with conflicting versions or baselines
+  are retained/reported rather than overwritten. Offline uninstall still works from
+  recorded paths; status/doctor do not acquire provider metadata.
+- Resume after each local-first rekey interruption, including an old v3 completion
+  marker, preserves desired intent and ownership. Two migrations with identical evidence
+  produce byte-identical desired output. Repository open and dry-run do not rewrite IDs,
+  source locators, pins, bindings or cache/auth state.
 
 Additional cases the audit identified as missing, grouped by what they protect:
 
@@ -1877,7 +2136,7 @@ E2E-testable on merge with `unifiedDeploy` on, inert with it off.
 
 | # | Slice | What becomes testable E2E |
 |---|---|---|
-| 1 | `app/deploy` + `PrimitiveKind` routing + lockfile `3.0.0` read/write **behind the §5.12 version gate** + **CLI user-scope install and uninstall for `vscode`** + **the XDG user lockfile's v2→v3 shape migration** (§8.3's last paragraph) | `install X --target my-vscode` writes real files into `~/.copilot/{prompts,instructions,agents}` by manifest type, records desired + materialized state; `uninstall` removes exactly those paths; an existing v2 XDG lockfile is migrated in place on that first write; and flag-off commands against that state refuse loudly instead of corrupting it |
+| 1 | `app/deploy` + `PrimitiveKind` routing + amended lockfile `3.0.0` **behind the §5.12 version/shape gates**, including portable source/logical keys and adapter-specific resolution recording + **CLI user-scope install and uninstall for `vscode`** + **v2/branch-era-v3 XDG migration** (§8.3) | `install X --target my-vscode` writes real files by manifest type and records portable desired/materialized state with the actual pin; `uninstall` removes exactly those paths offline; legacy state is retained/converted on that first write and flag-off commands refuse safely |
 | 2 | Widen to **all 11 targets, user scope** | The golden placement matrix at user scope: kiro→`steering/`, claude-code→`commands/`, cursor→`rules/`, including the prefix-vs-manifest fix |
 | 3 | **CLI repository scope**, incl. git-exclude, commit modes and §4.9 root selection; **bypasses** `RepositoryScopeWriter` for the three Copilot targets; **plus the lazy repository lockfile pair migration** — the rename, the §8.3 provenance rules and the §8.4 write/delete ordering | Repository installs at both commit modes, for all targets, through one writer; and upgrade paths from real extension-written and CLI-written committed lockfiles, including every interruption point. The migration cannot be later: this slice's flag-on install **is** an FR-16 trigger, and without it the legacy committed file would still own records a flag-on uninstall must find |
 | 4 | **CLI update, profile activate/deactivate, apply** onto the shared path | The producers §3.7 found outside the original deletion table; reconcile's removal half |
@@ -1885,7 +2144,7 @@ E2E-testable on merge with `unifiedDeploy` on, inert with it off.
 | 6 | **Extension repository scope** + its dependent readers (`LockfileManager` watchers and paired readers, update discovery, profiles); reuses slice 3's repository migration, so no new migration work; MCP still on the legacy step | Extension and CLI producing byte-identical repository output — the headline success criterion |
 | 7 | **MCP into shared deploy**, portable destinations; **removes the legacy `McpServerManager` bridge** from slices 5–6 | **CLI installs MCP servers for the first time**; extension writes `mcp-config.json`/`.mcp.json`; and §8.5's MCP migration, which is the part of the lockfile migration that could not land in slice 3 because the destinations did not exist yet |
 | 8 | **Download unification on `SourceAdapter`** + `resolveBundle` / `readBundleFiles` | CLI installs from `azure-devops` and `local` sources; binary assets survive local sources |
-| 9 | **Source identity P1–P3** | A lockfile written by one user replays for another whose source is named differently |
+| 9 | **Source-binding UX and remaining cross-delivery portability acceptance**; the identity contract and supported writers have already shipped | Missing-source offers really add/bind the source; hub/profile aliases resolve without ID equality; full supported-adapter replay works across differently configured machines |
 | 10 | **Flip `unifiedDeploy` to default on** | Nothing new; the v2 reader and every slice above must be in place first |
 | 11+ | **Deletions**, one area per PR | `UserScopeService`, `RepositoryScopeService`, `RepositoryScopeWriter`, `infra/resolvers`, `infra/downloaders`, APM adapters and runtime, prefix routing — each gated on an entry-point test showing no callers |
 | — | **APM authoring retirement** (§7) — the validate command and `apm.schema.json` | Entirely independent PR, outside this sequence; shares no code with the lifecycle work |
@@ -1897,6 +2156,15 @@ FR-16 trigger, so each must migrate the state it is about to own. Migration is t
 along the same seam as everything else — XDG shape in slice 1, the repository committed/local
 pair in slice 3, eager user records in slice 5, MCP destinations in slice 7 — and §8 is read
 as four obligations attached to four slices rather than one late PR.
+
+**Source identity cannot remain a late schema change.** The 2026-10-10 amendment moves
+its contracts, recording and state migration from the former slice 9 into Step 0 and
+the first writer for each surface. The current branch's slice-1 implementation must be
+amended before further v3 writers are released. Identity acquisition/pinning for additional
+adapters ships with their supported writer (including slice 8's download unification and
+the Artifactory integration), not as a second whole-stack cutover. A not-yet-wired
+resolution cannot be advertised as supported or persisted as a success-shaped pin.
+Slice 9 now completes binding UX/acceptance, not foundational identity.
 
 Slice 1 is the one that matters most: it puts a complete, inspectable install on disk, so
 every assumption in §4 and §5 gets tested against reality before the nine slices that follow
@@ -1916,7 +2184,8 @@ Two things sit outside the slice sequence because they gate it:
 
 - **Step 0 — primitives.** Export and generalize `routeToKind`; add canonical→alias naming
   plus explicit id normalization; add the **schema version gate** (§5.12) and `3.0.0` to the
-  schema enum; define the **logical bundle key** (§5.13); add the `FileSystem` link-identity
+  schema enum; define **portable source descriptors, adapter-specific resolution pins
+  and the logical bundle key** (§5.2, §5.10, §5.13); add the `FileSystem` link-identity
   capability. Small, additive, no behavior change. Slice 1 needs all but the last; slice 5
   needs that one. The version gate and the bundle key are prerequisites rather than slices
   because writing `3.0.0` state without them is what makes a flagged merge unsafe and what
@@ -1924,7 +2193,8 @@ Two things sit outside the slice sequence because they gate it:
 - **Schema enum policy** (§7) must land before any APM member is removed, or existing
   configs fail wire-format validation.
 
-**Behavior changes ship with their slice, not separately.** P1–P3 (slice 9), scope-conflict
+**Behavior changes ship with their slice, not separately.** Portable identity/pinning
+ships with each affected writer, source-binding UX with slice 9, scope-conflict
 enforcement (slice 3), and the MCP input-skip policy (slice 7) are each a behavior change
 with its own tests, inside the slice that delivers them — not deferred to a "no behavior
 change" step, which the previous ordering wrongly claimed to have.
@@ -1959,7 +2229,9 @@ independent APM-authoring PR (§7, §14).
 - Adopt portable MCP destinations, citing the product documentation and version that
   establishes the deprecation and input-forwarding behavior.
 - Lockfile `3.0.0`: split by role — committed desired state, local materialization — plus
-  the logical bundle key (§5.13) and the schema version gate (§5.12).
+  portable adapter-specific identity (§5.10), logical bundle key (§5.13),
+  artifact resolution (§5.2) and version/shape gates (§5.12). Amend ADR-0008's
+  registry-ID-based key; retain the Artifactory PR's explicit-channel policy.
 - **Desired state has one source and git is the override mechanism** (§5.4), superseding the
   `excludes`-plus-local-pin model. Record the fragility trade explicitly, since it is the
   reason a future reviewer might expect an override layer and find none.
@@ -2010,6 +2282,10 @@ any of them as preservation.
 | Deployment order | cache write → MCP → scope sync → record | place → record → MCP (§6.7) |
 | APM sources | installable | retired; records retained as unmanaged |
 | Unknown source type | factory throws; schema enum may reject the config | warn and skip |
+| Persisted source identity | registry/hub-derived `sourceId`, universal URL/ref/path hash | portable adapter-specific `sourceKey`; local handles and hub IDs are aliases only |
+| New remote artifact resolution | version and optional archive provenance | provider-specific exact pin plus verified digest; legacy unpinned and live content remain explicit |
+| Source URL rename | changes the URL-derived key | matching provider repository ID preserves identity; unverifiable Artifactory root moves require explicit remapping |
+| Unrecoverable legacy identity | source reference carried as if usable | desired intent retained as unresolved evidence; materialization remains unmanaged and ownership-protected |
 
 **External premises, to be cited and versioned rather than asserted:** that the VS Code
 user-profile `mcp.json` and `.vscode/mcp.json` are deprecated; that
@@ -2042,19 +2318,24 @@ state so they are stable under reconcile, and redistributed migration out of a s
 slice into the slices whose writers make each piece of state authoritative. Net effect on
 NFR-1/NFR-3: one fewer schema variant, one fewer PR, no new mechanism.
 
-**NFR-3 re-audit.** The net effect of the second review on implementation size: five
+**NFR-3 re-audit, updated 2026-10-10.** The net effect of the second review on implementation size: five
 migration-only fields in the local record (§5.3), one operation table (§5.4), one identity
 rule (§5.13), one version gate (§5.12), and a set of corrections to claims that were simply
 wrong. Against that, one whole override layer was **deleted** — `excludes`, `local.bundles`,
 a local `sources` map and their precedence rules. The design is smaller after this review
-than before it. Each item below remains a risk accepted in exchange for a materially smaller
-implementation.
+than before it. The identity amendment subsequently adds structured source identity,
+artifact-resolution variants and unresolved evidence, because registry handles cannot
+meet FR-12 and a version alone cannot enforce an exact artifact pin. These additions
+do not add a second desired-state layer, configuration fingerprint, network migration
+framework, journal, lock, backup or rollback. They are part of the same resolved
+request/paired store and are tested with each supported writer. The extra wire-contract
+size is deliberate, not presented as a behavior-neutral rename.
 
 | Accepted risk | Mitigation instead of machinery |
 |---|---|
 | A failure after the overwrite step leaves files mixed between two versions; previous bytes are not restored | Idempotent redeploy; overwrites happen last; applied effects are reported (§9.2). Matches today's behavior, where update uninstalls before the new install succeeds |
 | A scheduled auto-update write could migrate a repository | Migration is invoked only from the three command handlers — a call-site rule, not a threaded flag (§8.1) |
-| A layout-override or transformer change does not trigger reconcile | Reconcile compares `(logicalBundleKey, version, sourceId, targetType)` and nothing else; a user changing an override re-runs install (§5.6) |
+| A layout-override or transformer change does not trigger reconcile | Reconcile compares `(logicalBundleKey, version, sourceKey, resolution, targetType)`, not layout/configuration fingerprints; a user changing an override re-runs install (§5.6) |
 | Orphaned files from old CLI-written entries are not recovered | Unproven destinations are left alone and reported unmanaged; no old-rules locator is built (§8.3) |
 | Simultaneous CLI and extension writes can lose a materialization entry — its path list, checksums or MCP cleanup ownership. **This is not re-derivable**, and may need manual repair | Unique-temp-name atomic writes prevent corruption, which is the part that is engineered; the loss itself is accepted and stated honestly rather than mitigated (§8.4) |
 | Personal divergence is an uncommitted edit to a tracked file, so `git checkout`, a merge or an IDE "discard changes" silently restores the team's version | Reconcile offers rather than acts, so the files follow only with a yes (§5.4, §5.6). Accepted in exchange for deleting the whole override layer |
@@ -2065,6 +2346,8 @@ implementation.
 | Workspace-scope records keep repository-local artifacts where they are, so their scope label and their location disagree until the lazy path runs | Reported, not silently relocated — moving files at activation is the diff FR-16 forbids (§8.2) |
 | MCP config backups are no longer created by migration | Read-modify-write merges preserve unrelated entries; nothing is wholesale replaced (§6.7) |
 | Legacy and unified paths coexist behind `unifiedDeploy` for the whole cutover — double maintenance, doubled test matrix | Bounded by the flag-flip and deletion PRs (§11 slices 10–11+); accepted in exchange for E2E testing from slice 1 (§2) |
+| Offline migration cannot establish missing provider IDs or historical artifact pins | Preserve unresolved/unmanaged evidence or explicitly unpinned resolution; cleanup remains offline and later explicit install/update establishes a new pin, not historical proof (§8.3) |
+| Artifactory has no proven durable catalog identity in its current index contract | Source-root/index locator identity remains channel-specific; no automatic rename equivalence or GitHub fallback (§5.10) |
 
 **Acceptance criteria, not established facts:** byte parity between layers, lockfile
 portability across machines, transaction safety, and migration idempotence. Current tests
@@ -2091,6 +2374,12 @@ silently absorbed.
 | 10 | — (open) | Removal propagates only on **explicit** action: CLI reconcile, extension prompt (§5.6) | Symmetric with install. Nothing is deleted without a yes, which is also what makes #3's git-based divergence workable |
 | 11 | — (open) | Flag-off code must refuse `3.0.0` state loudly; the version gate ships in Step 0 (§5.12) | Today's reader is an unchecked cast and today's writers re-stamp `2.0.0`, so without the gate a flagged merge can corrupt state rather than merely ignore it |
 | 12 | — (open) | User scope uses the same two-file split as repository scope (§5.1) | Scopes must behave identically; one store, one migration and one test set serve both. The merged-file XDG variant was rejected on 2026-10-09 |
+| 13 | **FR-12 / NFR-4** — portable cross-machine replay without a later schema break | **Amended 2026-10-10:** remove active registry `sourceId` from v3; source keys derive from adapter-specific portable identity, independently of hub/local names | A deterministic hash of universal URL/ref/path inputs does not handle releases, repository renames or local-root collisions. V3 is branch-only and can be corrected before release |
+| 14 | — (chosen 2026-10-10) | GitHub release source = provider origin + repository ID + adapter; logical bundle = source + manifest ID; artifact = release ID + asset ID + digest | The requester meant the provider release ID. It pins an artifact, not the upgrade-stable bundle key |
+| 15 | — (chosen 2026-10-10) | Cover all retained adapters and remain compatible with AmadeusITGroup/ai-primitives-hub#437; preserve APM retirement | Artifactory uses existing catalog IDs and published-object pins, retains provenance separately, and requires no runtime GitHub access or transparent channel merging |
+| 16 | **FR-16 / FR-18** — no write-on-open and preserve legacy evidence | Identity conversion remains offline-capable, per record and resumable; missing identity/pins do not become whole-file resolution prerequisites | Uninstall needs records, not remote metadata. Unknown identity remains unresolved/unmanaged; absent historical pins are not fabricated |
+| 17 | — (chosen 2026-10-10) | Reconcile compares artifact resolution; external local bindings resolve from machine configuration, not local desired state | Same-version content changes matter; bindings cannot reintroduce the rejected override/source-map layer |
+| 18 | **NFR-4 / NFR-5** — settle schema early while delivering incrementally | Move identity contracts/recording/migration before supported v3 writers; leave acquisition for additional adapters and binding UX staged | The former slice-9 timing would require rekeying authoritative state after eight slices had already depended on the old identity |
 
 **Still unresolved, deliberately:** nothing. Every item the review flagged as needing a
 decision has one. What the review flagged as *incorrect* is corrected inline with its

@@ -798,6 +798,101 @@ describe('offline portable identity migration', () => {
       .toEqual([]);
   });
 
+  it('preserves digests embedded only in a partial historical resolution', async () => {
+    const fs = fakeFs();
+    const branchPair = branchEraV3Pair();
+    const entry = branchPair.desired.bundles[legacyRuntimeKey] as {
+      archiveSha?: string;
+      resolution?: unknown;
+    };
+    delete entry.archiveSha;
+    entry.resolution = {
+      kind: 'pinned',
+      provider: 'github-release',
+      version: '1.0.0',
+      releaseId: '7',
+      assetId: '77',
+      archiveSha256: '3'.repeat(64),
+      sourceContentSha256: '4'.repeat(64),
+      manifestSha256: '5'.repeat(64)
+    };
+    fs.files.set(userSources.desiredFile, JSON.stringify(branchPair.desired));
+    fs.files.set(userSources.localFile, JSON.stringify(branchPair.local));
+
+    const plan = await planLockfileMigration(userSources, fs, OPTS);
+
+    expect(plan.pair.desired.unresolved?.[0].knownResolution).toMatchObject({
+      kind: 'unpinned',
+      evidence: {
+        knownDigests: {
+          archiveSha256: '3'.repeat(64),
+          sourceContentSha256: '4'.repeat(64),
+          manifestSha256: '5'.repeat(64)
+        }
+      }
+    });
+  });
+
+  it('unions embedded content digests with an independently known outer archive digest', async () => {
+    const fs = fakeFs();
+    const branchPair = branchEraV3Pair();
+    branchPair.desired.bundles[legacyRuntimeKey].resolution = {
+      kind: 'pinned',
+      provider: 'github-release',
+      version: '1.0.0',
+      releaseId: '7',
+      assetId: '77',
+      sourceContentSha256: '4'.repeat(64),
+      manifestSha256: '5'.repeat(64)
+    };
+    fs.files.set(userSources.desiredFile, JSON.stringify(branchPair.desired));
+    fs.files.set(userSources.localFile, JSON.stringify(branchPair.local));
+
+    const plan = await planLockfileMigration(userSources, fs, OPTS);
+
+    expect(plan.pair.desired.unresolved?.[0].knownResolution).toMatchObject({
+      kind: 'unpinned',
+      evidence: {
+        knownDigests: {
+          archiveSha256: ARCHIVE_DIGEST,
+          sourceContentSha256: '4'.repeat(64),
+          manifestSha256: '5'.repeat(64)
+        }
+      }
+    });
+  });
+
+  it('retains both hashes when embedded and outer archive digests conflict', async () => {
+    const fs = fakeFs();
+    const branchPair = branchEraV3Pair();
+    const embeddedArchiveDigest = 'd'.repeat(64);
+    branchPair.desired.bundles[legacyRuntimeKey].resolution = {
+      kind: 'pinned',
+      provider: 'github-release',
+      version: '1.0.0',
+      releaseId: '7',
+      assetId: '77',
+      archiveSha256: embeddedArchiveDigest
+    };
+    fs.files.set(userSources.desiredFile, JSON.stringify(branchPair.desired));
+    fs.files.set(userSources.localFile, JSON.stringify(branchPair.local));
+
+    const plan = await planLockfileMigration(userSources, fs, OPTS);
+    const evidence = plan.pair.desired.unresolved?.[0].knownResolution;
+
+    expect(evidence).toMatchObject({
+      kind: 'unpinned',
+      evidence: {
+        knownPins: {
+          conflictingArchiveSha256Embedded: embeddedArchiveDigest,
+          conflictingArchiveSha256Outer: ARCHIVE_DIGEST
+        }
+      }
+    });
+    expect(evidence?.kind === 'unpinned' ? evidence.evidence?.knownDigests?.archiveSha256 : undefined)
+      .toBeUndefined();
+  });
+
   it('retains independently known outer digests beside a partial resolution', async () => {
     const fs = fakeFs();
     const branchPair = branchEraV3Pair();

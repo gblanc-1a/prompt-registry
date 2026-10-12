@@ -437,14 +437,110 @@ const historicalResolutionFromEntry = (
   resolution: JsonObject,
   entry: JsonObject,
   version: string
-): BundleResolution => historicalUnpinnedResolution({
-  ...resolution,
-  archiveSha: entry.archiveSha,
-  archiveSha256: entry.archiveSha256,
-  checksum: entry.checksum,
-  sourceContentSha256: entry.sourceContentSha256,
-  manifestSha256: entry.manifestSha256
-}, version);
+): BundleResolution => {
+  const mergedResolution = { ...resolution };
+  const resolutionEvidence = getObject(resolution.evidence);
+  const embeddedDigests = getObject(resolutionEvidence?.knownDigests);
+  const mergedEvidence = resolutionEvidence === undefined ? undefined : { ...resolutionEvidence };
+  const mergedEmbeddedDigests = embeddedDigests === undefined ? undefined : { ...embeddedDigests };
+  const conflicts: Record<string, string> = {};
+  const digestSources = [
+    {
+      name: 'archiveSha256',
+      outer: entry.archiveSha256 ?? entry.archiveSha ?? entry.checksum,
+      embedded: [
+        ['Embedded', resolution.archiveSha256],
+        ['EmbeddedLegacyArchive', resolution.archiveSha],
+        ['EmbeddedChecksum', resolution.checksum],
+        ['Evidence', embeddedDigests?.archiveSha256],
+        ['EvidenceLegacyArchive', embeddedDigests?.archiveSha],
+        ['EvidenceChecksum', embeddedDigests?.checksum]
+      ]
+    },
+    {
+      name: 'sourceContentSha256',
+      outer: entry.sourceContentSha256,
+      embedded: [
+        ['Embedded', resolution.sourceContentSha256],
+        ['Evidence', embeddedDigests?.sourceContentSha256]
+      ]
+    },
+    {
+      name: 'manifestSha256',
+      outer: entry.manifestSha256,
+      embedded: [
+        ['Embedded', resolution.manifestSha256],
+        ['Evidence', embeddedDigests?.manifestSha256]
+      ]
+    }
+  ] as const;
+
+  for (const digestSource of digestSources) {
+    const candidates = [
+      ...digestSource.embedded.flatMap(([source, value]) => {
+        const digest = normalizeSha256(value);
+        return digest === undefined ? [] : [{ source, digest }];
+      }),
+      ...(normalizeSha256(digestSource.outer) === undefined
+        ? []
+        : [{ source: 'Outer', digest: normalizeSha256(digestSource.outer) as string }])
+    ];
+    const uniqueDigests = [...new Set(candidates.map(({ digest }) => digest))];
+    if (uniqueDigests.length > 1) {
+      for (const candidate of candidates) {
+        conflicts[`conflicting${digestSource.name[0].toUpperCase()}${digestSource.name.slice(1)}${candidate.source}`]
+          = candidate.digest;
+      }
+      delete mergedResolution[digestSource.name];
+      if (digestSource.name === 'archiveSha256') {
+        delete mergedResolution.archiveSha;
+        delete mergedResolution.checksum;
+      }
+      if (mergedEmbeddedDigests !== undefined) {
+        delete mergedEmbeddedDigests[digestSource.name];
+        if (digestSource.name === 'archiveSha256') {
+          delete mergedEmbeddedDigests.archiveSha;
+          delete mergedEmbeddedDigests.checksum;
+        }
+      }
+      continue;
+    }
+    if (uniqueDigests.length === 1) {
+      mergedResolution[digestSource.name] = uniqueDigests[0];
+      if (digestSource.name === 'archiveSha256') {
+        delete mergedResolution.archiveSha;
+        delete mergedResolution.checksum;
+      }
+    }
+  }
+
+  if (mergedEvidence !== undefined && mergedEmbeddedDigests !== undefined) {
+    mergedEvidence.knownDigests = mergedEmbeddedDigests;
+    mergedResolution.evidence = mergedEvidence;
+  }
+  const converted = historicalUnpinnedResolution(mergedResolution, version);
+  if (converted.kind !== 'unpinned' || Object.keys(conflicts).length === 0) {
+    return converted;
+  }
+
+  const knownPins = { ...converted.evidence?.knownPins };
+  for (const [name, value] of Object.entries(conflicts)) {
+    let key = name;
+    let suffix = 1;
+    while (knownPins[key] !== undefined && knownPins[key] !== value) {
+      key = `${name}_${suffix}`;
+      suffix += 1;
+    }
+    knownPins[key] = value;
+  }
+  return {
+    ...converted,
+    evidence: {
+      ...converted.evidence,
+      knownPins
+    }
+  };
+};
 
 const getKnownResolution = (entry: JsonObject, version: string): BundleResolution | undefined => {
   const raw = entry.resolution;

@@ -103,3 +103,47 @@
 
 - `fix(app): preserve legacy identity candidates without collapsing evidence`
 - `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`
+
+## Fix round 2 — important diagnostic and digest evidence findings
+
+### Findings addressed
+
+1. **Embedded credential URLs in shared diagnostics:** `isSafeDiagnosticValue` now scans HTTP(S) URLs anywhere in a diagnostic string, not only strings beginning with a URL. Direct URL validation and credential-assignment/query-key guards remain intact. Public `classifyLegacyIdentity` tests cover direct and prefixed userinfo URLs in both `sourceId` and `descriptor.ref`; unsafe values are omitted while ordinary `sourceRef`/`ref` values remain.
+2. **Embedded digest evidence lost during migration:** historical resolution normalization now unions valid hashes from resolution fields, existing resolution evidence, and outer entry fields without replacing embedded values with absent outer properties. When values for the same digest kind conflict, no single hash is selected: each conflicting value is retained under source-labeled migration evidence in `knownPins`, while that digest kind is omitted from `knownDigests`.
+
+### RED/GREEN evidence
+
+- **Core RED:** `pnpm -C packages/core exec vitest run test/domain/install/portable-identity-migration.test.ts` — **exit 1**, 2 failed / 14 passed. The failures reproduced prefixed credential-bearing URLs leaking through `sourceRef` and selector `ref`; direct URL and existing query-key cases passed.
+- **App RED:** `pnpm -C packages/app exec vitest run test/stores/migrate-lockfile-v3.test.ts` — **exit 1**, 3 failed / 46 passed. The embedded-only and mixed embedded/outer digest cases lost hashes, and conflicting embedded/outer archive hashes were not both preserved.
+- **Core GREEN:** `pnpm -C packages/core exec vitest run test/domain/install/portable-identity-migration.test.ts` — **exit 0**, 1 file / 16 tests passed.
+- **App GREEN:** `pnpm -C packages/app exec vitest run test/stores/migrate-lockfile-v3.test.ts` — **exit 0**, 1 file / 49 tests passed, including the pre-existing outer-only digest regression.
+- The first post-fix app run exposed an invalid negative `toHaveProperty` assertion when `knownDigests` was absent; the test was corrected to assert the optional digest is `undefined`, then the focused app suite passed.
+
+### Files changed
+
+- `packages/core/src/domain/source/portable-identity.ts`
+- `packages/core/test/domain/install/portable-identity-migration.test.ts`
+- `packages/app/src/stores/migrate-lockfile-v3.ts`
+- `packages/app/test/stores/migrate-lockfile-v3.test.ts`
+- `.superpowers/sdd/2026-10-12-portable-source-identity/task-3-report.md`
+
+### Validation and concerns
+
+- `pnpm -C packages/core build` — **exit 0**.
+- `pnpm -C packages/core lint:fix` — **exit 0**, 0 errors / 19 warnings; all warnings are in untouched core files. Focused lint-fix on changed core files produced no warnings.
+- `pnpm -C packages/app lint:fix` — **exit 0**, 0 errors / 526 warnings. Focused lint-fix reported 9 warnings in the two changed app files, all at pre-existing, untouched lines (one source warning and eight test-helper/test warnings); none are in the new/modified hunks.
+- Full core suite, `pnpm -C packages/core exec vitest run --reporter=dot` — **exit 1**, 1 file failed / 25 passed; 6 failed / 354 passed. The failures are the six known Task 6 legacy-shape schema fixtures in `test/domain/install/lockfile-version.test.ts`; the v3 schema was not changed.
+- Full app suite, `pnpm -C packages/app exec vitest run --reporter=dot` — **exit 1**, 4 files failed / 61 passed; 123 failed / 866 passed. Failures remain in the known Task 6 deploy consumers: `test/deploy/deploy.test.ts`, `test/deploy/plan.test.ts`, `test/deploy/resolve-undeploy-key.test.ts`, and `test/deploy/undeploy.test.ts`.
+- `pnpm -C packages/app build` — **exit 2**, the 14 known Task 6 type errors remain in `src/deploy/deploy.ts`, `src/deploy/plan.ts`, `src/deploy/resolve-undeploy-key.ts`, and `src/deploy/undeploy.ts`; no errors were reported in the changed migration file.
+- `git diff --check` — passed.
+
+### Self-review and concerns
+
+- Digest disagreements are retained as evidence rather than silently selecting embedded or outer values. Valid independent digest kinds continue to be preserved together.
+- Existing safe references, direct credential-query key rejection, repository diagnostic helpers and strict v3 schema behavior are unchanged.
+- The already-portable MCP ownership observation from the review remains tracked for the final gate and was deliberately not expanded in this round.
+
+### Fix commit
+
+- `fix(migration): preserve safe diagnostics and digest evidence`
+- `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`

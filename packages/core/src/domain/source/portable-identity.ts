@@ -135,9 +135,15 @@ export const isCredentialFreeHttpUrl = (value: string): boolean => {
  * URL values use the same validation as portable source locators.
  * @param value
  */
-export const isSafeDiagnosticValue = (value: string): boolean =>
-  !CREDENTIAL_ASSIGNMENT.test(value)
-  && (!/^https?:\/\//i.test(value) || isCredentialFreeHttpUrl(value));
+export const isSafeDiagnosticValue = (value: string): boolean => {
+  if (CREDENTIAL_ASSIGNMENT.test(value)) {
+    return false;
+  }
+  if (/^https?:\/\//i.test(value)) {
+    return isCredentialFreeHttpUrl(value);
+  }
+  return (value.match(/https?:\/\/[^\s"'<>]+/gi) ?? []).every((url) => isCredentialFreeHttpUrl(url));
+};
 
 const invalidIdentity = (message: string): RegistryError => new RegistryError({
   code: 'BUNDLE.INVALID_SOURCE_IDENTITY',

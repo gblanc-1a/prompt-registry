@@ -129,6 +129,48 @@ describe('classifyLegacyIdentity', () => {
     }
   });
 
+  it.each([
+    {
+      location: 'source reference',
+      placement: 'direct',
+      value: 'https://alice:credential-placeholder@github.com/acme/agents'
+    },
+    {
+      location: 'source reference',
+      placement: 'prefixed',
+      value: 'imported from https://alice:credential-placeholder@github.com/acme/agents'
+    },
+    {
+      location: 'selector',
+      placement: 'direct',
+      value: 'https://alice:credential-placeholder@github.com/acme/agents'
+    },
+    {
+      location: 'selector',
+      placement: 'prefixed',
+      value: 'imported from https://alice:credential-placeholder@github.com/acme/agents'
+    }
+  ])('omits credential-bearing URLs in $placement $location values', ({ location, value }) => {
+    const result = classifyLegacyIdentity({
+      legacyKey: 'legacy-agent',
+      sourceId: location === 'source reference' ? value : 'legacy-source',
+      descriptor: {
+        type: 'github',
+        url: 'https://github.com/acme/agents',
+        ref: location === 'selector' ? value : 'main'
+      },
+      version: '1.0.0'
+    });
+
+    expect(result.kind).toBe('unresolved');
+    if (result.kind === 'unresolved') {
+      expect(result.desired.sourceRef).toBe(location === 'selector' ? 'legacy-source' : undefined);
+      expect(result.desired.descriptor?.selectors?.ref)
+        .toBe(location === 'source reference' ? 'main' : undefined);
+      expect(JSON.stringify(result.desired)).not.toContain('credential-placeholder');
+    }
+  });
+
   it('rejects credential values and arbitrary fields in shared selector evidence', () => {
     const result = classifyLegacyIdentity({
       legacyKey: 'legacy-agent',

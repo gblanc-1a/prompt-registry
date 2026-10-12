@@ -89,6 +89,7 @@ export type SourceIdentity =
 export interface PortableSourceDescriptor {
   type: RetainedSourceType;
   identity: SourceIdentity;
+  /** Local locators are portable roots or binding names, never machine-local roots. */
   locator: string;
   config?: PortableSourceConfig;
 }
@@ -101,6 +102,8 @@ export type LocalSourceLocation =
 const SOURCE_KEY_PATTERN = /^src-[a-f0-9]{64}$/;
 const HTTP_PROTOCOLS = new Set(['http:', 'https:']);
 const CREDENTIAL_QUERY_KEY = /(^|[_-])(access[_-]?)?token|(^|[_-])auth(orization)?|(^|[_-])(api[_-]?)?key|(^|[_-])(password|passwd|secret|signature|credential)([_-]|$)/i;
+const GITHUB_REPOSITORY_ID_PATTERN = /^[1-9]\d*$/;
+const AZURE_REPOSITORY_ID_PATTERN = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i;
 const LOCAL_SOURCE_TYPES = new Set<RetainedSourceType>([
   'local', 'local-awesome-copilot', 'local-skills'
 ]);
@@ -135,6 +138,44 @@ const relativeSelector = (value: unknown, label: string, allowRoot = false): str
   }
   return text;
 };
+
+const githubRepositoryId = (value: unknown): string => {
+  const repositoryId = requireText(value, 'GitHub repository ID');
+  if (!GITHUB_REPOSITORY_ID_PATTERN.test(repositoryId)) {
+    throw invalidIdentity('GitHub repository ID must be a positive decimal provider ID.');
+  }
+  return repositoryId;
+};
+
+const azureRepositoryId = (value: unknown): string => {
+  const repositoryId = requireText(value, 'Azure DevOps repository ID');
+  if (!AZURE_REPOSITORY_ID_PATTERN.test(repositoryId)) {
+    throw invalidIdentity('Azure DevOps repository ID must use the provider UUID form.');
+  }
+  return repositoryId.toLowerCase();
+};
+
+const externalBindingName = (value: unknown): string => {
+  const bindingName = requireText(value, 'External source binding name');
+  if (bindingName === '.' || bindingName === '..' || bindingName.includes('/')
+    || bindingName.includes('\\') || bindingName.includes('\0') || /^[a-zA-Z]:/.test(bindingName)) {
+    throw invalidIdentity('External source binding name must be a portable name, not a filesystem path.');
+  }
+  return bindingName;
+};
+
+const isPortableRelativeLocator = (locator: string, allowRoot: boolean): boolean => (
+  (allowRoot && locator === '.')
+  || (
+    locator.length > 0
+    && !locator.includes('\0')
+    && !locator.includes('\\')
+    && !locator.startsWith('/')
+    && !/^[a-zA-Z]:/.test(locator)
+    && !locator.includes('://')
+    && locator.split('/').every((segment) => segment.length > 0 && segment !== '.' && segment !== '..')
+  )
+);
 
 const providerOrigin = (value: unknown): string => {
   const text = requireText(value, 'Provider origin');
@@ -216,7 +257,7 @@ const contentSelectors = (
     }
     case 'awesome-copilot':
     case 'local-awesome-copilot': {
-      return selectors(identity, ['collectionsPath', 'indexFile'], ['collectionsPath', 'indexFile']);
+      return selectors(identity, ['collectionsPath'], ['collectionsPath']);
     }
     case 'github':
     case 'local':
@@ -240,14 +281,14 @@ const canonicalIdentity = (identity: SourceIdentity, type: RetainedSourceType): 
       return {
         kind: identity.kind,
         origin: providerOrigin(identity.origin),
-        repositoryId: requireText(identity.repositoryId, 'GitHub repository ID')
+        repositoryId: githubRepositoryId(identity.repositoryId)
       };
     }
     case 'github-tree': {
       return {
         kind: identity.kind,
         origin: providerOrigin(identity.origin),
-        repositoryId: requireText(identity.repositoryId, 'GitHub repository ID'),
+        repositoryId: githubRepositoryId(identity.repositoryId),
         ref: requireText(identity.ref, 'Effective Git ref'),
         ...contentSelectors(type, identity as unknown as Record<string, unknown>)
       };
@@ -256,7 +297,7 @@ const canonicalIdentity = (identity: SourceIdentity, type: RetainedSourceType): 
       return {
         kind: identity.kind,
         namespace: requireText(identity.namespace, 'Azure DevOps namespace'),
-        repositoryId: requireText(identity.repositoryId, 'Azure DevOps repository ID'),
+        repositoryId: azureRepositoryId(identity.repositoryId),
         ref: requireText(identity.ref, 'Effective Azure DevOps ref'),
         collectionsPath: relativeSelector(identity.collectionsPath, 'Azure DevOps collections path')
       };
@@ -278,7 +319,7 @@ const canonicalIdentity = (identity: SourceIdentity, type: RetainedSourceType): 
     case 'external-local': {
       return {
         kind: identity.kind,
-        bindingName: requireText(identity.bindingName, 'External source binding name'),
+        bindingName: externalBindingName(identity.bindingName),
         ...contentSelectors(type, identity as unknown as Record<string, unknown>)
       };
     }
@@ -305,20 +346,20 @@ const validateLocator = (source: PortableSourceDescriptor): void => {
   const hasCredentialQuery = (candidate: URL): boolean => [...candidate.searchParams.keys()]
     .some((key) => CREDENTIAL_QUERY_KEY.test(key));
   if (LOCAL_SOURCE_TYPES.has(source.type)) {
-    if (/^[a-z][a-z\d+.-]*:\/\//i.test(locator)) {
-      try {
-        const parsedLocator = new URL(locator);
-        if (parsedLocator.username !== '' || parsedLocator.password !== '' || hasCredentialQuery(parsedLocator)) {
-          throw invalidLocator('Source locator must not contain embedded credentials.');
-        }
-      } catch (error) {
-        if (error instanceof RegistryError) {
-          throw error;
-        }
-        throw invalidLocator(`Source locator ${JSON.stringify(locator)} is not a valid URL.`);
+    if (source.identity.kind === 'workspace-local') {
+      if (!isPortableRelativeLocator(locator, true) || locator !== source.identity.root) {
+        throw invalidLocator('Workspace-local locator must be the matching workspace-relative root.');
       }
+      return;
     }
-    return;
+    if (source.identity.kind === 'external-local') {
+      const bindingName = externalBindingName(source.identity.bindingName);
+      if (locator !== bindingName) {
+        throw invalidLocator('External-local locator must match its explicit source binding name.');
+      }
+      return;
+    }
+    throw invalidIdentity(`Local adapter "${source.type}" requires a workspace-local or external-local identity.`);
   }
   let url: URL;
   try {

@@ -7,74 +7,62 @@ import {
   InvalidLogicalBundleKeyError,
   logicalBundleKey,
   logicalKeyFromLegacyId,
+  parseLegacyLogicalBundleKey,
   parseLogicalBundleKey,
 } from '../../../src/domain/bundle/logical-key';
 
+const sourceKey = `src-${'a'.repeat(64)}`;
+
 describe('logicalBundleKey', () => {
-  it('is source-qualified and version-independent', () => {
-    expect(logicalBundleKey({ sourceId: 'github-abc123def456', manifestId: 'web-dev' }))
-      .toBe('github-abc123def456/web-dev');
+  it('builds a portable source-qualified key', () => {
+    expect(logicalBundleKey({ sourceKey, logicalBundleId: 'web-dev' }))
+      .toBe(`${sourceKey}/web-dev`);
   });
 
-  it('is source-qualified even with a single source — adding a second rekeys nothing', () => {
-    // The withdrawn shorthand would have written "web-dev" here (design 5.13).
-    expect(logicalBundleKey({ sourceId: 'only-source', manifestId: 'web-dev' }))
-      .toBe('only-source/web-dev');
+  it('keeps two portable sources offering the same id distinct', () => {
+    const otherSourceKey = `src-${'b'.repeat(64)}`;
+    expect(logicalBundleKey({ sourceKey, logicalBundleId: 'shared' }))
+      .not.toBe(logicalBundleKey({ sourceKey: otherSourceKey, logicalBundleId: 'shared' }));
   });
 
-  it('keeps two sources offering the same manifest id as two keys', () => {
-    const a = logicalBundleKey({ sourceId: 'src-a', manifestId: 'shared' });
-    const b = logicalBundleKey({ sourceId: 'src-b', manifestId: 'shared' });
-
-    expect(a).not.toBe(b);
-  });
-
-  it('rejects a sourceId containing a slash (Review Focus 4)', () => {
-    expect(() => logicalBundleKey({ sourceId: 'owner/repo', manifestId: 'web-dev' }))
+  it('rejects a non-portable source key, empty id, or slash in the id', () => {
+    expect(() => logicalBundleKey({ sourceKey: 'github-legacy', logicalBundleId: 'web-dev' }))
       .toThrow(InvalidLogicalBundleKeyError);
-  });
-
-  it('rejects a manifestId containing a slash (Review Focus 4)', () => {
-    expect(() => logicalBundleKey({ sourceId: 'src', manifestId: 'team/web-dev' }))
+    expect(() => logicalBundleKey({ sourceKey, logicalBundleId: '' }))
       .toThrow(InvalidLogicalBundleKeyError);
-  });
-
-  it('rejects an empty half', () => {
-    expect(() => logicalBundleKey({ sourceId: '', manifestId: 'web-dev' }))
-      .toThrow(InvalidLogicalBundleKeyError);
-    expect(() => logicalBundleKey({ sourceId: 'src', manifestId: '' }))
+    expect(() => logicalBundleKey({ sourceKey, logicalBundleId: 'team/web-dev' }))
       .toThrow(InvalidLogicalBundleKeyError);
   });
 });
 
 describe('parseLogicalBundleKey', () => {
-  it('round-trips a well-formed key', () => {
-    expect(parseLogicalBundleKey('src/web-dev')).toEqual({ sourceId: 'src', manifestId: 'web-dev' });
+  it('returns the portable key components', () => {
+    expect(parseLogicalBundleKey(`${sourceKey}/web-dev`))
+      .toEqual({ sourceKey, logicalBundleId: 'web-dev' });
   });
 
-  it('returns null for a key with no separator or more than one', () => {
+  it('rejects unresolved, legacy, and ambiguous keys', () => {
+    expect(parseLogicalBundleKey('unresolved/evidence')).toBeNull();
+    expect(parseLogicalBundleKey('github-legacy/web-dev')).toBeNull();
+    expect(parseLogicalBundleKey(`${sourceKey}/team/web-dev`)).toBeNull();
     expect(parseLogicalBundleKey('web-dev')).toBeNull();
-    expect(parseLogicalBundleKey('a/b/c')).toBeNull();
   });
 });
 
-describe('logicalKeyFromLegacyId', () => {
-  it('strips an extension version suffix so both layers reach one key', () => {
-    // Extension runtime id (github-adapter.ts:214) vs the bare CLI manifest.id.
-    expect(logicalKeyFromLegacyId('owner-repo-web-dev-1.0.0', 'src'))
-      .toBe(logicalKeyFromLegacyId('owner-repo-web-dev', 'src'));
+describe('legacy logical bundle keys', () => {
+  it('decodes existing keys without treating them as active portable keys', () => {
+    expect(parseLegacyLogicalBundleKey('github-legacy/web-dev'))
+      .toEqual({ sourceId: 'github-legacy', manifestId: 'web-dev' });
+    expect(parseLegacyLogicalBundleKey('unresolved/evidence'))
+      .toEqual({ sourceId: 'unresolved', manifestId: 'evidence' });
   });
 
-  it('strips a v-prefixed version suffix too', () => {
-    expect(logicalKeyFromLegacyId('owner-repo-web-dev-v1.0.0', 'src'))
-      .toBe('src/owner-repo-web-dev');
-  });
-
-  it('leaves a bare id untouched', () => {
-    expect(logicalKeyFromLegacyId('web-dev', 'src')).toBe('src/web-dev');
-  });
-
-  it('does not strip a trailing segment that is not a version', () => {
-    expect(logicalKeyFromLegacyId('web-dev-next', 'src')).toBe('src/web-dev-next');
+  it('keeps the legacy extension-id version suffix behavior isolated', () => {
+    expect(logicalKeyFromLegacyId('owner-repo-web-dev-1.0.0', 'github-legacy'))
+      .toBe('github-legacy/owner-repo-web-dev');
+    expect(logicalKeyFromLegacyId('owner-repo-web-dev-v1.0.0', 'github-legacy'))
+      .toBe('github-legacy/owner-repo-web-dev');
+    expect(logicalKeyFromLegacyId('web-dev-next', 'github-legacy'))
+      .toBe('github-legacy/web-dev-next');
   });
 });

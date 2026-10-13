@@ -893,6 +893,64 @@ describe('offline portable identity migration', () => {
       .toBeUndefined();
   });
 
+  it('normalizes every historical digest alias before retaining conflicts', async () => {
+    const fs = fakeFs();
+    const branchPair = branchEraV3Pair();
+    const entry = branchPair.desired.bundles[legacyRuntimeKey] as Record<string, unknown>;
+    entry.archiveSha256 = 'malformed-archive-sha256';
+    entry.archiveSha = 'a'.repeat(64);
+    entry.checksum = 'b'.repeat(64);
+    entry.sourceContentSha256 = 'c'.repeat(64);
+    entry.manifestSha256 = 'd'.repeat(64);
+    entry.resolution = {
+      kind: 'pinned',
+      provider: 'github-release',
+      version: '1.0.0',
+      releaseId: '7',
+      assetId: '77',
+      archiveSha256: 'e'.repeat(64),
+      archiveSha: 'f'.repeat(64),
+      checksum: '0'.repeat(64),
+      sourceContentSha256: 'malformed-source-content-sha256',
+      manifestSha256: 'malformed-manifest-sha256',
+      evidence: {
+        knownDigests: {
+          archiveSha256: '1'.repeat(64),
+          archiveSha: '2'.repeat(64),
+          checksum: '3'.repeat(64),
+          sourceContentSha256: '4'.repeat(64),
+          manifestSha256: '5'.repeat(64)
+        }
+      }
+    };
+    fs.files.set(userSources.desiredFile, JSON.stringify(branchPair.desired));
+    fs.files.set(userSources.localFile, JSON.stringify(branchPair.local));
+
+    const plan = await planLockfileMigration(userSources, fs, OPTS);
+    const evidence = plan.pair.desired.unresolved?.[0].knownResolution;
+
+    expect(evidence).toMatchObject({
+      kind: 'unpinned',
+      evidence: {
+        knownPins: {
+          conflictingArchiveSha256OuterLegacyArchive: 'a'.repeat(64),
+          conflictingArchiveSha256OuterChecksum: 'b'.repeat(64),
+          conflictingArchiveSha256Embedded: 'e'.repeat(64),
+          conflictingArchiveSha256EmbeddedLegacyArchive: 'f'.repeat(64),
+          conflictingArchiveSha256EmbeddedChecksum: '0'.repeat(64),
+          conflictingArchiveSha256Evidence: '1'.repeat(64),
+          conflictingArchiveSha256EvidenceLegacyArchive: '2'.repeat(64),
+          conflictingArchiveSha256EvidenceChecksum: '3'.repeat(64),
+          conflictingSourceContentSha256Outer: 'c'.repeat(64),
+          conflictingSourceContentSha256Evidence: '4'.repeat(64),
+          conflictingManifestSha256Outer: 'd'.repeat(64),
+          conflictingManifestSha256Evidence: '5'.repeat(64)
+        }
+      }
+    });
+    expect(evidence?.kind === 'unpinned' ? evidence.evidence?.knownDigests : undefined).toBeUndefined();
+  });
+
   it('retains independently known outer digests beside a partial resolution', async () => {
     const fs = fakeFs();
     const branchPair = branchEraV3Pair();

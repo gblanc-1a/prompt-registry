@@ -147,3 +147,29 @@
 
 - `fix(migration): preserve safe diagnostics and digest evidence`
 - `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`
+
+## Fix round 3 — Important digest alias normalization
+
+### Finding addressed
+
+- Outer digest aliases were selected with raw nullish coalescing before normalization. A malformed preferred `archiveSha256` could therefore mask a valid `archiveSha` or `checksum` and erase its conflict with an embedded archive hash.
+- Normalize each outer, resolution, and embedded-evidence digest alias independently. Union every valid digest, keep conflicting values under source-attributed `knownPins`, and leave that digest kind out of `knownDigests`. The same candidate collection is used for strict-resolution mismatch detection and outer-only historical pins.
+- Added app migration coverage spanning `archiveSha256`/`archiveSha`/`checksum`, source-content and manifest digests, conflicting embedded evidence, and malformed preferred aliases.
+
+### RED/GREEN evidence
+
+- **RED:** `pnpm -C packages/app exec vitest run test/stores/migrate-lockfile-v3.test.ts -t 'normalizes every historical digest alias before retaining conflicts'` — **exit 1**, 1 failed / 49 skipped. Valid `archiveSha` and `checksum` conflicts were absent when the preferred outer `archiveSha256` value was malformed. The initial fixture also used non-hex placeholders for some additional aliases; these were corrected to valid SHA-256 literals before the green run.
+- **Focused GREEN:** the same selector — **exit 0**, 1 passed / 49 skipped.
+- **Migration GREEN:** `pnpm -C packages/app exec vitest run test/stores/migrate-lockfile-v3.test.ts` — **exit 0**, 1 file / 50 tests passed, including embedded-only, outer-only, combined, and conflict coverage.
+
+### Validation and concerns
+
+- `pnpm -C packages/app lint:fix` — **exit 0**, 0 errors / 526 warnings.
+- `pnpm -C packages/app build` — **exit 2**, with the 14 known Task 6 deploy type errors in `src/deploy/deploy.ts`, `src/deploy/plan.ts`, `src/deploy/resolve-undeploy-key.ts`, and `src/deploy/undeploy.ts`; no migration-file errors.
+- `git diff --check` — passed.
+- No core migration helper changed. The outstanding app build errors are the previously tracked Task 6 deployment/schema integration work; this fix does not weaken schemas or alter that scope.
+
+### Fix commit
+
+- `fix(app): preserve all valid legacy digest aliases`
+- `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`

@@ -433,6 +433,43 @@ const historicalUnpinnedResolution = (
   };
 };
 
+const historicalOuterDigestCandidates = (
+  entry: JsonObject
+): { name: string; source: string; value: unknown; pinName: string }[] => [
+  {
+    name: 'archiveSha256',
+    source: 'Outer',
+    value: entry.archiveSha256,
+    pinName: 'legacyArchiveSha256'
+  },
+  {
+    name: 'archiveSha256',
+    source: entry.archiveSha256 === undefined || entry.archiveSha256 === null
+      ? 'Outer'
+      : 'OuterLegacyArchive',
+    value: entry.archiveSha,
+    pinName: 'legacyArchiveSha'
+  },
+  {
+    name: 'archiveSha256',
+    source: 'OuterChecksum',
+    value: entry.checksum,
+    pinName: 'legacyChecksum'
+  },
+  {
+    name: 'sourceContentSha256',
+    source: 'Outer',
+    value: entry.sourceContentSha256,
+    pinName: 'legacySourceContentSha256'
+  },
+  {
+    name: 'manifestSha256',
+    source: 'Outer',
+    value: entry.manifestSha256,
+    pinName: 'legacyManifestSha256'
+  }
+];
+
 const historicalResolutionFromEntry = (
   resolution: JsonObject,
   entry: JsonObject,
@@ -444,10 +481,10 @@ const historicalResolutionFromEntry = (
   const mergedEvidence = resolutionEvidence === undefined ? undefined : { ...resolutionEvidence };
   const mergedEmbeddedDigests = embeddedDigests === undefined ? undefined : { ...embeddedDigests };
   const conflicts: Record<string, string> = {};
+  const outerDigests = historicalOuterDigestCandidates(entry);
   const digestSources = [
     {
       name: 'archiveSha256',
-      outer: entry.archiveSha256 ?? entry.archiveSha ?? entry.checksum,
       embedded: [
         ['Embedded', resolution.archiveSha256],
         ['EmbeddedLegacyArchive', resolution.archiveSha],
@@ -455,23 +492,24 @@ const historicalResolutionFromEntry = (
         ['Evidence', embeddedDigests?.archiveSha256],
         ['EvidenceLegacyArchive', embeddedDigests?.archiveSha],
         ['EvidenceChecksum', embeddedDigests?.checksum]
-      ]
+      ],
+      outer: outerDigests.filter(({ name }) => name === 'archiveSha256')
     },
     {
       name: 'sourceContentSha256',
-      outer: entry.sourceContentSha256,
       embedded: [
         ['Embedded', resolution.sourceContentSha256],
         ['Evidence', embeddedDigests?.sourceContentSha256]
-      ]
+      ],
+      outer: outerDigests.filter(({ name }) => name === 'sourceContentSha256')
     },
     {
       name: 'manifestSha256',
-      outer: entry.manifestSha256,
       embedded: [
         ['Embedded', resolution.manifestSha256],
         ['Evidence', embeddedDigests?.manifestSha256]
-      ]
+      ],
+      outer: outerDigests.filter(({ name }) => name === 'manifestSha256')
     }
   ] as const;
 
@@ -481,9 +519,10 @@ const historicalResolutionFromEntry = (
         const digest = normalizeSha256(value);
         return digest === undefined ? [] : [{ source, digest }];
       }),
-      ...(normalizeSha256(digestSource.outer) === undefined
-        ? []
-        : [{ source: 'Outer', digest: normalizeSha256(digestSource.outer) as string }])
+      ...digestSource.outer.flatMap(({ source, value }) => {
+        const digest = normalizeSha256(value);
+        return digest === undefined ? [] : [{ source, digest }];
+      })
     ];
     const uniqueDigests = [...new Set(candidates.map(({ digest }) => digest))];
     if (uniqueDigests.length > 1) {
@@ -519,25 +558,47 @@ const historicalResolutionFromEntry = (
     mergedResolution.evidence = mergedEvidence;
   }
   const converted = historicalUnpinnedResolution(mergedResolution, version);
-  if (converted.kind !== 'unpinned' || Object.keys(conflicts).length === 0) {
+  if (converted.kind !== 'unpinned') {
     return converted;
   }
 
-  const knownPins = { ...converted.evidence?.knownPins };
-  for (const [name, value] of Object.entries(conflicts)) {
+  const knownPins: Record<string, string> = {};
+  const preserveHistoricalPin = (name: string, value: string): void => {
     let key = name;
     let suffix = 1;
-    while (knownPins[key] !== undefined && knownPins[key] !== value) {
+    while (
+      (converted.evidence?.knownPins?.[key] !== undefined
+        && converted.evidence.knownPins[key] !== value)
+      || (knownPins[key] !== undefined && knownPins[key] !== value)
+    ) {
       key = `${name}_${suffix}`;
       suffix += 1;
     }
     knownPins[key] = value;
+  };
+  for (const candidate of outerDigests) {
+    if (
+      typeof candidate.value === 'string'
+      && normalizeSha256(candidate.value) === undefined
+      && isSafeHistoricalValue(candidate.value)
+    ) {
+      preserveHistoricalPin(candidate.pinName, candidate.value);
+    }
+  }
+  for (const [name, value] of Object.entries(conflicts)) {
+    preserveHistoricalPin(name, value);
+  }
+  if (Object.keys(knownPins).length === 0) {
+    return converted;
   }
   return {
     ...converted,
     evidence: {
       ...converted.evidence,
-      knownPins
+      knownPins: {
+        ...converted.evidence?.knownPins,
+        ...knownPins
+      }
     }
   };
 };
@@ -551,13 +612,8 @@ const getKnownResolution = (entry: JsonObject, version: string): BundleResolutio
     }
     try {
       assertResolutionVersion(raw, version);
-      const outerDigests = [
-        ['archiveSha256', entry.archiveSha256 ?? entry.archiveSha ?? entry.checksum],
-        ['sourceContentSha256', entry.sourceContentSha256],
-        ['manifestSha256', entry.manifestSha256]
-      ] as const;
-      if (outerDigests.some(([name, outerDigest]) => {
-        const normalized = normalizeSha256(outerDigest);
+      if (historicalOuterDigestCandidates(entry).some(({ name, value }) => {
+        const normalized = normalizeSha256(value);
         return normalized !== undefined && normalized !== resolution[name];
       })) {
         return historicalResolutionFromEntry(resolution, entry, version);
@@ -570,15 +626,9 @@ const getKnownResolution = (entry: JsonObject, version: string): BundleResolutio
   if (resolution) {
     return historicalResolutionFromEntry(resolution, entry, version);
   }
-  const digest = entry.archiveSha ?? entry.checksum;
-  if (typeof digest === 'string' && isSafeHistoricalValue(digest)) {
-    return {
-      kind: 'unpinned',
-      reason: 'Historical artifact pin metadata is incomplete.',
-      evidence: normalizeSha256(digest) === undefined
-        ? { knownPins: { legacyChecksum: digest } }
-        : { knownDigests: { archiveSha256: normalizeSha256(digest) as string } }
-    };
+  if (historicalOuterDigestCandidates(entry).some(({ value }) =>
+    typeof value === 'string' && isSafeHistoricalValue(value))) {
+    return historicalResolutionFromEntry({}, entry, version);
   }
   return undefined;
 };

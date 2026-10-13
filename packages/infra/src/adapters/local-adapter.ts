@@ -13,17 +13,22 @@
  * whole adapter unit-testable without a real filesystem, at the cost of
  * not yet supporting binary files in a bundle — everything in the
  * `prompt`/`instruction`/`chat-mode`/`agent`/`skill` primitive kinds is
- * text today. Revisit (add a binary-safe `FileSystem.readFileBuffer`) if a
- * real bundle ever needs one.
+ * text today. The portable resolver uses `FileSystem.readFileBytes` for
+ * raw snapshot inventories; this legacy ZIP path retains its text behavior.
  * @module adapters/local-adapter
  */
 import * as path from 'node:path';
 import type {
   Bundle,
   FileSystem,
+  PortableBundlePayload,
+  PortableBundleSelection,
   RegistrySource,
   SourceMetadata,
   ValidationResult,
+} from '@ai-primitives-hub/core';
+import {
+  RegistryError,
 } from '@ai-primitives-hub/core';
 import archiver from 'archiver';
 import * as yaml from 'js-yaml';
@@ -35,6 +40,14 @@ import {
   resolveLocalPath,
   toFileUrl,
 } from './local-path';
+import {
+  assertLocalResolutionCompatible,
+  filesBelow,
+  readLocalSourceFiles,
+  recordedLocalBundleSelector,
+  resolveLocalBundleResolution,
+  resolveLocalSource,
+} from './local-portable-resolution';
 
 interface LocalManifest {
   id: string;
@@ -225,6 +238,97 @@ export class LocalAdapter extends BaseSourceAdapter {
     }
 
     return bundles;
+  }
+
+  /**
+   * Resolve a manifest-selected local bundle into a portable raw-file snapshot.
+   * @param selection - Requested manifest ID, version and optional replay pin.
+   */
+  public async resolvePortableBundle(selection: PortableBundleSelection): Promise<PortableBundlePayload | null> {
+    const resolved = resolveLocalSource(this.source, selection.localLocation, selection.expectedSource);
+    assertLocalResolutionCompatible(resolved.source, selection.resolution);
+    const sourceFiles = await readLocalSourceFiles(this.fs, resolved.root);
+    const recordedSelector = recordedLocalBundleSelector(selection.resolution);
+    const selectorCandidates = recordedSelector === undefined
+      ? [...new Set([...sourceFiles.keys()]
+        .filter((filePath) => filePath.endsWith(`/${MANIFEST_FILE_NAME}`) && filePath.split('/').length === 2)
+        .map((filePath) => filePath.split('/')[0]))]
+      : [recordedSelector];
+    const matches: { selector: string; manifest: LocalManifest }[] = [];
+
+    for (const candidateSelector of selectorCandidates) {
+      if (candidateSelector.length === 0 || candidateSelector.includes('/')
+        || candidateSelector === '.' || candidateSelector === '..') {
+        if (recordedSelector !== undefined) {
+          throw new RegistryError({
+            code: 'BUNDLE.ARTIFACT_PIN_MISMATCH',
+            message: `Recorded local bundle selector ${JSON.stringify(candidateSelector)} is not a direct child of the configured source.`,
+            hint: 'Use the direct bundle directory selector recorded by the local-snapshot pin.'
+          });
+        }
+        continue;
+      }
+      const manifestPath = `${candidateSelector}/${MANIFEST_FILE_NAME}`;
+      const bytes = sourceFiles.get(manifestPath);
+      if (bytes === undefined) {
+        continue;
+      }
+      let candidateManifest: LocalManifest | undefined;
+      try {
+        const parsed = yaml.load(Buffer.from(bytes).toString('utf8')) as Partial<LocalManifest> | undefined;
+        if (parsed && typeof parsed.id === 'string' && parsed.id.trim() !== ''
+          && typeof parsed.version === 'string' && parsed.version.trim() !== '') {
+          candidateManifest = parsed as LocalManifest;
+        }
+      } catch {
+        candidateManifest = undefined;
+      }
+      if (candidateManifest?.id === selection.bundleId) {
+        matches.push({ selector: candidateSelector, manifest: candidateManifest });
+      } else if (recordedSelector !== undefined) {
+        throw new RegistryError({
+          code: 'BUNDLE.ARTIFACT_PIN_MISMATCH',
+          message: `Recorded local bundle selector ${JSON.stringify(candidateSelector)} does not contain requested bundle "${selection.bundleId}".`,
+          hint: 'Restore the bundle at the recorded selector or explicitly resolve a new local snapshot.'
+        });
+      }
+    }
+
+    if (matches.length === 0) {
+      if (recordedSelector !== undefined) {
+        throw new RegistryError({
+          code: 'BUNDLE.ARTIFACT_PIN_MISMATCH',
+          message: `Recorded local bundle selector ${JSON.stringify(recordedSelector)} is missing from the configured source.`,
+          hint: 'Restore the bundle at the recorded selector or explicitly resolve a new local snapshot.'
+        });
+      }
+      return null;
+    }
+    if (matches.length > 1) {
+      throw new RegistryError({
+        code: 'BUNDLE.AMBIGUOUS_LOCAL_BUNDLE',
+        message: `More than one local bundle has manifest ID "${selection.bundleId}".`,
+        hint: 'Remove the duplicate or select a source with a unique deployment-manifest.yml ID.'
+      });
+    }
+
+    const [{ selector, manifest }] = matches;
+    const files = filesBelow(sourceFiles, selector);
+    const resolution = resolveLocalBundleResolution(
+      resolved.source,
+      selection,
+      selector,
+      manifest.version,
+      files
+    );
+    return {
+      source: resolved.source,
+      logicalBundleId: manifest.id,
+      manifestId: manifest.id,
+      version: manifest.version,
+      resolution,
+      files
+    };
   }
 
   public async validate(): Promise<ValidationResult> {

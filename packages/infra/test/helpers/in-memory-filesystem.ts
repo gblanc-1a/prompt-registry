@@ -139,8 +139,11 @@ export class InMemoryFileSystem implements FileSystem {
     throw new Error(`ENOENT: no such file or directory: ${normalizedPath}`);
   }
 
-  public async lstat(_path: string): Promise<LinkStat> {
-    throw new Error('lstat not stubbed');
+  public async lstat(path: string): Promise<LinkStat> {
+    return {
+      ...await this.stat(path),
+      isSymbolicLink: false
+    };
   }
 
   public async rename(from: string, to: string): Promise<void> {

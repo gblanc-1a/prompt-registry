@@ -10,7 +10,8 @@
  * All disk I/O goes through the injected `FileSystem` port; archive
  * creation uses `archiver`, reading each file as text (matching
  * `LocalAdapter`'s own documented text-only limitation — `FileSystem`
- * has no binary-safe read).
+ * has no binary-safe read). The portable resolver uses the binary-safe
+ * `readFileBytes` port for its raw source inventory.
  *
  * Deliberate deviations from `main`:
  * - `getLocalPath` now expands a `~/` prefix. `isValidUrl` already
@@ -36,9 +37,14 @@ import * as path from 'node:path';
 import type {
   Bundle,
   FileSystem,
+  PortableBundlePayload,
+  PortableBundleSelection,
   RegistrySource,
   SourceMetadata,
   ValidationResult,
+} from '@ai-primitives-hub/core';
+import {
+  RegistryError,
 } from '@ai-primitives-hub/core';
 import archiver from 'archiver';
 import * as yaml from 'js-yaml';
@@ -50,6 +56,13 @@ import {
   resolveLocalPath,
   toFileUrl,
 } from './local-path';
+import {
+  assertLocalResolutionCompatible,
+  readLocalSourceFiles,
+  recordedLocalBundleSelector,
+  resolveLocalBundleResolution,
+  resolveLocalSource,
+} from './local-portable-resolution';
 
 const DEFAULT_COLLECTIONS_PATH = 'collections';
 
@@ -77,6 +90,14 @@ interface CollectionManifest {
     items?: Record<string, unknown>;
   };
 }
+
+const isCanonicalLocalPath = (value: string): boolean => value.length > 0
+  && !value.includes('\0')
+  && !value.includes('\\')
+  && !value.startsWith('/')
+  && !/^[a-zA-Z]:/.test(value)
+  && !value.includes('://')
+  && value.split('/').every((segment) => segment.length > 0 && segment !== '.' && segment !== '..');
 
 const KIND_TO_MANIFEST_TYPE: Record<ItemKind, ManifestPromptType> = {
   prompt: 'prompt',
@@ -252,10 +273,15 @@ export class LocalAwesomeCopilotAdapter extends BaseSourceAdapter {
    * adapter reads manifests directly, so core's schema validation never
    * sees this path.
    * @param collection Parsed local collection manifest.
+   * @param itemOutputPaths
    * @returns Absolute README path, or undefined when none is declared or unsafe.
    */
-  private createDeploymentManifest(collection: CollectionManifest): Record<string, unknown> {
+  private createDeploymentManifest(
+    collection: CollectionManifest,
+    itemOutputPaths?: ReadonlyMap<string, string>
+  ): Record<string, unknown> {
     const prompts = collection.items.map((item) => {
+      const resolvedFile = itemOutputPaths?.get(item.path);
       if (item.kind === 'skill') {
         const skillMatch = /skills\/([^/]+)\/SKILL\.md/.exec(item.path);
         const skillName = skillMatch ? skillMatch[1] : 'unknown-skill';
@@ -263,7 +289,7 @@ export class LocalAwesomeCopilotAdapter extends BaseSourceAdapter {
           id: skillName,
           name: titleCase(skillName.replace(/-/g, ' ')),
           description: `Skill from ${collection.name}`,
-          file: item.path,
+          file: resolvedFile ?? item.path,
           type: 'skill' as const,
           tags: collection.tags ?? []
         };
@@ -275,7 +301,7 @@ export class LocalAwesomeCopilotAdapter extends BaseSourceAdapter {
         id,
         name: titleCase(id.replace(/-/g, ' ')),
         description: `From ${collection.name}`,
-        file: `prompts/${filename}`,
+        file: resolvedFile ?? `prompts/${filename}`,
         type: KIND_TO_MANIFEST_TYPE[item.kind],
         tags: collection.tags ?? []
       };
@@ -366,6 +392,149 @@ export class LocalAwesomeCopilotAdapter extends BaseSourceAdapter {
       }
     }
     return bundles;
+  }
+
+  /**
+   * Resolve one local collection from its portable collection-file selector.
+   * @param selection - Requested collection ID, version and optional replay pin.
+   */
+  public async resolvePortableBundle(selection: PortableBundleSelection): Promise<PortableBundlePayload | null> {
+    const resolved = resolveLocalSource(this.source, selection.localLocation, selection.expectedSource);
+    assertLocalResolutionCompatible(resolved.source, selection.resolution);
+    const sourceFiles = await readLocalSourceFiles(this.fs, resolved.root);
+    const collectionsPath = resolved.source.identity.kind === 'workspace-local'
+      || resolved.source.identity.kind === 'external-local'
+      ? resolved.source.identity.collectionsPath ?? DEFAULT_COLLECTIONS_PATH
+      : DEFAULT_COLLECTIONS_PATH;
+    const recordedSelector = recordedLocalBundleSelector(selection.resolution);
+    const candidates = recordedSelector === undefined
+      ? [...sourceFiles.keys()].filter((filePath) => {
+        if (!filePath.startsWith(`${collectionsPath}/`) || !filePath.endsWith('.collection.yml')) {
+          return false;
+        }
+        return !filePath.slice(collectionsPath.length + 1).includes('/');
+      })
+      : [recordedSelector];
+    const matches: { selector: string; collection: CollectionManifest }[] = [];
+
+    for (const candidateSelector of candidates) {
+      if (!isCanonicalLocalPath(candidateSelector)
+        || !candidateSelector.startsWith(`${collectionsPath}/`)
+        || candidateSelector.slice(collectionsPath.length + 1).includes('/')) {
+        if (recordedSelector !== undefined) {
+          throw new RegistryError({
+            code: 'BUNDLE.ARTIFACT_PIN_MISMATCH',
+            message: `Recorded local collection selector ${JSON.stringify(candidateSelector)} is not a direct file under ${JSON.stringify(collectionsPath)}.`,
+            hint: 'Use the collection file selector recorded by the local-snapshot pin.'
+          });
+        }
+        continue;
+      }
+      const bytes = sourceFiles.get(candidateSelector);
+      if (bytes === undefined) {
+        continue;
+      }
+      let candidateCollection: CollectionManifest | undefined;
+      try {
+        const parsed = yaml.load(Buffer.from(bytes).toString('utf8')) as CollectionManifest | undefined;
+        if (parsed && typeof parsed.id === 'string' && parsed.id.trim() !== ''
+          && Array.isArray(parsed.items)) {
+          candidateCollection = parsed;
+        }
+      } catch {
+        candidateCollection = undefined;
+      }
+      if (candidateCollection?.id === selection.bundleId) {
+        matches.push({ selector: candidateSelector, collection: candidateCollection });
+      } else if (recordedSelector !== undefined) {
+        throw new RegistryError({
+          code: 'BUNDLE.ARTIFACT_PIN_MISMATCH',
+          message: `Recorded local collection selector ${JSON.stringify(candidateSelector)} does not contain requested collection "${selection.bundleId}".`,
+          hint: 'Restore the collection at its recorded selector or explicitly resolve a new local snapshot.'
+        });
+      }
+    }
+
+    if (matches.length === 0) {
+      if (recordedSelector !== undefined) {
+        throw new RegistryError({
+          code: 'BUNDLE.ARTIFACT_PIN_MISMATCH',
+          message: `Recorded local collection selector ${JSON.stringify(recordedSelector)} is missing from the configured source.`,
+          hint: 'Restore the collection at its recorded selector or explicitly resolve a new local snapshot.'
+        });
+      }
+      return null;
+    }
+    if (matches.length > 1) {
+      throw new RegistryError({
+        code: 'BUNDLE.AMBIGUOUS_LOCAL_BUNDLE',
+        message: `More than one local collection has ID "${selection.bundleId}".`,
+        hint: 'Remove the duplicate or select a source with a unique collection manifest ID.'
+      });
+    }
+
+    const [{ selector, collection }] = matches;
+    const inputFiles = new Map<string, Uint8Array>([[selector, sourceFiles.get(selector)!]]);
+    const outputFiles = new Map<string, Uint8Array>();
+    const itemOutputPaths = new Map<string, string>();
+    for (const item of collection.items) {
+      if (typeof item.path !== 'string' || !isCanonicalLocalPath(item.path)) {
+        throw new RegistryError({
+          code: 'BUNDLE.INVALID_COLLECTION_PATH',
+          message: `Collection input path ${JSON.stringify(item.path)} is not a canonical source-relative path.`,
+          hint: 'Use a relative POSIX path contained by the configured local source.'
+        });
+      }
+      const input = sourceFiles.get(item.path);
+      if (input === undefined) {
+        throw new RegistryError({
+          code: 'BUNDLE.MISSING_COLLECTION_INPUT',
+          message: `Local collection input ${JSON.stringify(item.path)} is missing or is a symbolic link.`,
+          hint: 'Restore the selected input as a regular file inside the configured local source.'
+        });
+      }
+      inputFiles.set(item.path, input);
+      if (item.kind === 'skill') {
+        const skillDirectory = path.posix.dirname(item.path);
+        const prefix = `${skillDirectory}/`;
+        const skillFiles = [...sourceFiles].filter(([filePath]) => filePath.startsWith(prefix));
+        if (skillFiles.length === 0) {
+          throw new RegistryError({
+            code: 'BUNDLE.MISSING_COLLECTION_INPUT',
+            message: `Local collection skill input ${JSON.stringify(item.path)} has no readable files.`,
+            hint: 'Restore the skill files as regular files inside the configured local source.'
+          });
+        }
+        for (const [filePath, bytes] of skillFiles) {
+          inputFiles.set(filePath, bytes);
+          outputFiles.set(filePath, bytes);
+        }
+        itemOutputPaths.set(item.path, item.path);
+      } else {
+        const outputPath = `prompts/${path.posix.basename(item.path)}`;
+        outputFiles.set(outputPath, input);
+        itemOutputPaths.set(item.path, outputPath);
+      }
+    }
+
+    const version = collection.version ?? '1.0.0';
+    const rawManifest = Buffer.from(yaml.dump(this.createDeploymentManifest(collection, itemOutputPaths)), 'utf8');
+    outputFiles.set('deployment-manifest.yml', rawManifest);
+    const resolution = resolveLocalBundleResolution(
+      resolved.source,
+      selection,
+      selector,
+      version,
+      inputFiles
+    );
+    return {
+      source: resolved.source,
+      logicalBundleId: collection.id,
+      manifestId: collection.id,
+      version,
+      resolution,
+      files: outputFiles
+    };
   }
 
   public async downloadBundle(bundle: Bundle): Promise<Buffer> {

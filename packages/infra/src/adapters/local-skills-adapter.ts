@@ -15,6 +15,7 @@
  * has no binary-safe read, so a hash computed here over a binary skill
  * asset's UTF-8-decoded text won't byte-for-byte match one computed by
  * `main`'s raw-`Buffer` read; same accepted limitation, not a new one).
+ * The portable resolver instead reads raw bytes and preserves local-skills as a live source.
  * Uses the shared `resolveLocalPath`/`isValidLocalUrl` from
  * `./local-path`.
  *
@@ -33,9 +34,14 @@ import type {
   Bundle,
   Clock,
   FileSystem,
+  PortableBundlePayload,
+  PortableBundleSelection,
   RegistrySource,
   SourceMetadata,
   ValidationResult,
+} from '@ai-primitives-hub/core';
+import {
+  RegistryError,
 } from '@ai-primitives-hub/core';
 import archiver from 'archiver';
 import * as yaml from 'js-yaml';
@@ -47,6 +53,12 @@ import {
   resolveLocalPath,
   toFileUrl,
 } from './local-path';
+import {
+  assertLocalResolutionCompatible,
+  readLocalSourceFiles,
+  resolveLocalBundleResolution,
+  resolveLocalSource,
+} from './local-portable-resolution';
 
 const SKILL_ENVIRONMENTS = ['claude', 'vscode', 'claude-code'];
 const SKILL_TAGS = ['skill', 'anthropic', 'local'];
@@ -211,9 +223,12 @@ export class LocalSkillsAdapter extends BaseSourceAdapter {
     };
   }
 
-  private createDeploymentManifest(skill: SkillItem): Record<string, unknown> {
+  private createDeploymentManifest(
+    skill: SkillItem,
+    options: { skillsPath?: string; bundleId?: string } = {}
+  ): Record<string, unknown> {
     return {
-      id: this.buildBundleId(skill.id),
+      id: options.bundleId ?? this.buildBundleId(skill.id),
       version: formatSkillVersion(skill.contentHash),
       name: skill.name,
       metadata: {
@@ -230,7 +245,7 @@ export class LocalSkillsAdapter extends BaseSourceAdapter {
         keywords: SKILL_TAGS
       },
       common: {
-        directories: [`skills/${skill.id}`],
+        directories: [`${options.skillsPath ?? 'skills'}/${skill.id}`],
         files: [],
         include_patterns: ['**/*'],
         exclude_patterns: []
@@ -304,6 +319,130 @@ export class LocalSkillsAdapter extends BaseSourceAdapter {
       throw new Error(`Failed to fetch local skills: ${error instanceof Error ? error.message : error}`);
     }
     return skills.map((skill) => this.createBundleFromSkill(skill));
+  }
+
+  /**
+   * Resolve a live local skill without writing into or replacing its source directory.
+   * @param selection - Requested skill ID and optional live selector.
+   */
+  public async resolvePortableBundle(selection: PortableBundleSelection): Promise<PortableBundlePayload | null> {
+    const resolved = resolveLocalSource(this.source, selection.localLocation, selection.expectedSource);
+    assertLocalResolutionCompatible(resolved.source, selection.resolution);
+    const sourceFiles = await readLocalSourceFiles(this.fs, resolved.root);
+    const skillsPath = resolved.source.identity.kind === 'workspace-local'
+      || resolved.source.identity.kind === 'external-local'
+      ? resolved.source.identity.skillsPath ?? 'skills'
+      : 'skills';
+    const skillPrefix = `${skillsPath}/`;
+    const recordedSelector = selection.resolution?.kind === 'live'
+      ? selection.resolution.selector
+      : undefined;
+    const candidates = recordedSelector === undefined
+      ? [...sourceFiles.keys()]
+        .filter((filePath) => filePath.startsWith(skillPrefix) && filePath.endsWith('/SKILL.md'))
+        .map((filePath) => filePath.slice(0, -'/SKILL.md'.length))
+        .filter((skillSelector) => !skillSelector.slice(skillPrefix.length).includes('/'))
+      : [recordedSelector];
+    const matches: { selector: string; skillId: string }[] = [];
+
+    for (const candidateSelector of candidates) {
+      if (!candidateSelector.startsWith(skillPrefix) || candidateSelector.slice(skillPrefix.length).length === 0
+        || candidateSelector.slice(skillPrefix.length).includes('/')) {
+        if (recordedSelector !== undefined) {
+          throw new RegistryError({
+            code: 'BUNDLE.ARTIFACT_PIN_MISMATCH',
+            message: `Recorded live skill selector ${JSON.stringify(candidateSelector)} is not a direct child of ${JSON.stringify(skillsPath)}.`,
+            hint: 'Use the skill directory selector recorded by the live local-skills resolution.'
+          });
+        }
+        continue;
+      }
+      const candidateSkillId = candidateSelector.slice(skillPrefix.length);
+      const manifestPath = `${candidateSelector}/SKILL.md`;
+      if (!sourceFiles.has(manifestPath)) {
+        continue;
+      }
+      const matchesRequestedId = selection.bundleId === candidateSkillId
+        || selection.bundleId === this.buildBundleId(candidateSkillId)
+        || selection.bundleId.endsWith(`-${candidateSkillId}`);
+      if (matchesRequestedId) {
+        matches.push({ selector: candidateSelector, skillId: candidateSkillId });
+      } else if (recordedSelector !== undefined) {
+        throw new RegistryError({
+          code: 'BUNDLE.LOGICAL_BUNDLE_MISMATCH',
+          message: `Recorded live skill selector ${JSON.stringify(candidateSelector)} does not match requested bundle "${selection.bundleId}".`,
+          hint: 'Select the skill ID associated with the recorded live selector.'
+        });
+      }
+    }
+
+    if (matches.length === 0) {
+      if (recordedSelector !== undefined) {
+        throw new RegistryError({
+          code: 'BUNDLE.ARTIFACT_PIN_MISMATCH',
+          message: `Recorded live skill selector ${JSON.stringify(recordedSelector)} is missing from the configured source.`,
+          hint: 'Restore the skill at its recorded path or select a different live skill.'
+        });
+      }
+      return null;
+    }
+    if (matches.length > 1) {
+      throw new RegistryError({
+        code: 'BUNDLE.AMBIGUOUS_LOCAL_BUNDLE',
+        message: `More than one local skill matches bundle ID "${selection.bundleId}".`,
+        hint: 'Use the skill ID or a live selector that uniquely identifies one local skill.'
+      });
+    }
+
+    const [{ selector, skillId }] = matches;
+    const filePrefix = `${selector}/`;
+    const rawFiles = new Map(
+      [...sourceFiles]
+        .filter(([filePath]) => filePath.startsWith(filePrefix))
+        .map(([filePath, bytes]) => [filePath.slice(filePrefix.length), bytes])
+    );
+    const skillMd = rawFiles.get('SKILL.md');
+    if (skillMd === undefined) {
+      return null;
+    }
+    const frontmatter = parseFrontmatter(Buffer.from(skillMd).toString('utf8'));
+    const contentHash = crypto.createHash('sha256');
+    const relativeFiles = [...rawFiles.keys()].toSorted((left, right) => left.localeCompare(right));
+    for (const filePath of relativeFiles) {
+      contentHash.update(filePath).update(':').update(rawFiles.get(filePath)!).update('|');
+    }
+    const contentHashHex = contentHash.digest('hex');
+    const skill: SkillItem = {
+      id: skillId,
+      name: frontmatter.name || skillId,
+      description: frontmatter.description || 'No description',
+      license: frontmatter.license,
+      path: selector,
+      files: relativeFiles,
+      contentHash: contentHashHex
+    };
+    const outputFiles = new Map<string, Uint8Array>([
+      ['deployment-manifest.yml', Buffer.from(yaml.dump(this.createDeploymentManifest(skill, {
+        skillsPath,
+        bundleId: skillId
+      })), 'utf8')]
+    ]);
+    for (const [filePath, bytes] of sourceFiles) {
+      if (filePath.startsWith(filePrefix)) {
+        outputFiles.set(filePath, bytes);
+      }
+    }
+
+    const version = formatSkillVersion(contentHashHex);
+    const resolution = resolveLocalBundleResolution(resolved.source, selection, selector, version, rawFiles);
+    return {
+      source: resolved.source,
+      logicalBundleId: skillId,
+      manifestId: skillId,
+      version,
+      resolution,
+      files: outputFiles
+    };
   }
 
   public async downloadBundle(bundle: Bundle): Promise<Buffer> {

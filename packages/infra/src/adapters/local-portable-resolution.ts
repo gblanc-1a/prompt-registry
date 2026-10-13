@@ -2,6 +2,7 @@
  * Portable identity and raw-file acquisition for retained local adapters.
  * @module adapters/local-portable-resolution
  */
+import * as crypto from 'node:crypto';
 import * as path from 'node:path';
 import {
   assertResolutionSourceCompatibility,
@@ -99,6 +100,26 @@ const sourceRelativeToWorkspace = (source: RegistrySource, workspaceRoot: string
   return relative === '' ? '.' : relative.split(path.sep).join('/');
 };
 
+const requireAssociatedBindingRoot = (source: RegistrySource, location: Extract<LocalSourceLocation, { kind: 'binding' }>): string => {
+  const bindingRoot = requireAbsoluteRoot(location.root, 'Explicit local binding root');
+  const configuredPath = resolveLocalPath(source.url);
+  if (!path.isAbsolute(configuredPath)) {
+    throw localResolutionError(
+      'CONFIG.UNVERIFIABLE_LOCAL_BINDING',
+      `Relative configured source ${JSON.stringify(source.url)} cannot be associated with external binding "${location.name}" without a workspace root.`,
+      'Resolve the source with its selected workspace root or configure an absolute source path that matches the explicit binding root.'
+    );
+  }
+  if (path.resolve(configuredPath) !== bindingRoot) {
+    throw localResolutionError(
+      'CONFIG.CONFLICTING_LOCAL_BINDING',
+      `Explicit local binding "${location.name}" points to ${JSON.stringify(bindingRoot)}, but the configured source points to ${JSON.stringify(path.resolve(configuredPath))}.`,
+      'Update the delivery source configuration or binding so both identify the same local source root.'
+    );
+  }
+  return bindingRoot;
+};
+
 /**
  * Resolve a configured local source to a portable descriptor without storing its runtime root.
  * @param source - Delivery configuration for a retained local adapter.
@@ -130,7 +151,7 @@ export const resolveLocalSourceIdentity = (
         : {})
     };
   } else if (location.kind === 'binding') {
-    requireAbsoluteRoot(location.root, 'Explicit local binding root');
+    requireAssociatedBindingRoot(source, location);
     identity = {
       kind: 'external-local',
       bindingName: location.name,
@@ -170,16 +191,7 @@ export const resolveLocalSourceRoot = (
     return relativeRoot === '.' ? workspaceRoot : path.resolve(workspaceRoot, ...relativeRoot.split('/'));
   }
   if (location.kind === 'binding') {
-    const bindingRoot = requireAbsoluteRoot(location.root, 'Explicit local binding root');
-    const configuredPath = resolveLocalPath(source.url);
-    if (path.isAbsolute(configuredPath) && path.resolve(configuredPath) !== bindingRoot) {
-      throw localResolutionError(
-        'CONFIG.CONFLICTING_LOCAL_BINDING',
-        `Explicit local binding "${location.name}" points to ${JSON.stringify(bindingRoot)}, but the configured source points to ${JSON.stringify(path.resolve(configuredPath))}.`,
-        'Update the delivery source configuration or binding so both identify the same local source root.'
-      );
-    }
-    return bindingRoot;
+    return requireAssociatedBindingRoot(source, location);
   }
   throw localResolutionError(
     'CONFIG.MISSING_LOCAL_BINDING',
@@ -237,20 +249,59 @@ const invalidInventoryPath = (name: string): RegistryError => localResolutionErr
  * @param root - Absolute local source root.
  */
 export const readLocalSourceFiles = async (fs: FileSystem, root: string): Promise<Map<string, Uint8Array>> => {
+  if (root.trim() === '' || !path.isAbsolute(root)) {
+    throw localResolutionError(
+      'CONFIG.INVALID_SOURCE_LOCATOR',
+      'Local source inventory root must be an absolute filesystem path.',
+      'Resolve local source paths against the selected workspace root or explicit binding; do not use process CWD.'
+    );
+  }
+  const absoluteRoot = path.resolve(root);
+  const fileSystemRoot = path.parse(absoluteRoot).root;
+  const components = absoluteRoot.slice(fileSystemRoot.length).split(path.sep).filter(Boolean);
+  const directories: string[] = [];
+  let currentDirectory = fileSystemRoot;
+  for (const component of components) {
+    currentDirectory = path.join(currentDirectory, component);
+    directories.push(currentDirectory);
+  }
+  if (directories.length === 0) {
+    directories.push(fileSystemRoot);
+  }
   let rootStat;
   try {
-    rootStat = await fs.lstat(root);
+    for (const directory of directories) {
+      const stat = await fs.lstat(directory);
+      if (stat.isSymbolicLink) {
+        throw localResolutionError(
+          'FS.LOCAL_SOURCE_UNAVAILABLE',
+          `Local source root ${JSON.stringify(absoluteRoot)} traverses symbolic-link ancestor ${JSON.stringify(directory)}.`,
+          'Configure the real source directory path instead of a path beneath a symbolic link.'
+        );
+      }
+      if (directory !== absoluteRoot && !stat.isDirectory) {
+        throw localResolutionError(
+          'FS.LOCAL_SOURCE_UNAVAILABLE',
+          `Local source root ${JSON.stringify(absoluteRoot)} has non-directory ancestor ${JSON.stringify(directory)}.`,
+          'Configure an existing directory path for the local source.'
+        );
+      }
+      rootStat = stat;
+    }
   } catch (error) {
+    if (error instanceof RegistryError) {
+      throw error;
+    }
     throw localResolutionError(
       'FS.LOCAL_SOURCE_UNAVAILABLE',
-      `Cannot inspect local source root ${JSON.stringify(root)}: ${error instanceof Error ? error.message : String(error)}`,
+      `Cannot inspect local source root ${JSON.stringify(absoluteRoot)}: ${error instanceof Error ? error.message : String(error)}`,
       'Check that the configured local source exists and is readable.'
     );
   }
-  if (rootStat.isSymbolicLink || !rootStat.isDirectory) {
+  if (rootStat === undefined || rootStat.isSymbolicLink || !rootStat.isDirectory) {
     throw localResolutionError(
       'FS.LOCAL_SOURCE_UNAVAILABLE',
-      `Local source root ${JSON.stringify(root)} must be a directory and cannot itself be a symbolic link.`,
+      `Local source root ${JSON.stringify(absoluteRoot)} must be a directory and cannot itself be a symbolic link.`,
       'Configure the real source directory as the workspace path or explicit local binding root.'
     );
   }
@@ -276,7 +327,7 @@ export const readLocalSourceFiles = async (fs: FileSystem, root: string): Promis
       }
     }
   };
-  await walk(root, '');
+  await walk(absoluteRoot, '');
   return files;
 };
 
@@ -314,6 +365,17 @@ export const assertLocalResolutionCompatible = (
       'Use a live resolution for local-skills; use local or local-awesome-copilot for pinned local snapshots.'
     );
   }
+  if (resolution.kind === 'unpinned' && source.type !== 'local-skills') {
+    const unsupportedDigests = Object.keys(resolution.evidence?.knownDigests ?? {})
+      .filter((name) => !['sourceContentSha256', 'manifestSha256'].includes(name));
+    if (unsupportedDigests.length > 0) {
+      throw localResolutionError(
+        'BUNDLE.UNSUPPORTED_DIGEST_EVIDENCE',
+        `Local snapshot resolution cannot verify recorded digest evidence: ${unsupportedDigests.join(', ')}.`,
+        'Retain the evidence and use an acquisition path that can verify those digest kinds; do not discard or replace them.'
+      );
+    }
+  }
 };
 
 /**
@@ -337,13 +399,15 @@ export const recordedLocalBundleSelector = (resolution: BundleResolution | undef
  * @param selector - Adapter-specific portable bundle selector.
  * @param version - Version parsed from the selected source manifest.
  * @param files - Raw selected source inventory, before deployment transformations.
+ * @param manifestBytes
  */
 export const resolveLocalBundleResolution = (
   source: PortableSourceDescriptor,
   selection: PortableBundleSelection,
   selector: string,
   version: string,
-  files: ExtractedFiles
+  files: ExtractedFiles,
+  manifestBytes?: Uint8Array
 ): BundleResolution => {
   const recorded = selection.resolution;
   assertLocalResolutionCompatible(source, recorded);
@@ -374,6 +438,27 @@ export const resolveLocalBundleResolution = (
         'BUNDLE.ARTIFACT_PIN_MISMATCH',
         `Selected local bundle selector ${JSON.stringify(selector)} does not match recorded selector ${JSON.stringify(recordedSelector)}.`,
         'Resolve the exact local bundle path recorded in the snapshot pin.'
+      );
+    }
+  }
+
+  const expectedManifestDigest = recorded?.kind === 'unpinned'
+    ? recorded.evidence?.knownDigests?.manifestSha256
+    : undefined;
+  if (expectedManifestDigest !== undefined) {
+    if (manifestBytes === undefined) {
+      throw localResolutionError(
+        'BUNDLE.UNSUPPORTED_DIGEST_EVIDENCE',
+        'Local snapshot resolution cannot verify the recorded raw manifest SHA-256 digest.',
+        'Retain the evidence and use an acquisition path that exposes the selected source manifest bytes.'
+      );
+    }
+    const manifestDigest = crypto.createHash('sha256').update(manifestBytes).digest('hex');
+    if (expectedManifestDigest !== manifestDigest) {
+      throw localResolutionError(
+        'BUNDLE.ARTIFACT_PIN_MISMATCH',
+        `Local source manifest for ${JSON.stringify(selector)} does not match its recorded raw-byte SHA-256 digest.`,
+        'Restore the recorded source manifest or explicitly resolve a new local snapshot.'
       );
     }
   }

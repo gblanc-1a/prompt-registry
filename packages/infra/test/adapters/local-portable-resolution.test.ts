@@ -1,9 +1,11 @@
+import * as crypto from 'node:crypto';
 import type {
   LocalSourceLocation,
   PortableBundlePayload,
   PortableBundleSelection,
   RegistrySource,
 } from '@ai-primitives-hub/core';
+import * as yaml from 'js-yaml';
 import {
   describe,
   expect,
@@ -280,6 +282,111 @@ describe('portable local source resolution', () => {
     })).rejects.toMatchObject({ code: 'BUNDLE.ARTIFACT_PIN_MISMATCH' });
   });
 
+  it('rejects a local snapshot when its known raw deployment-manifest digest differs', async () => {
+    const fs = new InMemoryFileSystem();
+    fs.seed('/workspace/registry/example-bundle/deployment-manifest.yml', deploymentManifest());
+    const adapter = new LocalAdapter(makeSource(), fs);
+
+    await expect(resolve(adapter, {
+      bundleId: 'example-bundle',
+      localLocation: workspace('/workspace'),
+      resolution: {
+        kind: 'unpinned',
+        reason: 'Historical manifest digest',
+        evidence: { knownDigests: { manifestSha256: '0'.repeat(64) } }
+      }
+    })).rejects.toMatchObject({ code: 'BUNDLE.ARTIFACT_PIN_MISMATCH' });
+  });
+
+  it('accepts a local snapshot when its known raw deployment-manifest digest matches', async () => {
+    const fs = new InMemoryFileSystem();
+    const manifestBytes = new TextEncoder().encode(deploymentManifest());
+    fs.seed('/workspace/registry/example-bundle/deployment-manifest.yml', manifestBytes);
+    const manifestSha256 = crypto.createHash('sha256').update(manifestBytes).digest('hex');
+
+    const payload = await resolve(new LocalAdapter(makeSource(), fs), {
+      bundleId: 'example-bundle',
+      localLocation: workspace('/workspace'),
+      resolution: {
+        kind: 'unpinned',
+        reason: 'Historical manifest digest',
+        evidence: { knownDigests: { manifestSha256 } }
+      }
+    });
+
+    expect(payload?.resolution).toMatchObject({ kind: 'pinned', provider: 'local-snapshot' });
+  });
+
+  it('reports known archive digests that local snapshots cannot verify', async () => {
+    const fs = new InMemoryFileSystem();
+    fs.seed('/workspace/registry/example-bundle/deployment-manifest.yml', deploymentManifest());
+
+    await expect(resolve(new LocalAdapter(makeSource(), fs), {
+      bundleId: 'example-bundle',
+      localLocation: workspace('/workspace'),
+      resolution: {
+        kind: 'unpinned',
+        reason: 'Historical archive digest',
+        evidence: { knownDigests: { archiveSha256: '0'.repeat(64) } }
+      }
+    })).rejects.toMatchObject({ code: 'BUNDLE.UNSUPPORTED_DIGEST_EVIDENCE' });
+  });
+
+  it('verifies the selected raw collection manifest against known digest evidence', async () => {
+    const fs = new InMemoryFileSystem();
+    const manifest = collectionManifest();
+    fs.seed('/workspace/collections/example.collection.yml', manifest);
+    fs.seed('/workspace/prompts/example.prompt.md', '# Example prompt');
+    const manifestSha256 = crypto.createHash('sha256').update(manifest).digest('hex');
+
+    const payload = await resolve(new LocalAwesomeCopilotAdapter(makeSource({
+      type: 'local-awesome-copilot',
+      url: './'
+    }), fs), {
+      bundleId: 'example-collection',
+      localLocation: workspace('/workspace'),
+      resolution: {
+        kind: 'unpinned',
+        reason: 'Historical collection manifest digest',
+        evidence: { knownDigests: { manifestSha256 } }
+      }
+    });
+
+    expect(payload?.resolution).toMatchObject({ kind: 'pinned', provider: 'local-snapshot' });
+  });
+
+  it('refuses to read a local source beneath a symlinked ancestor', async () => {
+    class FileSystemWithSymlinkedAncestor extends InMemoryFileSystem {
+      public override async lstat(filePath: string) {
+        if (filePath === '/workspace/link') {
+          return { isDirectory: false, isFile: false, isSymbolicLink: true, size: 0, mtimeMs: 0 };
+        }
+        return super.lstat(filePath);
+      }
+    }
+    const fs = new FileSystemWithSymlinkedAncestor();
+    fs.seed('/workspace/link/registry/example-bundle/deployment-manifest.yml', deploymentManifest());
+    const readFileBytes = vi.spyOn(fs, 'readFileBytes');
+
+    await expect(resolve(
+      new LocalAdapter(makeSource({ url: './link/registry' }), fs),
+      { bundleId: 'example-bundle', localLocation: workspace('/workspace') }
+    )).rejects.toMatchObject({ code: 'FS.LOCAL_SOURCE_UNAVAILABLE' });
+    expect(readFileBytes).not.toHaveBeenCalled();
+  });
+
+  it('does not guess a relative configured source association from an external binding root', async () => {
+    const fs = new InMemoryFileSystem();
+    fs.seed('/machine/registry/example-bundle/deployment-manifest.yml', deploymentManifest());
+    const readFileBytes = vi.spyOn(fs, 'readFileBytes');
+
+    await expect(resolve(
+      new LocalAdapter(makeSource({ url: './registry' }), fs),
+      { bundleId: 'example-bundle', localLocation: binding('registry', '/machine/registry') }
+    )).rejects.toMatchObject({ code: 'CONFIG.UNVERIFIABLE_LOCAL_BINDING' });
+    expect(readFileBytes).not.toHaveBeenCalled();
+  });
+
   it('keeps local-skills live across replay without writing to or copying over its source', async () => {
     const fs = new InMemoryFileSystem();
     fs.seed('/workspace/skills/skills/my-skill/SKILL.md', '---\nname: My Skill\n---\nInstructions');
@@ -307,6 +414,121 @@ describe('portable local source resolution', () => {
     expect(replayed?.files.get('skills/my-skill/assets/data.bin')).toEqual(new Uint8Array([0, 255]));
     expect(writeFile).not.toHaveBeenCalled();
     expect(writeFileBytes).not.toHaveBeenCalled();
+  });
+
+  it('prefers an exact local skill ID over a suffix match', async () => {
+    const fs = new InMemoryFileSystem();
+    fs.seed('/workspace/skills/skills/team-my-skill/SKILL.md', '---\nname: Exact skill\n---\nExact instructions');
+    fs.seed('/workspace/skills/skills/my-skill/SKILL.md', '---\nname: Suffix skill\n---\nSuffix instructions');
+    const adapter = new LocalSkillsAdapter(
+      makeSource({ type: 'local-skills', url: './skills' }),
+      fs,
+      new FixedClock(0)
+    );
+
+    const payload = await resolve(adapter, {
+      bundleId: 'team-my-skill',
+      localLocation: workspace('/workspace')
+    });
+
+    expect(payload?.logicalBundleId).toBe('team-my-skill');
+    expect(payload?.files.get('skills/team-my-skill/SKILL.md')).toEqual(
+      new TextEncoder().encode('---\nname: Exact skill\n---\nExact instructions')
+    );
+    expect(payload?.files.has('skills/my-skill/SKILL.md')).toBe(false);
+  });
+
+  it('does not accept arbitrary local skill ID suffixes as legacy aliases', async () => {
+    const fs = new InMemoryFileSystem();
+    fs.seed('/workspace/skills/skills/my-skill/SKILL.md', '---\nname: My Skill\n---\nInstructions');
+    const adapter = new LocalSkillsAdapter(
+      makeSource({ type: 'local-skills', url: './skills' }),
+      fs,
+      new FixedClock(0)
+    );
+
+    const payload = await resolve(adapter, {
+      bundleId: 'unrelated-source-my-skill',
+      localLocation: workspace('/workspace')
+    });
+
+    expect(payload).toBeNull();
+  });
+
+  it('continues to accept the exact source-specific legacy local skill ID', async () => {
+    const fs = new InMemoryFileSystem();
+    fs.seed('/workspace/skills/skills/my-skill/SKILL.md', '---\nname: My Skill\n---\nInstructions');
+    const adapter = new LocalSkillsAdapter(
+      makeSource({ type: 'local-skills', url: './skills' }),
+      fs,
+      new FixedClock(0)
+    );
+
+    const payload = await resolve(adapter, {
+      bundleId: 'local-skills-skills-my-skill',
+      localLocation: workspace('/workspace')
+    });
+
+    expect(payload?.logicalBundleId).toBe('my-skill');
+    expect(payload?.resolution).toMatchObject({ kind: 'live', selector: 'skills/my-skill' });
+  });
+
+  it('rejects selected collection inputs that flatten to the same output filename', async () => {
+    const fs = new InMemoryFileSystem();
+    fs.seed('/workspace/collections/example.collection.yml', [
+      'id: example-collection',
+      'name: Example Collection',
+      'description: Collection with duplicate basenames',
+      'items:',
+      '  - path: prompts/first/example.prompt.md',
+      '    kind: prompt',
+      '  - path: prompts/second/example.prompt.md',
+      '    kind: prompt'
+    ].join('\n'));
+    fs.seed('/workspace/prompts/first/example.prompt.md', 'first source');
+    fs.seed('/workspace/prompts/second/example.prompt.md', 'second source');
+
+    await expect(resolve(
+      new LocalAwesomeCopilotAdapter(makeSource({
+        type: 'local-awesome-copilot',
+        url: './'
+      }), fs),
+      { bundleId: 'example-collection', localLocation: workspace('/workspace') }
+    )).rejects.toMatchObject({ code: 'BUNDLE.OUTPUT_PATH_COLLISION' });
+  });
+
+  it('keeps generated collection selectors pointed at the matching selected output bytes', async () => {
+    const fs = new InMemoryFileSystem();
+    fs.seed('/workspace/collections/example.collection.yml', [
+      'id: example-collection',
+      'name: Example Collection',
+      'description: Collection with unique output names',
+      'items:',
+      '  - path: prompts/first/first.prompt.md',
+      '    kind: prompt',
+      '  - path: prompts/second/second.prompt.md',
+      '    kind: prompt'
+    ].join('\n'));
+    fs.seed('/workspace/prompts/first/first.prompt.md', 'first source');
+    fs.seed('/workspace/prompts/second/second.prompt.md', 'second source');
+
+    const payload = await resolve(
+      new LocalAwesomeCopilotAdapter(makeSource({
+        type: 'local-awesome-copilot',
+        url: './'
+      }), fs),
+      { bundleId: 'example-collection', localLocation: workspace('/workspace') }
+    );
+    const generatedManifest = yaml.load(
+      Buffer.from(payload?.files.get('deployment-manifest.yml') ?? []).toString('utf8')
+    ) as { prompts: { file: string }[] };
+
+    expect(generatedManifest.prompts.map(({ file }) => file)).toEqual([
+      'prompts/first.prompt.md',
+      'prompts/second.prompt.md'
+    ]);
+    expect(payload?.files.get('prompts/first.prompt.md')).toEqual(new TextEncoder().encode('first source'));
+    expect(payload?.files.get('prompts/second.prompt.md')).toEqual(new TextEncoder().encode('second source'));
   });
 
   it('does not let a repeated external binding name replay a snapshot over different root content', async () => {

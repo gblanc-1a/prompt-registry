@@ -343,7 +343,8 @@ export class LocalSkillsAdapter extends BaseSourceAdapter {
         .map((filePath) => filePath.slice(0, -'/SKILL.md'.length))
         .filter((skillSelector) => !skillSelector.slice(skillPrefix.length).includes('/'))
       : [recordedSelector];
-    const matches: { selector: string; skillId: string }[] = [];
+    const exactMatches: { selector: string; skillId: string }[] = [];
+    const legacyMatches: { selector: string; skillId: string }[] = [];
 
     for (const candidateSelector of candidates) {
       if (!candidateSelector.startsWith(skillPrefix) || candidateSelector.slice(skillPrefix.length).length === 0
@@ -362,11 +363,10 @@ export class LocalSkillsAdapter extends BaseSourceAdapter {
       if (!sourceFiles.has(manifestPath)) {
         continue;
       }
-      const matchesRequestedId = selection.bundleId === candidateSkillId
-        || selection.bundleId === this.buildBundleId(candidateSkillId)
-        || selection.bundleId.endsWith(`-${candidateSkillId}`);
-      if (matchesRequestedId) {
-        matches.push({ selector: candidateSelector, skillId: candidateSkillId });
+      if (selection.bundleId === candidateSkillId) {
+        exactMatches.push({ selector: candidateSelector, skillId: candidateSkillId });
+      } else if (selection.bundleId === this.buildBundleId(candidateSkillId)) {
+        legacyMatches.push({ selector: candidateSelector, skillId: candidateSkillId });
       } else if (recordedSelector !== undefined) {
         throw new RegistryError({
           code: 'BUNDLE.LOGICAL_BUNDLE_MISMATCH',
@@ -376,6 +376,7 @@ export class LocalSkillsAdapter extends BaseSourceAdapter {
       }
     }
 
+    const matches = exactMatches.length > 0 ? exactMatches : legacyMatches;
     if (matches.length === 0) {
       if (recordedSelector !== undefined) {
         throw new RegistryError({

@@ -476,7 +476,20 @@ export class LocalAwesomeCopilotAdapter extends BaseSourceAdapter {
     const [{ selector, collection }] = matches;
     const inputFiles = new Map<string, Uint8Array>([[selector, sourceFiles.get(selector)!]]);
     const outputFiles = new Map<string, Uint8Array>();
+    const outputSourcePaths = new Map<string, string>();
     const itemOutputPaths = new Map<string, string>();
+    const addSelectedOutput = (outputPath: string, sourcePath: string, bytes: Uint8Array): void => {
+      const previousSourcePath = outputSourcePaths.get(outputPath);
+      if (previousSourcePath !== undefined && previousSourcePath !== sourcePath) {
+        throw new RegistryError({
+          code: 'BUNDLE.OUTPUT_PATH_COLLISION',
+          message: `Selected collection inputs ${JSON.stringify(previousSourcePath)} and ${JSON.stringify(sourcePath)} both map to output path ${JSON.stringify(outputPath)}.`,
+          hint: 'Choose input paths with unique output basenames so every generated manifest entry points to its own selected content.'
+        });
+      }
+      outputSourcePaths.set(outputPath, sourcePath);
+      outputFiles.set(outputPath, bytes);
+    };
     for (const item of collection.items) {
       if (typeof item.path !== 'string' || !isCanonicalLocalPath(item.path)) {
         throw new RegistryError({
@@ -507,12 +520,12 @@ export class LocalAwesomeCopilotAdapter extends BaseSourceAdapter {
         }
         for (const [filePath, bytes] of skillFiles) {
           inputFiles.set(filePath, bytes);
-          outputFiles.set(filePath, bytes);
+          addSelectedOutput(filePath, filePath, bytes);
         }
         itemOutputPaths.set(item.path, item.path);
       } else {
         const outputPath = `prompts/${path.posix.basename(item.path)}`;
-        outputFiles.set(outputPath, input);
+        addSelectedOutput(outputPath, item.path, input);
         itemOutputPaths.set(item.path, outputPath);
       }
     }
@@ -525,7 +538,8 @@ export class LocalAwesomeCopilotAdapter extends BaseSourceAdapter {
       selection,
       selector,
       version,
-      inputFiles
+      inputFiles,
+      sourceFiles.get(selector)
     );
     return {
       source: resolved.source,

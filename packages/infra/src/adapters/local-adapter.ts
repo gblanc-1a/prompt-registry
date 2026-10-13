@@ -319,7 +319,8 @@ export class LocalAdapter extends BaseSourceAdapter {
       selection,
       selector,
       manifest.version,
-      files
+      files,
+      files.get(MANIFEST_FILE_NAME)
     );
     return {
       source: resolved.source,

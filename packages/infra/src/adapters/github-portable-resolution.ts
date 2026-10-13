@@ -191,7 +191,6 @@ function selectorPath(value: unknown, fallback: string, label: string): string {
  * @param api - Injected GitHub API boundary.
  * @param expected - Previously recorded portable source, if any.
  * @param adapterDefaultRef - Adapter-specific default ref, when it does not follow the repository default.
- * @param adapterDefaultRef
  */
 export const resolveGitHubSourceIdentity = async (
   source: RegistrySource,

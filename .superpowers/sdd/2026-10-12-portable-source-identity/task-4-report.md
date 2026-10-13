@@ -168,3 +168,62 @@ RED output: `1 failed | 3 passed` files; `4 failed | 102 passed` tests. The new 
 ## Concern
 
 The inherited portable GitHub release limitation remains: extraction supports ZIP only. A tarball is still rejected unless the release offers a ZIP; legacy catalog behavior is unchanged. No new concerns were found.
+
+---
+
+# Task 4 fix round 3
+
+Base: `4c056ba4bf30809d26e9d7e7acfdcbf65b8121b7`.
+
+## RED evidence
+
+Added adapter-boundary regressions for a bare manifest-ID prefix overlap, a same-version pinned catalog-alias prefix overlap, and a fresh wrong-version candidate that must fall back to the actual requested catalog bundle. Added exact-acceptance cases for the bare manifest ID and both existing public/runtime catalog ID forms.
+
+Before changing production code, ran:
+
+```text
+pnpm -C packages/infra exec vitest run test/adapters/github-portable-resolution.test.ts
+```
+
+RED result: 1 file failed; 3 tests failed and 29 passed. The regressions showed:
+
+- A release whose verified manifest ID was `portable` incorrectly resolved a request for `owner-repo-portable-id-1.2.3`.
+- A pinned release whose manifest ID was `portable-id` incorrectly resolved the non-canonical request `owner-repo-portable-id-extra-1.2.3`.
+- A fresh prefix-overlap candidate with manifest version `9.9.9` caused `BUNDLE.RESOLUTION_VERSION_MISMATCH` instead of falling back to the catalog release for `portable-id` version `1.2.3`.
+
+## Fix
+
+- Replaced prefix/suffix matching in portable GitHub release resolution with exact equality against the verified manifest ID and the existing public (`generateBundleId`) and runtime (`generateGitHubReleaseBundleId`) catalog IDs, constructed using the manifest's exact version.
+- Restricted generated aliases to canonical namespaces derived from the configured locator, resolved locator, and a validated historical source locator, preserving IDs across repository renames.
+- Applied the same exact matching when scanning release catalog sidecar manifests, preventing a loose suffix match from selecting an unrelated catalog candidate.
+- Kept fresh logical-ID mismatches eligible for catalog fallback, while pinned replay still fails with `BUNDLE.LOGICAL_BUNDLE_MISMATCH`. Successful payloads continue to report the verified `manifest.id` as `logicalBundleId`.
+- Left archive bytes, artifact IDs, digest checks, and legacy catalog generation unchanged.
+
+## GREEN validation
+
+| Command | Result |
+| --- | --- |
+| `pnpm -C packages/infra exec vitest run test/adapters/github-portable-resolution.test.ts` | Passed after fix: 1 file, 32 tests |
+| `pnpm -C packages/infra exec vitest run test/adapters/github-portable-resolution.test.ts test/adapters/github-adapter.test.ts test/adapters/skills-adapter.test.ts test/adapters/awesome-copilot-adapter.test.ts test/resolvers/github-resolver.test.ts test/resolvers/skills-resolver.test.ts test/resolvers/awesome-copilot-resolver.test.ts` | Passed: 7 files, 149 tests |
+| `pnpm -C packages/infra run lint:fix` | Passed: 0 errors, 97 existing warnings; no warnings in changed source/test files |
+| `pnpm -C packages/infra run build` | Passed: TypeScript compile and template copy |
+| `pnpm -C packages/infra test` | Passed once: 81 files, 886 tests; the existing invalid-YAML fixture diagnostic appeared on stderr |
+| `git diff --check` | Passed |
+
+## Files changed
+
+- `packages/infra/src/adapters/github-adapter.ts`
+- `packages/infra/test/adapters/github-portable-resolution.test.ts`
+- `.superpowers/sdd/2026-10-12-portable-source-identity/task-4-report.md`
+
+## Concerns
+
+No new concerns. The inherited ZIP-only portable archive limitation remains as recorded above.
+
+Scoped conventional commit:
+
+```text
+fix(infra): require exact GitHub logical bundle IDs
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+```

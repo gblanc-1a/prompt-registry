@@ -35,9 +35,9 @@ import type {
 import {
   assertResolutionSourceCompatibility,
   assertResolutionVersion,
+  generateBundleId,
   generateGitHubReleaseBundleId,
   isCredentialFreeHttpUrl,
-  isManifestIdMatch,
   RegistryError,
   sourceContentDigest,
 } from '@ai-primitives-hub/core';
@@ -50,6 +50,7 @@ import {
 } from './base-source-adapter';
 import {
   assertSupportedKnownDigests,
+  type GitHubRepositoryCoordinates,
   parseGitHubRepositoryLocator,
   resolveGitHubSourceIdentity,
 } from './github-portable-resolution';
@@ -183,19 +184,13 @@ function parsePortableManifest(files: ReadonlyMap<string, Uint8Array>): Deployme
 function isManifestLogicalIdMatch(
   manifestId: string,
   bundleId: string,
-  owner: string,
-  repo: string,
-  expectedVersion: string | undefined,
+  namespaces: readonly GitHubRepositoryCoordinates[],
   manifestVersion: string
 ): boolean {
-  if (manifestId === bundleId || bundleId.startsWith(`${owner}-${repo}-${manifestId}-`)) {
-    return true;
-  }
-  if (expectedVersion !== undefined && expectedVersion !== 'latest'
-    && isManifestIdMatch(manifestId, expectedVersion, bundleId)) {
-    return true;
-  }
-  return isManifestIdMatch(manifestId, manifestVersion, bundleId);
+  return manifestId === bundleId || namespaces.some(({ owner, repo }) => (
+    bundleId === generateGitHubReleaseBundleId(owner, repo, `v${manifestVersion}`, manifestId, manifestVersion)
+    || bundleId === generateBundleId(`${owner}/${repo}`, manifestId, manifestVersion)
+  ));
 }
 
 function formatByteSize(bytes: number): string {
@@ -361,6 +356,7 @@ export class GitHubAdapter extends BaseSourceAdapter {
     owner: string,
     repo: string,
     selection: PortableBundleSelection,
+    namespaces: readonly GitHubRepositoryCoordinates[],
     requestedVersion?: string,
     excludedReleaseId?: string
   ): Promise<GitHubRelease | undefined> {
@@ -375,7 +371,8 @@ export class GitHubAdapter extends BaseSourceAdapter {
       }
       try {
         const manifest = await this.fetchManifestWithCache(manifestAsset);
-        if (!manifest?.id || !manifest.version || !isManifestIdMatch(manifest.id, manifest.version, selection.bundleId)) {
+        if (!manifest?.id || !manifest.version
+          || !isManifestLogicalIdMatch(manifest.id, selection.bundleId, namespaces, manifest.version)) {
           continue;
         }
         if (requestedVersion !== undefined && requestedVersion !== 'latest' && manifest.version !== requestedVersion) {
@@ -408,6 +405,7 @@ export class GitHubAdapter extends BaseSourceAdapter {
       assertResolutionSourceCompatibility(portableSource, selection.resolution);
     }
     const coordinates = parseGitHubRepositoryLocator(portableSource.locator);
+    const namespaces = this.portableBundleIdNamespaces(selection, coordinates);
     const pinned = selection.resolution?.kind === 'pinned'
       && selection.resolution.provider === 'github-release'
       ? selection.resolution
@@ -442,10 +440,22 @@ export class GitHubAdapter extends BaseSourceAdapter {
           if (!/\b404\b|not found/i.test(message)) {
             throw error;
           }
-          release = await this.findCatalogRelease(coordinates.owner, coordinates.repo, selection, requestedVersion);
+          release = await this.findCatalogRelease(
+            coordinates.owner,
+            coordinates.repo,
+            selection,
+            namespaces,
+            requestedVersion
+          );
         }
       } else {
-        release = await this.findCatalogRelease(coordinates.owner, coordinates.repo, selection, requestedVersion);
+        release = await this.findCatalogRelease(
+          coordinates.owner,
+          coordinates.repo,
+          selection,
+          namespaces,
+          requestedVersion
+        );
       }
     } else if (!release && recordedReleaseId !== undefined) {
       release = await this.githubApi.getJson<GitHubRelease>(
@@ -510,15 +520,10 @@ export class GitHubAdapter extends BaseSourceAdapter {
     const manifestBytes = files.get(manifestPath)!;
     const manifest = parsePortableManifest(files);
     const version = manifest.version!;
-    const expectedVersion = selection.version !== undefined && selection.version !== 'latest'
-      ? selection.version
-      : recordedManifestVersion;
     if (!isManifestLogicalIdMatch(
       manifest.id!,
       selection.bundleId,
-      coordinates.owner,
-      coordinates.repo,
-      expectedVersion,
+      namespaces,
       version
     )) {
       if (pinned) {
@@ -532,6 +537,7 @@ export class GitHubAdapter extends BaseSourceAdapter {
           coordinates.owner,
           coordinates.repo,
           selection,
+          namespaces,
           requestedVersion,
           releaseId
         );
@@ -595,6 +601,29 @@ export class GitHubAdapter extends BaseSourceAdapter {
       files,
       bytes: Buffer.from(originalBytes)
     };
+  }
+
+  private portableBundleIdNamespaces(
+    selection: PortableBundleSelection,
+    current: GitHubRepositoryCoordinates
+  ): GitHubRepositoryCoordinates[] {
+    const locators = new Set([
+      this.source.url,
+      current.locator,
+      ...(selection.expectedSource?.locator ? [selection.expectedSource.locator] : [])
+    ]);
+    const namespaces: GitHubRepositoryCoordinates[] = [];
+    for (const locator of locators) {
+      try {
+        const coordinates = parseGitHubRepositoryLocator(locator);
+        if (coordinates.origin === current.origin) {
+          namespaces.push(coordinates);
+        }
+      } catch {
+        // A non-canonical historical locator cannot define a catalog ID alias.
+      }
+    }
+    return namespaces;
   }
 
   public async fetchBundles(): Promise<Bundle[]> {

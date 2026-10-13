@@ -857,6 +857,135 @@ describe('GitHub portable release evidence and asset selection', () => {
     expect(recordingApi.calls.filter((call) => call.pathOrUrl === '/repos/owner/repo')).toHaveLength(1);
   });
 
+  it('does not accept a manifest ID that is only a prefix of a runtime catalog ID', async () => {
+    const archiveBytes = new Uint8Array([1, 2, 3]);
+    const api = seedRepository(new FakeGitHubApi())
+      .seedJson('/repos/owner/repo/releases/tags/v1.2.3', makeRelease())
+      .seedJson('/repos/owner/repo/releases', [])
+      .seedBytes('https://api.github.com/repos/owner/repo/releases/assets/92', archiveBytes);
+    const adapter = new GitHubAdapter(
+      makeSource('github'),
+      api,
+      new TestExtractor(() => manifestFiles('portable', '1.2.3'))
+    );
+
+    const payload = await invokePortableResolution(adapter, {
+      bundleId: 'owner-repo-portable-id-1.2.3',
+      version: '1.2.3'
+    });
+
+    expect(payload).toBeNull();
+  });
+
+  it('rejects a same-version pinned release whose manifest ID only prefixes the requested catalog alias', async () => {
+    const archiveBytes = new Uint8Array([4, 5, 6]);
+    const archiveSha256 = crypto.createHash('sha256').update(archiveBytes).digest('hex');
+    const api = seedRepository(new FakeGitHubApi())
+      .seedJson('/repos/owner/repo/releases/91', makeRelease())
+      .seedBytes('https://api.github.com/repos/owner/repo/releases/assets/92', archiveBytes);
+    const adapter = new GitHubAdapter(
+      makeSource('github'),
+      api,
+      new TestExtractor(() => manifestFiles('portable-id', '1.2.3'))
+    );
+
+    await expect(invokePortableResolution(adapter, {
+      bundleId: 'owner-repo-portable-id-extra-1.2.3',
+      version: '1.2.3',
+      resolution: {
+        kind: 'pinned',
+        provider: 'github-release',
+        version: '1.2.3',
+        releaseId: '91',
+        assetId: '92',
+        archiveSha256
+      }
+    })).rejects.toMatchObject({ code: 'BUNDLE.LOGICAL_BUNDLE_MISMATCH' });
+  });
+
+  it('falls back from a different-version manifest ID prefix to the requested catalog bundle', async () => {
+    const wrongArchiveUrl = 'https://api.github.com/repos/owner/repo/releases/assets/102';
+    const matchingManifestUrl = 'https://api.github.com/repos/owner/repo/releases/assets/103';
+    const matchingArchiveUrl = 'https://api.github.com/repos/owner/repo/releases/assets/104';
+    const wrongRelease = makeRelease({
+      assets: [{
+        id: 102,
+        name: 'bundle.zip',
+        browser_download_url: 'https://github.com/owner/repo/releases/download/v1.2.3/bundle.zip',
+        url: wrongArchiveUrl,
+        size: 64
+      }]
+    });
+    const matchingRelease = makeRelease({
+      id: 105,
+      tag_name: 'v1.2.3-bundle',
+      assets: [
+        {
+          id: 103,
+          name: 'deployment-manifest.yml',
+          browser_download_url: '',
+          url: matchingManifestUrl,
+          size: 64
+        },
+        {
+          id: 104,
+          name: 'bundle.zip',
+          browser_download_url: 'https://github.com/owner/repo/releases/download/v1.2.3-bundle/bundle.zip',
+          url: matchingArchiveUrl,
+          size: 64
+        }
+      ]
+    });
+    const api = seedRepository(new FakeGitHubApi())
+      .seedJson('/repos/owner/repo/releases/tags/v1.2.3', wrongRelease)
+      .seedJson('/repos/owner/repo/releases', [wrongRelease, matchingRelease])
+      .seedText(matchingManifestUrl, 'id: portable-id\nname: Portable\nversion: 1.2.3\n')
+      .seedBytes(wrongArchiveUrl, new Uint8Array([1]))
+      .seedBytes(matchingArchiveUrl, new Uint8Array([2]));
+    const recordingApi = new RecordingGitHubApi(api);
+    const adapter = new GitHubAdapter(
+      makeSource('github'),
+      recordingApi,
+      new TestExtractor((bytes) => manifestFiles(
+        bytes[0] === 1 ? 'portable' : 'portable-id',
+        bytes[0] === 1 ? '9.9.9' : '1.2.3'
+      ))
+    );
+
+    const payload = await invokePortableResolution(adapter, {
+      bundleId: 'owner-repo-portable-id-1.2.3',
+      version: '1.2.3'
+    });
+
+    expect(payload?.logicalBundleId).toBe('portable-id');
+    expect(payload?.resolution).toMatchObject({ releaseId: '105', assetId: '104' });
+    expect(recordingApi.calls.filter((call) => call.method === 'download').map((call) => call.pathOrUrl)).toEqual([
+      wrongArchiveUrl,
+      matchingArchiveUrl
+    ]);
+  });
+
+  it.each([
+    ['bare manifest logical ID', 'portable-id'],
+    ['runtime catalog ID', 'owner-repo-portable-id-1.2.3'],
+    ['public catalog ID', 'owner-repo-portable-id-v1.2.3']
+  ])('accepts the exact %s for the verified manifest', async (_label, bundleId) => {
+    const archiveBytes = new Uint8Array([7, 8, 9]);
+    const api = seedRepository(new FakeGitHubApi())
+      .seedJson('/repos/owner/repo/releases/tags/v1.2.3', makeRelease())
+      .seedBytes('https://api.github.com/repos/owner/repo/releases/assets/92', archiveBytes);
+    const adapter = new GitHubAdapter(
+      makeSource('github'),
+      api,
+      new TestExtractor(() => manifestFiles('portable-id', '1.2.3'))
+    );
+
+    const payload = await invokePortableResolution(adapter, { bundleId, version: '1.2.3' });
+
+    expect(payload?.logicalBundleId).toBe('portable-id');
+    expect(payload?.version).toBe('1.2.3');
+  });
+
   it('checks a fresh tag archive logical ID before rejecting its unrelated manifest version', async () => {
     const wrongArchiveUrl = 'https://api.github.com/repos/owner/repo/releases/assets/102';
     const matchingManifestUrl = 'https://api.github.com/repos/owner/repo/releases/assets/103';

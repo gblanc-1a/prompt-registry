@@ -7,6 +7,7 @@ export * from './awesome-copilot-adapter';
 export * from './azure-devops-adapter';
 export * from './base-source-adapter';
 export * from './github-adapter';
+export * from './github-portable-resolution';
 export * from './local-adapter';
 export * from './local-apm-adapter';
 export * from './local-awesome-copilot-adapter';

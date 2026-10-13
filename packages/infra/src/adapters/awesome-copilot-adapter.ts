@@ -371,7 +371,10 @@ export class AwesomeCopilotAdapter extends BaseSourceAdapter {
     const prompts = collection.items.map((item) => {
       const resolvedFile = itemOutputPaths?.get(item.path);
       if (item.kind === 'skill') {
-        const skillMatch = /skills\/([^/]+)\/SKILL\.md/.exec(resolvedFile ?? item.path);
+        const skillIdentityPath = /^https?:\/\//i.test(item.path)
+          ? item.path
+          : resolvedFile ?? item.path;
+        const skillMatch = /skills\/([^/]+)\/SKILL\.md/.exec(skillIdentityPath);
         const skillName = skillMatch ? skillMatch[1] : 'unknown-skill';
         return {
           id: skillName,

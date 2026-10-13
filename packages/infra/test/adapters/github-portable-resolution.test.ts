@@ -677,10 +677,11 @@ describe('GitHub tree portable acquisition', () => {
     expect(payload?.files.get('skills/SKILL.md')).toEqual(externalSkillBytes);
     const manifest = yaml.load(Buffer.from(payload!.files.get('deployment-manifest.yml')!).toString('utf8')) as {
       id: string;
-      prompts: { file: string }[];
+      prompts: { file: string; id: string; name: string }[];
     };
     expect(manifest.id).toBe('external-bundle');
     expect(manifest.prompts.map((prompt) => prompt.file)).toEqual(['prompts/prompt.md', 'skills/SKILL.md']);
+    expect(manifest.prompts[1]).toMatchObject({ id: 'demo', name: 'Demo' });
     expect(manifest.prompts.every((prompt) => payload?.files.has(prompt.file))).toBe(true);
   });
 });
@@ -856,6 +857,110 @@ describe('GitHub portable release evidence and asset selection', () => {
     expect(recordingApi.calls.filter((call) => call.pathOrUrl === '/repos/owner/repo')).toHaveLength(1);
   });
 
+  it('checks a fresh tag archive logical ID before rejecting its unrelated manifest version', async () => {
+    const wrongArchiveUrl = 'https://api.github.com/repos/owner/repo/releases/assets/102';
+    const matchingManifestUrl = 'https://api.github.com/repos/owner/repo/releases/assets/103';
+    const matchingArchiveUrl = 'https://api.github.com/repos/owner/repo/releases/assets/104';
+    const wrongRelease = makeRelease({
+      assets: [{
+        id: 102,
+        name: 'bundle.zip',
+        browser_download_url: 'https://github.com/owner/repo/releases/download/v1.2.3/bundle.zip',
+        url: wrongArchiveUrl,
+        size: 64
+      }]
+    });
+    const matchingRelease = makeRelease({
+      id: 105,
+      tag_name: 'v1.2.3-bundle',
+      assets: [
+        {
+          id: 103,
+          name: 'deployment-manifest.yml',
+          browser_download_url: '',
+          url: matchingManifestUrl,
+          size: 64
+        },
+        {
+          id: 104,
+          name: 'bundle.zip',
+          browser_download_url: 'https://github.com/owner/repo/releases/download/v1.2.3-bundle/bundle.zip',
+          url: matchingArchiveUrl,
+          size: 64
+        }
+      ]
+    });
+    const api = seedRepository(new FakeGitHubApi())
+      .seedJson('/repos/owner/repo/releases/tags/v1.2.3', wrongRelease)
+      .seedJson('/repos/owner/repo/releases', [wrongRelease, matchingRelease])
+      .seedText(matchingManifestUrl, 'id: portable-id\nname: Portable\nversion: 1.2.3\n')
+      .seedBytes(wrongArchiveUrl, new Uint8Array([1]))
+      .seedBytes(matchingArchiveUrl, new Uint8Array([2]));
+    const recordingApi = new RecordingGitHubApi(api);
+    const adapter = new GitHubAdapter(
+      makeSource('github'),
+      recordingApi,
+      new TestExtractor((bytes) => manifestFiles(
+        bytes[0] === 1 ? 'another-bundle' : 'portable-id',
+        bytes[0] === 1 ? '9.9.9' : '1.2.3'
+      ))
+    );
+
+    const payload = await invokePortableResolution(adapter, {
+      bundleId: 'portable-id',
+      version: '1.2.3'
+    });
+
+    expect(payload?.logicalBundleId).toBe('portable-id');
+    expect(payload?.resolution).toMatchObject({ releaseId: '105', assetId: '104' });
+    expect(recordingApi.calls.filter((call) => call.method === 'download').map((call) => call.pathOrUrl)).toEqual([
+      wrongArchiveUrl,
+      matchingArchiveUrl
+    ]);
+    expect(recordingApi.calls.some((call) => call.pathOrUrl === '/repos/owner/repo/releases')).toBe(true);
+  });
+
+  it('uses a verified archive manifest over stale sidecar metadata when selecting a fresh tag', async () => {
+    const archiveUrl = 'https://api.github.com/repos/owner/repo/releases/assets/92';
+    const sidecarUrl = 'https://api.github.com/repos/owner/repo/releases/assets/93';
+    const archiveBytes = new Uint8Array([1, 2, 3]);
+    const api = seedRepository(new FakeGitHubApi())
+      .seedJson('/repos/owner/repo/releases/tags/v1.2.3', makeRelease({
+        assets: [
+          {
+            id: 93,
+            name: 'deployment-manifest.yml',
+            browser_download_url: '',
+            url: sidecarUrl,
+            size: 64
+          },
+          {
+            id: 92,
+            name: 'bundle.zip',
+            browser_download_url: 'https://github.com/owner/repo/releases/download/v1.2.3/bundle.zip',
+            url: archiveUrl,
+            size: 64
+          }
+        ]
+      }))
+      .seedJson('/repos/owner/repo/releases', [])
+      .seedText(sidecarUrl, 'id: another-bundle\nname: Stale Sidecar\nversion: 9.9.9\n')
+      .seedBytes(archiveUrl, archiveBytes);
+    const recordingApi = new RecordingGitHubApi(api);
+    const extractor = new TestExtractor(() => manifestFiles('portable-id', '1.2.3'));
+    const adapter = new GitHubAdapter(makeSource('github'), recordingApi, extractor);
+
+    const payload = await invokePortableResolution(adapter, {
+      bundleId: 'portable-id',
+      version: '1.2.3'
+    });
+
+    expect(payload?.logicalBundleId).toBe('portable-id');
+    expect(payload?.resolution).toMatchObject({ releaseId: '91', assetId: '92' });
+    expect(extractor.received).toEqual(archiveBytes);
+    expect(recordingApi.calls.filter((call) => call.method === 'download').map((call) => call.pathOrUrl)).toEqual([archiveUrl]);
+  });
+
   it('keeps a pinned wrong-bundle release fail-closed without catalog fallback', async () => {
     const archiveBytes = new Uint8Array([0x50, 0x4B, 4]);
     const api = seedRepository(new FakeGitHubApi())
@@ -866,11 +971,12 @@ describe('GitHub portable release evidence and asset selection', () => {
     const adapter = new GitHubAdapter(
       makeSource('github'),
       recordingApi,
-      new TestExtractor(() => manifestFiles('another-bundle', '1.2.3'))
+      new TestExtractor(() => manifestFiles('another-bundle', '9.9.9'))
     );
 
     await expect(invokePortableResolution(adapter, {
       bundleId: 'portable-id',
+      version: '1.2.3',
       resolution: {
         kind: 'pinned',
         provider: 'github-release',

@@ -117,3 +117,54 @@ fix(infra): enforce portable GitHub pins and selectors
 
 Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
 ```
+
+---
+
+# Task 4 fix round 2
+
+Base: `bf4c8dfc22dab096501ad7235e7b5b3461e0ba8c`.
+
+## RED evidence
+
+Added adapter-boundary regressions for a wrong-ID/wrong-version tag archive, stale sidecar metadata, pinned wrong-bundle replay with a different manifest version, and preservation of external skill selector identity. Before production changes, ran:
+
+```text
+pnpm -C packages/infra exec vitest run test/adapters/github-portable-resolution.test.ts test/adapters/github-adapter.test.ts test/adapters/skills-adapter.test.ts test/adapters/awesome-copilot-adapter.test.ts
+```
+
+RED output: `1 failed | 3 passed` files; `4 failed | 102 passed` tests. The new checks failed because:
+
+- A fresh wrong-ID archive with version `9.9.9` threw `BUNDLE.RESOLUTION_VERSION_MISMATCH` for requested version `1.2.3` before catalog fallback.
+- A stale sidecar caused the correct archive to be discarded before extraction.
+- Pinned wrong-ID replay with a mismatched manifest version failed on version instead of the authoritative logical ID.
+- An external `skills/demo/SKILL.md?rev=2` item generated `unknown-skill` / `Unknown Skill` instead of retaining `demo` / `Demo`.
+
+## Fix
+
+- Removed sidecar-based preselection from fresh tag resolution. The extracted archive manifest is authoritative for candidate identity.
+- Check logical identity before requested/recorded manifest versions and content/manifest digest evidence; keep archive SHA-256 verification before extraction.
+- Fresh wrong-ID candidates can fall back to a matching catalog release even when the rejected tag's manifest version differs. Exclude the rejected release ID from fallback lookup to prevent selecting it again.
+- Keep pinned resolution fail-closed; it reports the wrong logical bundle and never performs catalog fallback.
+- Derive generated skill identity from the original external selector while retaining the acquired output path in the generated manifest.
+
+## GREEN validation
+
+| Command | Result |
+| --- | --- |
+| `pnpm -C packages/infra exec vitest run test/adapters/github-portable-resolution.test.ts test/adapters/github-adapter.test.ts test/adapters/skills-adapter.test.ts test/adapters/awesome-copilot-adapter.test.ts` | Passed: 4 files, 106 tests |
+| `pnpm -C packages/infra exec vitest run test/resolvers/github-resolver.test.ts test/resolvers/skills-resolver.test.ts test/resolvers/awesome-copilot-resolver.test.ts` | Passed: 3 files, 37 tests |
+| `pnpm -C packages/infra run build` | Passed: TypeScript compile and template copy |
+| `pnpm -C packages/infra run lint:fix` | Passed: 0 errors, 97 warnings; no warnings in changed files |
+| `pnpm -C packages/infra test` | Passed once: 81 files, 880 tests; existing invalid-YAML fixture diagnostic appeared on stderr |
+| `git diff --check` | Passed |
+
+## Files changed
+
+- `packages/infra/src/adapters/github-adapter.ts`
+- `packages/infra/src/adapters/awesome-copilot-adapter.ts`
+- `packages/infra/test/adapters/github-portable-resolution.test.ts`
+- `.superpowers/sdd/2026-10-12-portable-source-identity/task-4-report.md`
+
+## Concern
+
+The inherited portable GitHub release limitation remains: extraction supports ZIP only. A tarball is still rejected unless the release offers a ZIP; legacy catalog behavior is unchanged. No new concerns were found.

@@ -180,6 +180,24 @@ function parsePortableManifest(files: ReadonlyMap<string, Uint8Array>): Deployme
   return manifest;
 }
 
+function isManifestLogicalIdMatch(
+  manifestId: string,
+  bundleId: string,
+  owner: string,
+  repo: string,
+  expectedVersion: string | undefined,
+  manifestVersion: string
+): boolean {
+  if (manifestId === bundleId || bundleId.startsWith(`${owner}-${repo}-${manifestId}-`)) {
+    return true;
+  }
+  if (expectedVersion !== undefined && expectedVersion !== 'latest'
+    && isManifestIdMatch(manifestId, expectedVersion, bundleId)) {
+    return true;
+  }
+  return isManifestIdMatch(manifestId, manifestVersion, bundleId);
+}
+
 function formatByteSize(bytes: number): string {
   if (bytes < 1024) {
     return `${bytes} B`;
@@ -343,10 +361,14 @@ export class GitHubAdapter extends BaseSourceAdapter {
     owner: string,
     repo: string,
     selection: PortableBundleSelection,
-    requestedVersion?: string
+    requestedVersion?: string,
+    excludedReleaseId?: string
   ): Promise<GitHubRelease | undefined> {
     const releases = await this.githubApi.getJson<GitHubRelease[]>(`/repos/${owner}/${repo}/releases`);
     for (const release of releases) {
+      if (excludedReleaseId !== undefined && String(release.id ?? '') === excludedReleaseId) {
+        continue;
+      }
       const manifestAsset = release.assets.find((asset) => isManifestAssetName(asset.name));
       if (!manifestAsset) {
         continue;
@@ -437,32 +459,6 @@ export class GitHubAdapter extends BaseSourceAdapter {
       return null;
     }
 
-    if (allowCatalogFallback
-      && selection.resolution === undefined
-      && recordedTag === undefined
-      && requestedVersion !== undefined
-      && requestedVersion !== 'latest') {
-      const manifestAsset = release.assets.find((candidate) => isManifestAssetName(candidate.name));
-      if (manifestAsset) {
-        try {
-          const candidateManifest = await this.fetchManifestWithCache(manifestAsset);
-          const matchesSelection = typeof candidateManifest?.id === 'string'
-            && typeof candidateManifest.version === 'string'
-            && isManifestIdMatch(candidateManifest.id, candidateManifest.version, selection.bundleId)
-            && candidateManifest.version === requestedVersion;
-          if (!matchesSelection) {
-            release = await this.findCatalogRelease(
-              coordinates.owner,
-              coordinates.repo,
-              selection,
-              requestedVersion
-            );
-          }
-        } catch {
-          // The archive remains authoritative if the release's catalog manifest is unavailable.
-        }
-      }
-    }
     if (!release) {
       return null;
     }
@@ -513,6 +509,59 @@ export class GitHubAdapter extends BaseSourceAdapter {
     const manifestPath = portableManifestPath(files)!;
     const manifestBytes = files.get(manifestPath)!;
     const manifest = parsePortableManifest(files);
+    const version = manifest.version!;
+    const expectedVersion = selection.version !== undefined && selection.version !== 'latest'
+      ? selection.version
+      : recordedManifestVersion;
+    if (!isManifestLogicalIdMatch(
+      manifest.id!,
+      selection.bundleId,
+      coordinates.owner,
+      coordinates.repo,
+      expectedVersion,
+      version
+    )) {
+      if (pinned) {
+        throw portableResolutionError(
+          'BUNDLE.LOGICAL_BUNDLE_MISMATCH',
+          `The pinned release manifest ID "${manifest.id}" does not match requested bundle "${selection.bundleId}".`
+        );
+      }
+      if (allowCatalogFallback && selection.resolution === undefined) {
+        const catalogRelease = await this.findCatalogRelease(
+          coordinates.owner,
+          coordinates.repo,
+          selection,
+          requestedVersion,
+          releaseId
+        );
+        if (catalogRelease) {
+          return this.resolvePortableBundleInternal(
+            selection,
+            portableSource,
+            catalogRelease,
+            false
+          );
+        }
+      }
+      return null;
+    }
+
+    if (pinned && (pinned.releaseId !== releaseId || pinned.assetId !== assetId)) {
+      throw portableResolutionError('BUNDLE.ARTIFACT_PIN_MISMATCH', `GitHub release does not match recorded pin ${pinned.releaseId}/${pinned.assetId}.`);
+    }
+    if (selection.version !== undefined && selection.version !== 'latest' && selection.version !== version) {
+      throw portableResolutionError(
+        'BUNDLE.RESOLUTION_VERSION_MISMATCH',
+        `Requested version "${selection.version}" does not match the verified manifest version "${version}".`
+      );
+    }
+    if (recordedManifestVersion !== undefined && recordedManifestVersion !== version) {
+      throw portableResolutionError(
+        'BUNDLE.ARTIFACT_PIN_MISMATCH',
+        `GitHub release manifest version "${version}" does not match recorded version "${recordedManifestVersion}".`
+      );
+    }
     if (evidence?.knownDigests?.sourceContentSha256 !== undefined
       && evidence.knownDigests.sourceContentSha256 !== sourceContentDigest(files)) {
       throw portableResolutionError(
@@ -526,50 +575,6 @@ export class GitHubAdapter extends BaseSourceAdapter {
         'BUNDLE.ARTIFACT_PIN_MISMATCH',
         'The GitHub release deployment manifest failed its recorded raw-byte SHA-256 digest check.'
       );
-    }
-    const version = manifest.version!;
-    if (selection.version !== undefined && selection.version !== 'latest' && selection.version !== version) {
-      throw portableResolutionError(
-        'BUNDLE.RESOLUTION_VERSION_MISMATCH',
-        `Requested version "${selection.version}" does not match the verified manifest version "${version}".`
-      );
-    }
-    if (pinned && (pinned.releaseId !== releaseId || pinned.assetId !== assetId)) {
-      throw portableResolutionError('BUNDLE.ARTIFACT_PIN_MISMATCH', `GitHub release does not match recorded pin ${pinned.releaseId}/${pinned.assetId}.`);
-    }
-    if (recordedManifestVersion !== undefined && recordedManifestVersion !== version) {
-      throw portableResolutionError(
-        'BUNDLE.ARTIFACT_PIN_MISMATCH',
-        `GitHub release manifest version "${version}" does not match recorded version "${recordedManifestVersion}".`
-      );
-    }
-    if (!isManifestIdMatch(manifest.id!, version, selection.bundleId)) {
-      if (pinned) {
-        throw portableResolutionError(
-          'BUNDLE.LOGICAL_BUNDLE_MISMATCH',
-          `The pinned release manifest ID "${manifest.id}" does not match requested bundle "${selection.bundleId}".`
-        );
-      }
-      if (allowCatalogFallback
-        && selection.resolution === undefined
-        && requestedVersion !== undefined
-        && requestedVersion !== 'latest') {
-        const catalogRelease = await this.findCatalogRelease(
-          coordinates.owner,
-          coordinates.repo,
-          selection,
-          requestedVersion
-        );
-        if (catalogRelease && requireProviderId(catalogRelease.id, 'release') !== releaseId) {
-          return this.resolvePortableBundleInternal(
-            selection,
-            portableSource,
-            catalogRelease,
-            false
-          );
-        }
-      }
-      return null;
     }
 
     const resolution: BundleResolution = {

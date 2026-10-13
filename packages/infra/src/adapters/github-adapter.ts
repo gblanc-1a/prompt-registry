@@ -27,6 +27,7 @@ import type {
   GitHubApi,
   PortableBundlePayload,
   PortableBundleSelection,
+  PortableSourceDescriptor,
   RegistrySource,
   SourceMetadata,
   ValidationResult,
@@ -38,6 +39,7 @@ import {
   isCredentialFreeHttpUrl,
   isManifestIdMatch,
   RegistryError,
+  sourceContentDigest,
 } from '@ai-primitives-hub/core';
 import * as yaml from 'js-yaml';
 import {
@@ -47,6 +49,7 @@ import {
   BaseSourceAdapter,
 } from './base-source-adapter';
 import {
+  assertSupportedKnownDigests,
   parseGitHubRepositoryLocator,
   resolveGitHubSourceIdentity,
 } from './github-portable-resolution';
@@ -139,12 +142,16 @@ function archiveSha256(bytes: Uint8Array): string {
   return crypto.createHash('sha256').update(bytes).digest('hex');
 }
 
-function parsePortableManifest(files: ReadonlyMap<string, Uint8Array>): DeploymentManifest {
-  const candidate = [
+function portableManifestPath(files: ReadonlyMap<string, Uint8Array>): string | undefined {
+  return [
     'deployment-manifest.yml',
     'deployment-manifest.yaml',
     'deployment-manifest.json'
   ].find((name) => files.has(name));
+}
+
+function parsePortableManifest(files: ReadonlyMap<string, Uint8Array>): DeploymentManifest {
+  const candidate = portableManifestPath(files);
   if (!candidate) {
     throw portableResolutionError('BUNDLE.MISSING_DEPLOYMENT_MANIFEST', 'The GitHub release archive has no root deployment manifest.');
   }
@@ -360,6 +367,231 @@ export class GitHubAdapter extends BaseSourceAdapter {
     return undefined;
   }
 
+  private async resolvePortableBundleInternal(
+    selection: PortableBundleSelection,
+    resolvedSource?: PortableSourceDescriptor,
+    releaseOverride?: GitHubRelease,
+    allowCatalogFallback = true
+  ): Promise<PortableBundlePayload | null> {
+    if (selection.resolution && selection.version !== undefined) {
+      assertResolutionVersion(selection.resolution, selection.version);
+    }
+
+    const portableSource = resolvedSource ?? await resolveGitHubSourceIdentity(
+      this.source,
+      this.githubApi,
+      selection.expectedSource
+    );
+    if (selection.resolution) {
+      assertResolutionSourceCompatibility(portableSource, selection.resolution);
+    }
+    const coordinates = parseGitHubRepositoryLocator(portableSource.locator);
+    const pinned = selection.resolution?.kind === 'pinned'
+      && selection.resolution.provider === 'github-release'
+      ? selection.resolution
+      : undefined;
+    const evidence = selection.resolution?.kind === 'unpinned' ? selection.resolution.evidence : undefined;
+    assertSupportedKnownDigests(
+      evidence,
+      ['archiveSha256', 'sourceContentSha256', 'manifestSha256'],
+      'GitHub release resolution'
+    );
+    const recordedReleaseId = pinned?.releaseId ?? evidence?.knownPins?.releaseId;
+    const recordedAssetId = pinned?.assetId ?? evidence?.knownPins?.assetId;
+    const recordedArchiveSha256 = pinned?.archiveSha256 ?? evidence?.knownDigests?.archiveSha256;
+    const recordedManifestVersion = pinned?.version ?? evidence?.manifestVersion;
+    const requestedVersion = selection.version ?? recordedManifestVersion;
+    const recordedTag = evidence?.knownPins?.tag;
+
+    let release: GitHubRelease | undefined = releaseOverride;
+    if (!release && recordedReleaseId === undefined) {
+      if (recordedTag !== undefined) {
+        release = await this.githubApi.getJson<GitHubRelease>(
+          `/repos/${coordinates.owner}/${coordinates.repo}/releases/tags/${encodeURIComponent(recordedTag)}`
+        );
+      } else if (requestedVersion !== undefined && requestedVersion !== 'latest') {
+        const tag = requestedVersion.startsWith('v') ? requestedVersion : `v${requestedVersion}`;
+        try {
+          release = await this.githubApi.getJson<GitHubRelease>(
+            `/repos/${coordinates.owner}/${coordinates.repo}/releases/tags/${encodeURIComponent(tag)}`
+          );
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          if (!/\b404\b|not found/i.test(message)) {
+            throw error;
+          }
+          release = await this.findCatalogRelease(coordinates.owner, coordinates.repo, selection, requestedVersion);
+        }
+      } else {
+        release = await this.findCatalogRelease(coordinates.owner, coordinates.repo, selection, requestedVersion);
+      }
+    } else if (!release && recordedReleaseId !== undefined) {
+      release = await this.githubApi.getJson<GitHubRelease>(
+        `/repos/${coordinates.owner}/${coordinates.repo}/releases/${encodeURIComponent(recordedReleaseId)}`
+      );
+      if (requireProviderId(release.id, 'release') !== recordedReleaseId) {
+        throw portableResolutionError('BUNDLE.ARTIFACT_PIN_MISMATCH', `GitHub returned a different release than recorded ID ${recordedReleaseId}.`);
+      }
+    }
+    if (!release) {
+      return null;
+    }
+
+    if (allowCatalogFallback
+      && selection.resolution === undefined
+      && recordedTag === undefined
+      && requestedVersion !== undefined
+      && requestedVersion !== 'latest') {
+      const manifestAsset = release.assets.find((candidate) => isManifestAssetName(candidate.name));
+      if (manifestAsset) {
+        try {
+          const candidateManifest = await this.fetchManifestWithCache(manifestAsset);
+          const matchesSelection = typeof candidateManifest?.id === 'string'
+            && typeof candidateManifest.version === 'string'
+            && isManifestIdMatch(candidateManifest.id, candidateManifest.version, selection.bundleId)
+            && candidateManifest.version === requestedVersion;
+          if (!matchesSelection) {
+            release = await this.findCatalogRelease(
+              coordinates.owner,
+              coordinates.repo,
+              selection,
+              requestedVersion
+            );
+          }
+        } catch {
+          // The archive remains authoritative if the release's catalog manifest is unavailable.
+        }
+      }
+    }
+    if (!release) {
+      return null;
+    }
+
+    const releaseId = requireProviderId(release.id, 'release');
+    const asset = recordedAssetId === undefined
+      ? release.assets.find((candidate) => candidate.name.endsWith('.zip'))
+      : release.assets.find((candidate) => String(candidate.id ?? '') === recordedAssetId);
+    if (!asset) {
+      if (recordedAssetId !== undefined) {
+        throw portableResolutionError(
+          'BUNDLE.ARTIFACT_PIN_MISMATCH',
+          `Recorded GitHub asset ID ${recordedAssetId} is missing from release ${releaseId}.`
+        );
+      }
+      const unsupportedArchive = release.assets.find((candidate) => isBundleAssetName(candidate.name));
+      if (unsupportedArchive) {
+        throw portableResolutionError(
+          'BUNDLE.INVALID_ARTIFACT_PIN',
+          `GitHub asset ${unsupportedArchive.name} is not a supported bundle archive.`
+        );
+      }
+      return null;
+    }
+    if (!isBundleAssetName(asset.name) || !asset.name.endsWith('.zip')) {
+      throw portableResolutionError('BUNDLE.INVALID_ARTIFACT_PIN', `GitHub asset ${asset.name} is not a supported bundle archive.`);
+    }
+    const assetId = requireProviderId(asset.id, 'bundle asset');
+    if (recordedAssetId !== undefined && assetId !== recordedAssetId) {
+      throw portableResolutionError(
+        'BUNDLE.ARTIFACT_PIN_MISMATCH',
+        `GitHub returned asset ID ${assetId}, not recorded asset ID ${recordedAssetId}.`
+      );
+    }
+    if (!isCredentialFreeHttpUrl(asset.url)) {
+      throw portableResolutionError('CONFIG.INVALID_SOURCE_LOCATOR', 'GitHub returned a credential-bearing or invalid asset URL.');
+    }
+
+    const originalBytes = await this.githubApi.download(asset.url);
+    const digest = archiveSha256(originalBytes);
+    if (recordedArchiveSha256 !== undefined && digest !== recordedArchiveSha256) {
+      throw portableResolutionError(
+        'BUNDLE.ARCHIVE_DIGEST_MISMATCH',
+        `GitHub release asset ${assetId} failed its recorded SHA-256 digest check.`
+      );
+    }
+    const files = await this.portableExtractor.extract(originalBytes);
+    const manifestPath = portableManifestPath(files)!;
+    const manifestBytes = files.get(manifestPath)!;
+    const manifest = parsePortableManifest(files);
+    if (evidence?.knownDigests?.sourceContentSha256 !== undefined
+      && evidence.knownDigests.sourceContentSha256 !== sourceContentDigest(files)) {
+      throw portableResolutionError(
+        'BUNDLE.ARTIFACT_PIN_MISMATCH',
+        'The GitHub release content failed its recorded source-content SHA-256 digest check.'
+      );
+    }
+    if (evidence?.knownDigests?.manifestSha256 !== undefined
+      && evidence.knownDigests.manifestSha256 !== archiveSha256(manifestBytes)) {
+      throw portableResolutionError(
+        'BUNDLE.ARTIFACT_PIN_MISMATCH',
+        'The GitHub release deployment manifest failed its recorded raw-byte SHA-256 digest check.'
+      );
+    }
+    const version = manifest.version!;
+    if (selection.version !== undefined && selection.version !== 'latest' && selection.version !== version) {
+      throw portableResolutionError(
+        'BUNDLE.RESOLUTION_VERSION_MISMATCH',
+        `Requested version "${selection.version}" does not match the verified manifest version "${version}".`
+      );
+    }
+    if (pinned && (pinned.releaseId !== releaseId || pinned.assetId !== assetId)) {
+      throw portableResolutionError('BUNDLE.ARTIFACT_PIN_MISMATCH', `GitHub release does not match recorded pin ${pinned.releaseId}/${pinned.assetId}.`);
+    }
+    if (recordedManifestVersion !== undefined && recordedManifestVersion !== version) {
+      throw portableResolutionError(
+        'BUNDLE.ARTIFACT_PIN_MISMATCH',
+        `GitHub release manifest version "${version}" does not match recorded version "${recordedManifestVersion}".`
+      );
+    }
+    if (!isManifestIdMatch(manifest.id!, version, selection.bundleId)) {
+      if (pinned) {
+        throw portableResolutionError(
+          'BUNDLE.LOGICAL_BUNDLE_MISMATCH',
+          `The pinned release manifest ID "${manifest.id}" does not match requested bundle "${selection.bundleId}".`
+        );
+      }
+      if (allowCatalogFallback
+        && selection.resolution === undefined
+        && requestedVersion !== undefined
+        && requestedVersion !== 'latest') {
+        const catalogRelease = await this.findCatalogRelease(
+          coordinates.owner,
+          coordinates.repo,
+          selection,
+          requestedVersion
+        );
+        if (catalogRelease && requireProviderId(catalogRelease.id, 'release') !== releaseId) {
+          return this.resolvePortableBundleInternal(
+            selection,
+            portableSource,
+            catalogRelease,
+            false
+          );
+        }
+      }
+      return null;
+    }
+
+    const resolution: BundleResolution = {
+      kind: 'pinned',
+      provider: 'github-release',
+      version,
+      releaseId,
+      assetId,
+      archiveSha256: digest,
+      tag: release.tag_name
+    };
+    return {
+      source: portableSource,
+      logicalBundleId: manifest.id!,
+      manifestId: manifest.id!,
+      version,
+      resolution,
+      files,
+      bytes: Buffer.from(originalBytes)
+    };
+  }
+
   public async fetchBundles(): Promise<Bundle[]> {
     const { owner, repo } = this.parseGitHubUrl();
 
@@ -393,147 +625,7 @@ export class GitHubAdapter extends BaseSourceAdapter {
    * @param selection - Requested logical/public bundle ID, version and optional replay pin.
    */
   public async resolvePortableBundle(selection: PortableBundleSelection): Promise<PortableBundlePayload | null> {
-    if (selection.resolution && selection.version !== undefined) {
-      assertResolutionVersion(selection.resolution, selection.version);
-    }
-
-    const portableSource = await resolveGitHubSourceIdentity(
-      this.source,
-      this.githubApi,
-      selection.expectedSource
-    );
-    if (selection.resolution) {
-      assertResolutionSourceCompatibility(portableSource, selection.resolution);
-    }
-    const coordinates = parseGitHubRepositoryLocator(portableSource.locator);
-    const pinned = selection.resolution?.kind === 'pinned'
-      && selection.resolution.provider === 'github-release'
-      ? selection.resolution
-      : undefined;
-    const evidence = selection.resolution?.kind === 'unpinned' ? selection.resolution.evidence : undefined;
-    const recordedReleaseId = pinned?.releaseId ?? evidence?.knownPins?.releaseId;
-    const recordedAssetId = pinned?.assetId ?? evidence?.knownPins?.assetId;
-    const recordedArchiveSha256 = pinned?.archiveSha256 ?? evidence?.knownDigests?.archiveSha256;
-    const recordedManifestVersion = pinned?.version ?? evidence?.manifestVersion;
-
-    let release: GitHubRelease | undefined;
-    if (recordedReleaseId === undefined) {
-      const requestedVersion = selection.version
-        ?? recordedManifestVersion;
-      const recordedTag = evidence?.knownPins?.tag;
-      if (recordedTag !== undefined) {
-        release = await this.githubApi.getJson<GitHubRelease>(
-          `/repos/${coordinates.owner}/${coordinates.repo}/releases/tags/${encodeURIComponent(recordedTag)}`
-        );
-      } else if (requestedVersion !== undefined && requestedVersion !== 'latest') {
-        const tag = requestedVersion.startsWith('v') ? requestedVersion : `v${requestedVersion}`;
-        try {
-          release = await this.githubApi.getJson<GitHubRelease>(
-            `/repos/${coordinates.owner}/${coordinates.repo}/releases/tags/${encodeURIComponent(tag)}`
-          );
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          if (!/\b404\b|not found/i.test(message)) {
-            throw error;
-          }
-          release = await this.findCatalogRelease(coordinates.owner, coordinates.repo, selection, requestedVersion);
-        }
-      } else {
-        release = await this.findCatalogRelease(coordinates.owner, coordinates.repo, selection, requestedVersion);
-      }
-    } else {
-      release = await this.githubApi.getJson<GitHubRelease>(
-        `/repos/${coordinates.owner}/${coordinates.repo}/releases/${encodeURIComponent(recordedReleaseId)}`
-      );
-      if (requireProviderId(release.id, 'release') !== recordedReleaseId) {
-        throw portableResolutionError('BUNDLE.ARTIFACT_PIN_MISMATCH', `GitHub returned a different release than recorded ID ${recordedReleaseId}.`);
-      }
-    }
-    if (!release) {
-      return null;
-    }
-
-    const releaseId = requireProviderId(release.id, 'release');
-    const asset = recordedAssetId === undefined
-      ? release.assets.find((candidate) => isBundleAssetName(candidate.name))
-      : release.assets.find((candidate) => String(candidate.id ?? '') === recordedAssetId);
-    if (!asset) {
-      if (recordedAssetId !== undefined) {
-        throw portableResolutionError(
-          'BUNDLE.ARTIFACT_PIN_MISMATCH',
-          `Recorded GitHub asset ID ${recordedAssetId} is missing from release ${releaseId}.`
-        );
-      }
-      return null;
-    }
-    if (!isBundleAssetName(asset.name) || !asset.name.endsWith('.zip')) {
-      throw portableResolutionError('BUNDLE.INVALID_ARTIFACT_PIN', `GitHub asset ${asset.name} is not a supported bundle archive.`);
-    }
-    const assetId = requireProviderId(asset.id, 'bundle asset');
-    if (recordedAssetId !== undefined && assetId !== recordedAssetId) {
-      throw portableResolutionError(
-        'BUNDLE.ARTIFACT_PIN_MISMATCH',
-        `GitHub returned asset ID ${assetId}, not recorded asset ID ${recordedAssetId}.`
-      );
-    }
-    if (!isCredentialFreeHttpUrl(asset.url)) {
-      throw portableResolutionError('CONFIG.INVALID_SOURCE_LOCATOR', 'GitHub returned a credential-bearing or invalid asset URL.');
-    }
-
-    const originalBytes = await this.githubApi.download(asset.url);
-    const digest = archiveSha256(originalBytes);
-    if (recordedArchiveSha256 !== undefined && digest !== recordedArchiveSha256) {
-      throw portableResolutionError(
-        'BUNDLE.ARCHIVE_DIGEST_MISMATCH',
-        `GitHub release asset ${assetId} failed its recorded SHA-256 digest check.`
-      );
-    }
-    const files = await this.portableExtractor.extract(originalBytes);
-    const manifest = parsePortableManifest(files);
-    const version = manifest.version!;
-    if (selection.version !== undefined && selection.version !== 'latest' && selection.version !== version) {
-      throw portableResolutionError(
-        'BUNDLE.RESOLUTION_VERSION_MISMATCH',
-        `Requested version "${selection.version}" does not match the verified manifest version "${version}".`
-      );
-    }
-    if (pinned && (pinned.releaseId !== releaseId || pinned.assetId !== assetId)) {
-      throw portableResolutionError('BUNDLE.ARTIFACT_PIN_MISMATCH', `GitHub release does not match recorded pin ${pinned.releaseId}/${pinned.assetId}.`);
-    }
-    if (recordedManifestVersion !== undefined && recordedManifestVersion !== version) {
-      throw portableResolutionError(
-        'BUNDLE.ARTIFACT_PIN_MISMATCH',
-        `GitHub release manifest version "${version}" does not match recorded version "${recordedManifestVersion}".`
-      );
-    }
-    if (!isManifestIdMatch(manifest.id!, version, selection.bundleId)) {
-      if (pinned) {
-        throw portableResolutionError(
-          'BUNDLE.LOGICAL_BUNDLE_MISMATCH',
-          `The pinned release manifest ID "${manifest.id}" does not match requested bundle "${selection.bundleId}".`
-        );
-      }
-      return null;
-    }
-
-    const resolution: BundleResolution = {
-      kind: 'pinned',
-      provider: 'github-release',
-      version,
-      releaseId,
-      assetId,
-      archiveSha256: digest,
-      tag: release.tag_name
-    };
-    return {
-      source: portableSource,
-      logicalBundleId: manifest.id!,
-      manifestId: manifest.id!,
-      version,
-      resolution,
-      files,
-      bytes: Buffer.from(originalBytes)
-    };
+    return this.resolvePortableBundleInternal(selection);
   }
 
   public async downloadBundle(bundle: Bundle): Promise<Buffer> {

@@ -61,6 +61,7 @@ import {
   BaseSourceAdapter,
 } from './base-source-adapter';
 import {
+  assertSupportedKnownDigests,
   githubRawFileUrl,
   parseGitHubRepositoryLocator,
   readGitHubTreeAtCommit,
@@ -446,7 +447,16 @@ export class SkillsAdapter extends BaseSourceAdapter {
         throw portableSkillError('BUNDLE.ARTIFACT_PIN_MISMATCH', `Pinned skill path "${pinnedPath}" is outside the skills directory.`);
       }
       const selector = pinnedPath.slice(pinnedPathPrefix.length);
-      return isCanonicalSkillSelector(selector) ? selector : undefined;
+      if (!isCanonicalSkillSelector(selector)) {
+        return undefined;
+      }
+      if (this.skillSelector(bundleId, owner, repo, skillRoot) !== selector) {
+        throw portableSkillError(
+          'BUNDLE.LOGICAL_BUNDLE_MISMATCH',
+          `Requested skill "${bundleId}" does not match recorded skill path "${pinnedPath}".`
+        );
+      }
+      return selector;
     }
     const publicIdPrefix = `skills-${owner}-${repo}-`;
     if (bundleId.startsWith(publicIdPrefix)) {
@@ -497,6 +507,11 @@ export class SkillsAdapter extends BaseSourceAdapter {
     const unpinnedEvidence = selection.resolution?.kind === 'unpinned'
       ? selection.resolution.evidence
       : undefined;
+    assertSupportedKnownDigests(
+      unpinnedEvidence,
+      ['sourceContentSha256'],
+      'Skills GitHub tree resolution'
+    );
     const recordedBundlePath = pinned?.bundlePath
       ?? unpinnedEvidence?.knownPins?.bundlePath;
     const recordedCommitSha = pinned?.commitSha

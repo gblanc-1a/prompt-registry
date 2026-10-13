@@ -9,6 +9,7 @@ import type {
 import {
   sourceKey,
 } from '@ai-primitives-hub/core';
+import * as yaml from 'js-yaml';
 import {
   describe,
   expect,
@@ -463,6 +464,177 @@ describe('GitHub tree portable acquisition', () => {
     expect(recordingApi.calls.some((call) => call.pathOrUrl.includes('/commits/'))).toBe(false);
   });
 
+  it('discovers the omitted Skills ref from repository metadata without a recorded descriptor', async () => {
+    const skillMd = encoder.encode('---\nname: Demo\ndescription: Portable skill\n---\nInstructions');
+    const commitSha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const api = seedRepository(new FakeGitHubApi(), { default_branch: 'master' })
+      .seedJson('/repos/owner/repo/commits/master', { sha: commitSha })
+      .seedJson(`/repos/owner/repo/git/trees/${commitSha}?recursive=1`, {
+        tree: [{ path: 'skills/demo/SKILL.md', type: 'blob', sha: 'blob-skill' }]
+      })
+      .seedBytes(
+        `https://raw.githubusercontent.com/owner/repo/${commitSha}/skills/demo/SKILL.md`,
+        skillMd
+      );
+    const recordingApi = new RecordingGitHubApi(api);
+    const adapter = new SkillsAdapter(makeSource('skills'), recordingApi, new FixedClock(0));
+
+    const payload = await invokePortableResolution(adapter, { bundleId: 'skills-owner-repo-demo' });
+
+    expect(payload?.source.identity).toMatchObject({ kind: 'github-tree', ref: 'master' });
+    expect(recordingApi.calls.map((call) => call.pathOrUrl)).toContain('/repos/owner/repo/commits/master');
+  });
+
+  it('rejects a pinned Skills path when the requested bundle ID names another skill', async () => {
+    const commitSha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const api = seedRepository(new FakeGitHubApi())
+      .seedJson(`/repos/owner/repo/git/trees/${commitSha}?recursive=1`, { tree: [] });
+    const recordingApi = new RecordingGitHubApi(api);
+    const adapter = new SkillsAdapter(makeSource('skills'), recordingApi, new FixedClock(0));
+
+    await expect(invokePortableResolution(adapter, {
+      bundleId: 'skills-owner-repo-other',
+      resolution: {
+        kind: 'pinned',
+        provider: 'github-tree',
+        version: '1.0.0',
+        commitSha,
+        bundlePath: 'skills/demo',
+        sourceContentSha256: '0'.repeat(64)
+      }
+    })).rejects.toMatchObject({ code: 'BUNDLE.LOGICAL_BUNDLE_MISMATCH' });
+
+    expect(recordingApi.calls.some((call) => call.pathOrUrl.includes('/git/trees/'))).toBe(false);
+  });
+
+  it('reads raw Skills file paths with URL-encoded path segments', async () => {
+    const commitSha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const skillMd = encoder.encode('---\nname: Demo\n---\nInstructions');
+    const rawPath = 'skills/demo/assets/a #?.bin';
+    const fileBytes = new Uint8Array([0, 255, 4]);
+    const encodedUrl = `https://raw.githubusercontent.com/owner/repo/${commitSha}/skills/demo/assets/a%20%23%3F.bin`;
+    const api = seedRepository(new FakeGitHubApi())
+      .seedJson(`/repos/owner/repo/commits/main`, { sha: commitSha })
+      .seedJson(`/repos/owner/repo/git/trees/${commitSha}?recursive=1`, {
+        tree: [
+          { path: 'skills/demo/SKILL.md', type: 'blob', sha: 'blob-skill' },
+          { path: rawPath, type: 'blob', sha: 'blob-data' }
+        ]
+      })
+      .seedBytes(
+        `https://raw.githubusercontent.com/owner/repo/${commitSha}/skills/demo/SKILL.md`,
+        skillMd
+      )
+      .seedBytes(encodedUrl, fileBytes);
+    const recordingApi = new RecordingGitHubApi(api);
+    const adapter = new SkillsAdapter(
+      makeSource('skills', { config: { branch: 'main' } }),
+      recordingApi,
+      new FixedClock(0)
+    );
+
+    const payload = await invokePortableResolution(adapter, {
+      bundleId: 'skills-owner-repo-demo',
+      expectedSource: makeExpectedSource('skills', 'main')
+    });
+
+    expect(payload?.files.get(rawPath)).toEqual(fileBytes);
+    expect(recordingApi.calls.map((call) => call.pathOrUrl)).toContain(encodedUrl);
+  });
+
+  it('fails explicitly when Skills evidence contains digests the tree adapter cannot verify', async () => {
+    const commitSha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const api = seedRepository(new FakeGitHubApi(), { default_branch: 'master' })
+      .seedJson(`/repos/owner/repo/commits/master`, { sha: commitSha })
+      .seedJson(`/repos/owner/repo/git/trees/${commitSha}?recursive=1`, { tree: [] });
+    const adapter = new SkillsAdapter(makeSource('skills'), api, new FixedClock(0));
+
+    await expect(invokePortableResolution(adapter, {
+      bundleId: 'skills-owner-repo-demo',
+      resolution: {
+        kind: 'unpinned',
+        reason: 'Historical digest evidence',
+        evidence: {
+          knownDigests: {
+            archiveSha256: '0'.repeat(64),
+            manifestSha256: '1'.repeat(64)
+          }
+        }
+      }
+    })).rejects.toMatchObject({
+      code: 'BUNDLE.UNSUPPORTED_DIGEST_EVIDENCE',
+      message: expect.stringContaining('archiveSha256, manifestSha256')
+    });
+  });
+
+  it('uses Awesome Copilot main by default even when repository metadata names master', async () => {
+    const mainCommit = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const masterCommit = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+    const collectionBytes = encoder.encode([
+      'id: demo',
+      'name: Demo',
+      'description: A collection',
+      'items: []'
+    ].join('\n'));
+    const api = seedRepository(new FakeGitHubApi(), { default_branch: 'master' })
+      .seedJson('/repos/owner/repo/commits/main', { sha: mainCommit })
+      .seedJson('/repos/owner/repo/commits/master', { sha: masterCommit })
+      .seedJson(`/repos/owner/repo/git/trees/${mainCommit}?recursive=1`, {
+        tree: [{ path: 'collections/demo.collection.yml', type: 'blob', sha: 'collection-main' }]
+      })
+      .seedJson(`/repos/owner/repo/git/trees/${masterCommit}?recursive=1`, {
+        tree: [{ path: 'collections/demo.collection.yml', type: 'blob', sha: 'collection-master' }]
+      })
+      .seedBytes(
+        `https://raw.githubusercontent.com/owner/repo/${mainCommit}/collections/demo.collection.yml`,
+        collectionBytes
+      )
+      .seedBytes(
+        `https://raw.githubusercontent.com/owner/repo/${masterCommit}/collections/demo.collection.yml`,
+        collectionBytes
+      );
+    const recordingApi = new RecordingGitHubApi(api);
+    const adapter = new AwesomeCopilotAdapter(
+      makeSource('awesome-copilot'),
+      recordingApi,
+      new FixedClock(0)
+    );
+
+    const payload = await invokePortableResolution(adapter, { bundleId: 'demo' });
+
+    expect(payload?.source.identity).toMatchObject({ kind: 'github-tree', ref: 'main' });
+    expect(recordingApi.calls.map((call) => call.pathOrUrl)).toContain('/repos/owner/repo/commits/main');
+  });
+
+  it('fails explicitly when Awesome Copilot evidence contains unsupported archive digests', async () => {
+    const commitSha = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const api = seedRepository(new FakeGitHubApi())
+      .seedJson(`/repos/owner/repo/commits/main`, { sha: commitSha })
+      .seedJson(`/repos/owner/repo/git/trees/${commitSha}?recursive=1`, { tree: [] });
+    const adapter = new AwesomeCopilotAdapter(
+      makeSource('awesome-copilot'),
+      api,
+      new FixedClock(0)
+    );
+
+    await expect(invokePortableResolution(adapter, {
+      bundleId: 'demo',
+      resolution: {
+        kind: 'unpinned',
+        reason: 'Historical digest evidence',
+        evidence: {
+          knownDigests: {
+            archiveSha256: '0'.repeat(64),
+            manifestSha256: '1'.repeat(64)
+          }
+        }
+      }
+    })).rejects.toMatchObject({
+      code: 'BUNDLE.UNSUPPORTED_DIGEST_EVIDENCE',
+      message: expect.stringContaining('archiveSha256, manifestSha256')
+    });
+  });
+
   it('reports external collection inputs as unpinned instead of claiming a repository-only pin', async () => {
     const collectionYaml = [
       'id: external-bundle',
@@ -470,9 +642,12 @@ describe('GitHub tree portable acquisition', () => {
       'description: Uses an external prompt',
       'items:',
       '  - path: https://example.com/prompt.md',
-      '    kind: prompt'
+      '    kind: prompt',
+      '  - path: https://example.com/skills/demo/SKILL.md?rev=2',
+      '    kind: skill'
     ].join('\n');
     const externalBytes = encoder.encode('# Remote prompt');
+    const externalSkillBytes = encoder.encode('---\nname: Demo\n---\nRemote skill');
     const api = seedRepository(new FakeGitHubApi())
       .seedJson('/repos/owner/repo/commits/main', { sha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' })
       .seedJson('/repos/owner/repo/git/trees/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa?recursive=1', {
@@ -483,6 +658,7 @@ describe('GitHub tree portable acquisition', () => {
         encoder.encode(collectionYaml)
       )
       .seedBytes('https://example.com/prompt.md', externalBytes);
+    api.seedBytes('https://example.com/skills/demo/SKILL.md?rev=2', externalSkillBytes);
     const adapter = new AwesomeCopilotAdapter(makeSource('awesome-copilot'), api, new FixedClock(0));
 
     const payload = await invokePortableResolution(adapter, {
@@ -494,9 +670,217 @@ describe('GitHub tree portable acquisition', () => {
       expect(payload.resolution.reason).toMatch(/external/i);
       expect(payload.resolution.evidence?.externalInputLimitations).toContain('https://example.com/prompt.md');
       expect(payload.resolution.evidence?.knownDigests?.sourceContentSha256).toBe(
-        'c5a914bf566abddb5861951f07d49d2f58a996750ef7bbf63190408108c9e7c8'
+        'd6ba8b4d37da267f9f9d6f22e6ed92d6fd5101e1f78c0208e66dccbbe10b8aa3'
       );
     }
     expect(payload?.files.get('prompts/prompt.md')).toEqual(externalBytes);
+    expect(payload?.files.get('skills/SKILL.md')).toEqual(externalSkillBytes);
+    const manifest = yaml.load(Buffer.from(payload!.files.get('deployment-manifest.yml')!).toString('utf8')) as {
+      id: string;
+      prompts: { file: string }[];
+    };
+    expect(manifest.id).toBe('external-bundle');
+    expect(manifest.prompts.map((prompt) => prompt.file)).toEqual(['prompts/prompt.md', 'skills/SKILL.md']);
+    expect(manifest.prompts.every((prompt) => payload?.files.has(prompt.file))).toBe(true);
+  });
+});
+
+describe('GitHub portable release evidence and asset selection', () => {
+  it('validates a known source-content digest against the extracted file inventory', async () => {
+    const archiveBytes = new Uint8Array([0x50, 0x4B, 1]);
+    const api = seedRepository(new FakeGitHubApi())
+      .seedJson('/repos/owner/repo/releases/tags/v1.2.3', makeRelease())
+      .seedBytes('https://api.github.com/repos/owner/repo/releases/assets/92', archiveBytes);
+    const adapter = new GitHubAdapter(
+      makeSource('github'),
+      api,
+      new TestExtractor(() => manifestFiles('portable-id', '1.2.3'))
+    );
+
+    await expect(invokePortableResolution(adapter, {
+      bundleId: 'portable-id',
+      version: '1.2.3',
+      resolution: {
+        kind: 'unpinned',
+        reason: 'Historical source digest',
+        evidence: { knownDigests: { sourceContentSha256: '0'.repeat(64) } }
+      }
+    })).rejects.toMatchObject({ code: 'BUNDLE.ARTIFACT_PIN_MISMATCH' });
+  });
+
+  it('validates a known manifest digest against the extracted raw manifest bytes', async () => {
+    const archiveBytes = new Uint8Array([0x50, 0x4B, 2]);
+    const api = seedRepository(new FakeGitHubApi())
+      .seedJson('/repos/owner/repo/releases/tags/v1.2.3', makeRelease())
+      .seedBytes('https://api.github.com/repos/owner/repo/releases/assets/92', archiveBytes);
+    const adapter = new GitHubAdapter(
+      makeSource('github'),
+      api,
+      new TestExtractor(() => manifestFiles('portable-id', '1.2.3'))
+    );
+
+    await expect(invokePortableResolution(adapter, {
+      bundleId: 'portable-id',
+      version: '1.2.3',
+      resolution: {
+        kind: 'unpinned',
+        reason: 'Historical manifest digest',
+        evidence: { knownDigests: { manifestSha256: '0'.repeat(64) } }
+      }
+    })).rejects.toMatchObject({ code: 'BUNDLE.ARTIFACT_PIN_MISMATCH' });
+  });
+
+  it('accepts a known manifest digest computed from the exact extracted raw bytes', async () => {
+    const archiveBytes = new Uint8Array([0x50, 0x4B, 5]);
+    const rawManifestBytes = encoder.encode('id: portable-id\nname: Portable\nversion: 1.2.3\n');
+    const manifestSha256 = crypto.createHash('sha256').update(rawManifestBytes).digest('hex');
+    const api = seedRepository(new FakeGitHubApi())
+      .seedJson('/repos/owner/repo/releases/tags/v1.2.3', makeRelease())
+      .seedBytes('https://api.github.com/repos/owner/repo/releases/assets/92', archiveBytes);
+    const adapter = new GitHubAdapter(
+      makeSource('github'),
+      api,
+      new TestExtractor(() => new Map([['deployment-manifest.yml', rawManifestBytes]]))
+    );
+
+    const payload = await invokePortableResolution(adapter, {
+      bundleId: 'portable-id',
+      version: '1.2.3',
+      resolution: {
+        kind: 'unpinned',
+        reason: 'Historical manifest digest',
+        evidence: { knownDigests: { manifestSha256 } }
+      }
+    });
+
+    expect(payload?.manifestId).toBe('portable-id');
+  });
+
+  it('selects a supported ZIP when a tarball appears first in release assets', async () => {
+    const zipUrl = 'https://api.github.com/repos/owner/repo/releases/assets/93';
+    const archiveBytes = new Uint8Array([0x50, 0x4B, 3]);
+    const api = seedRepository(new FakeGitHubApi()).seedJson(
+      '/repos/owner/repo/releases/tags/v1.2.3',
+      makeRelease({
+        assets: [
+          {
+            id: 92,
+            name: 'bundle.tar.gz',
+            browser_download_url: 'https://github.com/owner/repo/releases/download/v1.2.3/bundle.tar.gz',
+            url: 'https://api.github.com/repos/owner/repo/releases/assets/92',
+            size: 64
+          },
+          {
+            id: 93,
+            name: 'bundle.zip',
+            browser_download_url: 'https://github.com/owner/repo/releases/download/v1.2.3/bundle.zip',
+            url: zipUrl,
+            size: 64
+          }
+        ]
+      })
+    ).seedBytes(zipUrl, archiveBytes);
+    const recordingApi = new RecordingGitHubApi(api);
+    const adapter = new GitHubAdapter(
+      makeSource('github'),
+      recordingApi,
+      new TestExtractor(() => manifestFiles('portable-id', '1.2.3'))
+    );
+
+    const payload = await invokePortableResolution(adapter, {
+      bundleId: 'portable-id',
+      version: '1.2.3'
+    });
+
+    expect(payload?.resolution).toMatchObject({ provider: 'github-release', releaseId: '91', assetId: '93' });
+    expect(recordingApi.calls.filter((call) => call.method === 'download').map((call) => call.pathOrUrl)).toEqual([zipUrl]);
+  });
+
+  it('falls back from a fresh wrong-bundle version tag to a matching catalog release', async () => {
+    const matchingManifestUrl = 'https://api.github.com/repos/owner/repo/releases/assets/103';
+    const matchingArchiveUrl = 'https://api.github.com/repos/owner/repo/releases/assets/104';
+    const wrongRelease = makeRelease({
+      assets: [{
+        id: 102,
+        name: 'bundle.zip',
+        browser_download_url: 'https://github.com/owner/repo/releases/download/v1.2.3/bundle.zip',
+        url: 'https://api.github.com/repos/owner/repo/releases/assets/102',
+        size: 64
+      }]
+    });
+    const matchingRelease = makeRelease({
+      id: 105,
+      tag_name: 'v1.2.3-bundle',
+      assets: [
+        {
+          id: 103,
+          name: 'deployment-manifest.yml',
+          browser_download_url: '',
+          url: matchingManifestUrl,
+          size: 64
+        },
+        {
+          id: 104,
+          name: 'bundle.zip',
+          browser_download_url: 'https://github.com/owner/repo/releases/download/v1.2.3-bundle/bundle.zip',
+          url: matchingArchiveUrl,
+          size: 64
+        }
+      ]
+    });
+    const api = seedRepository(new FakeGitHubApi())
+      .seedJson('/repos/owner/repo/releases/tags/v1.2.3', wrongRelease)
+      .seedJson('/repos/owner/repo/releases', [wrongRelease, matchingRelease])
+      .seedText(matchingManifestUrl, 'id: portable-id\nname: Portable\nversion: 1.2.3\n')
+      .seedBytes('https://api.github.com/repos/owner/repo/releases/assets/102', new Uint8Array([1]))
+      .seedBytes(matchingArchiveUrl, new Uint8Array([2]));
+    const recordingApi = new RecordingGitHubApi(api);
+    const adapter = new GitHubAdapter(
+      makeSource('github'),
+      recordingApi,
+      new TestExtractor((bytes) => manifestFiles(bytes[0] === 1 ? 'another-bundle' : 'portable-id', '1.2.3'))
+    );
+
+    const payload = await invokePortableResolution(adapter, {
+      bundleId: 'portable-id',
+      version: '1.2.3'
+    });
+
+    expect(payload?.logicalBundleId).toBe('portable-id');
+    expect(payload?.resolution).toMatchObject({ releaseId: '105', assetId: '104' });
+    expect(recordingApi.calls.filter((call) => call.method === 'download').map((call) => call.pathOrUrl)).toEqual([
+      'https://api.github.com/repos/owner/repo/releases/assets/102',
+      matchingArchiveUrl
+    ]);
+    expect(recordingApi.calls.some((call) => call.pathOrUrl === '/repos/owner/repo/releases')).toBe(true);
+    expect(recordingApi.calls.filter((call) => call.pathOrUrl === '/repos/owner/repo')).toHaveLength(1);
+  });
+
+  it('keeps a pinned wrong-bundle release fail-closed without catalog fallback', async () => {
+    const archiveBytes = new Uint8Array([0x50, 0x4B, 4]);
+    const api = seedRepository(new FakeGitHubApi())
+      .seedJson('/repos/owner/repo/releases/91', makeRelease())
+      .seedJson('/repos/owner/repo/releases', [])
+      .seedBytes('https://api.github.com/repos/owner/repo/releases/assets/92', archiveBytes);
+    const recordingApi = new RecordingGitHubApi(api);
+    const adapter = new GitHubAdapter(
+      makeSource('github'),
+      recordingApi,
+      new TestExtractor(() => manifestFiles('another-bundle', '1.2.3'))
+    );
+
+    await expect(invokePortableResolution(adapter, {
+      bundleId: 'portable-id',
+      resolution: {
+        kind: 'pinned',
+        provider: 'github-release',
+        version: '1.2.3',
+        releaseId: '91',
+        assetId: '92',
+        archiveSha256: crypto.createHash('sha256').update(archiveBytes).digest('hex')
+      }
+    })).rejects.toMatchObject({ code: 'BUNDLE.LOGICAL_BUNDLE_MISMATCH' });
+
+    expect(recordingApi.calls.some((call) => call.pathOrUrl === '/repos/owner/repo/releases')).toBe(false);
   });
 });

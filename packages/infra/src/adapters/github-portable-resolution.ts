@@ -6,6 +6,7 @@ import type {
   GitHubApi,
   PortableSourceDescriptor,
   RegistrySource,
+  UnpinnedResolutionEvidence,
 } from '@ai-primitives-hub/core';
 import {
   isCredentialFreeHttpUrl,
@@ -36,6 +37,8 @@ export interface GitHubTreeEntry {
   sha?: string;
 }
 
+type KnownDigestName = 'archiveSha256' | 'sourceContentSha256' | 'manifestSha256';
+
 const identityError = (message: string): RegistryError => new RegistryError({
   code: 'BUNDLE.SOURCE_IDENTITY_MISMATCH',
   message,
@@ -47,6 +50,29 @@ const invalidLocator = (locator: string): RegistryError => new RegistryError({
   message: `GitHub repository locator ${JSON.stringify(locator)} is invalid or contains credentials.`,
   hint: 'Use a credential-free GitHub repository URL with an owner and repository path.'
 });
+
+/**
+ * Refuse historical digests the current adapter cannot prove from acquired bytes.
+ * @param evidence - Historical resolution evidence, when present.
+ * @param supported - Digest names this acquisition path can verify.
+ * @param adapterName - Adapter name used to make the failure actionable.
+ */
+export const assertSupportedKnownDigests = (
+  evidence: UnpinnedResolutionEvidence | undefined,
+  supported: readonly KnownDigestName[],
+  adapterName: string
+): void => {
+  const unsupported = Object.keys(evidence?.knownDigests ?? {})
+    .filter((name) => !supported.includes(name as KnownDigestName));
+  if (unsupported.length === 0) {
+    return;
+  }
+  throw new RegistryError({
+    code: 'BUNDLE.UNSUPPORTED_DIGEST_EVIDENCE',
+    message: `${adapterName} cannot verify recorded digest evidence: ${unsupported.join(', ')}.`,
+    hint: 'Retain the evidence and use an acquisition path that can verify those digest kinds; do not discard or replace them.'
+  });
+};
 
 const requireNonEmptyText = (value: unknown, label: string): string => {
   if (typeof value !== 'string' || value.trim().length === 0) {
@@ -164,11 +190,14 @@ function selectorPath(value: unknown, fallback: string, label: string): string {
  * @param source - Configured GitHub source.
  * @param api - Injected GitHub API boundary.
  * @param expected - Previously recorded portable source, if any.
+ * @param adapterDefaultRef - Adapter-specific default ref, when it does not follow the repository default.
+ * @param adapterDefaultRef
  */
 export const resolveGitHubSourceIdentity = async (
   source: RegistrySource,
   api: GitHubApi,
-  expected?: PortableSourceDescriptor
+  expected?: PortableSourceDescriptor,
+  adapterDefaultRef?: string
 ): Promise<PortableSourceDescriptor> => {
   if (!isGitHubSourceType(source)) {
     throw identityError(`Source type "${source.type}" is not a retained GitHub adapter.`);
@@ -221,6 +250,7 @@ export const resolveGitHubSourceIdentity = async (
   }
   const effectiveRef = configuredRef
     ?? recordedRef
+    ?? (typeof adapterDefaultRef === 'string' && adapterDefaultRef.trim() !== '' ? adapterDefaultRef : undefined)
     ?? (typeof repository.default_branch === 'string' && repository.default_branch.trim() !== ''
       ? repository.default_branch
       : undefined);
@@ -336,4 +366,7 @@ export const githubRawFileUrl = (
   coordinates: GitHubRepositoryCoordinates,
   commitSha: string,
   path: string
-): string => `https://raw.githubusercontent.com/${coordinates.owner}/${coordinates.repo}/${commitSha}/${path}`;
+): string => `https://raw.githubusercontent.com/${coordinates.owner}/${coordinates.repo}/${commitSha}/${path
+  .split('/')
+  .map((segment) => encodeURIComponent(segment))
+  .join('/')}`;

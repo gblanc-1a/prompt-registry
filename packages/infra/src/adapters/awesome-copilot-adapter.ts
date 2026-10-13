@@ -59,6 +59,7 @@ import {
   BaseSourceAdapter,
 } from './base-source-adapter';
 import {
+  assertSupportedKnownDigests,
   githubRawFileUrl,
   parseGitHubRepositoryLocator,
   readGitHubTreeAtCommit,
@@ -363,16 +364,20 @@ export class AwesomeCopilotAdapter extends BaseSourceAdapter {
     return bundle;
   }
 
-  private createDeploymentManifest(collection: CollectionManifest): Record<string, unknown> {
+  private createDeploymentManifest(
+    collection: CollectionManifest,
+    itemOutputPaths?: ReadonlyMap<string, string>
+  ): Record<string, unknown> {
     const prompts = collection.items.map((item) => {
+      const resolvedFile = itemOutputPaths?.get(item.path);
       if (item.kind === 'skill') {
-        const skillMatch = /skills\/([^/]+)\/SKILL\.md/.exec(item.path);
+        const skillMatch = /skills\/([^/]+)\/SKILL\.md/.exec(resolvedFile ?? item.path);
         const skillName = skillMatch ? skillMatch[1] : 'unknown-skill';
         return {
           id: skillName,
           name: titleCase(skillName.replace(/-/g, ' ')),
           description: `Skill from ${collection.name}`,
-          file: item.path,
+          file: resolvedFile ?? item.path,
           type: 'skill' as const,
           tags: collection.tags ?? []
         };
@@ -384,7 +389,7 @@ export class AwesomeCopilotAdapter extends BaseSourceAdapter {
         id,
         name: titleCase(id.replace(/-/g, ' ')),
         description: `From ${collection.name}`,
-        file: `prompts/${filename}`,
+        file: resolvedFile ?? `prompts/${filename}`,
         type: KIND_TO_MANIFEST_TYPE[item.kind],
         tags: collection.tags ?? []
       };
@@ -510,7 +515,8 @@ export class AwesomeCopilotAdapter extends BaseSourceAdapter {
     const portableSource = await resolveGitHubSourceIdentity(
       this.source,
       this.githubApi,
-      selection.expectedSource
+      selection.expectedSource,
+      this.branch
     );
     if (selection.resolution) {
       assertResolutionSourceCompatibility(portableSource, selection.resolution);
@@ -526,6 +532,11 @@ export class AwesomeCopilotAdapter extends BaseSourceAdapter {
     const unpinnedEvidence = selection.resolution?.kind === 'unpinned'
       ? selection.resolution.evidence
       : undefined;
+    assertSupportedKnownDigests(
+      unpinnedEvidence,
+      ['sourceContentSha256'],
+      'Awesome Copilot GitHub tree resolution'
+    );
     const collectionRoot = portableSource.identity.collectionsPath ?? this.collectionsPath;
     const recordedCommitSha = pinned?.commitSha ?? unpinnedEvidence?.knownPins?.commitSha;
     const recordedCollectionPath = pinned?.bundlePath
@@ -582,6 +593,7 @@ export class AwesomeCopilotAdapter extends BaseSourceAdapter {
 
     const inputFiles = new Map<string, Uint8Array>([[collectionPath, manifestBytes]]);
     const outputFiles = new Map<string, Uint8Array>();
+    const itemOutputPaths = new Map<string, string>();
     const externalPinsByIdentity = new Map<string, ExternalInputPin>();
     const externalLimitations: string[] = [];
     const recordedExternalPins = pinned?.externalInputs ?? [];
@@ -612,6 +624,7 @@ export class AwesomeCopilotAdapter extends BaseSourceAdapter {
         const digestPath = `external/${sha256(Buffer.from(item.path, 'utf8'))}/${filename}`;
         inputFiles.set(digestPath, bytes);
         outputFiles.set(outputPath, bytes);
+        itemOutputPaths.set(item.path, outputPath);
         continue;
       }
       if (!isCanonicalRepoPath(item.path)) {
@@ -654,7 +667,26 @@ export class AwesomeCopilotAdapter extends BaseSourceAdapter {
       throw portableCollectionError('BUNDLE.ARTIFACT_PIN_MISMATCH', 'Collection content does not match its recorded source-content digest.');
     }
 
-    const deploymentManifest = this.createDeploymentManifest(collection);
+    const deploymentManifest = this.createDeploymentManifest(collection, itemOutputPaths);
+    const manifestPrompts = deploymentManifest.prompts;
+    if (Array.isArray(manifestPrompts)) {
+      const missingFiles: string[] = [];
+      for (const prompt of manifestPrompts as unknown[]) {
+        if (typeof prompt !== 'object' || prompt === null) {
+          continue;
+        }
+        const path = (prompt as { file?: unknown }).file;
+        if (typeof path === 'string' && !outputFiles.has(path)) {
+          missingFiles.push(path);
+        }
+      }
+      if (missingFiles.length > 0) {
+        throw portableCollectionError(
+          'BUNDLE.MISSING_COLLECTION_INPUT',
+          `Generated collection manifest references files that were not acquired: ${missingFiles.join(', ')}.`
+        );
+      }
+    }
     outputFiles.set('deployment-manifest.yml', Buffer.from(yaml.dump(deploymentManifest), 'utf8'));
     const resolution: BundleResolution = externalLimitations.length > 0 && !pinned
       ? {

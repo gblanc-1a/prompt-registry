@@ -80,13 +80,16 @@ interface InstallData {
 
 interface DesiredFile {
   version: string;
-  bundles: Record<string, { version: string; sourceId: string }>;
-  sources: Record<string, { type: string; url: string }>;
+  bundles: Record<string, { version: string; sourceKey?: string; sourceId?: string; resolution?: unknown }>;
+  sources: Record<string, unknown>;
+  unresolved?: { originalKey: string; version: string; sourceRef?: string; reason: string }[];
   generatedAt?: string;
   targets?: unknown;
 }
 
 interface LocalRecord {
+  sourceKey?: string;
+  resolution?: unknown;
   state?: string;
   installedAt: string;
   unmanagedReason?: string;
@@ -222,7 +225,7 @@ describe('unified deploy, CLI user scope, vscode', () => {
   it('installs real files named from the normalized id, by manifest kind', async () => {
     const result = await runFlagOn(INSTALL_ARGV);
 
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`).toBe(0);
     expect(await listTree(copilotDir)).toEqual(EXPECTED_TREE);
     await expect(readFile(path.join(copilotDir, 'agents', 'reviewer.agent.md'), 'utf8')).resolves.toBe('# Reviewer\n');
     await expect(readFile(path.join(copilotDir, 'instructions', 'ts-standards.instructions.md'), 'utf8'))
@@ -250,15 +253,33 @@ describe('unified deploy, CLI user scope, vscode', () => {
   it('records one desired entry and one materialization record', async () => {
     await runFlagOn(INSTALL_ARGV);
 
-    const sourceId = `local-${path.basename(bundleDir)}`;
-    const key = `${sourceId}/web-dev`;
+    const desired = await readDesired();
+    const [key] = Object.keys(desired.bundles);
+    if (key === undefined) {
+      throw new Error('The deployment did not record its desired bundle.');
+    }
+    expect(key).toMatch(/^src-[a-f0-9]{64}\/web-dev$/);
+    const sourceKey = key.slice(0, key.indexOf('/'));
+    const resolution = {
+      kind: 'pinned',
+      provider: 'local-snapshot',
+      version: '1.0.0',
+      bundleSelector: 'bundle',
+      sourceContentSha256: expect.stringMatching(/^[a-f0-9]{64}$/)
+    };
     // The desired half is shareable: exactly these fields, so no `generatedAt`, `generatedBy`,
     // `targets`, `installedAt`, `baseDir`, `files` or checksums can appear at any depth.
-    expect(await readDesired()).toEqual({
+    expect(desired).toEqual({
       $schema: expect.stringContaining('lockfile-v3.schema.json'),
       version: '3.0.0',
-      bundles: { [key]: { version: '1.0.0', sourceId } },
-      sources: { [sourceId]: { type: 'local', url: bundleDir } }
+      bundles: { [key]: { version: '1.0.0', sourceKey, resolution } },
+      sources: {
+        [sourceKey]: {
+          type: 'local',
+          identity: { kind: 'workspace-local', root: '.' },
+          locator: '.'
+        }
+      }
     });
     // The local half is machine state: the same key, with every file's two checksums computed from the fixture.
     const expectedFiles = EXPECTED_TREE.map((installed) => {
@@ -276,7 +297,8 @@ describe('unified deploy, CLI user scope, vscode', () => {
         bundles: {
           [key]: {
             version: '1.0.0',
-            sourceId,
+            sourceKey,
+            resolution: desired.bundles[key].resolution,
             installedAt: expect.any(String),
             files: expect.any(Array)
           }
@@ -293,7 +315,7 @@ describe('unified deploy, CLI user scope, vscode', () => {
 
     const result = await runFlagOn(['uninstall', '--bundle', 'web-dev', '--target', 'my-vscode']);
 
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`).toBe(0);
     expect(await listTree(copilotDir)).toEqual(['prompts/mine.prompt.md']);
     expect((await readDesired()).bundles).toEqual({});
     // An emptied target is pruned from the local half.
@@ -305,16 +327,26 @@ describe('unified deploy, CLI user scope, vscode', () => {
 
     const result = await runFlagOn([...INSTALL_ARGV, '-o', 'json']);
 
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`).toBe(0);
     const { migration } = parseJson<{ migration: { migrated: string[]; unmanaged: { key: string; reason: string }[] } }>(result.stdout).data;
     const desired = await readDesired();
     const local = await readLocal();
     expect(desired.version).toBe('3.0.0');
-    expect(desired.bundles['local-old/legacy']).toBeDefined();
-    expect(local.targets.unmanaged.bundles['local-old/legacy'].state).toBe('unmanaged');
+    expect(desired.unresolved).toContainEqual(expect.objectContaining({
+      originalKey: 'legacy',
+      sourceRef: 'local-old',
+      version: '0.9.0'
+    }));
+    expect(migration.unmanaged).toHaveLength(1);
+    const unmanaged = migration.unmanaged[0];
+    if (unmanaged === undefined) {
+      throw new Error('The legacy intent was not retained as an unmanaged record.');
+    }
+    expect(unmanaged.key).toMatch(/^unresolved\/[a-f0-9]{64}$/);
+    expect(local.targets.unmanaged.bundles[unmanaged.key].state).toBe('unmanaged');
     expect(local.migration).toEqual({ lockfileV3: 'complete' });
     expect(migration.unmanaged).toEqual([
-      { key: 'local-old/legacy', reason: local.targets.unmanaged.bundles['local-old/legacy'].unmanagedReason }
+      { key: unmanaged.key, reason: local.targets.unmanaged.bundles[unmanaged.key].unmanagedReason }
     ]);
     expect(migration.unmanaged[0].reason).not.toBe('');
     expect(await listTree(copilotDir)).toEqual(EXPECTED_TREE);
@@ -325,10 +357,16 @@ describe('unified deploy, CLI user scope, vscode', () => {
 
     const result = await runFlagOn(INSTALL_ARGV);
 
-    expect(result.exitCode).toBe(0);
-    const reason = (await readLocal()).targets.unmanaged.bundles['local-old/legacy'].unmanagedReason;
+    expect(result.exitCode, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`).toBe(0);
+    const local = await readLocal();
+    const unmanaged = Object.keys(local.targets.unmanaged.bundles)[0];
+    if (unmanaged === undefined) {
+      throw new Error('The legacy intent was not retained as an unmanaged record.');
+    }
+    expect(unmanaged).toMatch(/^unresolved\/[a-f0-9]{64}$/);
+    const reason = local.targets.unmanaged.bundles[unmanaged].unmanagedReason;
     expect(reason).toBeTruthy();
-    expect(result.stdout + result.stderr).toContain('local-old/legacy');
+    expect(result.stdout + result.stderr).toContain(unmanaged);
     expect(result.stdout + result.stderr).toContain(reason ?? '');
   });
 

@@ -6,9 +6,13 @@
  * with the flag unset.
  */
 import {
+  createHash,
+} from 'node:crypto';
+import {
   mkdir,
   mkdtemp,
   readFile,
+  realpath,
   rm,
   stat,
   symlink,
@@ -30,6 +34,9 @@ import type {
   HttpResponse,
   RegistrySource,
   Target,
+} from '@ai-primitives-hub/core';
+import {
+  sourceKey,
 } from '@ai-primitives-hub/core';
 import {
   buildZip,
@@ -54,6 +61,9 @@ import {
   runCli,
   runCommand,
 } from '../../src/framework';
+import {
+  BoundedFs,
+} from '../fixtures/bounded-fs';
 import {
   RecordingFs,
 } from '../fixtures/recording-fs';
@@ -98,7 +108,7 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
   const run = (
     argv: string[],
     overrides: Record<string, string> = {},
-    fs: NodeFileSystem = new NodeFileSystem()
+    fs: NodeFileSystem = new BoundedFs(workspace)
   ): ReturnType<typeof runCommand> => runCommand(argv, {
     commandClasses: [TargetAddCommand, InstallCommand],
     context: { cwd: workspace, fs, env: { ...env, ...overrides } }
@@ -120,11 +130,12 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
     return legacy;
   };
   const flagOn = { AI_PRIMITIVES_HUB_UNIFIED_DEPLOY: '1' };
+  const localSourceKey = sourceKey({ kind: 'workspace-local', root: '.' }, 'local');
   const parse = <T>(stdout: string): JsonEnvelope<T> => JSON.parse(stdout) as JsonEnvelope<T>;
   const destination = (): string => path.join(workspace, '.copilot', 'prompts', 'hello.prompt.md');
 
   beforeEach(async () => {
-    workspace = await mkdtemp(path.join(os.tmpdir(), 'cli-install-unified-test-'));
+    workspace = await realpath(await mkdtemp(path.join(os.tmpdir(), 'cli-install-unified-test-')));
     bundleDir = path.join(workspace, 'bundle');
     env = {
       HOME: workspace,
@@ -199,7 +210,7 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
     await expect(readFile(destination(), 'utf8')).resolves.toContain('Hello Prompt');
     const desired = JSON.parse(await readFile(data.lockfile, 'utf8')) as { version: string; bundles: Record<string, unknown> };
     expect(desired.version.startsWith('3.')).toBe(true);
-    expect(Object.keys(desired.bundles)).toEqual([`local-${path.basename(bundleDir)}/local-foo`]);
+    expect(Object.keys(desired.bundles)).toEqual([`${localSourceKey}/local-foo`]);
   });
 
   it('reports a second identical install as satisfied rather than rewriting', async () => {
@@ -284,16 +295,28 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
     expect(local.targets.scopeless.scope).toBe('user');
   });
 
-  it('records the source descriptor in the desired lockfile for a fresh local install', async () => {
+  it('records the portable workspace identity and source-content pin for a fresh local install', async () => {
     const result = await run(['install', 'local-foo', '--from', bundleDir, '--target', 'my-vscode', '-o', 'json'], flagOn);
 
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode, result.stdout).toBe(0);
     const desired = JSON.parse(await readFile(resolveUserConfigPaths(env).userLockfile, 'utf8')) as {
-      bundles: Record<string, { sourceId: string }>;
-      sources: Record<string, { type: string; url: string }>;
+      bundles: Record<string, { sourceKey: string; resolution: { kind: string; provider?: string; bundleSelector?: string; sourceContentSha256?: string } }>;
+      sources: Record<string, { type: string; locator: string; identity: { kind: string; root?: string } }>;
     };
-    const [entry] = Object.values(desired.bundles);
-    expect(desired.sources[entry.sourceId]).toEqual({ type: 'local', url: bundleDir });
+    const [[key, entry]] = Object.entries(desired.bundles);
+    expect(key).toBe(`${entry.sourceKey}/local-foo`);
+    expect(entry.sourceKey).toMatch(/^src-[a-f0-9]{64}$/);
+    expect(entry.resolution).toMatchObject({
+      kind: 'pinned',
+      provider: 'local-snapshot',
+      bundleSelector: 'bundle',
+      sourceContentSha256: expect.stringMatching(/^[a-f0-9]{64}$/)
+    });
+    expect(desired.sources[entry.sourceKey]).toMatchObject({
+      type: 'local',
+      locator: '.',
+      identity: { kind: 'workspace-local', root: '.' }
+    });
   });
 
   it('dry-run over an un-migrated v2 lockfile refuses with an actionable error and writes nothing', async () => {
@@ -323,10 +346,12 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
 
     expect(result.exitCode).toBe(0);
     const { data } = parse<UnifiedInstallData>(result.stdout);
-    expect(data.migration?.unmanaged.map((u) => u.key)).toEqual(['legacy-source/older-bundle']);
+    expect(data.migration?.unmanaged).toHaveLength(1);
+    expect(data.migration?.unmanaged[0].key).toMatch(/^unresolved\/[a-f0-9]{64}$/);
+    expect(data.migration?.unmanaged[0].reason).toContain('Portable source and manifest identity were not verified');
     const desired = JSON.parse(await readFile(data.lockfile, 'utf8')) as { version: string; bundles: Record<string, unknown> };
     expect(desired.version.startsWith('3.')).toBe(true);
-    expect(Object.keys(desired.bundles)).toContain('legacy-source/older-bundle');
+    expect(Object.keys(desired.bundles)).toContain(`${localSourceKey}/local-foo`);
     await expect(readFile(destination(), 'utf8')).resolves.toContain('Hello Prompt');
   });
 
@@ -352,8 +377,13 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
 
   describe('lockfile replay (local sources)', () => {
     interface DesiredFile {
-      bundles: Record<string, { version: string; sourceId: string }>;
+      bundles: Record<string, {
+        version: string;
+        sourceKey: string;
+        resolution: { kind: string; version?: string };
+      }>;
       sources: Record<string, unknown>;
+      unresolved?: { originalKey: string; sourceRef?: string; version: string; reason: string }[];
     }
     interface ReplayData {
       lockfile: string;
@@ -379,7 +409,7 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
     }
 
     const lockfilePath = (): string => resolveUserConfigPaths(env).userLockfile;
-    const replayKey = (): string => `local-${path.basename(bundleDir)}/local-foo`;
+    const replayKey = (): string => `${localSourceKey}/local-foo`;
     const installOnce = async (): Promise<void> => {
       const result = await run(['install', 'local-foo', '--from', bundleDir, '--target', 'my-vscode', '-o', 'json'], flagOn);
       expect(result.exitCode).toBe(0);
@@ -484,7 +514,7 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
       expect(await exists(userPaths.userLocalLockfile)).toBe(false);
     });
 
-    it('migrates the user lockfile on a non-dry-run replay of it, then replays the migrated entry', async () => {
+    it('migrates legacy intent without replaying it when portable identity is unproven', async () => {
       const userPaths = resolveUserConfigPaths(env);
       let legacy = emptyLockfile('ai-primitives-hub-cli');
       legacy = upsertBundleEntry(legacy, 'local-foo', {
@@ -500,12 +530,44 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
 
       const result = await replay();
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode).toBe(1);
       const { data } = parse<ReplayData>(result.stdout);
       expect(data.migration).not.toBeNull();
-      expect(data.replayed).toEqual(['local-bundle/local-foo']);
-      expect((await readDesired()).bundles['local-bundle/local-foo'].version).toBe('1.0.0');
+      expect(data.replayed).toEqual([]);
+      expect(data.failures).toContainEqual(expect.objectContaining({
+        key: 'local-foo',
+        reason: expect.stringMatching(/unresolved/i)
+      }));
+      expect((await readDesired()).unresolved?.[0]).toMatchObject({
+        originalKey: 'local-foo',
+        version: '1.0.0'
+      });
+      expect(await exists(destination())).toBe(false);
+    });
+
+    it('reports unresolved intent while replaying independent portable entries', async () => {
+      await installOnce();
+      await editDesired((desired) => {
+        desired.unresolved = [{
+          originalKey: 'old-source/legacy-bundle',
+          sourceRef: 'old-source',
+          version: '0.9.0',
+          reason: 'Portable source and manifest identity were not verified.'
+        }];
+      });
+      await rm(destination());
+
+      const result = await replay();
+
+      expect(result.exitCode).toBe(1);
+      const { data } = parse<ReplayData>(result.stdout);
+      expect(data.replayed).toEqual([replayKey()]);
+      expect(data.failures).toContainEqual(expect.objectContaining({
+        key: 'old-source/legacy-bundle',
+        reason: expect.stringContaining('0.9.0')
+      }));
       await expect(readFile(destination(), 'utf8')).resolves.toContain('Hello Prompt');
+      expect((await readDesired()).unresolved).toHaveLength(1);
     });
 
     // A foreign file that would, if replayed, overwrite the descriptor of the user pair's source.
@@ -514,10 +576,27 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
       const elsewhere = path.join(workspace, 'elsewhere');
       await mkdir(path.dirname(file), { recursive: true });
       if (format === 'v3') {
+        const sourceIdentity = { kind: 'workspace-local' as const, root: 'elsewhere' };
+        const foreignSourceKey = sourceKey(sourceIdentity, 'local');
         await writeFile(file, JSON.stringify({
+          $schema: 'https://github.com/AmadeusITGroup/ai-primitives-hub/schemas/lockfile-v3.schema.json',
           version: '3.0.0',
-          bundles: { [`${sourceId}/local-foo`]: { version: '1.0.0', sourceId } },
-          sources: { [sourceId]: { type: 'local', url: elsewhere } }
+          bundles: {
+            [`${foreignSourceKey}/local-foo`]: {
+              version: '1.0.0',
+              sourceKey: foreignSourceKey,
+              resolution: {
+                kind: 'pinned',
+                provider: 'local-snapshot',
+                version: '1.0.0',
+                bundleSelector: 'bundle',
+                sourceContentSha256: 'a'.repeat(64)
+              }
+            }
+          },
+          sources: {
+            [foreignSourceKey]: { type: 'local', identity: sourceIdentity, locator: 'elsewhere' }
+          }
         }, null, 2));
         return;
       }
@@ -561,7 +640,7 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
       const result = await replay([], recording, foreign);
 
       await expectRefusedUntouched(result, recording, foreign, userBefore);
-      expect(recording.reads).not.toContain(foreign);
+      expect(recording.contentReads).not.toContain(foreign);
     });
 
     it.each(['prompt-registry.lock.json', 'prompt-registry.local.lock.json'])('refuses a bare install whose detection selects the project v2 %s, without reading it', async (name) => {
@@ -583,26 +662,26 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
       await rm(destination());
       const foreign = path.join(workspace, 'ai-primitives-hub.lock.json');
       await writeForeign(foreign, 'v3');
-      const recording = new RecordingFs();
+      const recording = new RecordingFs(workspace);
 
       const result = await run(['install', '--target', 'my-vscode', '-o', 'json'], flagOn, recording);
 
       expect(result.exitCode).toBe(0);
       expect(parse<ReplayData>(result.stdout).data.lockfile).toBe(lockfilePath());
-      expect(recording.reads).not.toContain(foreign);
+      expect(recording.contentReads).not.toContain(foreign);
       await expect(readFile(destination(), 'utf8')).resolves.toContain('Hello Prompt');
     });
 
     it('with no user lockfile, a bare install ignores a project ai-primitives-hub.lock.json and asks for a mode', async () => {
       const foreign = path.join(workspace, 'ai-primitives-hub.lock.json');
       await writeForeign(foreign, 'v3');
-      const recording = new RecordingFs();
+      const recording = new RecordingFs(workspace);
 
       const result = await run(['install', '--target', 'my-vscode', '-o', 'json'], flagOn, recording);
 
       expect(result.exitCode).toBe(1);
       expect(parse<null>(result.stdout).errors[0].code).toBe('USAGE.MISSING_FLAG');
-      expect(recording.reads).not.toContain(foreign);
+      expect(recording.contentReads).not.toContain(foreign);
       expect(recording.writes).toEqual([]);
     });
 
@@ -653,9 +732,12 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
 
       const result = await replay([], new NodeFileSystem(), spelling);
 
-      expect(result.exitCode).toBe(0);
-      expect(parse<ReplayData>(result.stdout).data.migration).not.toBeNull();
-      expect((await readDesired()).bundles['local-bundle/local-foo'].version).toBe('1.0.0');
+      expect(result.exitCode).toBe(1);
+      const { data } = parse<ReplayData>(result.stdout);
+      expect(data.migration).not.toBeNull();
+      expect(data.replayed).toEqual([]);
+      expect(data.failures[0].key).toBe('local-foo');
+      expect((await readDesired()).unresolved?.[0]).toMatchObject({ originalKey: 'local-foo', version: '1.0.0' });
     });
 
     it('refuses a symlink alias of the user lockfile (aliases are not followed)', async () => {
@@ -695,6 +777,7 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
       await installOnce();
       await editDesired((desired) => {
         desired.bundles[replayKey()].version = '9.9.9';
+        desired.bundles[replayKey()].resolution.version = '9.9.9';
       });
       await rm(destination());
       const before = await readFile(lockfilePath(), 'utf8');
@@ -717,6 +800,7 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
       await installOnce();
       await editDesired((desired) => {
         desired.bundles[replayKey()].version = '9.9.9';
+        desired.bundles[replayKey()].resolution.version = '9.9.9';
       });
       await rm(destination());
       const recording = new RecordingFs();
@@ -732,24 +816,32 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
       expect(recording.writes).toEqual([]);
     });
 
-    it('fails an entry whose source has no descriptor, still replays the others, and exits 1', async () => {
+    it('rejects a desired entry with no source descriptor before replaying any bundle', async () => {
       await installOnce();
+      const missingSourceKey = sourceKey({ kind: 'workspace-local', root: 'ghost-source' }, 'local');
       await editDesired((desired) => {
-        desired.bundles = { 'ghost-source/ghost': { version: '1.0.0', sourceId: 'ghost-source' }, ...desired.bundles };
+        desired.bundles = {
+          [`${missingSourceKey}/ghost`]: {
+            version: '1.0.0',
+            sourceKey: missingSourceKey,
+            resolution: {
+              kind: 'pinned',
+              provider: 'local-snapshot',
+              version: '1.0.0',
+              bundleSelector: 'ghost',
+              sourceContentSha256: 'a'.repeat(64)
+            }
+          },
+          ...desired.bundles
+        };
       });
       await rm(destination());
 
       const result = await replay();
 
       expect(result.exitCode).toBe(1);
-      const { data } = parse<ReplayData>(result.stdout);
-      expect(data.replayPlanned).toBe(2);
-      expect(data.replayed).toEqual([replayKey()]);
-      expect(data.failures).toHaveLength(1);
-      expect(data.failures[0].key).toBe('ghost-source/ghost');
-      expect(data.failures[0].reason).toContain('ghost-source');
-      await expect(readFile(destination(), 'utf8')).resolves.toContain('Hello Prompt');
-      expect(Object.keys((await readDesired()).sources)).not.toContain('ghost-source');
+      expect(parse<null>(result.stdout).errors[0].code).toBe('CONFIG.INVALID_LOCKFILE_V3');
+      expect(await exists(destination())).toBe(false);
     });
 
     it('reports an unrecognized AI_PRIMITIVES_HUB_UNIFIED_DEPLOY value as USAGE.INVALID_FLAG', async () => {
@@ -763,45 +855,122 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
       expect(errors[0].message).toContain('AI_PRIMITIVES_HUB_UNIFIED_DEPLOY');
     });
 
-    it('fails an entry whose key names a different source than its sourceId', async () => {
+    it('fails an entry whose portable key names a different source than its sourceKey', async () => {
       await installOnce();
       await editDesired((desired) => {
-        desired.sources['some-other-source'] = desired.sources[desired.bundles[replayKey()].sourceId];
-        desired.bundles[replayKey()].sourceId = 'some-other-source';
+        const otherSourceKey = sourceKey({ kind: 'workspace-local', root: 'other-source' }, 'local');
+        desired.sources[otherSourceKey] = desired.sources[desired.bundles[replayKey()].sourceKey];
+        desired.bundles[replayKey()].sourceKey = otherSourceKey;
       });
       await rm(destination());
 
       const result = await replay();
 
       expect(result.exitCode).toBe(1);
-      const { data } = parse<ReplayData>(result.stdout);
-      expect(data.replayed).toEqual([]);
-      expect(data.failures[0].key).toBe(replayKey());
-      expect(data.failures[0].reason).toContain('some-other-source');
+      expect(parse<null>(result.stdout).errors[0].code).toBe('CONFIG.INVALID_LOCKFILE_V3');
       expect(await exists(destination())).toBe(false);
     });
   });
 
   describe('remote', () => {
     const remoteBundleId = 'remote-foo';
-    const zipBytes = buildZip([...createLegacyReleaseArchive({ id: remoteBundleId }).entries()].map(([filePath, bytes]) => ({
+    const remoteFiles = createLegacyReleaseArchive({ id: remoteBundleId });
+    const remoteManifest = remoteFiles.get('deployment-manifest.yml')!;
+    const zipBytes = buildZip([...remoteFiles.entries()].map(([filePath, bytes]) => ({
       path: filePath,
       bytes
     })));
+    const archiveSha256 = createHash('sha256').update(zipBytes).digest('hex');
+    const remoteSource = {
+      type: 'github' as const,
+      identity: { kind: 'github-releases' as const, origin: 'https://github.com', repositoryId: '123' },
+      locator: 'https://github.com/owner/repo'
+    };
+    const remoteSourceKey = sourceKey(remoteSource.identity, remoteSource.type);
+    const remoteReplayKey = `${remoteSourceKey}/${remoteBundleId}`;
     let httpCalls: string[];
+    const releaseAssets = [
+      {
+        id: 201,
+        name: 'deployment-manifest.yml',
+        url: 'https://api.github.com/assets/remote-manifest',
+        browser_download_url: 'https://github.com/owner/repo/releases/download/v1.0.0/deployment-manifest.yml',
+        size: remoteManifest.byteLength
+      },
+      {
+        id: 200,
+        name: 'bundle.zip',
+        url: 'https://api.github.com/assets/remote-foo',
+        browser_download_url: 'https://github.com/owner/repo/releases/download/v1.0.0/bundle.zip',
+        size: zipBytes.byteLength
+      }
+    ];
+    const release = {
+      id: 100,
+      tag_name: `${remoteBundleId}-v1.0.0`,
+      name: 'Remote Foo',
+      body: '',
+      published_at: '2026-10-12T00:00:00Z',
+      assets: releaseAssets
+    };
     const http: HttpClient = {
       fetch: (request: HttpRequest): Promise<HttpResponse> => {
         httpCalls.push(request.url);
-        if (request.url === 'https://api.github.com/repos/owner/repo/releases') {
+        if (request.url === 'https://api.github.com/repos/owner/repo') {
           return Promise.resolve({
             statusCode: 200,
-            body: new TextEncoder().encode(JSON.stringify([{
-              tag_name: `${remoteBundleId}-v1.0.0`,
-              assets: [{ name: 'bundle.zip', url: 'https://api.github.com/assets/remote-foo' }]
-            }])),
+            body: new TextEncoder().encode(JSON.stringify({
+              id: 123,
+              full_name: 'owner/repo',
+              html_url: 'https://github.com/owner/repo',
+              default_branch: 'main'
+            })),
             finalUrl: request.url,
             headers: {}
           });
+        }
+        if (request.url === 'https://api.github.com/repos/owner/repo/releases/tags/v1.0.0') {
+          return Promise.resolve({
+            statusCode: 200,
+            body: new TextEncoder().encode(JSON.stringify(release)),
+            finalUrl: request.url,
+            headers: {}
+          });
+        }
+        if (request.url === 'https://api.github.com/repos/owner/repo/releases/100') {
+          return Promise.resolve({
+            statusCode: 200,
+            body: new TextEncoder().encode(JSON.stringify(release)),
+            finalUrl: request.url,
+            headers: {}
+          });
+        }
+        if (request.url === 'https://api.github.com/repos/owner/repo/releases/999') {
+          return Promise.resolve({
+            statusCode: 404,
+            body: new TextEncoder().encode(JSON.stringify({ message: 'Not Found' })),
+            finalUrl: request.url,
+            headers: {}
+          });
+        }
+        if (request.url === 'https://api.github.com/repos/owner/repo/releases/1000') {
+          return Promise.resolve({
+            statusCode: 404,
+            body: new TextEncoder().encode(JSON.stringify({ message: 'Not Found' })),
+            finalUrl: request.url,
+            headers: {}
+          });
+        }
+        if (request.url === 'https://api.github.com/repos/owner/repo/releases') {
+          return Promise.resolve({
+            statusCode: 200,
+            body: new TextEncoder().encode(JSON.stringify([release])),
+            finalUrl: request.url,
+            headers: {}
+          });
+        }
+        if (request.url === 'https://api.github.com/assets/remote-manifest') {
+          return Promise.resolve({ statusCode: 200, body: remoteManifest, finalUrl: request.url, headers: {} });
         }
         if (request.url === 'https://api.github.com/assets/remote-foo') {
           return Promise.resolve({ statusCode: 200, body: zipBytes, finalUrl: request.url, headers: {} });
@@ -892,27 +1061,54 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
       ]).toEqual(before);
     });
 
-    it('records github.com as the source URL when no source is configured', async () => {
+    it('records the provider source identity and exact release pin when no source is configured', async () => {
       const result = await runRemote(['install', remoteBundleId, '--source', 'owner/repo', '--target', 'my-vscode', '-o', 'json']);
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode, result.stdout).toBe(0);
       const desired = JSON.parse(await readFile(resolveUserConfigPaths(env).userLockfile, 'utf8')) as {
-        sources: Record<string, unknown>;
+        bundles: Record<string, {
+          sourceKey: string;
+          resolution: { kind: string; provider?: string; version?: string; releaseId?: string; assetId?: string; archiveSha256?: string };
+        }>;
+        sources: Record<string, { type: string; locator: string; identity: { kind: string; origin?: string; repositoryId?: string } }>;
       };
-      expect(Object.values(desired.sources)).toEqual([{ type: 'github', url: 'https://github.com/owner/repo' }]);
+      const [[key, entry]] = Object.entries(desired.bundles);
+      expect(key).toBe(`${entry.sourceKey}/${remoteBundleId}`);
+      expect(entry.sourceKey).toMatch(/^src-[a-f0-9]{64}$/);
+      expect(entry.resolution).toMatchObject({
+        kind: 'pinned',
+        provider: 'github-release',
+        version: '1.0.0',
+        releaseId: '100',
+        assetId: '200',
+        archiveSha256: expect.stringMatching(/^[a-f0-9]{64}$/)
+      });
+      expect(desired.sources[entry.sourceKey]).toEqual({
+        type: 'github',
+        identity: { kind: 'github-releases', origin: 'https://github.com', repositoryId: '123' },
+        locator: 'https://github.com/owner/repo'
+      });
       expect(parse<{ source: Record<string, unknown> }>(result.stdout).data.source).not.toHaveProperty('collectionsPath');
     });
 
     describe('lockfile replay', () => {
-      const sourceId = 'gh-source';
-      const key = `${sourceId}/${remoteBundleId}`;
+      const key = remoteReplayKey;
+      const pinnedResolution = (version: string) => ({
+        kind: 'pinned',
+        provider: 'github-release',
+        version,
+        releaseId: version === '1.0.0' ? '100' : '999',
+        assetId: '200',
+        archiveSha256
+      });
       const writeDesired = async (version: string): Promise<void> => {
         const file = resolveUserConfigPaths(env).userLockfile;
         await mkdir(path.dirname(file), { recursive: true });
         await writeFile(file, JSON.stringify({
+          $schema: 'https://github.com/AmadeusITGroup/ai-primitives-hub/schemas/lockfile-v3.schema.json',
           version: '3.0.0',
-          bundles: { [key]: { version, sourceId } },
-          sources: { [sourceId]: { type: 'github', url: 'https://github.com/owner/repo' } }
+          bundles: { [key]: { version, sourceKey: remoteSourceKey, resolution: pinnedResolution(version) } },
+          sources: { [remoteSourceKey]: remoteSource }
         }, null, 2));
       };
       const replayRemote = async (fs: NodeFileSystem): Promise<{ exitCode: number; stdout: string }> =>
@@ -927,27 +1123,44 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
         const { data } = parse<{ replayed: string[]; failures: unknown[] }>(result.stdout);
         expect(data.replayed).toEqual([key]);
         expect(data.failures).toEqual([]);
-        expect(httpCalls).toContain('https://api.github.com/repos/owner/repo/releases');
+        expect(httpCalls).toContain('https://api.github.com/repos/owner/repo/releases/100');
+        expect(httpCalls).not.toContain('https://api.github.com/repos/owner/repo/releases');
         await expect(readFile(destination(), 'utf8')).resolves.toContain('Hello Prompt');
       });
 
-      it('replays a recorded github descriptor despite an awesome-copilot sourceId prefix', async () => {
+      it('rejects an incompatible recorded provider descriptor before making HTTP requests', async () => {
         await writeDesired('1.0.0');
         const file = resolveUserConfigPaths(env).userLockfile;
-        const misleading = 'awesome-copilot-misleading';
-        const desired = JSON.parse(await readFile(file, 'utf8')) as {
-          bundles: Record<string, { version: string; sourceId: string }>;
-          sources: Record<string, { type: string; url: string }>;
+        const wrongSource = {
+          type: 'awesome-copilot' as const,
+          identity: {
+            kind: 'github-tree' as const,
+            origin: 'https://github.com',
+            repositoryId: '123',
+            ref: 'main',
+            collectionsPath: 'collections'
+          },
+          locator: 'https://github.com/owner/repo'
         };
-        desired.bundles = { [`${misleading}/${remoteBundleId}`]: { version: '1.0.0', sourceId: misleading } };
-        desired.sources = { [misleading]: { type: 'github', url: 'https://github.com/owner/repo' } };
+        const wrongSourceKey = sourceKey(wrongSource.identity, wrongSource.type);
+        const desired = {
+          $schema: 'https://github.com/AmadeusITGroup/ai-primitives-hub/schemas/lockfile-v3.schema.json',
+          version: '3.0.0',
+          bundles: {
+            [`${wrongSourceKey}/${remoteBundleId}`]: {
+              version: '1.0.0',
+              sourceKey: wrongSourceKey,
+              resolution: pinnedResolution('1.0.0')
+            }
+          },
+          sources: { [wrongSourceKey]: wrongSource }
+        };
         await writeFile(file, JSON.stringify(desired));
         const result = await replayRemote(new NodeFileSystem());
-        expect(result.exitCode).toBe(0);
-        expect(parse<{ replayed: string[] }>(result.stdout).data.replayed).toEqual([`${misleading}/${remoteBundleId}`]);
-        expect(httpCalls).toContain('https://api.github.com/repos/owner/repo/releases');
-        expect(httpCalls.some((url) => url.includes('/contents/'))).toBe(false);
-        expect(await readFile(destination(), 'utf8')).toContain('Hello Prompt');
+        expect(result.exitCode).toBe(1);
+        expect(parse<null>(result.stdout).errors[0].code).toBe('CONFIG.INVALID_LOCKFILE_V3');
+        expect(httpCalls).toEqual([]);
+        expect(await exists(destination())).toBe(false);
       });
 
       it('fails closed when the pinned version is not a release, and never downloads the latest instead', async () => {
@@ -961,22 +1174,24 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
         expect(data.replayed).toEqual([]);
         expect(data.failures).toHaveLength(1);
         expect(data.failures[0].key).toBe(key);
-        expect(data.failures[0].reason).toContain('9.9.9');
+        expect(data.failures[0].reason).toContain('/releases/999');
+        expect(httpCalls).toContain('https://api.github.com/repos/owner/repo/releases/999');
+        expect(httpCalls).not.toContain('https://api.github.com/repos/owner/repo/releases');
         expect(httpCalls).not.toContain('https://api.github.com/assets/remote-foo');
         expect(recording.writes).toEqual([]);
         expect(await exists(destination())).toBe(false);
       });
     });
 
-    it('records the configured source URL, branch and collectionsPath rather than a synthesized github.com URL', async () => {
+    it('records a canonical provider descriptor and supported auth references', async () => {
       const source: RegistrySource = {
         id: 'mirror-source',
         name: 'Mirror source',
         type: 'github',
-        url: 'https://www.github.com/owner/repo',
+        url: 'https://github.com/owner/repo',
         enabled: true,
         priority: 0,
-        config: { branch: 'release', collectionsPath: 'collections' }
+        config: { authMode: 'anonymous', credentialRef: 'mirror-auth' }
       };
       const target: Target = { name: 'my-vscode', type: 'vscode', scope: 'user' };
       const ctx = createTestContext({ cwd: workspace, fs: new NodeFileSystem(), env: { ...env, ...flagOn } });
@@ -984,18 +1199,18 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
       const exitCode = await installBundleWithSource(remoteBundleId, source, target, ctx, http, tokens, 'json');
 
       expect(exitCode).toBe(0);
-      expect(parse<{ source: { collectionsPath?: string; url: string } }>(ctx.stdout.captured()).data.source)
-        .toMatchObject({ collectionsPath: 'collections', url: source.url });
+      expect(parse<{ source: { url: string } }>(ctx.stdout.captured()).data.source)
+        .toMatchObject({ url: source.url });
       const desired = JSON.parse(await readFile(resolveUserConfigPaths(env).userLockfile, 'utf8')) as {
-        bundles: Record<string, { sourceId: string }>;
+        bundles: Record<string, { sourceKey: string }>;
         sources: Record<string, unknown>;
       };
       const [entry] = Object.values(desired.bundles);
-      expect(desired.sources[entry.sourceId]).toEqual({
+      expect(desired.sources[entry.sourceKey]).toEqual({
         type: source.type,
-        url: source.url,
-        branch: 'release',
-        collectionsPath: 'collections'
+        identity: { kind: 'github-releases', origin: 'https://github.com', repositoryId: '123' },
+        locator: source.url,
+        config: { authMode: 'anonymous', credentialRef: 'mirror-auth' }
       });
     });
   });
@@ -1020,7 +1235,7 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
     const { data } = parse<UnifiedInstallData>(json.stdout);
     expect(data.migration?.unmanaged).toHaveLength(1);
     const [entry] = data.migration?.unmanaged ?? [];
-    expect(entry.key).toContain('older-bundle');
+    expect(entry.key).toMatch(/^unresolved\/[a-f0-9]{64}$/);
     expect(entry.reason.length).toBeGreaterThan(0);
 
     // A second flag-on run does not migrate again, so rebuild the v2 state for the text assertion.

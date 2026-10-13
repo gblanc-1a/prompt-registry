@@ -717,7 +717,8 @@ export class AwesomeCopilotAdapter extends BaseSourceAdapter {
       manifestId: collection.id,
       version,
       resolution,
-      files: outputFiles
+      files: outputFiles,
+      sourceFiles: inputFiles
     };
   }
 

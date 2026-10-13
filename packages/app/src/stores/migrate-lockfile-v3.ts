@@ -1116,8 +1116,11 @@ const materializationRecord = (
           if (file[field] === true) {
             projected[field] = true;
           }
-        } else if (typeof file[field] === 'string') {
-          projected[field] = file[field];
+        } else {
+          const checksum = file[field];
+          if (typeof checksum === 'string' && /^(?:[a-z0-9]+:)?[a-f0-9]{64}$/.test(checksum)) {
+            projected[field] = checksum;
+          }
         }
       }
       return [projected];
@@ -1419,6 +1422,15 @@ const conflictsWithExistingMaterialization = (
     existing.version !== input.version
     || existing.sourceKey !== portableSourceKey(decision.source.identity, decision.source.type)
     || stableJson(existing.resolution) !== stableJson(decision.resolution)
+  ) {
+    return true;
+  }
+  const incomingMcpConfigPath = getString(row.entry.mcpConfigPath)
+    ?? getString(getObject(row.entry.mcp)?.configPath);
+  if (
+    incomingMcpConfigPath !== undefined
+    && existing.mcpConfigPath !== undefined
+    && incomingMcpConfigPath !== existing.mcpConfigPath
   ) {
     return true;
   }

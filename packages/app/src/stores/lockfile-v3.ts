@@ -1076,7 +1076,7 @@ export const upsertDesiredSource = (
       : entry.config;
   const updatedEntry = {
     ...entry,
-    ...(config === undefined ? {} : { config })
+    ...(config === undefined || Object.keys(config).length === 0 ? {} : { config })
   };
 
   return {

@@ -174,6 +174,17 @@ describe('convertV2ToPair', () => {
     expect('bundles' in pair.local).toBe(false);
   });
 
+  it('does not project malformed legacy file checksums into strict v3 materializations', () => {
+    const legacy = v2WithOneBundle();
+    legacy.bundles['web-dev'].files[0].checksum = 'archivehash';
+
+    const { pair } = convertV2ToPair(legacy, OPTS);
+    const [record] = Object.values(pair.local.targets[UNMANAGED_TARGET_KEY].bundles);
+
+    expect(pair.desired.unresolved).toHaveLength(1);
+    expect(record.files).toEqual([{ path: 'prompts/hello.prompt.md' }]);
+  });
+
   it('preserves original desired intent as unresolved when source and manifest proof are absent', () => {
     const { pair } = convertV2ToPair(v2WithOneBundle(), OPTS);
 
@@ -1019,6 +1030,85 @@ describe('offline portable identity migration', () => {
       .toEqual(['.config/first-mcp.json', '.config/second-mcp.json']);
     expect(retained.map(([, record]) => record.mcpServers?.[0]).toSorted())
       .toEqual(['first-server', 'second-server']);
+  });
+
+  it('retains legacy MCP ownership separately when it conflicts with an existing portable destination', async () => {
+    const fs = fakeFs();
+    const repoSources = {
+      ...userSources,
+      legacyFiles: ['/work/older-local.lock.json']
+    };
+    const sourceId = sourceKey(verifiedSource.identity, verifiedSource.type);
+    const resolution = {
+      kind: 'pinned' as const,
+      provider: 'github-release' as const,
+      version: '1.0.0',
+      releaseId: '7',
+      assetId: '77',
+      archiveSha256: ARCHIVE_DIGEST
+    };
+    const currentDesired = {
+      version: '3.0.0',
+      bundles: {
+        [verifiedLogicalKey]: { version: '1.0.0', sourceKey: sourceId, resolution }
+      },
+      sources: { [sourceId]: verifiedSource }
+    };
+    const currentLocal = {
+      version: '3.0.0',
+      generatedAt: NOW,
+      generatedBy: OPTS.generatedBy,
+      targets: {
+        'cursor-user': {
+          targetType: 'cursor',
+          scope: 'user',
+          baseDir: '/home/user/.cursor',
+          bundles: {
+            [verifiedLogicalKey]: {
+              version: '1.0.0',
+              sourceKey: sourceId,
+              resolution,
+              installedAt: NOW,
+              files: [{
+                path: 'agents/reviewer.md',
+                checksum: FILE_DIGEST,
+                installedChecksum: INSTALLED_DIGEST
+              }],
+              mcpConfigPath: '.copilot/mcp-config.json',
+              mcpServers: ['portable-server']
+            }
+          }
+        }
+      }
+    };
+    const legacyPair = branchEraV3Pair();
+    legacyPair.desired.bundles[legacyRuntimeKey].resolution = resolution;
+    legacyPair.local.targets['cursor-user'].bundles[legacyRuntimeKey].resolution = resolution;
+    legacyPair.local.targets['cursor-user'].bundles[legacyRuntimeKey].mcpConfigPath = '.config/legacy-mcp.json';
+    legacyPair.local.targets['cursor-user'].bundles[legacyRuntimeKey].mcpServers = ['legacy-server'];
+    fs.files.set(repoSources.desiredFile, JSON.stringify(currentDesired));
+    fs.files.set(repoSources.localFile, JSON.stringify(currentLocal));
+    fs.files.set(repoSources.legacyFiles[0], JSON.stringify(legacyPair.local));
+
+    const plan = await planLockfileMigration(repoSources, fs, {
+      ...OPTS,
+      identityEvidence: [{
+        legacyKey: legacyRuntimeKey,
+        version: '1.0.0',
+        sourceId: 'computer-specific',
+        proven: { source: verifiedSource, logicalBundleId: 'reviewer' }
+      }]
+    });
+
+    const target = plan.pair.local.targets['cursor-user'].bundles;
+    const retained = Object.entries(target).filter(([key]) => key.startsWith('unresolved/'));
+    expect(target[verifiedLogicalKey].mcpConfigPath).toBe('.copilot/mcp-config.json');
+    expect(retained).toHaveLength(1);
+    expect(retained[0][1]).toMatchObject({
+      state: 'unmanaged',
+      mcpConfigPath: '.config/legacy-mcp.json',
+      mcpServers: ['legacy-server']
+    });
   });
 
   it('removes temporary mappings but retains permanent unmanaged evidence', async () => {

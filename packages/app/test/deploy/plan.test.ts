@@ -114,6 +114,7 @@ prompts:
     ]);
     const skillRequest = {
       ...request(),
+      manifestId: 'skills',
       files: skillArchive,
       placement: {
         ...request().placement,
@@ -139,7 +140,7 @@ prompts:
     // only — the planner never needs the desired half to answer this.
     const files = new Map([
       ['/home/u/.copilot/prompts/hello.prompt.md', '# edited by the user\n'],
-      [LOCAL_FILE, seedLocal([{ path: 'prompts/hello.prompt.md', installedChecksum: 'wrong-hash' }])]
+      [LOCAL_FILE, seedLocal([{ path: 'prompts/hello.prompt.md', installedChecksum: '0'.repeat(64) }])]
     ]);
 
     const plan = await planDeploy(request(), readOnlyPorts(files));
@@ -184,7 +185,7 @@ prompts:
     // §8.4's legal intermediate state: local written, desired not yet.
     const files = new Map([
       ['/home/u/.copilot/prompts/hello.prompt.md', '# Hello Prompt\n'],
-      [LOCAL_FILE, seedLocal([{ path: 'prompts/hello.prompt.md', installedChecksum: 'notthehash' }])]
+      [LOCAL_FILE, seedLocal([{ path: 'prompts/hello.prompt.md', installedChecksum: '0'.repeat(64) }])]
     ]);
 
     const plan = await planDeploy(request(), readOnlyPorts(files));
@@ -203,7 +204,7 @@ prompts:
     const bad = { ...request(), files: undefined };
 
     await expect(planDeploy(bad, readOnlyPorts(new Map())))
-      .rejects.toThrow(/exactly one of/);
+      .rejects.toThrow(/include extracted files/);
   });
 
   it('compares expectedArchiveSha before planning any effect', async () => {

@@ -2,6 +2,9 @@ import {
   createHash,
 } from 'node:crypto';
 import {
+  sourceKey,
+} from '@ai-primitives-hub/core';
+import {
   describe,
   expect,
   it,
@@ -17,6 +20,7 @@ import {
 } from '../../src/deploy/undeploy';
 import {
   governedSkillArchive,
+  portableKeyFor,
   promptArchive,
   readPair,
   recordingPorts,
@@ -24,12 +28,53 @@ import {
   skillArchiveVersioned,
   skillRequest,
   symlinkPorts,
+  TEST_SOURCE_KEY,
   twoItemArchive,
   upgradePromptRequest,
   upgradeSkillRequest,
 } from './fixtures';
 
 describe('deployBundle', () => {
+  it('refuses live resolutions before migration or placement', async () => {
+    const ports = recordingPorts();
+    const source = {
+      type: 'local-skills' as const,
+      identity: { kind: 'workspace-local' as const, root: '.', skillsPath: 'skills' },
+      locator: '.'
+    };
+    const legacy = JSON.stringify({
+      version: '2.0.0', generatedAt: ports.now, generatedBy: 'test', bundles: {}, sources: {}
+    });
+    ports.files.set(ports.lockfileStore.desiredFile, legacy);
+    const before = [...ports.files];
+
+    await expect(deployBundle({
+      ...request(),
+      source: { sourceKey: sourceKey(source.identity, source.type), descriptor: source },
+      resolution: { kind: 'live', selector: 'skills/reviewer' }
+    }, ports)).rejects.toMatchObject({ code: 'BUNDLE.UNSUPPORTED_LIVE_DEPLOYMENT' });
+
+    expect([...ports.files]).toEqual(before);
+    expect(ports.calls).toEqual([]);
+  });
+
+  it('refuses a resolution version mismatch before migration or placement', async () => {
+    const ports = recordingPorts();
+    const legacy = JSON.stringify({
+      version: '2.0.0', generatedAt: ports.now, generatedBy: 'test', bundles: {}, sources: {}
+    });
+    ports.files.set(ports.lockfileStore.desiredFile, legacy);
+    const before = [...ports.files];
+
+    await expect(deployBundle({
+      ...request(),
+      bundle: { bundleId: 'web-dev', version: '2.0.0' }
+    }, ports)).rejects.toMatchObject({ code: 'BUNDLE.RESOLUTION_VERSION_MISMATCH' });
+
+    expect([...ports.files]).toEqual(before);
+    expect(ports.calls).toEqual([]);
+  });
+
   it('preserves archive checksum refusal before migration for a mismatched bytes-only request', async () => {
     const ports = recordingPorts();
     const legacy = JSON.stringify({
@@ -111,10 +156,10 @@ describe('deployBundle', () => {
 
     const result = await deployBundle(request(), ports);
 
-    expect(result.key).toBe('github-abc123/web-dev');
+    expect(result.key).toBe(portableKeyFor('web-dev'));
     const { desired, local } = readPair(ports);
-    expect(Object.keys(desired.bundles)).toEqual(['github-abc123/web-dev']);
-    expect(Object.keys(local.targets['my-vscode'].bundles)).toEqual(['github-abc123/web-dev']);
+    expect(Object.keys(desired.bundles)).toEqual([portableKeyFor('web-dev')]);
+    expect(Object.keys(local.targets['my-vscode'].bundles)).toEqual([portableKeyFor('web-dev')]);
   });
 
   it('records on-disk paths relative to the resolved baseDir, not bundle-relative ones', async () => {
@@ -123,7 +168,7 @@ describe('deployBundle', () => {
     await deployBundle(request(), ports);
 
     const { local } = readPair(ports);
-    const record = local.targets['my-vscode'].bundles['github-abc123/web-dev'];
+    const record = local.targets['my-vscode'].bundles[portableKeyFor('web-dev')];
     expect(record.files.map((f: { path: string }) => f.path)).toEqual(['prompts/hello.prompt.md']);
   });
 
@@ -138,7 +183,7 @@ describe('deployBundle', () => {
     await deployBundle(request(), ports);
 
     const { local } = readPair(ports);
-    const file = local.targets['my-vscode'].bundles['github-abc123/web-dev'].files[0];
+    const file = local.targets['my-vscode'].bundles[portableKeyFor('web-dev')].files[0];
     expect(file.installedChecksum).toBe(createHash('sha256').update(transformed).digest('hex'));
     expect(file.checksum).toBe(createHash('sha256').update(source).digest('hex'));
     expect(file.installedChecksum).not.toBe(file.checksum);
@@ -205,7 +250,7 @@ describe('deployBundle', () => {
     expect(result.satisfied).toEqual(['/home/u/.copilot/prompts/hello.prompt.md']);
     expect(result.collisions).toEqual([]);
     const { local } = readPair(ports);
-    expect(local.targets['my-vscode'].bundles['github-abc123/web-dev'].files).toHaveLength(1);
+    expect(local.targets['my-vscode'].bundles[portableKeyFor('web-dev')].files).toHaveLength(1);
   });
 
   it('is idempotent: running the same deploy twice converges', async () => {
@@ -364,7 +409,7 @@ describe('deployBundle', () => {
       bundles: {
         other: {
           version: '1.0.0', sourceId: 'github-abc123', sourceType: 'github',
-          installedAt: 'x', files: [{ path: 'prompts/other.prompt.md', checksum: 'h' }]
+          installedAt: '2026-10-09T12:00:00.000Z', files: [{ path: 'prompts/other.prompt.md', checksum: 'a'.repeat(64) }]
         }
       },
       sources: { 'github-abc123': { type: 'github', url: 'https://github.com/owner/repo' } }
@@ -372,11 +417,13 @@ describe('deployBundle', () => {
 
     const result = await deployBundle(request(), ports);
 
-    expect(result.migration?.unmanaged.map((u) => u.key)).toEqual(['github-abc123/other']);
+    expect(result.migration?.unmanaged).toHaveLength(1);
     const { desired, local } = readPair(ports);
     expect(desired.version).toBe('3.0.0');
-    expect(local.targets['my-vscode'].bundles['github-abc123/web-dev']).toBeDefined();
-    expect(local.targets.unmanaged.bundles['github-abc123/other'].state).toBe('unmanaged');
+    expect(local.targets['my-vscode'].bundles[portableKeyFor('web-dev')]).toBeDefined();
+    const unmanagedKey = result.migration!.unmanaged[0].key;
+    expect(unmanagedKey).toMatch(/^unresolved\/[a-f0-9]{64}$/);
+    expect(local.targets.unmanaged.bundles[unmanagedKey].state).toBe('unmanaged');
   });
 
   it('writes no generated metadata into the desired half', async () => {
@@ -429,8 +476,8 @@ describe('deployBundle', () => {
     // 3. Record enumerates every subtree file, not just the entry point
     const { local } = readPair(ports);
     expect(local.targets['my-vscode']).toBeDefined();
-    expect(local.targets['my-vscode'].bundles['github-abc123/skills']).toBeDefined();
-    const skillRecord = local.targets['my-vscode'].bundles['github-abc123/skills'];
+    expect(local.targets['my-vscode'].bundles[portableKeyFor('skills')]).toBeDefined();
+    const skillRecord = local.targets['my-vscode'].bundles[portableKeyFor('skills')];
     expect(skillRecord.files).toHaveLength(3); // SKILL.md, config.json, binary.dat
     const recordedPaths = skillRecord.files.map((f: { path: string }) => f.path).toSorted();
     expect(recordedPaths).toEqual([
@@ -451,7 +498,7 @@ describe('deployBundle', () => {
 
     // Record's files array must remain intact, not empty
     const { local: localAfterSecond } = readPair(ports);
-    const recordAfterSecond = localAfterSecond.targets['my-vscode'].bundles['github-abc123/skills'];
+    const recordAfterSecond = localAfterSecond.targets['my-vscode'].bundles[portableKeyFor('skills')];
     expect(recordAfterSecond.files).toHaveLength(3);
     expect(recordAfterSecond.files.map((f: { path: string }) => f.path).toSorted()).toEqual(recordedPaths);
   });
@@ -478,7 +525,7 @@ describe('deployBundle', () => {
     // Assert installedChecksum matches v2's hash (computed from the same literal)
     const v2Hash = createHash('sha256').update(new TextEncoder().encode(v2Content)).digest('hex');
     const { local } = readPair(ports);
-    const record = local.targets['my-vscode'].bundles['github-abc123/upgrade-test'];
+    const record = local.targets['my-vscode'].bundles[portableKeyFor('upgrade-test')];
     expect(record.files).toHaveLength(1);
     expect(record.files[0].installedChecksum).toBe(v2Hash);
 
@@ -508,7 +555,7 @@ describe('deployBundle', () => {
     // Assert installedChecksum matches v2's hash (computed from the same literal)
     const v2Hash = createHash('sha256').update(new TextEncoder().encode(v2Content)).digest('hex');
     const { local } = readPair(ports);
-    const record = local.targets['my-vscode'].bundles['github-abc123/skills'];
+    const record = local.targets['my-vscode'].bundles[portableKeyFor('skills')];
     const skillFile = record.files.find((f: { path: string }) => f.path === 'skills/upgrade-skill/SKILL.md');
     expect(skillFile).toBeDefined();
     expect(skillFile!.installedChecksum).toBe(v2Hash);
@@ -774,41 +821,48 @@ describe('deployBundle', () => {
     expect(ports.files.has('/home/u/.copilot/skills/my-skill/binary.dat')).toBe(true);
   });
 
-  it('preserves a verified archive pin on files-only redeploy at the same key and version', async () => {
+  it('changes a same-version artifact pin only after deployment succeeds', async () => {
     const ports = recordingPorts();
-    const req = request();
-    const first = await deployBundle(req, ports);
-    const pair = readPair(ports);
-    const archiveSha = `sha256:${createHash('sha256').update('verified remote artifact').digest('hex')}`;
-    pair.desired.bundles[first.key].archiveSha = archiveSha;
-    ports.files.set(ports.lockfileStore.desiredFile, JSON.stringify(pair.desired));
-    await deployBundle(req, ports);
-    expect(readPair(ports).desired.bundles[first.key].archiveSha).toBe(archiveSha);
-  });
-
-  it('drops an old archive pin when the logical bundle version changes', async () => {
-    const ports = recordingPorts();
-    const v1 = upgradePromptRequest(promptArchive('1.0.0', '# V1\n'), '1.0.0');
-    const first = await deployBundle(v1, ports);
-    const pair = readPair(ports);
-    pair.desired.bundles[first.key].archiveSha = `sha256:${createHash('sha256').update('v1 artifact').digest('hex')}`;
-    ports.files.set(ports.lockfileStore.desiredFile, JSON.stringify(pair.desired));
-    await deployBundle(upgradePromptRequest(promptArchive('2.0.0', '# V2\n'), '2.0.0'), ports);
-    expect(readPair(ports).desired.bundles[first.key].archiveSha).toBeUndefined();
-  });
-
-  it.each(['type', 'url'] as const)('refuses a conflicting source %s while another desired key still references it', async (field) => {
-    const ports = recordingPorts();
-    const first = request();
-    await deployBundle(first, ports);
-    const second = upgradePromptRequest(promptArchive('1.0.0', '# second\n'), '1.0.0');
-    second.source = { ...second.source, [field]: field === 'type' ? 'local' : '/different/project' };
-    const before = [...ports.files];
-    await expect(planDeploy(second, ports)).rejects.toMatchObject({ code: 'BUNDLE.SOURCE_CONFLICT' });
-    await expect(deployBundle(second, ports)).rejects.toMatchObject({
-      code: 'BUNDLE.SOURCE_CONFLICT', message: expect.stringContaining('distinct source path')
+    const bytes = new Uint8Array([1, 2, 3]);
+    const pinnedRequest = (releaseId: string) => ({
+      ...request(),
+      bytes,
+      expectedArchiveSha: `sha256:${createHash('sha256').update(bytes).digest('hex')}`,
+      resolution: {
+        kind: 'pinned' as const,
+        provider: 'github-release' as const,
+        version: '1.0.0',
+        releaseId,
+        assetId: '20',
+        archiveSha256: createHash('sha256').update(bytes).digest('hex')
+      }
     });
-    expect([...ports.files]).toEqual(before);
+    const first = await deployBundle(pinnedRequest('10'), ports);
+    const key = first.key;
+    expect(readPair(ports).desired.bundles[key].resolution).toMatchObject({ releaseId: '10' });
+    ports.onEvent = (event) => {
+      if (event.kind === 'state-write') {
+        throw new Error('state-write refused');
+      }
+    };
+    await expect(deployBundle(pinnedRequest('11'), ports)).rejects.toThrow('state-write refused');
+    expect(readPair(ports).desired.bundles[key].resolution).toMatchObject({ releaseId: '10' });
+    ports.onEvent = undefined;
+    await deployBundle(pinnedRequest('11'), ports);
+    expect(readPair(ports).desired.bundles[key].resolution).toMatchObject({ releaseId: '11' });
+  });
+
+  it('refuses a mismatched portable source key before migration or placement', async () => {
+    const ports = recordingPorts();
+    const legacy = JSON.stringify({
+      version: '2.0.0', generatedAt: ports.now, generatedBy: 'test', bundles: {}, sources: {}
+    });
+    ports.files.set(ports.lockfileStore.desiredFile, legacy);
+    const req = request();
+    await expect(deployBundle({ ...req, source: { ...req.source, sourceKey: 'src-' + '0'.repeat(64) } }, ports))
+      .rejects.toMatchObject({ code: 'BUNDLE.SOURCE_KEY_MISMATCH' });
+    expect(ports.calls.filter((call) => !call.startsWith('event:'))).toEqual([]);
+    expect([...ports.files]).toEqual([[ports.lockfileStore.desiredFile, legacy]]);
   });
 
   describe('desired source descriptor', () => {
@@ -819,27 +873,23 @@ describe('deployBundle', () => {
       await deployBundle(req, ports);
 
       const { desired } = readPair(ports);
-      expect(desired.sources).toEqual({
-        [req.source.sourceId]: { type: req.source.type, url: req.source.url }
+      expect(desired.sources).toEqual({ [TEST_SOURCE_KEY]: req.source.descriptor });
+      expect(desired.bundles[portableKeyFor('web-dev')]).toMatchObject({
+        sourceKey: TEST_SOURCE_KEY,
+        resolution: req.resolution
       });
-      expect(desired.bundles['github-abc123/web-dev'].sourceId).toBe(req.source.sourceId);
     });
 
-    it('writes branch and collectionsPath only when the request carries them', async () => {
-      const plain = recordingPorts();
-      const rich = recordingPorts();
+    it('keeps display-only locator changes out of portable identity', async () => {
+      const ports = recordingPorts();
       const req = request();
-
-      await deployBundle(req, plain);
-      await deployBundle({ ...req, source: { ...req.source, branch: 'release', collectionsPath: 'collections' } }, rich);
-
-      expect(Object.keys(readPair(plain).desired.sources[req.source.sourceId]).toSorted()).toEqual(['type', 'url']);
-      expect(readPair(rich).desired.sources[req.source.sourceId]).toEqual({
-        type: req.source.type,
-        url: req.source.url,
-        branch: 'release',
-        collectionsPath: 'collections'
-      });
+      await deployBundle(req, ports);
+      await deployBundle({
+        ...req,
+        source: { ...req.source, descriptor: { ...req.source.descriptor, locator: 'https://mirror.example/repo' } }
+      }, ports);
+      expect(Object.keys(readPair(ports).desired.sources)).toEqual([TEST_SOURCE_KEY]);
+      expect(readPair(ports).desired.sources[TEST_SOURCE_KEY].locator).toBe('https://mirror.example/repo');
     });
 
     it('keeps the descriptor on re-deploy', async () => {
@@ -848,7 +898,7 @@ describe('deployBundle', () => {
 
       await deployBundle(req, ports);
       const first = readPair(ports).desired.sources;
-      expect(first[req.source.sourceId]).toBeDefined();
+      expect(first[TEST_SOURCE_KEY]).toBeDefined();
       await deployBundle(req, ports);
 
       expect(readPair(ports).desired.sources).toEqual(first);
@@ -864,84 +914,27 @@ describe('deployBundle', () => {
       await deployBundle(second, ports);
 
       const { desired } = readPair(ports);
-      expect(Object.keys(desired.sources)).toEqual([first.source.sourceId]);
-      expect(desired.sources[first.source.sourceId]).toEqual({ type: first.source.type, url: first.source.url });
+      expect(Object.keys(desired.sources)).toEqual([TEST_SOURCE_KEY]);
+      expect(desired.sources[TEST_SOURCE_KEY]).toEqual(first.source.descriptor);
       expect(Object.keys(desired.bundles)).toHaveLength(2);
     });
 
-    it('replaces the owned fields wholesale: a conflicting descriptor keeps no stale branch or collectionsPath', async () => {
+    it('refuses a descriptor that does not match its source key before migration', async () => {
       const ports = recordingPorts();
       const req = request();
-      ports.files.set(ports.lockfileStore.desiredFile, JSON.stringify({
-        $schema: 'x',
-        version: '3.0.0',
-        bundles: {},
-        sources: {
-          [req.source.sourceId]: { type: 'github', url: 'https://old.example/repo', branch: 'old', collectionsPath: 'old' }
-        }
-      }));
-
-      await deployBundle(req, ports);
-
-      expect(readPair(ports).desired.sources[req.source.sourceId]).toEqual({
-        type: req.source.type,
-        url: req.source.url
+      const legacy = JSON.stringify({
+        version: '2.0.0', generatedAt: ports.now, generatedBy: 'test', bundles: {}, sources: {}
       });
-    });
-
-    const unusableUrls: [string, string][] = [['empty', ''], ['spaces', '   '], ['tab and newline', '\t\n']];
-    const legacyV2 = JSON.stringify({
-      $schema: 'x', version: '2.0.0', generatedAt: 'x', generatedBy: 'x',
-      bundles: {
-        other: {
-          version: '1.0.0', sourceId: 'github-abc123', sourceType: 'github',
-          installedAt: 'x', files: [{ path: 'prompts/other.prompt.md', checksum: 'h' }]
+      ports.files.set(ports.lockfileStore.desiredFile, legacy);
+      await expect(deployBundle({
+        ...req,
+        source: {
+          ...req.source,
+          descriptor: { ...req.source.descriptor, identity: { ...req.source.descriptor.identity, repositoryId: '999' } }
         }
-      },
-      sources: { 'github-abc123': { type: 'github', url: 'https://github.com/owner/repo' } }
-    });
-
-    it.each(unusableUrls)('deployBundle refuses a %s url before any write, including the migration', async (_label, url) => {
-      const ports = recordingPorts();
-      ports.files.set(ports.lockfileStore.desiredFile, legacyV2);
-      const req = request();
-
-      await expect(deployBundle({ ...req, source: { ...req.source, url } }, ports))
-        .rejects.toMatchObject({ code: 'BUNDLE.INVALID_DEPLOY_REQUEST' });
-
-      expect(ports.calls.filter((c) => !c.startsWith('event:'))).toEqual([]);
-      expect([...ports.files.entries()]).toEqual([[ports.lockfileStore.desiredFile, legacyV2]]);
-    });
-
-    it.each(unusableUrls)('planDeploy refuses a %s url too, so a dry run reports it, and writes nothing', async (_label, url) => {
-      const ports = recordingPorts();
-      ports.files.set(ports.lockfileStore.desiredFile, legacyV2);
-      const req = request();
-
-      await expect(planDeploy({ ...req, source: { ...req.source, url } }, ports))
-        .rejects.toMatchObject({ code: 'BUNDLE.INVALID_DEPLOY_REQUEST' });
-
-      expect(ports.calls.filter((c) => !c.startsWith('event:'))).toEqual([]);
-      expect([...ports.files.entries()]).toEqual([[ports.lockfileStore.desiredFile, legacyV2]]);
-    });
-
-    it('preserves descriptor fields it does not own', async () => {
-      const ports = recordingPorts();
-      const req = request();
-      ports.files.set(ports.lockfileStore.desiredFile, JSON.stringify({
-        $schema: 'x',
-        version: '3.0.0',
-        bundles: {},
-        sources: { [req.source.sourceId]: { type: 'github', url: 'https://old.example/repo', indexFile: 'index.json' } }
-      }));
-
-      await deployBundle(req, ports);
-
-      expect(readPair(ports).desired.sources[req.source.sourceId]).toEqual({
-        type: req.source.type,
-        url: req.source.url,
-        indexFile: 'index.json'
-      });
+      }, ports)).rejects.toMatchObject({ code: 'BUNDLE.SOURCE_KEY_MISMATCH' });
+      expect(ports.calls.filter((call) => !call.startsWith('event:'))).toEqual([]);
+      expect([...ports.files]).toEqual([[ports.lockfileStore.desiredFile, legacy]]);
     });
   });
 });
@@ -963,17 +956,17 @@ describe('deployBundle after an interrupted first deploy', () => {
     const local = JSON.parse(ports.files.get(ports.lockfileStore.localFile) as string) as {
       targets: Record<string, { bundles: Record<string, unknown> }>;
     };
-    expect(Object.keys(local.targets['my-vscode'].bundles)).toEqual(['github-abc123/web-dev']);
+    expect(Object.keys(local.targets['my-vscode'].bundles)).toEqual([portableKeyFor('web-dev')]);
 
     ports.failWriteAt = undefined;
     await deployBundle(skillRequest(), ports);
 
     const { local: after } = readPair(ports);
     expect(Object.keys(after.targets['my-vscode'].bundles).toSorted()).toEqual([
-      'github-abc123/skills',
-      'github-abc123/web-dev'
+      portableKeyFor('skills'),
+      portableKeyFor('web-dev')
     ]);
-    expect(after.targets['my-vscode'].bundles['github-abc123/web-dev'].files.map((f) => f.path))
+    expect(after.targets['my-vscode'].bundles[portableKeyFor('web-dev')].files.map((f) => f.path))
       .toEqual(['prompts/hello.prompt.md']);
   });
 });

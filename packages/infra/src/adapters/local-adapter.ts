@@ -43,6 +43,7 @@ import {
 import {
   assertLocalResolutionCompatible,
   filesBelow,
+  readLocalSourceEntries,
   readLocalSourceFiles,
   recordedLocalBundleSelector,
   resolveLocalBundleResolution,
@@ -68,6 +69,15 @@ interface LocalManifest {
 
 const MANIFEST_FILE_NAME = 'deployment-manifest.yml';
 const SIZE_UNITS = ['B', 'KB', 'MB', 'GB'];
+
+const isDirectBundleSelector = (selector: string): boolean => selector.length > 0
+  && selector !== '.'
+  && selector !== '..'
+  && !selector.startsWith('/')
+  && !/^[a-zA-Z]:/.test(selector)
+  && !selector.includes('/')
+  && !selector.includes('\\')
+  && !selector.includes('\0');
 
 export class LocalAdapter extends BaseSourceAdapter {
   public readonly type = 'local';
@@ -247,8 +257,46 @@ export class LocalAdapter extends BaseSourceAdapter {
   public async resolvePortableBundle(selection: PortableBundleSelection): Promise<PortableBundlePayload | null> {
     const resolved = resolveLocalSource(this.source, selection.localLocation, selection.expectedSource);
     assertLocalResolutionCompatible(resolved.source, selection.resolution);
-    const sourceFiles = await readLocalSourceFiles(this.fs, resolved.root);
     const recordedSelector = recordedLocalBundleSelector(selection.resolution);
+    if (recordedSelector !== undefined && !isDirectBundleSelector(recordedSelector)) {
+      throw new RegistryError({
+        code: 'BUNDLE.ARTIFACT_PIN_MISMATCH',
+        message: `Recorded local bundle selector ${JSON.stringify(recordedSelector)} is not a direct child of the configured source.`,
+        hint: 'Use the direct bundle directory selector recorded by the local-snapshot pin.'
+      });
+    }
+    const sourceFiles = new Map<string, Uint8Array>();
+    const addBundleFiles = async (bundleSelector: string): Promise<void> => {
+      const bundleRoot = path.join(resolved.root, bundleSelector);
+      const bundleFiles = await readLocalSourceFiles(this.fs, bundleRoot);
+      for (const [filePath, bytes] of bundleFiles) {
+        sourceFiles.set(`${bundleSelector}/${filePath}`, bytes);
+      }
+    };
+    if (recordedSelector === undefined) {
+      for (const entry of await readLocalSourceEntries(this.fs, resolved.root)) {
+        if (entry.name.length === 0 || entry.name === '.' || entry.name === '..'
+          || entry.name.includes('/') || entry.name.includes('\\') || entry.name.includes('\0')) {
+          throw new RegistryError({
+            code: 'BUNDLE.INVALID_SOURCE_CONTENT_PATH',
+            message: `Local source entry ${JSON.stringify(entry.name)} is not a portable file or directory name.`,
+            hint: 'Local source inventories support canonical POSIX-relative paths only.'
+          });
+        }
+        if (!entry.isDirectory) {
+          continue;
+        }
+        const bundleRoot = path.join(resolved.root, entry.name);
+        const stat = await this.fs.lstat(bundleRoot);
+        if (stat.isSymbolicLink || !stat.isDirectory
+          || !await this.fs.exists(path.join(bundleRoot, MANIFEST_FILE_NAME))) {
+          continue;
+        }
+        await addBundleFiles(entry.name);
+      }
+    } else {
+      await addBundleFiles(recordedSelector);
+    }
     const selectorCandidates = recordedSelector === undefined
       ? [...new Set([...sourceFiles.keys()]
         .filter((filePath) => filePath.endsWith(`/${MANIFEST_FILE_NAME}`) && filePath.split('/').length === 2)
@@ -257,15 +305,7 @@ export class LocalAdapter extends BaseSourceAdapter {
     const matches: { selector: string; manifest: LocalManifest }[] = [];
 
     for (const candidateSelector of selectorCandidates) {
-      if (candidateSelector.length === 0 || candidateSelector.includes('/')
-        || candidateSelector === '.' || candidateSelector === '..') {
-        if (recordedSelector !== undefined) {
-          throw new RegistryError({
-            code: 'BUNDLE.ARTIFACT_PIN_MISMATCH',
-            message: `Recorded local bundle selector ${JSON.stringify(candidateSelector)} is not a direct child of the configured source.`,
-            hint: 'Use the direct bundle directory selector recorded by the local-snapshot pin.'
-          });
-        }
+      if (!isDirectBundleSelector(candidateSelector)) {
         continue;
       }
       const manifestPath = `${candidateSelector}/${MANIFEST_FILE_NAME}`;
@@ -328,7 +368,8 @@ export class LocalAdapter extends BaseSourceAdapter {
       manifestId: manifest.id,
       version: manifest.version,
       resolution,
-      files
+      files,
+      sourceFiles: files
     };
   }
 

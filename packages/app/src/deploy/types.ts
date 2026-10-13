@@ -4,10 +4,12 @@
  */
 import type {
   AppStorage,
+  BundleResolution,
   ExtractedFiles,
   FileSystem,
   InstallationScope,
   PlacementDestination,
+  PortableSourceDescriptor,
   PrimitiveKind,
   RepositoryCommitMode,
   ResourceTransformer,
@@ -30,25 +32,23 @@ export interface LogicalBundleRef {
 export interface DeployRequest {
   /** Extracted files, when the caller already has them. */
   files?: ExtractedFiles;
+  /** Original source inventory, where distinct from packaged deployment files. */
+  sourceFiles?: ExtractedFiles;
   /** Archive bytes, when the caller wants the planner to extract. */
   bytes?: Uint8Array;
   /** Expected archive checksum (sha256:hex), when verification is required. */
   expectedArchiveSha?: string;
   /** Bundle identity. */
   bundle: LogicalBundleRef;
+  /** Manifest identity used to validate deployment-manifest.yml. */
+  manifestId: string;
   /** Source identity. */
   source: {
-    /** Source ID. */
-    sourceId: string;
-    /** Source type. */
-    type: string;
-    /** Source URL. Required: the desired lockfile's source descriptor (schema `url`) cannot be written without it. */
-    url: string;
-    /** Git branch, for git-based sources. */
-    branch?: string;
-    /** Collections subdirectory, for awesome-copilot sources. */
-    collectionsPath?: string;
+    sourceKey: string;
+    descriptor: PortableSourceDescriptor;
   };
+  /** Exact, unpinned, or live source resolution. */
+  resolution: BundleResolution;
   /** Target name. */
   targetName: string;
   /** Runtime asset root (for MCP config installation, slice 7). */

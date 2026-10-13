@@ -183,7 +183,7 @@ export async function undeployBundle(
   // 3. If unmanaged, remove nothing but report every recorded path as skipped.
   //    Still drop the record: §8.3 retains it for cleanup and refcounting,
   //    but the user asked to uninstall, so the record goes while files stay.
-    if (bundleRecord.state === 'unmanaged') {
+    if ('state' in bundleRecord && bundleRecord.state === 'unmanaged') {
       for (const fileEntry of bundleRecord.files) {
         if (typeof targetRecord.baseDir !== 'string') {
           skipped.push(fileEntry.path);
@@ -251,7 +251,9 @@ export async function undeployBundle(
       shared,
       lockfile: ports.lockfileStore.localFile,
       migration,
-      ...(bundleRecord.state === 'unmanaged' ? { unmanagedReason: bundleRecord.unmanagedReason } : {})
+      ...('state' in bundleRecord && bundleRecord.state === 'unmanaged'
+        ? { unmanagedReason: bundleRecord.unmanagedReason }
+        : {})
     };
   } catch (cause) {
     if (!effectsBegan && !state.started) {

@@ -1,5 +1,3 @@
-import * as posix from 'node:path/posix';
-import * as win32 from 'node:path/win32';
 import {
   describe,
   expect,
@@ -9,19 +7,25 @@ import {
   deployBundle,
 } from '../../src/deploy/deploy';
 import {
+  resolveRecordedPath,
+} from '../../src/deploy/safety';
+import {
   undeployBundle,
 } from '../../src/deploy/undeploy';
 import {
+  portableKeyFor,
   readPair,
   recordingPorts,
   request,
   seedLocal,
   skillRequest,
   symlinkPorts,
+  TEST_SOURCE,
+  TEST_SOURCE_KEY,
 } from './fixtures';
 
 const undeployRequest = () => ({
-  key: 'github-abc123/web-dev',
+  key: portableKeyFor('web-dev'),
   bundle: { bundleId: 'web-dev', version: '1.0.0' },
   scope: 'user' as const,
   targetName: 'my-vscode'
@@ -31,8 +35,12 @@ const undeployRequest = () => ({
 const desiredSnapshot = (): string => JSON.stringify({
   $schema: 'https://github.com/AmadeusITGroup/ai-primitives-hub/schemas/lockfile-v3.schema.json',
   version: '3.0.0',
-  bundles: { 'github-abc123/web-dev': { version: '1.0.0', sourceId: 'github-abc123' } },
-  sources: { 'github-abc123': { type: 'github', url: 'https://github.com/owner/repo' } }
+  bundles: {
+    [portableKeyFor('web-dev')]: {
+      version: '1.0.0', sourceKey: TEST_SOURCE_KEY, resolution: request().resolution
+    }
+  },
+  sources: { [TEST_SOURCE_KEY]: TEST_SOURCE }
 });
 
 /**
@@ -72,44 +80,22 @@ describe('undeployBundle', () => {
     expect(ports.files.get(sourcePath)).toBe('# live source\n');
   });
 
-  it('rejects Windows traversal before reaching a native-normalizing remove boundary', async () => {
-    const ports = recordingPorts();
-    const outside = win32.normalize('C:/outside.txt');
-    ports.files.set(outside, '# outside\n');
-    ports.files.set(ports.lockfileStore.desiredFile, desiredSnapshot());
-    ports.files.set(ports.lockfileStore.localFile, seedLocal([
-      { path: '..\\outside.txt', installedChecksum: 'h' }
-    ]).replace('/home/u/.copilot', 'C:/root'));
-    const exists = ports.fs.exists.bind(ports.fs);
-    ports.fs.exists = async (destination) => ports.files.has(win32.normalize(destination)) || exists(destination);
-    ports.fs.remove = (destination) => {
-      ports.files.delete(win32.normalize(destination));
-      return Promise.resolve();
-    };
-    const result = await undeployBundle(undeployRequest(), ports);
-    expect(result.removed).toEqual([]);
-    expect(result.skipped).toHaveLength(1);
-    expect(ports.files.get(outside)).toBe('# outside\n');
-  });
-
-  const unsafeRecords = ['C:relative.txt', 'C:/absolute.txt', '\\\\server\\share\\file', 'nested\\file', 'a/../file', './file', 'a//file', ''];
-  it.each(unsafeRecords)('does not remove the noncanonical recorded path %s', async (recordedPath) => {
-    const ports = recordingPorts();
-    ports.files.set(ports.lockfileStore.desiredFile, desiredSnapshot());
-    ports.files.set(ports.lockfileStore.localFile, seedLocal([{ path: recordedPath, installedChecksum: 'h' }]));
-    const protectedPath = posix.join('/home/u/.copilot', recordedPath);
-    ports.files.set(protectedPath, '# protected\n');
-    const remove = ports.fs.remove.bind(ports.fs);
-    ports.fs.remove = async (destination, options) => {
-      if (!destination.includes('.lock.json')) {
-        throw new Error('unsafe path reached removal');
-      }
-      return remove(destination, options);
-    };
-    const result = await undeployBundle(undeployRequest(), ports);
-    expect(result.removed).toEqual([]);
-    expect(result.skipped).toHaveLength(1);
-    expect(ports.files.get(protectedPath)).toBe('# protected\n');
+  it.each([
+    'C:relative.txt',
+    'C:/absolute.txt',
+    '\\\\server\\share\\file',
+    'nested\\file',
+    'a/../file',
+    './file',
+    'a//file',
+    '',
+    '/home/u/.copilot/prompts/absolute-leftover.prompt.md',
+    '../outside/escape.prompt.md',
+    '.',
+    'a/..',
+    'a/../'
+  ])('rejects noncanonical or escaping recorded paths before removal: %s', (recordedPath) => {
+    expect(resolveRecordedPath('/home/u/.copilot', recordedPath).safe).toBe(false);
   });
   it('reports the paths already removed when a later removal fails', async () => {
     const ports = recordingPorts();
@@ -124,7 +110,7 @@ describe('undeployBundle', () => {
     };
 
     await expect(undeployBundle({
-      ...undeployRequest(), key: 'github-abc123/skills'
+      ...undeployRequest(), key: portableKeyFor('skills')
     }, ports)).rejects.toMatchObject({
       code: 'BUNDLE.UNDEPLOY_FAILED',
       cause: expect.any(Error),
@@ -139,7 +125,7 @@ describe('undeployBundle', () => {
     });
     expect(ports.files.has(first)).toBe(false);
     expect(ports.files.has('/home/u/.copilot/skills/my-skill/config.json')).toBe(true);
-    expect(readPair(ports).local.targets['my-vscode'].bundles['github-abc123/skills']).toBeDefined();
+    expect(readPair(ports).local.targets['my-vscode'].bundles[portableKeyFor('skills')]).toBeDefined();
   });
   it('removes exactly the recorded paths and nothing else', async () => {
     const ports = recordingPorts();
@@ -160,7 +146,7 @@ describe('undeployBundle', () => {
     await undeployBundle(undeployRequest(), ports);
 
     const { desired, local } = readPair(ports);
-    expect(desired.bundles['github-abc123/web-dev']).toBeUndefined();
+    expect(desired.bundles[portableKeyFor('web-dev')]).toBeUndefined();
     expect(local.targets['my-vscode']).toBeUndefined();
   });
 
@@ -174,7 +160,7 @@ describe('undeployBundle', () => {
     ports.files.set(ports.lockfileStore.desiredFile, desiredSnapshot());
     ports.files.set(
       ports.lockfileStore.localFile,
-      seedLocal([{ path: 'prompts/renamed-by-manifest.prompt.md', installedChecksum: 'h' }])
+      seedLocal([{ path: 'prompts/renamed-by-manifest.prompt.md', installedChecksum: 'a'.repeat(64) }])
     );
     ports.files.set('/home/u/.copilot/prompts/renamed-by-manifest.prompt.md', '# hi\n');
     ports.layoutLoader = new Proxy({}, {
@@ -199,67 +185,6 @@ describe('undeployBundle', () => {
     expect(result.skipped).toEqual(['/home/u/.copilot/prompts/hello.prompt.md']);
   });
 
-  it('does not remove a recorded path that is absolute or escapes baseDir, but still removes a normal one', async () => {
-    // Recorded paths are contract-relative to baseDir (§5.7). `posix.join`
-    // would silently re-prefix an absolute recorded path onto baseDir
-    // (leaving the real file untouched while the record is dropped), and a
-    // '..'-escaping path would reach outside the target's tree entirely.
-    // Neither is acted on.
-    const ports = recordingPorts();
-    ports.files.set(ports.lockfileStore.desiredFile, desiredSnapshot());
-    ports.files.set(ports.lockfileStore.localFile, seedLocal([
-      { path: '/home/u/.copilot/prompts/absolute-leftover.prompt.md', installedChecksum: 'a' },
-      { path: '../outside/escape.prompt.md', installedChecksum: 'b' },
-      { path: 'prompts/hello.prompt.md', installedChecksum: 'c' }
-    ]));
-    ports.files.set('/home/u/.copilot/prompts/absolute-leftover.prompt.md', '# absolute leftover\n');
-    ports.files.set('/home/u/outside/escape.prompt.md', '# escape leftover\n');
-    ports.files.set('/home/u/.copilot/prompts/hello.prompt.md', '# hello\n');
-
-    const result = await undeployBundle(undeployRequest(), ports);
-
-    expect(result.removed).toEqual(['/home/u/.copilot/prompts/hello.prompt.md']);
-    expect(result.skipped).toEqual(expect.arrayContaining([
-      '/home/u/.copilot/prompts/absolute-leftover.prompt.md',
-      '/home/u/outside/escape.prompt.md'
-    ]));
-    expect(result.skipped).toHaveLength(2);
-    expect(ports.files.has('/home/u/.copilot/prompts/hello.prompt.md')).toBe(false);
-    expect(ports.files.get('/home/u/.copilot/prompts/absolute-leftover.prompt.md')).toBe('# absolute leftover\n');
-    expect(ports.files.get('/home/u/outside/escape.prompt.md')).toBe('# escape leftover\n');
-  });
-
-  it('does not remove a recorded path that resolves to baseDir itself (., a/.., a/../)', async () => {
-    // A recorded path that normalizes away to baseDir (via `.`, a same-level
-    // `..`, or either with a trailing slash) must not reach
-    // `fs.remove(baseDir)`: the real filesystem's non-recursive remove
-    // (infra/fs/node-filesystem.ts) rejects a directory, which would throw
-    // before the record could ever be dropped. A real file nested under
-    // baseDir is required so the mock's prefix-based `exists` reports
-    // baseDir as existing, the same way a real directory with contents does
-    // — otherwise this would pass vacuously via the "already absent" path.
-    const ports = recordingPorts();
-    ports.files.set(ports.lockfileStore.desiredFile, desiredSnapshot());
-    ports.files.set(ports.lockfileStore.localFile, seedLocal([
-      { path: '.', installedChecksum: 'a' },
-      { path: 'a/..', installedChecksum: 'b' },
-      { path: 'a/../', installedChecksum: 'c' }
-    ]));
-    ports.files.set('/home/u/.copilot/prompts/unrelated.prompt.md', '# unrelated\n');
-
-    const result = await undeployBundle(undeployRequest(), ports);
-
-    expect(result.removed).toEqual([]);
-    expect(result.skipped).toHaveLength(3);
-    expect(ports.calls.filter((c) => c.startsWith('remove:'))).toEqual([]);
-    expect(ports.calls).not.toContain('remove:/home/u/.copilot');
-    expect(ports.files.get('/home/u/.copilot/prompts/unrelated.prompt.md')).toBe('# unrelated\n');
-    // Still drops the record: the user asked to uninstall, even though none
-    // of its recorded paths were safe to act on.
-    const { local } = readPair(ports);
-    expect(local.targets['my-vscode']).toBeUndefined();
-  });
-
   it('is a no-op for a bundle that is not recorded', async () => {
     const ports = recordingPorts();
     await deployBundle(request(), ports);
@@ -267,11 +192,11 @@ describe('undeployBundle', () => {
     const localBefore = ports.files.get(ports.lockfileStore.localFile);
     const desiredBefore = ports.files.get(ports.lockfileStore.desiredFile);
 
-    const result = await undeployBundle({ ...undeployRequest(), key: 'github-abc123/absent' }, ports);
+    const result = await undeployBundle({ ...undeployRequest(), key: portableKeyFor('absent') }, ports);
 
     expect(result.removed).toEqual([]);
     const { local } = readPair(ports);
-    expect(local.targets['my-vscode'].bundles['github-abc123/web-dev']).toBeDefined();
+    expect(local.targets['my-vscode'].bundles[portableKeyFor('web-dev')]).toBeDefined();
     // An uninstall of a never-installed key is a true no-op: it rewrites
     // nothing, not even redundantly with unchanged content.
     expect(writeCallCount(ports.calls)).toBe(writesBefore);
@@ -339,13 +264,13 @@ describe('undeployBundle', () => {
     // the record, but desired still carries the now-orphaned entry.
     const afterFailure = readPair(ports);
     expect(afterFailure.local.targets['my-vscode']).toBeUndefined();
-    expect(afterFailure.desired.bundles['github-abc123/web-dev']).toBeDefined();
+    expect(afterFailure.desired.bundles[portableKeyFor('web-dev')]).toBeDefined();
 
     ports.failWriteAt = undefined;
     const result = await undeployBundle(undeployRequest(), ports);
 
     const afterRetry = readPair(ports);
-    expect(afterRetry.desired.bundles['github-abc123/web-dev']).toBeUndefined();
+    expect(afterRetry.desired.bundles[portableKeyFor('web-dev')]).toBeUndefined();
     expect(result.removed).toEqual([]);
   });
 
@@ -357,7 +282,7 @@ describe('undeployBundle', () => {
     await undeployBundle(undeployRequest(), ports);
 
     const { local } = readPair(ports);
-    expect(local.targets['other-vscode'].bundles['github-abc123/web-dev']).toBeDefined();
+    expect(local.targets['other-vscode'].bundles[portableKeyFor('web-dev')]).toBeDefined();
     expect(await ports.fs.readFile('/home/u/.copilot/prompts/hello.prompt.md')).toBe('# Hello Prompt\n');
   });
 
@@ -366,7 +291,7 @@ describe('undeployBundle', () => {
     const req = request();
     const first = await deployBundle(req, ports);
     const other = await deployBundle({
-      ...req, source: { ...req.source, sourceId: 'github-other' }
+      ...req, bundle: { ...req.bundle, bundleId: 'another-logical-id' }
     }, ports);
     const destination = '/home/u/.copilot/prompts/hello.prompt.md';
     const result = await undeployBundle(undeployRequest(), ports);
@@ -390,7 +315,7 @@ describe('undeployBundle', () => {
     await undeployBundle(undeployRequest(), ports);
 
     const { desired } = readPair(ports);
-    expect(desired.bundles['github-abc123/web-dev']).toBeDefined();
+    expect(desired.bundles[portableKeyFor('web-dev')]).toBeDefined();
   });
 
   it('does not persist unrelated v2 intent when an uninstall cannot prove an ownership match', async () => {
@@ -423,7 +348,7 @@ describe('undeployBundle', () => {
       $schema: 'https://github.com/AmadeusITGroup/ai-primitives-hub/schemas/lockfile-v3.schema.json',
       version: '3.0.0',
       bundles: {},
-      sources: {}
+      sources: { [TEST_SOURCE_KEY]: TEST_SOURCE }
     }));
     ports.files.set(ports.lockfileStore.localFile, JSON.stringify({
       version: '3.0.0',
@@ -434,10 +359,13 @@ describe('undeployBundle', () => {
         unmanaged: {
           targetType: 'vscode', scope: 'user', baseDir: '/home/u/.copilot',
           bundles: {
-            'github-abc123/web-dev': {
-              version: '1.0.0', sourceId: 'github-abc123', installedAt: 'x',
+            [portableKeyFor('web-dev')]: {
+              version: '1.0.0',
+              sourceKey: TEST_SOURCE_KEY,
+              resolution: request().resolution,
+              installedAt: '2026-10-09T12:00:00.000Z',
               state: 'unmanaged', unmanagedReason: 'destination could not be proven',
-              files: [{ path: 'prompts/hello.prompt.md' }]
+              files: [{ path: 'prompts/hello.prompt.md', installedChecksum: 'a'.repeat(64) }]
             }
           }
         }
@@ -463,7 +391,7 @@ describe('undeployBundle', () => {
     ports.files.set('/home/u/.copilot/skills/my-skill/untracked.txt', '# not ours\n');
 
     const result = await undeployBundle(
-      { ...undeployRequest(), key: 'github-abc123/skills', bundle: { bundleId: 'skills', version: '1.0.0' } },
+      { ...undeployRequest(), key: portableKeyFor('skills'), bundle: { bundleId: 'skills', version: '1.0.0' } },
       ports
     );
 

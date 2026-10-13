@@ -36,7 +36,10 @@ export function prepareDeployFiles(req: DeployRequest, ports: DeployPorts) {
       message: 'Archive extraction not yet implemented in slice 1'
     });
   }
-  const manifest = validateManifest(req.files, {});
+  const manifest = validateManifest(req.files, {
+    expectedId: req.manifestId,
+    expectedVersion: req.bundle.version
+  });
   const installable = getInstallableBundleFiles(req.files, manifest);
   const normalized = normalizeManifestItems(manifest);
   const resolved = resolveDestinations(normalized.items, {

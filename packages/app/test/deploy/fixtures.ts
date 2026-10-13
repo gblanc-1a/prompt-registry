@@ -7,6 +7,14 @@ import {
 } from 'node:crypto';
 import * as posix from 'node:path/posix';
 import {
+  logicalBundleKey,
+  sourceKey,
+} from '@ai-primitives-hub/core';
+import type {
+  BundleResolution,
+  PortableSourceDescriptor,
+} from '@ai-primitives-hub/core';
+import {
   dump as dumpYaml,
 } from 'js-yaml';
 import {
@@ -22,6 +30,21 @@ import type {
 } from '../../src/stores/lockfile-v3';
 
 export const LOCAL_FILE = '/home/u/.config/ai-primitives-hub/ai-primitives-hub.local.lock.json';
+
+export const TEST_SOURCE: PortableSourceDescriptor = {
+  type: 'github',
+  identity: { kind: 'github-releases', origin: 'https://github.com', repositoryId: '123' },
+  locator: 'https://github.com/owner/repo'
+};
+export const TEST_SOURCE_KEY = sourceKey(TEST_SOURCE.identity, TEST_SOURCE.type);
+export const portableKeyFor = (logicalBundleId: string): string =>
+  logicalBundleKey({ sourceKey: TEST_SOURCE_KEY, logicalBundleId });
+const testResolution = (version: string): BundleResolution => ({
+  kind: 'unpinned',
+  reason: 'fixture does not identify a remote artifact',
+  evidence: { manifestVersion: version }
+});
+const testSource = () => ({ sourceKey: TEST_SOURCE_KEY, descriptor: TEST_SOURCE });
 
 /**
  * Seed a v3 local file holding one materialization record.
@@ -39,9 +62,10 @@ export const seedLocal = (files: { path: string; installedChecksum: string }[]):
       scope: 'user',
       baseDir: '/home/u/.copilot',
       bundles: {
-        'github-abc123/web-dev': {
+        [portableKeyFor('web-dev')]: {
           version: '1.0.0',
-          sourceId: 'github-abc123',
+          sourceKey: TEST_SOURCE_KEY,
+          resolution: testResolution('1.0.0'),
           installedAt: '2026-10-09T12:00:00.000Z',
           files
         }
@@ -57,7 +81,9 @@ export const seedLocal = (files: { path: string; installedChecksum: string }[]):
 export const request = (): DeployRequest => ({
   files: createGovernedReleaseArchive({ id: 'web-dev', version: '1.0.0' }),
   bundle: { bundleId: 'web-dev', version: '1.0.0' },
-  source: { sourceId: 'github-abc123', type: 'github', url: 'https://github.com/owner/repo' },
+  manifestId: 'web-dev',
+  source: testSource(),
+  resolution: testResolution('1.0.0'),
   targetName: 'my-vscode',
   runtimeAssetRoot: '/home/u/.config/ai-primitives-hub/runtime',
   placement: {
@@ -80,7 +106,9 @@ export const request = (): DeployRequest => ({
 export const skillRequest = (): DeployRequest => ({
   files: skillArchive(),
   bundle: { bundleId: 'skills', version: '1.0.0' },
-  source: { sourceId: 'github-abc123', type: 'github', url: 'https://github.com/owner/repo' },
+  manifestId: 'skills',
+  source: testSource(),
+  resolution: testResolution('1.0.0'),
   targetName: 'my-vscode',
   runtimeAssetRoot: '/home/u/.config/ai-primitives-hub/runtime',
   placement: {
@@ -271,7 +299,9 @@ prompts:
 export const upgradePromptRequest = (files: Map<string, Uint8Array>, version: string): DeployRequest => ({
   files,
   bundle: { bundleId: 'upgrade-test', version },
-  source: { sourceId: 'github-abc123', type: 'github', url: 'https://github.com/owner/repo' },
+  manifestId: 'upgrade-test',
+  source: testSource(),
+  resolution: testResolution(version),
   targetName: 'my-vscode',
   runtimeAssetRoot: '/home/u/.config/ai-primitives-hub/runtime',
   placement: {
@@ -296,7 +326,9 @@ export const upgradePromptRequest = (files: Map<string, Uint8Array>, version: st
 export const upgradeSkillRequest = (files: Map<string, Uint8Array>, version: string): DeployRequest => ({
   files,
   bundle: { bundleId: 'skills', version },
-  source: { sourceId: 'github-abc123', type: 'github', url: 'https://github.com/owner/repo' },
+  manifestId: 'skills',
+  source: testSource(),
+  resolution: testResolution(version),
   targetName: 'my-vscode',
   runtimeAssetRoot: '/home/u/.config/ai-primitives-hub/runtime',
   placement: {

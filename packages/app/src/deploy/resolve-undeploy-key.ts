@@ -13,8 +13,6 @@
  * @module deploy/resolve-undeploy-key
  */
 import {
-  InvalidLogicalBundleKeyError,
-  logicalKeyFromLegacyId,
   parseLogicalBundleKey,
 } from '@ai-primitives-hub/core';
 import type {
@@ -73,25 +71,15 @@ const isMaterialized = (pair: LockfileV3Pair, key: string): boolean =>
 
 const matchesBareId = (key: string, typed: string): boolean => {
   const parts = parseLogicalBundleKey(key);
-  if (parts === null || typed.includes('/')) {
-    return false;
-  }
-  try {
-    return logicalKeyFromLegacyId(typed, parts.sourceId) === key;
-  } catch (cause) {
-    if (cause instanceof InvalidLogicalBundleKeyError) {
-      return false;
-    }
-    throw cause;
-  }
+  return parts !== null && !typed.includes('/') && parts.logicalBundleId === typed;
 };
 
 /**
  * Resolve a typed bundle id to the logical key to uninstall from a target.
  *
  * Order: an exact full key recorded under the target; an exact full key that is an
- * orphaned desired entry; then a bare-id scan (legacy version suffix stripped) over
- * the target's records and the orphaned desired entries together. Keys recorded under
+ * orphaned desired entry; then an exact logical-ID scan over the target's records and
+ * the orphaned desired entries together. Version suffixes are never guessed. Keys recorded under
  * other targets never match. Own-property lookups only, so `constructor`, `toString`
  * and `__proto__` are never matches.
  * @param input - The target and what the user typed.

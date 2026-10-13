@@ -14,6 +14,7 @@ import {
 } from '@ai-primitives-hub/core';
 import type {
   BundleResolution,
+  DirEntry,
   ExtractedFiles,
   FileSystem,
   LocalSourceLocation,
@@ -243,12 +244,7 @@ const invalidInventoryPath = (name: string): RegistryError => localResolutionErr
   'Local source inventories support canonical POSIX-relative paths only.'
 );
 
-/**
- * Read a source tree as raw bytes while refusing to traverse symbolic links.
- * @param fs - Injected filesystem boundary.
- * @param root - Absolute local source root.
- */
-export const readLocalSourceFiles = async (fs: FileSystem, root: string): Promise<Map<string, Uint8Array>> => {
+const assertSafeLocalSourceRoot = async (fs: FileSystem, root: string): Promise<string> => {
   if (root.trim() === '' || !path.isAbsolute(root)) {
     throw localResolutionError(
       'CONFIG.INVALID_SOURCE_LOCATOR',
@@ -305,6 +301,26 @@ export const readLocalSourceFiles = async (fs: FileSystem, root: string): Promis
       'Configure the real source directory as the workspace path or explicit local binding root.'
     );
   }
+  return absoluteRoot;
+};
+
+/**
+ * List direct children of a source root after checking every ancestor for symlinks.
+ * @param fs - Injected filesystem boundary.
+ * @param root - Absolute local source root.
+ */
+export const readLocalSourceEntries = async (fs: FileSystem, root: string): Promise<DirEntry[]> => {
+  const absoluteRoot = await assertSafeLocalSourceRoot(fs, root);
+  return await fs.readDirEntries(absoluteRoot);
+};
+
+/**
+ * Read a source tree as raw bytes while refusing to traverse symbolic links.
+ * @param fs - Injected filesystem boundary.
+ * @param root - Absolute local source root.
+ */
+export const readLocalSourceFiles = async (fs: FileSystem, root: string): Promise<Map<string, Uint8Array>> => {
+  const absoluteRoot = await assertSafeLocalSourceRoot(fs, root);
 
   const files = new Map<string, Uint8Array>();
   const walk = async (directory: string, relativeDirectory: string): Promise<void> => {

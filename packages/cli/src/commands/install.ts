@@ -18,6 +18,7 @@
 import * as path from 'node:path';
 import {
   checksumFiles,
+  createDeployRequest,
   deployBundle,
   type DeployPorts,
   type DeployRequest,
@@ -34,7 +35,10 @@ import {
   planDeploy,
   readLockfile,
   readLockfileV3Pair,
+  resolvePortableBundle,
   resolveUserConfigPaths,
+  type SourceAdapterFactoryDeps,
+  type SourceAuthenticationContext,
   type TargetWriter,
   TransformerRegistry,
   upsertBundleEntry,
@@ -49,11 +53,16 @@ import type {
   GitHubSourceAuthCategory,
   HttpClient,
   HubSourceSpec,
+  LocalSourceLocation,
+  PortableSourceDescriptor,
   RegistrySource,
   Target,
   TokenProvider,
 } from '@ai-primitives-hub/core';
 import {
+  assertResolutionSourceCompatibility,
+  assertResolutionVersion,
+  assertSourceKey,
   getInstallableBundleFiles,
   parseBundleSpec,
   parseLogicalBundleKey,
@@ -72,11 +81,13 @@ import {
   HubStore,
   isGitHubAppAuthEnabled,
   NodeHttpClient,
+  NodeProcessRunner,
   parseGitHubRepositoryTarget,
   readLocalBundle,
   type RepositoryCommitMode,
   RepositoryScopeWriter,
   RepositoryScopeWriterAdapter,
+  resolveLocalPath,
   resolveUserConfigDir,
   SourceDispatcher,
   StaticTokenProvider,
@@ -886,35 +897,6 @@ interface UnifiedInstallArgs {
 
 type UnifiedMigration = DeployResult['migration'];
 
-type RemoteSourceDescriptor = Pick<DeployRequest['source'], 'type' | 'url' | 'branch' | 'collectionsPath'>;
-
-/**
- * Describe the source a remote install actually resolved from: the configured
- * source's own URL when there is one, then the enterprise host the GitHub App
- * preflight resolved, and only then the github.com slug recipe.
- * @param repoSlug Resolved `owner/repo` slug.
- * @param sourceConfig Configured source, when the install was source-aware.
- * @param repositoryTarget Preflight-resolved repository target, when GitHub App auth is on.
- * @returns Descriptor fields for `DeployRequest.source`.
- */
-function remoteSourceDescriptor(
-  repoSlug: string,
-  sourceConfig: RegistrySource | undefined,
-  repositoryTarget: GitHubRepositoryTarget | undefined
-): RemoteSourceDescriptor {
-  const fallbackUrl = repositoryTarget === undefined
-    ? `https://github.com/${repoSlug}`
-    : `https://${repositoryTarget.host}/${repositoryTarget.owner}/${repositoryTarget.repository}`;
-  const branch = sourceConfig?.config?.branch;
-  const collectionsPath = sourceConfig?.config?.collectionsPath;
-  return {
-    type: sourceConfig?.type ?? 'github',
-    url: sourceConfig?.url === undefined || sourceConfig.url.length === 0 ? fallbackUrl : sourceConfig.url,
-    ...(typeof branch === 'string' && branch.length > 0 ? { branch } : {}),
-    ...(typeof collectionsPath === 'string' && collectionsPath.length > 0 ? { collectionsPath } : {})
-  };
-}
-
 /**
  * Read the lockfile pair's raw contents, `null` for an absent file, so a run can
  * report whether it actually changed them.
@@ -937,6 +919,171 @@ const unifiedPortsFor = (ctx: Context, target: Target): DeployPorts => ({
   ...buildDeployPorts(ctx, { scope: 'user' }),
   transformer: transformerFor(target)
 });
+
+const sourceAdapterDepsFor = (
+  ctx: Context,
+  httpClient: HttpClient,
+  fallbackTokenProviders: TokenProvider[],
+  sourceAuthentication?: ReadonlyMap<string, SourceAuthenticationContext>
+): SourceAdapterFactoryDeps => ({
+  fs: ctx.fs,
+  clock: ctx.clock,
+  httpClient,
+  processRunner: new NodeProcessRunner(),
+  fallbackTokenProviders,
+  ...(sourceAuthentication === undefined ? {} : { sourceAuthentication })
+});
+
+const LOCAL_PORTABLE_TYPES = new Set(['local', 'local-awesome-copilot', 'local-skills']);
+
+const localLocationForConfiguredSource = (
+  source: RegistrySource,
+  ctx: Context
+): LocalSourceLocation => {
+  const configuredPath = source.url.startsWith('~/') && ctx.env.HOME !== undefined
+    ? path.join(ctx.env.HOME, source.url.slice(2))
+    : resolveLocalPath(source.url);
+  const workspaceRoot = path.resolve(ctx.cwd());
+  const absoluteRoot = path.isAbsolute(configuredPath)
+    ? path.resolve(configuredPath)
+    : path.resolve(workspaceRoot, configuredPath);
+  const relativeRoot = path.relative(workspaceRoot, absoluteRoot);
+  if (relativeRoot === '..' || relativeRoot.startsWith(`..${path.sep}`) || path.isAbsolute(relativeRoot)) {
+    if (!path.isAbsolute(configuredPath)) {
+      throw new RegistryError({
+        code: 'CONFIG.MISSING_LOCAL_BINDING',
+        message: `Local source "${source.id}" is outside the selected workspace and has no absolute named binding.`,
+        hint: 'Configure an absolute local source path in the active hub; relative paths are anchored to the selected workspace.'
+      });
+    }
+    return { kind: 'binding', name: source.id, root: absoluteRoot };
+  }
+  return { kind: 'workspace', root: workspaceRoot };
+};
+
+const sourceConfigFromDescriptor = (
+  sourceKey: string,
+  descriptor: PortableSourceDescriptor
+): RegistrySource => {
+  if (!['github', 'local', 'awesome-copilot', 'local-awesome-copilot', 'skills', 'local-skills', 'azure-devops'].includes(descriptor.type)) {
+    throw new RegistryError({
+      code: 'BUNDLE.UNSUPPORTED_PORTABLE_RESOLUTION',
+      message: `Replay does not have a retained source adapter for "${descriptor.type}".`
+    });
+  }
+  const identity = descriptor.identity;
+  const config: NonNullable<RegistrySource['config']> = { ...descriptor.config };
+  switch (identity.kind) {
+    case 'github-tree': {
+      config.branch = identity.ref;
+      if (identity.collectionsPath !== undefined) {
+        config.collectionsPath = identity.collectionsPath;
+      }
+      if (identity.skillsPath !== undefined) {
+        config.skillsPath = identity.skillsPath;
+      }
+
+      break;
+    }
+    case 'azure-devops-tree': {
+      config.branch = identity.ref;
+      config.collectionsPath = identity.collectionsPath;
+
+      break;
+    }
+    case 'workspace-local': {
+      if (identity.collectionsPath !== undefined) {
+        config.collectionsPath = identity.collectionsPath;
+      }
+      if (identity.skillsPath !== undefined) {
+        config.skillsPath = identity.skillsPath;
+      }
+
+      break;
+    }
+    case 'external-local': {
+      if (identity.collectionsPath !== undefined) {
+        config.collectionsPath = identity.collectionsPath;
+      }
+      if (identity.skillsPath !== undefined) {
+        config.skillsPath = identity.skillsPath;
+      }
+
+      break;
+    }
+  // No default
+  }
+  let url = descriptor.locator;
+  if (LOCAL_PORTABLE_TYPES.has(descriptor.type) && identity.kind === 'workspace-local') {
+    url = identity.root === '.' ? './' : `./${identity.root}`;
+  }
+  return {
+    id: sourceKey,
+    name: sourceKey,
+    type: descriptor.type as RegistrySource['type'],
+    url,
+    enabled: true,
+    priority: 0,
+    config
+  };
+};
+
+const runtimeSourceForReplay = async (
+  sourceKey: string,
+  descriptor: PortableSourceDescriptor,
+  ctx: Context
+): Promise<{ source: RegistrySource; localLocation?: LocalSourceLocation }> => {
+  const source = sourceConfigFromDescriptor(sourceKey, descriptor);
+  if (!LOCAL_PORTABLE_TYPES.has(descriptor.type)) {
+    return { source };
+  }
+  if (descriptor.identity.kind === 'workspace-local') {
+    return { source, localLocation: { kind: 'workspace', root: path.resolve(ctx.cwd()) } };
+  }
+  if (descriptor.identity.kind !== 'external-local') {
+    throw new RegistryError({
+      code: 'BUNDLE.INVALID_SOURCE_IDENTITY',
+      message: `Local source "${sourceKey}" has no workspace root or named external binding.`
+    });
+  }
+  const bindingName = descriptor.identity.bindingName;
+
+  const paths = resolveUserConfigPaths(ctx.env);
+  const activeHubId = await new ActiveHubStore(paths.activeHub, ctx.fs).get();
+  if (activeHubId === null) {
+    throw new RegistryError({
+      code: 'CONFIG.MISSING_LOCAL_BINDING',
+      message: `No active local source configuration provides binding "${bindingName}".`,
+      hint: 'Activate a hub with a local source whose configured ID matches the recorded binding name.'
+    });
+  }
+  const { config } = await new HubStore(paths.hubs, ctx.fs).load(activeHubId);
+  const configured = config.sources.find((candidate) => candidate.id === bindingName);
+  if (configured === undefined || configured.type !== descriptor.type) {
+    throw new RegistryError({
+      code: 'CONFIG.MISSING_LOCAL_BINDING',
+      message: `The active hub has no "${descriptor.type}" source bound as "${bindingName}".`,
+      hint: 'Configure the exact named local source in the active hub before replaying this lockfile.'
+    });
+  }
+  const runtimeSource = { ...configured, id: sourceKey, name: configured.name };
+  const configuredPath = resolveLocalPath(runtimeSource.url);
+  if (!path.isAbsolute(configuredPath)) {
+    throw new RegistryError({
+      code: 'CONFIG.MISSING_LOCAL_BINDING',
+      message: `External local binding "${bindingName}" must resolve to an absolute configured path.`,
+      hint: 'Configure the source URL as an absolute local path; replay never resolves an external binding against process CWD.'
+    });
+  }
+  return {
+    source: runtimeSource,
+    localLocation: {
+      kind: 'binding',
+      name: bindingName,
+      root: path.resolve(configuredPath)
+    }
+  };
+};
 
 const dryRunNotMigrated = (cause: LockfileGenerationMismatchError): RegistryError => new RegistryError({
   code: 'CONFIG.LOCKFILE_NOT_MIGRATED',
@@ -1048,33 +1195,77 @@ async function performLocalInstall(
     unified = unifiedDeployRequested(ctx);
     if (unified) {
       assertUnifiedDeploySupported(effectiveTarget);
-    }
-    const files = await readLocalBundle(opts.from as string, ctx.fs);
-    const manifest = validateManifest(files, {
-      expectedId: opts.bundle ?? '',
-      expectedVersion: undefined
-    });
-    if (unified) {
+      const workspaceRoot = path.resolve(ctx.cwd());
+      const localSourceTypes = new Set(['local', 'local-awesome-copilot', 'local-skills']);
+      let source: RegistrySource;
+      let localLocation: LocalSourceLocation;
+      if (opts.sourceConfig === undefined) {
+        const selectedBundlePath = path.resolve(workspaceRoot, opts.from as string);
+        const sourceRoot = path.dirname(selectedBundlePath);
+        const relativeRoot = path.relative(workspaceRoot, sourceRoot);
+        if (relativeRoot === '..' || relativeRoot.startsWith(`..${path.sep}`) || path.isAbsolute(relativeRoot)) {
+          throw new RegistryError({
+            code: 'CONFIG.MISSING_LOCAL_BINDING',
+            message: `install: local source "${opts.from}" is outside the selected workspace and has no named source binding.`,
+            hint: 'Configure the local source explicitly in the active hub or place the bundle beneath the selected workspace.'
+          });
+        }
+        const portableRoot = relativeRoot === '' ? '.' : relativeRoot.split(path.sep).join('/');
+        source = {
+          id: 'cli-from',
+          name: '--from local source',
+          type: 'local',
+          url: portableRoot === '.' ? './' : `./${portableRoot}`,
+          enabled: true,
+          priority: 0
+        };
+        localLocation = { kind: 'workspace', root: workspaceRoot };
+      } else {
+        if (!localSourceTypes.has(opts.sourceConfig.type)) {
+          throw new RegistryError({
+            code: 'BUNDLE.INVALID_SOURCE_IDENTITY',
+            message: `install: --from cannot be combined with non-local source "${opts.sourceConfig.id}".`,
+            hint: 'Use a local source configuration or omit --from to resolve through the configured adapter.'
+          });
+        }
+        source = opts.sourceConfig;
+        const configuredPath = resolveLocalPath(source.url);
+        const absoluteRoot = path.isAbsolute(configuredPath)
+          ? path.resolve(configuredPath)
+          : path.resolve(workspaceRoot, configuredPath);
+        const relativeRoot = path.relative(workspaceRoot, absoluteRoot);
+        localLocation = relativeRoot === '..' || relativeRoot.startsWith(`..${path.sep}`) || path.isAbsolute(relativeRoot)
+          ? { kind: 'binding', name: source.id, root: absoluteRoot }
+          : { kind: 'workspace', root: workspaceRoot };
+      }
+      const payload = await resolvePortableBundle(source, {
+        bundleId: opts.bundle ?? '',
+        localLocation
+      }, sourceAdapterDepsFor(
+        ctx,
+        opts.http ?? new NodeHttpClient(),
+        [opts.tokens ?? defaultTokenProvider(ctx.env)]
+      ));
+      const placement = await buildPlacementContext(ctx, effectiveTarget);
       return await runUnifiedInstall({
         ctx,
         fmt,
         target: effectiveTarget,
         dryRun: opts.dryRun === true,
         force: opts.force === true,
-        request: {
-          files,
-          bundle: { bundleId: manifest.id, version: manifest.version },
-          source: {
-            sourceId: `local-${path.basename(opts.from as string)}`,
-            type: 'local',
-            url: path.resolve(ctx.cwd(), opts.from as string)
-          },
+        request: createDeployRequest({
+          payload,
           targetName: effectiveTarget.name,
           runtimeAssetRoot: runtimeAssetRootFor(ctx),
-          placement: await buildPlacementContext(ctx, effectiveTarget)
-        }
+          placement
+        })
       });
     }
+    const files = await readLocalBundle(opts.from as string, ctx.fs);
+    const manifest = validateManifest(files, {
+      expectedId: opts.bundle ?? '',
+      expectedVersion: undefined
+    });
     if (opts.dryRun === true) {
       formatOutput({
         ctx,
@@ -1157,13 +1348,6 @@ async function performLocalInstall(
   }
 }
 
-const sourceDescriptorFrom = (src: LockfileSourceEntry): RemoteSourceDescriptor => ({
-  type: src.type,
-  url: src.url,
-  ...(src.branch === undefined ? {} : { branch: src.branch }),
-  ...(src.collectionsPath === undefined ? {} : { collectionsPath: src.collectionsPath })
-});
-
 const failureReason = (cause: unknown): string => cause instanceof Error ? cause.message : String(cause);
 
 /**
@@ -1230,58 +1414,65 @@ interface ReplayRequestArgs {
 }
 
 /**
- * Build the deploy request for one desired entry: the source descriptor recorded in
- * `desired.sources` is fetched with the legacy replay's `fetchFilesForSource`, and the exact
- * recorded version is required of the result (design §3.2): an absent version fails, it never
- * falls back to latest.
+ * Build the deploy request from the recorded portable source and artifact pin. The key and
+ * source descriptor are validated before provider access; pinned replay supplies the recorded
+ * coordinates to the adapter and never chooses a version from a catalog.
  * @param args Entry and fetch dependencies.
  * @returns The deploy request.
  * @throws {Error} With an actionable reason when the entry cannot be replayed.
  */
 async function buildReplayRequest(args: ReplayRequestArgs): Promise<Omit<DeployRequest, 'force'>> {
-  const { key, desired, target, placement, ctx, verbose } = args;
+  const { key, desired, target, placement, ctx } = args;
   const entry = desired.bundles[key];
   const parsed = parseLogicalBundleKey(key);
   if (parsed === null) {
-    throw new Error(`"${key}" is not a {sourceId}/{bundleId} bundle key, so it cannot be replayed`);
+    throw new Error(`"${key}" is not a {sourceKey}/{logicalBundleId} bundle key, so it cannot be replayed`);
   }
-  if (parsed.sourceId !== entry.sourceId) {
-    throw new Error(`the key names source "${parsed.sourceId}" but the entry records sourceId "${entry.sourceId}"; fix the lockfile before replaying it`);
+  if (parsed.sourceKey !== entry.sourceKey) {
+    throw new Error(`the key names source "${parsed.sourceKey}" but the entry records sourceKey "${entry.sourceKey}"; fix the lockfile before replaying it`);
   }
-  const src: LockfileSourceEntry | undefined = desired.sources[entry.sourceId];
-  if (src === undefined) {
-    throw new Error(`source "${entry.sourceId}" has no descriptor in the lockfile's sources, so it cannot be replayed`);
+  const descriptor = desired.sources[entry.sourceKey];
+  if (descriptor === undefined) {
+    throw new Error(`source "${entry.sourceKey}" has no descriptor in the lockfile's sources, so it cannot be replayed`);
   }
-  const files = await fetchFilesForSource(
-    src,
-    parsed.manifestId,
-    {
-      version: entry.version,
-      sourceId: entry.sourceId,
-      sourceType: src.type,
-      installedAt: new Date().toISOString(),
-      files: [],
-      ...(entry.archiveSha === undefined ? {} : { checksum: entry.archiveSha.replace(/^sha256:/, '') })
-    },
-    args.http,
-    args.tokens,
+  assertSourceKey(entry.sourceKey, descriptor);
+  assertResolutionSourceCompatibility(descriptor, entry.resolution);
+  assertResolutionVersion(entry.resolution, entry.version);
+  const runtime = await runtimeSourceForReplay(entry.sourceKey, descriptor, ctx);
+  let sourceAuthentication: ReadonlyMap<string, SourceAuthenticationContext> | undefined;
+  if (args.sourceAwareDependencyCache !== undefined && !LOCAL_PORTABLE_TYPES.has(runtime.source.type)) {
+    const repoSlug = extractRepoSlug(descriptor.locator);
+    const dependencies = await args.sourceAwareDependencyCache.get(repoSlug, runtime.source);
+    sourceAuthentication = new Map([[runtime.source.id, {
+      category: dependencies.authenticationCategory,
+      target: dependencies.repositoryTarget,
+      tokenProvider: dependencies.downloadTokens
+    }]]);
+  }
+  const payload = await resolvePortableBundle(runtime.source, {
+    bundleId: parsed.logicalBundleId,
+    version: entry.version,
+    expectedSource: descriptor,
+    resolution: entry.resolution,
+    ...(runtime.localLocation === undefined ? {} : { localLocation: runtime.localLocation })
+  }, sourceAdapterDepsFor(
     ctx,
-    verbose,
-    args.sourceAwareDependencyCache
-  );
-  if (files === null) {
-    throw new Error(`version ${entry.version} was not found in source "${entry.sourceId}" (${src.url}), `
-      + 'or its archive did not match the recorded checksum; the pin is exact, so no other version was substituted');
+    args.http,
+    [args.tokens],
+    sourceAuthentication
+  ));
+  if (payload.logicalBundleId !== parsed.logicalBundleId) {
+    throw new RegistryError({
+      code: 'BUNDLE.LOGICAL_BUNDLE_MISMATCH',
+      message: `Source resolution returned logical bundle "${payload.logicalBundleId}" for recorded key "${key}".`
+    });
   }
-  validateManifest(files, { expectedId: parsed.manifestId, expectedVersion: entry.version });
-  return {
-    files,
-    bundle: { bundleId: parsed.manifestId, version: entry.version },
-    source: { sourceId: entry.sourceId, ...sourceDescriptorFrom(src) },
+  return createDeployRequest({
+    payload,
     targetName: target.name,
     runtimeAssetRoot: runtimeAssetRootFor(ctx),
     placement
-  };
+  });
 }
 
 /**
@@ -1319,7 +1510,11 @@ async function performUnifiedLockfileInstall(
   const keys = Object.keys(desired.bundles);
 
   const replayed: string[] = [];
-  const failures: { key: string; reason: string; error?: ReturnType<RegistryError['toJSON']> }[] = [];
+  const failures: { key: string; reason: string; error?: ReturnType<RegistryError['toJSON']> }[] =
+    (desired.unresolved ?? []).map((intent) => ({
+      key: intent.originalKey,
+      reason: `Unresolved legacy intent at version ${intent.version} cannot be replayed: ${intent.reason}`
+    }));
   const written: string[] = [];
   const destinations: string[] = [];
   const drifted: string[] = [];
@@ -1594,8 +1789,10 @@ async function performRemoteInstall(
       assertUnifiedDeploySupported(effectiveTarget);
     }
     const spec = parseBundleSpec(opts.bundle as string);
+    const configuredSource = opts.sourceConfig;
+    const sourceIsLocal = configuredSource !== undefined && LOCAL_PORTABLE_TYPES.has(configuredSource.type);
     const repoSlug = opts.source ?? spec.sourceId;
-    if (repoSlug === undefined || repoSlug.length === 0) {
+    if (!sourceIsLocal && (repoSlug === undefined || repoSlug.length === 0)) {
       throw new RegistryError({
         code: 'USAGE.MISSING_FLAG',
         message: 'install: a remote install needs --source <owner/repo> (or `install owner/repo:<bundleId>`).',
@@ -1607,14 +1804,43 @@ async function performRemoteInstall(
     }
     const http = opts.http ?? new NodeHttpClient();
     const tokens = opts.tokens ?? defaultTokenProvider(ctx.env);
+    if (unified && sourceIsLocal) {
+      const source = configuredSource;
+      const payload = await resolvePortableBundle(source, {
+        bundleId: spec.bundleId,
+        ...(spec.bundleVersion === 'latest' ? {} : { version: spec.bundleVersion }),
+        localLocation: localLocationForConfiguredSource(source, ctx)
+      }, sourceAdapterDepsFor(ctx, http, [tokens]));
+      if (payload.resolution.kind === 'live') {
+        throw new RegistryError({
+          code: 'BUNDLE.UNSUPPORTED_LIVE_DEPLOYMENT',
+          message: 'Live local-skills deployment is not supported by copy-only targets; no files or lockfile state were changed.',
+          hint: 'Use a snapshot-capable local source or disable unifiedDeploy until live-link placement is available.'
+        });
+      }
+      return await runUnifiedInstall({
+        ctx,
+        fmt,
+        target: effectiveTarget,
+        dryRun: opts.dryRun === true,
+        force: opts.force === true,
+        request: createDeployRequest({
+          payload,
+          targetName: effectiveTarget.name,
+          runtimeAssetRoot: runtimeAssetRootFor(ctx),
+          placement: await buildPlacementContext(ctx, effectiveTarget)
+        })
+      });
+    }
+    const remoteSlug = repoSlug as string;
     let githubApi: GitHubApi;
     let downloadTokens: TokenProvider;
     let repositoryTarget: GitHubRepositoryTarget | undefined;
     let authenticationCategory: Exclude<GitHubSourceAuthCategory, 'unresolved'> | undefined;
     if (isGitHubAppAuthEnabled(ctx.env)) {
       const dependencies = opts.sourceAwareDependencyCache === undefined
-        ? await sourceAwareInstallDependencies(repoSlug, opts.sourceConfig, http, ctx)
-        : await opts.sourceAwareDependencyCache.get(repoSlug, opts.sourceConfig);
+        ? await sourceAwareInstallDependencies(remoteSlug, configuredSource, http, ctx)
+        : await opts.sourceAwareDependencyCache.get(remoteSlug, configuredSource);
       githubApi = dependencies.githubApi;
       downloadTokens = dependencies.downloadTokens;
       repositoryTarget = dependencies.repositoryTarget;
@@ -1624,15 +1850,66 @@ async function performRemoteInstall(
       downloadTokens = tokens;
     }
 
+    if (unified) {
+      const fallbackTarget = repositoryTarget
+        ?? parseGitHubRepositoryTarget(configuredSource?.url ?? `https://github.com/${remoteSlug}`);
+      const portableSource: RegistrySource = configuredSource ?? {
+        id: `cli-${remoteSlug}`,
+        name: remoteSlug,
+        type: 'github',
+        url: `https://${fallbackTarget.host}/${fallbackTarget.owner}/${fallbackTarget.repository}`,
+        enabled: true,
+        priority: 0
+      };
+      const sourceAuthentication = repositoryTarget === undefined || authenticationCategory === undefined
+        ? undefined
+        : new Map<string, SourceAuthenticationContext>([[portableSource.id, {
+          category: authenticationCategory,
+          target: repositoryTarget,
+          tokenProvider: downloadTokens
+        }]]);
+      const payload = await resolvePortableBundle(portableSource, {
+        bundleId: spec.bundleId,
+        ...(spec.bundleVersion === 'latest' ? {} : { version: spec.bundleVersion })
+      }, sourceAdapterDepsFor(ctx, http, [downloadTokens], sourceAuthentication));
+      const request = createDeployRequest({
+        payload,
+        targetName: effectiveTarget.name,
+        runtimeAssetRoot: runtimeAssetRootFor(ctx),
+        placement: await buildPlacementContext(ctx, effectiveTarget)
+      });
+      const portableCollectionsPath = payload.source.config?.collectionsPath ?? payload.source.config?.skillsPath;
+      return await runUnifiedInstall({
+        ctx,
+        fmt,
+        target: effectiveTarget,
+        dryRun: opts.dryRun === true,
+        force: opts.force === true,
+        request,
+        extra: {
+          source: {
+            type: payload.source.type,
+            repo: remoteSlug,
+            sourceId: portableSource.id,
+            url: payload.source.locator,
+            ...(portableCollectionsPath === undefined ? {} : { collectionsPath: portableCollectionsPath })
+          },
+          ...(request.expectedArchiveSha === undefined
+            ? {}
+            : { sha256: request.expectedArchiveSha.replace(/^sha256:/, '') })
+        }
+      });
+    }
+
     // Use SourceDispatcher to select the appropriate resolver based on source config
     let resolver: BundleResolver;
     if (opts.sourceConfig) {
       const dispatcher = new SourceDispatcher({ githubApi, fs: ctx.fs });
       const selectedResolver = dispatcher.resolverFor(opts.sourceConfig);
-      resolver = selectedResolver ?? new GitHubBundleResolver({ repoSlug, githubApi });
+      resolver = selectedResolver ?? new GitHubBundleResolver({ repoSlug: remoteSlug, githubApi });
     } else {
       // Default to GitHub resolver when no source config is provided
-      resolver = new GitHubBundleResolver({ repoSlug, githubApi });
+      resolver = new GitHubBundleResolver({ repoSlug: remoteSlug, githubApi });
     }
 
     const downloader = new HttpsBundleDownloader(http, downloadTokens, repositoryTarget, authenticationCategory);
@@ -1642,9 +1919,9 @@ async function performRemoteInstall(
     if (installable === null) {
       throw new RegistryError({
         code: 'BUNDLE.NOT_FOUND',
-        message: `install: ${spec.bundleId} not found at ${repoSlug}`,
+        message: `install: ${spec.bundleId} not found at ${remoteSlug}`,
         hint: 'Check the source slug and that a release with the requested version + asset (bundle.zip) exists.',
-        context: { spec, repoSlug }
+        context: { spec, repoSlug: remoteSlug }
       });
     }
     const dl = await downloader.download(installable);
@@ -1653,36 +1930,6 @@ async function performRemoteInstall(
       expectedId: opts.sourceConfig === undefined ? spec.bundleId : undefined,
       expectedVersion: spec.bundleVersion === 'latest' ? undefined : spec.bundleVersion
     });
-    if (unified) {
-      const sourceDescriptor = remoteSourceDescriptor(repoSlug, opts.sourceConfig, repositoryTarget);
-      return await runUnifiedInstall({
-        ctx,
-        fmt,
-        target: effectiveTarget,
-        dryRun: opts.dryRun === true,
-        force: opts.force === true,
-        // The planner only accepts extracted `files` today (`bytes` alone is refused,
-        // and both together are rejected), so the already-extracted tree is passed.
-        request: {
-          files,
-          bundle: { bundleId: manifest.id, version: manifest.version },
-          source: { sourceId: installable.ref.sourceId, ...sourceDescriptor },
-          targetName: effectiveTarget.name,
-          runtimeAssetRoot: runtimeAssetRootFor(ctx),
-          placement: await buildPlacementContext(ctx, effectiveTarget)
-        },
-        extra: {
-          source: {
-            type: sourceDescriptor.type,
-            repo: repoSlug,
-            sourceId: installable.ref.sourceId,
-            url: sourceDescriptor.url,
-            ...(sourceDescriptor.collectionsPath === undefined ? {} : { collectionsPath: sourceDescriptor.collectionsPath })
-          },
-          sha256: dl.sha256
-        }
-      });
-    }
     if (opts.dryRun === true) {
       formatOutput({
         ctx,
@@ -1693,7 +1940,7 @@ async function performRemoteInstall(
           dryRun: true,
           target: effectiveTarget.name,
           bundle: { id: manifest.id, version: manifest.version },
-          source: { type: 'github', repo: repoSlug, downloadUrl: installable.downloadUrl },
+          source: { type: 'github', repo: remoteSlug, downloadUrl: installable.downloadUrl },
           sha256: dl.sha256,
           files: [...files.keys()]
         },
@@ -1727,7 +1974,7 @@ async function performRemoteInstall(
     const collectionsPath = opts.sourceConfig?.config?.collectionsPath;
     nextLock = upsertSource(nextLock, installable.ref.sourceId, {
       type: opts.sourceConfig?.type ?? 'github',
-      url: `https://github.com/${repoSlug}`,
+      url: `https://github.com/${remoteSlug}`,
       ...(collectionsPath ? { collectionsPath } : {})
     });
     await writeLockfile(lockPath, nextLock, ctx.fs);
@@ -1740,7 +1987,7 @@ async function performRemoteInstall(
       data: {
         target: effectiveTarget.name,
         bundle: { id: manifest.id, version: manifest.version },
-        source: { type: 'github', repo: repoSlug, sourceId: installable.ref.sourceId },
+        source: { type: 'github', repo: remoteSlug, sourceId: installable.ref.sourceId },
         sha256: dl.sha256,
         written: result.written,
         skipped: result.skipped,

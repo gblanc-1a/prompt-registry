@@ -106,6 +106,7 @@ The source-aware authentication variables in [Source Authentication](./authentic
 
 - **User scope only.** An absent scope is treated as user, as the legacy path does. Any other scope, repository included, is refused with `BUNDLE.UNSUPPORTED_SCOPE` before the bundle, the network or any lockfile is read. The hint is to unset the variable. Repository scope arrives in slice 3 and is refused under the flag until then.
 - **Targets.** Any target type whose layout resolves can be used. The verified, tested target in this slice is `vscode`, whose user-scope base directory is `~/.copilot` (`prompts/`, `instructions/`, `agents/`, `skills/`, and so on).
+- **Live local-skills sources.** The copy-only pipeline refuses a `live` resolution before migration or placement; live-link installation is not implemented.
 - **Commands.** The flag-aware entry points are `install` and `uninstall`:
   - `install --from <dir>`, a remote `<bundle> --source <owner/repo>` (or `owner/repo:<bundle>`), `--lockfile` replay, and the hub picker `--source <hub-id> --interactive`, which installs each selected bundle through the same remote path (`installSelectedBundles`).
   - `install --source <hub-id>` without `--interactive` only lists bundles and installs nothing.
@@ -117,21 +118,23 @@ The source-aware authentication variables in [Source Authentication](./authentic
 ```mermaid
 flowchart TD
     A[install] --> B[Fetch and extract bundle]
-    B --> C[Validate manifest and file inventory]
-    C --> D{Dry run?}
-    D -->|Yes| P[planDeploy, read only]
+    B --> C[Resolve portable source and artifact pin]
+    C --> D[Verify source identity and known digests]
+    D --> E[Validate manifest and file inventory]
+    E --> F{Dry run?}
+    F -->|Yes| P[planDeploy, read only]
     P --> R{Lockfile is 2.x?}
     R -->|Yes| S[Refuse: CONFIG.LOCKFILE_NOT_MIGRATED]
     R -->|No| Q[Report the plan, write nothing]
-    D -->|No| E{Lockfile is 2.x?}
-    E -->|Yes| F[Migrate to the 3.0.0 pair]
-    E -->|No| G[Plan]
-    F --> G
-    G --> H{Tracked files modified?}
-    H -->|Yes, force not set| X[Refuse: BUNDLE.DEPLOY_DRIFT]
-    H -->|No, or force set| I[Place files]
-    I --> J[Record: write local file, then desired file]
-    J --> K[MCP servers and git exclude: later slices]
+    F -->|No| G{Lockfile is 2.x?}
+    G -->|Yes| H[Migrate to the 3.0.0 pair]
+    G -->|No| I[Plan]
+    H --> I
+    I --> J{Tracked files modified?}
+    J -->|Yes, force not set| X[Refuse: BUNDLE.DEPLOY_DRIFT]
+    J -->|No, or force set| K[Place files]
+    K --> L[Record: write local file, then desired file]
+    L --> M[MCP servers and git exclude: later slices]
 ```
 
 Notes on the order:
@@ -177,27 +180,20 @@ At user scope the state is two files under the XDG config root, `${XDG_CONFIG_HO
 
 | File | Role | Contents |
 |------|------|----------|
-| `ai-primitives-hub.lock.json` | Desired state, shareable when its source URLs are portable | `$schema`, `version`, `bundles` keyed by `{sourceId}/{manifestId}` (`version`, `sourceId`, optional `archiveSha`), `sources` (`type`, `url`, optional `branch`, `collectionsPath`), optional `hubs`, `profiles`. No `targets`, `generatedAt`, `generatedBy`, `installedAt`, `baseDir` or per-file records; local source URLs can be absolute machine paths |
-| `ai-primitives-hub.local.lock.json` | Materialization on this machine | `version`, `generatedAt`, `generatedBy`, optional `migration.lockfileV3`, and `targets[name]` with `targetType`, `scope`, `baseDir` and `bundles[key]` (`version`, `sourceId`, `installedAt`, optional `state` and `unmanagedReason`, and `files[]`) |
+| `ai-primitives-hub.lock.json` | Desired state, shareable when its source descriptors are portable | `$schema`, `version`, `bundles` keyed by `{sourceKey}/{logicalBundleId}` (`version`, `sourceKey`, `resolution`), and `sources` keyed by `sourceKey` (`type`, `identity`, `locator`, optional non-secret adapter config), plus optional `hubs`, `profiles` and unresolved legacy intent. No `targets`, `generatedAt`, `generatedBy`, `installedAt`, `baseDir` or per-file records |
+| `ai-primitives-hub.local.lock.json` | Materialization on this machine | `version`, `generatedAt`, `generatedBy`, optional `migration.lockfileV3`, and `targets[name]` with `targetType`, `scope`, `baseDir` and `bundles[key]` (`version`, `sourceKey`, `resolution`, `installedAt`, optional `state` and `unmanagedReason`, and `files[]`) |
 
-Each `files[]` entry has a `path` relative to `baseDir` in POSIX form, a `checksum` of the bytes in the archive, and an `installedChecksum` of the bytes actually written, which differs when a transformer changed the content. New remote installs do not record `archiveSha` yet; a verified pin already present is preserved for the same key and version, and dropped on a version change.
+Each `files[]` entry has a `path` relative to `baseDir` in POSIX form, a `checksum` of the source bytes, and an `installedChecksum` of the bytes actually written, which differs when a transformer changed the content. A portable source key is derived from the canonical provider identity, not a registry-local source ID or display name. A resolution records the selected artifact: for example, a GitHub release pin includes its release and asset IDs plus archive SHA-256, while tree and local snapshots include their effective selector and source-content SHA-256. Replay uses those recorded coordinates and verifies known digests before migration or placement; a missing pin is an error, never a reason to substitute `latest`. Display-only locator or tag changes do not identify a different artifact. Historical unresolved entries retain their known evidence and are reported as failures rather than guessed into a new identity.
 
-```json
-{
-  "$schema": "https://github.com/AmadeusITGroup/ai-primitives-hub/schemas/lockfile-v3.schema.json",
-  "version": "3.0.0",
-  "bundles": { "local-web-dev/web-dev": { "version": "1.0.0", "sourceId": "local-web-dev" } },
-  "sources": { "local-web-dev": { "type": "local", "url": "/path/to/web-dev" } }
-}
-```
+For example, a desired key has the form `src-<64 lowercase hex characters>/<logicalBundleId>`. Its entry records that same `sourceKey` and a provider-specific `resolution`; `sources[sourceKey]` holds the portable `identity` and `locator`. Workspace-local locators are relative to the workspace, while external local sources use an explicit binding name rather than persisting a machine-specific absolute path.
 
 The repository-scope files keep their `prompt-registry.*` names and the `2.0.0` schema until a later slice (see [Lockfile Management](#lockfile-management)).
 
 ### Uninstall
 
-`uninstall --bundle <id|sourceId/bundleId> --target <name>` and `uninstall --all --target <name>`:
+`uninstall --bundle <id|sourceKey/logicalBundleId> --target <name>` and `uninstall --all --target <name>`:
 
-- **Resolution.** A bare id resolves to the logical key `{sourceId}/{bundleId}` among that target's records. If two sources offer the same id, the command is refused with `BUNDLE.AMBIGUOUS_ID`, naming both keys; pass the full key. A bundle that is not installed produces a warning, exit code `0`, and writes nothing.
+- **Resolution.** A bare id resolves to the logical key `{sourceKey}/{logicalBundleId}` among that target's records or retained unresolved ownership. If two sources offer the same id, the command is refused with `BUNDLE.AMBIGUOUS_ID`, naming every matching key; pass the full key. A bundle that is not installed produces a warning, exit code `0`, and writes nothing.
 - **Removal follows the record.** Only recorded on-disk paths are removed; nothing is recomputed from the manifest. Untracked siblings stay. Noncanonical POSIX-relative paths (including backslashes, drive/UNC forms, absolute paths and dot segments), links and linked ancestors are skipped and reported. Paths another record still owns are skipped and reported as `shared`. Empty directories may remain.
 - **Desired state** for a key is dropped only when no other target still holds that bundle.
 - **`--all`** removes every bundle the target records. It never drops entries desired but not installed on the target; it lists them as `desiredOnly`. A named uninstall of such a key drops desired intent. If a bundle fails midway, output lists completed bundles and a `failure` (`key`, `reason`, structured `error` when available), later bundles are not attempted, and the exit code is non-zero.
@@ -207,7 +203,7 @@ The repository-scope files keep their `prompt-registry.*` names and the `2.0.0` 
 
 With the flag on, `install --lockfile` accepts only the user desired file, compared as a resolved path. A repository lockfile, any other path, and a bare `install` that auto-detects a project `prompt-registry.lock.json` are refused with `BUNDLE.UNSUPPORTED_SCOPE`.
 
-Each desired entry is deployed according to the recorded source descriptor's `type`, never a name-prefix guess, at exactly the pinned version. If that version is absent, the entry fails; latest is never substituted. Other entries continue, failures are reported as `failures: [{ key, reason, error? }]`, and the exit code is `1` if any entry failed. `--dry-run` plans every entry and writes nothing.
+Each entry is replayed through the adapter selected by its recorded source descriptor and resolution, never by a source-name prefix. A pinned entry uses its recorded provider coordinates and digest; if the exact artifact is unavailable or its content differs, replay fails and never substitutes `latest`. An unpinned entry is not silently upgraded to a pin, and any recorded digest evidence must still match. Unresolved intent is reported as a failure while independent entries continue; failures are reported as `failures: [{ key, reason, error? }]`, and the exit code is `1` if any entry failed. `--dry-run` plans every entry and writes nothing.
 
 ### Migration from a 2.x user lockfile
 
@@ -222,7 +218,7 @@ In this slice migration does not try to prove where legacy files went. Every mig
 ### Known limits in this slice
 
 - Deploys are not transactional (above).
-- Remote installs do not persist `archiveSha`.
+- A flag-on `live` local-skills selection is refused until link-based placement is implemented.
 - The replay loop of `install --lockfile` and the `--all` loop of `uninstall` live in the CLI and move toward `app` later.
 - `uninstall --lockfile` and a bare `uninstall` are unsupported until repository scope lands.
 - Only `vscode` is a verified target.

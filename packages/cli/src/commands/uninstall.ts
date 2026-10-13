@@ -476,7 +476,15 @@ const renderDesiredOnly = (targetName: string, desiredOnly: string[]): string =>
     : `Desired but not installed on ${targetName}: ${desiredOnly.join(', ')}. `
       + 'Run `uninstall --bundle <key> --target <name>` to drop that desired intent.\n';
 
-const bundleHalf = (key: string): string => parseLogicalBundleKey(key)?.manifestId ?? key;
+const bundleHalf = (key: string): string => parseLogicalBundleKey(key)?.logicalBundleId ?? key;
+
+const isUnmanagedRecord = (
+  record: unknown
+): record is { state: 'unmanaged'; unmanagedReason: string } =>
+  typeof record === 'object'
+  && record !== null
+  && 'state' in record
+  && record.state === 'unmanaged';
 
 const failureReason = (cause: unknown): string => cause instanceof Error ? cause.message : String(cause);
 
@@ -525,7 +533,7 @@ async function runUnifiedBundleUninstall(
     throw new RegistryError({
       code: 'BUNDLE.AMBIGUOUS_ID',
       message: `uninstall: "${typed}" matches more than one bundle installed in target "${target.name}": ${resolution.keys.join(', ')}.`,
-      hint: `Pass the full sourceId/bundleId key, e.g. --bundle ${resolution.keys[0]}.`,
+      hint: `Pass the full sourceKey/bundleId key, e.g. --bundle ${resolution.keys[0]}.`,
       context: { bundle: typed, target: target.name, keys: resolution.keys }
     });
   }
@@ -542,7 +550,8 @@ async function runUnifiedBundleUninstall(
   }
   if (dryRun) {
     const record = resolution.kind === 'match' ? resolution.record : undefined;
-    const unmanaged = record?.state === 'unmanaged';
+    const unmanagedReason = isUnmanagedRecord(record) ? record.unmanagedReason : undefined;
+    const unmanaged = unmanagedReason !== undefined;
     formatOutput({
       ctx,
       command: 'uninstall',
@@ -554,7 +563,7 @@ async function runUnifiedBundleUninstall(
         bundle: typed,
         key,
         files: record === undefined || unmanaged ? [] : record.files.map((f) => f.path),
-        ...(unmanaged ? { unmanagedReason: record.unmanagedReason } : {}),
+        ...(unmanagedReason === undefined ? {} : { unmanagedReason }),
         ...(record === undefined ? { orphaned: true } : {})
       },
       textRenderer: (d) => {
@@ -563,7 +572,7 @@ async function runUnifiedBundleUninstall(
             + 'Run without --dry-run to apply.\n';
         }
         return unmanaged
-          ? `[dry-run] Would drop the record of unmanaged bundle "${d.bundle}" from target "${d.target}"; its files stay in place (${record.unmanagedReason}).\n`
+          ? `[dry-run] Would drop the record of unmanaged bundle "${d.bundle}" from target "${d.target}"; its files stay in place (${unmanagedReason}).\n`
           + 'Run without --dry-run to apply.\n'
           : `[dry-run] Would uninstall bundle "${d.bundle}" from target "${d.target}":\n`
             + `  Files: ${d.files.join(', ')}\n`
@@ -630,7 +639,10 @@ async function runUnifiedAllUninstall(
   const desiredOnlyNote = renderDesiredOnly(target.name, desiredOnly);
 
   if (dryRun) {
-    const managed = bundles.filter((b) => b.record.state !== 'unmanaged');
+    const managed = bundles.filter((b) => !isUnmanagedRecord(b.record));
+    const unmanaged = bundles.flatMap((bundle) => isUnmanagedRecord(bundle.record)
+      ? [{ key: bundle.key, reason: bundle.record.unmanagedReason }]
+      : []);
     formatOutput({
       ctx,
       command: 'uninstall',
@@ -641,9 +653,7 @@ async function runUnifiedAllUninstall(
         target: target.name,
         bundles: keys,
         files: managed.flatMap((b) => b.record.files.map((f) => f.path)),
-        unmanaged: bundles
-          .filter((b) => b.record.state === 'unmanaged')
-          .map((b) => ({ key: b.key, reason: b.record.unmanagedReason })),
+        unmanaged,
         ...withDesiredOnly(desiredOnly)
       },
       textRenderer: (d) => `[dry-run] Would uninstall all bundles from target "${d.target}":\n`

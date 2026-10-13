@@ -90,7 +90,7 @@ export async function deployBundle(req: DeployRequest, ports: DeployPorts): Prom
   const { bundle, source, placement, force, commitMode } = req;
   assertReplayableSource(source);
   assertDeployPayload(req);
-  const key = logicalBundleKey({ sourceId: source.sourceId, manifestId: bundle.bundleId });
+  const key = logicalBundleKey({ sourceKey: source.sourceKey, logicalBundleId: bundle.bundleId });
   const now = ports.now ?? new Date().toISOString();
   const inventory = prepareDeployFiles(req, ports);
   const destinations = [...inventory.destinations.map((entry) => entry.to), ...inventory.files.map((entry) => entry.to)];
@@ -144,20 +144,12 @@ export async function deployBundle(req: DeployRequest, ports: DeployPorts): Prom
       await verifyWrittenBytes(ports.fs, file.to, file.installedBytes);
     }
     stage = 'record';
-    const previousDesired = Object.hasOwn(pair.desired.bundles, key) ? pair.desired.bundles[key] : undefined;
-    const desiredWithBundle = upsertDesiredBundle(pair.desired, key, {
+    const desiredUpdated = upsertDesiredBundle(pair.desired, key, {
       version: bundle.version,
-      sourceId: source.sourceId,
-      ...(previousDesired?.version === bundle.version && previousDesired.archiveSha !== undefined
-        ? { archiveSha: previousDesired.archiveSha }
-        : {})
+      sourceKey: source.sourceKey,
+      resolution: req.resolution
     });
-    const desiredUpdated = upsertDesiredSource(desiredWithBundle, source.sourceId, {
-      type: source.type,
-      url: source.url,
-      ...(source.branch === undefined ? {} : { branch: source.branch }),
-      ...(source.collectionsPath === undefined ? {} : { collectionsPath: source.collectionsPath })
-    });
+    const desiredWithSource = upsertDesiredSource(desiredUpdated, source.sourceKey, source.descriptor);
     const fileRecords: LockfileV3FileEntry[] = [];
     for (const file of accepted) {
       const bytes = await ports.fs.readFileBytes(file.to);
@@ -182,7 +174,8 @@ export async function deployBundle(req: DeployRequest, ports: DeployPorts): Prom
       ...(commitMode === undefined ? {} : { commitMode })
     }, key, {
       version: bundle.version,
-      sourceId: source.sourceId,
+      sourceKey: source.sourceKey,
+      resolution: req.resolution,
       installedAt: now,
       ...(commitMode === undefined ? {} : { commitMode }),
       files: fileRecords
@@ -190,7 +183,7 @@ export async function deployBundle(req: DeployRequest, ports: DeployPorts): Prom
     stage = 'state-write';
     ports.onEvent?.({ kind: 'state-write' });
     effectsBegan = true;
-    await writeLockfileV3Pair(ports.lockfileStore, { desired: desiredUpdated, local: localUpdated }, state.fs);
+    await writeLockfileV3Pair(ports.lockfileStore, { desired: desiredWithSource, local: localUpdated }, state.fs);
     if (oldOnly.length > 0) {
       stage = 'retire';
       const shared = otherOwnedPaths(pair.local, req.targetName, key);

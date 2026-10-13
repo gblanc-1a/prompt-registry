@@ -115,6 +115,8 @@ export interface PortableBundlePayload {
   version: string;
   resolution: BundleResolution;
   files: ExtractedFiles;
+  /** Original source inventory used for tree/local content-pin verification. */
+  sourceFiles?: ExtractedFiles;
   /** Original archive bytes for archive-backed deploy checksum preflight. */
   bytes?: Uint8Array;
 }

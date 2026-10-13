@@ -442,7 +442,8 @@ export class LocalSkillsAdapter extends BaseSourceAdapter {
       manifestId: skillId,
       version,
       resolution,
-      files: outputFiles
+      files: outputFiles,
+      sourceFiles: rawFiles
     };
   }
 

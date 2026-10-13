@@ -7,8 +7,14 @@ import {
 } from 'node:crypto';
 import * as posix from 'node:path/posix';
 import {
+  assertResolutionSourceCompatibility,
+  assertResolutionVersion,
+  assertSourceKey,
   logicalBundleKey,
+  sourceKey as portableSourceKey,
   RegistryError,
+  sameSourceIdentity,
+  sourceContentDigest,
 } from '@ai-primitives-hub/core';
 import {
   readLockfileV3Pair,
@@ -33,10 +39,11 @@ import type {
  * @param source Source descriptor.
  */
 export function assertReplayableSource(source: DeployRequest['source']): void {
-  if (typeof source.url !== 'string' || source.url.trim().length === 0) {
+  assertSourceKey(source.sourceKey, source.descriptor);
+  if (portableSourceKey(source.descriptor.identity, source.descriptor.type) !== source.sourceKey) {
     throw new RegistryError({
-      code: 'BUNDLE.INVALID_DEPLOY_REQUEST',
-      message: `Deploy request source "${source.sourceId}" has no url, so its descriptor cannot be recorded in the lockfile`
+      code: 'BUNDLE.SOURCE_KEY_MISMATCH',
+      message: 'Deploy request source key does not match its portable descriptor.'
     });
   }
 }
@@ -55,13 +62,13 @@ export function assertDeploymentState(request: DeployRequest, pair: LockfileV3Pa
     });
   }
   const { source, bundle } = request;
-  const key = logicalBundleKey({ sourceId: source.sourceId, manifestId: bundle.bundleId });
-  const previous = Object.hasOwn(pair.desired.sources, source.sourceId) ? pair.desired.sources[source.sourceId] : undefined;
-  if (previous !== undefined && (previous.type !== source.type || previous.url !== source.url)
-    && Object.entries(pair.desired.bundles).some(([otherKey, entry]) => otherKey !== key && entry.sourceId === source.sourceId)) {
+  const key = logicalBundleKey({ sourceKey: source.sourceKey, logicalBundleId: bundle.bundleId });
+  const previous = Object.hasOwn(pair.desired.sources, source.sourceKey) ? pair.desired.sources[source.sourceKey] : undefined;
+  if (previous !== undefined && !sameSourceIdentity(previous, source.descriptor)
+    && Object.entries(pair.desired.bundles).some(([otherKey, entry]) => otherKey !== key && entry.sourceKey === source.sourceKey)) {
     throw new RegistryError({
       code: 'BUNDLE.SOURCE_CONFLICT',
-      message: `Two different sources produced the same sourceId "${source.sourceId}"; uninstall the other bundle or pick a distinct source path before replacing its descriptor.`
+      message: `Portable source key "${source.sourceKey}" conflicts with an existing source descriptor.`
     });
   }
 }
@@ -72,10 +79,26 @@ export function assertDeploymentState(request: DeployRequest, pair: LockfileV3Pa
  */
 export function assertDeployPayload(request: DeployRequest): void {
   const { files, bytes, expectedArchiveSha } = request;
-  if ((files === undefined) === (bytes === undefined)) {
+  assertResolutionSourceCompatibility(request.source.descriptor, request.resolution);
+  assertResolutionVersion(request.resolution, request.bundle.version);
+  if (request.resolution.kind === 'live') {
     throw new RegistryError({
-      code: 'BUNDLE.INVALID_DEPLOY_REQUEST',
-      message: 'Deploy request must specify exactly one of bytes or files'
+      code: 'BUNDLE.UNSUPPORTED_LIVE_DEPLOYMENT',
+      message: 'Live local-skills deployment is not supported by copy-only targets; no files or lockfile state were changed.'
+    });
+  }
+  const archiveSha = request.resolution.kind === 'pinned'
+    ? (request.resolution.provider === 'github-release' || request.resolution.provider === 'artifactory-object'
+      ? request.resolution.archiveSha256
+      : undefined)
+    : (request.resolution.kind === 'unpinned'
+      ? request.resolution.evidence?.knownDigests?.archiveSha256
+      : undefined);
+  const expectedArchive = archiveSha === undefined ? undefined : `sha256:${archiveSha}`;
+  if (expectedArchive !== undefined && (bytes === undefined || expectedArchiveSha !== expectedArchive)) {
+    throw new RegistryError({
+      code: 'BUNDLE.ARCHIVE_MISMATCH',
+      message: 'Archive-backed resolution requires the original bytes and its exact expectedArchiveSha before deployment.'
     });
   }
   if (expectedArchiveSha !== undefined) {
@@ -93,6 +116,40 @@ export function assertDeployPayload(request: DeployRequest): void {
       });
     }
   }
+  if (files === undefined) {
+    throw new RegistryError({
+      code: 'BUNDLE.INVALID_DEPLOY_REQUEST',
+      message: 'Deploy request must include extracted files for deployment'
+    });
+  }
+  const contentSha = request.resolution.kind === 'pinned'
+    ? (request.resolution.provider === 'github-tree' || request.resolution.provider === 'azure-devops-tree'
+      || request.resolution.provider === 'local-snapshot'
+      ? request.resolution.sourceContentSha256
+      : undefined)
+    : (request.resolution.kind === 'unpinned'
+      ? request.resolution.evidence?.knownDigests?.sourceContentSha256
+      : undefined);
+  if (contentSha !== undefined && sourceContentDigest(request.sourceFiles ?? files) !== contentSha) {
+    throw new RegistryError({
+      code: 'BUNDLE.ARTIFACT_PIN_MISMATCH',
+      message: 'Resolved source files do not match the recorded source-content SHA-256 digest.'
+    });
+  }
+  const manifestSha = request.resolution.kind === 'pinned' && request.resolution.provider === 'artifactory-object'
+    ? request.resolution.manifestSha256
+    : (request.resolution.kind === 'unpinned'
+      ? request.resolution.evidence?.knownDigests?.manifestSha256
+      : undefined);
+  if (manifestSha !== undefined) {
+    const manifest = files.get('deployment-manifest.yml');
+    if (manifest === undefined || createHash('sha256').update(manifest).digest('hex') !== manifestSha) {
+      throw new RegistryError({
+        code: 'BUNDLE.ARTIFACT_PIN_MISMATCH',
+        message: 'Resolved deployment manifest does not match its recorded raw-byte SHA-256 digest.'
+      });
+    }
+  }
 }
 
 /**
@@ -106,7 +163,7 @@ export async function planDeploy(request: DeployRequest, ports: DeployPorts): Pr
   const { bundle, source } = request;
   assertReplayableSource(source);
   assertDeployPayload(request);
-  const bundleKey = logicalBundleKey({ sourceId: source.sourceId, manifestId: bundle.bundleId });
+  const bundleKey = logicalBundleKey({ sourceKey: source.sourceKey, logicalBundleId: bundle.bundleId });
   const inventory = prepareDeployFiles(request, ports);
   await assertSafeDestinations(ports.fs, request.placement.baseRoot,
     [...inventory.destinations.map((entry) => entry.to), ...inventory.files.map((entry) => entry.to)]);

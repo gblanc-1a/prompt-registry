@@ -616,7 +616,8 @@ export class SkillsAdapter extends BaseSourceAdapter {
       manifestId: this.buildBundleId(publicCoordinates.owner, publicCoordinates.repo, selector),
       version,
       resolution,
-      files: outputFiles
+      files: outputFiles,
+      sourceFiles: rawFiles
     };
   }
 

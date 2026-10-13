@@ -47,14 +47,42 @@ describe('lockfileVersionErrorMessage', () => {
 
 describe('lockfile 3.x wire-format schema', () => {
   const validate = new Ajv({ strict: false }).compile(lockfileV3Schema);
+  const sourceKey = `src-${'a'.repeat(64)}`;
+  const localSource = {
+    type: 'local',
+    identity: { kind: 'workspace-local', root: '.' },
+    locator: '.'
+  };
+  const localResolution = {
+    kind: 'pinned',
+    provider: 'local-snapshot',
+    version: '1.0.0',
+    bundleSelector: 'bundle',
+    sourceContentSha256: 'a'.repeat(64)
+  };
 
   it('accepts a desired-state file with no generated metadata', () => {
     expect(validate({
       $schema: 'https://github.com/AmadeusITGroup/ai-primitives-hub/schemas/lockfile-v3.schema.json',
       version: '3.0.0',
-      bundles: { 'src/web-dev': { version: '1.0.0', sourceId: 'src' } },
-      sources: { src: { type: 'local', url: '/tmp/x' } }
+      bundles: {
+        [`${sourceKey}/web-dev`]: {
+          version: '1.0.0',
+          sourceKey,
+          resolution: localResolution
+        }
+      },
+      sources: { [sourceKey]: localSource }
     })).toBe(true);
+  });
+
+  it('rejects the historical v3 sourceId/url desired shape', () => {
+    expect(validate({
+      $schema: 'https://github.com/AmadeusITGroup/ai-primitives-hub/schemas/lockfile-v3.schema.json',
+      version: '3.0.0',
+      bundles: { 'src/web-dev': { version: '1.0.0', sourceId: 'src' } },
+      sources: { src: { type: 'local', url: '/machine/x' } }
+    })).toBe(false);
   });
 
   it('rejects a desired-state file carrying a local identifier', () => {
@@ -78,9 +106,10 @@ describe('lockfile 3.x wire-format schema', () => {
           scope: 'user',
           baseDir: '/home/u/.copilot',
           bundles: {
-            'src/web-dev': {
+            [`${sourceKey}/web-dev`]: {
               version: '1.0.0',
-              sourceId: 'src',
+              sourceKey,
+              resolution: localResolution,
               installedAt: '2026-10-09T12:00:00.000Z',
               files: [{ path: 'prompts/hello.prompt.md', installedChecksum: 'a'.repeat(64) }]
             }
@@ -99,25 +128,25 @@ describe('lockfile 3.x wire-format schema', () => {
       $schema: 'https://github.com/AmadeusITGroup/ai-primitives-hub/schemas/lockfile-v3.schema.json',
       version: '3.0.0',
       bundles: {
-        'org/bundle': {
+        [`${sourceKey}/bundle`]: {
           version: '1.2.3',
-          sourceId: 'github-src',
-          archiveSha: 'a'.repeat(64)
+          sourceKey,
+          resolution: {
+            kind: 'pinned',
+            provider: 'github-release',
+            version: '1.2.3',
+            releaseId: '123',
+            assetId: '456',
+            archiveSha256: 'a'.repeat(64)
+          }
         }
       },
       sources: {
-        'github-src': {
+        [sourceKey]: {
           type: 'github',
-          url: 'https://github.com/org/repo',
-          branch: 'main',
-          collectionsPath: 'collections'
-        },
-        'artifactory-src': {
-          type: 'artifactory',
-          url: 'https://artifactory.example.com',
-          indexFile: 'index.json',
-          authMode: 'bearer',
-          credentialRef: 'cred-123'
+          identity: { kind: 'github-releases', origin: 'https://github.com', repositoryId: '123' },
+          locator: 'https://github.com/org/repo',
+          config: { authMode: 'bearer', credentialRef: 'cred-123' }
         }
       },
       hubs: {},
@@ -138,25 +167,27 @@ describe('lockfile 3.x wire-format schema', () => {
           baseDir: '/workspace/.copilot',
           commitMode: 'commit',
           bundles: {
-            'org/bundle': {
+            [`${sourceKey}/bundle`]: {
               version: '1.2.3',
-              sourceId: 'github-src',
+              sourceKey,
+              resolution: {
+                kind: 'pinned',
+                provider: 'github-release',
+                version: '1.2.3',
+                releaseId: '123',
+                assetId: '456',
+                archiveSha256: 'a'.repeat(64)
+              },
               installedAt: '2026-10-09T12:00:00.000Z',
               commitMode: 'local-only',
               state: 'unmanaged',
               unmanagedReason: 'Provenance unclear during migration',
               linked: true,
+              legacy: { originalKey: 'legacy/bundle', version: '1.2.3' },
               mcpConfigPath: '/path/to/mcp.json',
               mcpServers: ['server-1', 'server-2'],
               complete: true,
-              files: [
-                {
-                  path: 'prompts/example.prompt.md',
-                  checksum: 'b'.repeat(64),
-                  installedChecksum: 'c'.repeat(64),
-                  adoptedAtMigration: true
-                }
-              ]
+              files: [{ path: 'prompts/example.prompt.md' }]
             }
           }
         }
@@ -173,12 +204,12 @@ describe('lockfile 3.x wire-format schema', () => {
         unmanaged: {
           baseDir: '',
           bundles: {
-            'src/web-dev': {
+            [`unresolved/${'b'.repeat(64)}`]: {
               version: '1.0.0',
-              sourceId: 'src',
               installedAt: '2026-10-09T12:00:00.000Z',
               state: 'unmanaged',
               unmanagedReason: 'destination could not be proven from bundle-relative path',
+              legacy: { originalKey: 'web-dev', version: '1.0.0' },
               files: [{ path: 'prompts/hello.prompt.md', checksum: 'a'.repeat(64) }]
             }
           }
@@ -196,9 +227,10 @@ describe('lockfile 3.x wire-format schema', () => {
         unmanaged: {
           baseDir: '',
           bundles: {
-            'src/legacy': {
+            [`${sourceKey}/legacy`]: {
               version: '1.0.0',
-              sourceId: 'src',
+              sourceKey,
+              resolution: { kind: 'unpinned', reason: 'carried from v2' },
               installedAt: '2026-10-09T12:00:00.000Z',
               state: 'unmanaged',
               unmanagedReason: 'carried from v2',

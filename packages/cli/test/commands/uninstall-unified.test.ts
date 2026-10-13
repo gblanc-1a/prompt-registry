@@ -15,6 +15,7 @@ import {
   mkdtemp,
   readdir,
   readFile,
+  realpath,
   rm,
   stat,
   writeFile,
@@ -28,6 +29,12 @@ import {
   upsertSource,
   writeLockfile,
 } from '@ai-primitives-hub/app';
+import type {
+  BundleResolution,
+} from '@ai-primitives-hub/core';
+import {
+  sourceKey,
+} from '@ai-primitives-hub/core';
 import {
   NodeFileSystem,
 } from '@ai-primitives-hub/infra';
@@ -50,6 +57,9 @@ import {
 import {
   runCommand,
 } from '../../src/framework';
+import {
+  BoundedFs,
+} from '../fixtures/bounded-fs';
 import {
   RecordingFs,
 } from '../fixtures/recording-fs';
@@ -90,19 +100,21 @@ interface UninstallAllData {
 
 interface V3Record {
   version: string;
-  sourceId: string;
+  sourceName: string;
+  resolution: BundleResolution;
   installedAt: string;
   state?: 'unmanaged';
   unmanagedReason?: string;
-  files: { path: string }[];
+  files: { path: string; checksum?: string; installedChecksum?: string }[];
 }
 
 interface LocalFile {
-  targets: Record<string, { baseDir: string; bundles: Record<string, V3Record> }>;
+  targets: Record<string, { baseDir: string; bundles: Record<string, Omit<V3Record, 'sourceName'> & { sourceKey: string }> }>;
 }
 
 interface DesiredFile {
-  bundles: Record<string, { version: string; sourceId: string }>;
+  bundles: Record<string, { version: string; sourceKey: string; resolution: BundleResolution }>;
+  sources: Record<string, unknown>;
 }
 
 const exists = async (p: string): Promise<boolean> => {
@@ -131,10 +143,23 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
   let env: Record<string, string>;
 
   const flagOn = { AI_PRIMITIVES_HUB_UNIFIED_DEPLOY: '1' };
+  const portableSourceKey = (name: string): string =>
+    sourceKey({ kind: 'workspace-local', root: name }, 'local');
+  const logicalKey = (name: string, bundleId: string): string =>
+    `${portableSourceKey(name)}/${bundleId}`;
+  const keyA = (bundleId: string): string => logicalKey('src-a', bundleId);
+  const keyB = (bundleId: string): string => logicalKey('src-b', bundleId);
+  const keyX = (bundleId: string): string => logicalKey('src-x', bundleId);
+  const portableSource = (name: string) => ({
+    type: 'local' as const,
+    identity: { kind: 'workspace-local' as const, root: name },
+    locator: name
+  });
+  const localCliSourceKey = portableSourceKey('.');
   const run = (
     argv: string[],
     overrides: Record<string, string> = flagOn,
-    fs: NodeFileSystem = new NodeFileSystem()
+    fs: NodeFileSystem = new BoundedFs(workspace)
   ): ReturnType<typeof runCommand> => runCommand(argv, {
     commandClasses: [TargetAddCommand, InstallCommand, UninstallCommand],
     context: { cwd: workspace, fs, env: { ...env, ...overrides } }
@@ -143,12 +168,12 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
   const paths = (): ReturnType<typeof resolveUserConfigPaths> => resolveUserConfigPaths(env);
   const copilotDir = (): string => path.join(workspace, '.copilot');
   const destination = (): string => path.join(copilotDir(), 'prompts', 'hello.prompt.md');
-  const installedKey = (): string => `local-${path.basename(bundleDir)}/local-foo`;
+  const installedKey = (): string => `${localCliSourceKey}/local-foo`;
   const uninstall = (extra: string[], fs?: NodeFileSystem): ReturnType<typeof runCommand> =>
     run(['uninstall', '--target', 'my-vscode', ...extra, '-o', 'json'], flagOn, fs);
   const install = async (): Promise<string[]> => {
     const result = await run(['install', 'local-foo', '--from', bundleDir, '--target', 'my-vscode', '-o', 'json']);
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode, result.stdout).toBe(0);
     return parse<{ written: string[] }>(result.stdout).data.written;
   };
   const makeBundle = async (id: string): Promise<string> => {
@@ -164,8 +189,8 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
   // Installs a one-file bundle with its own destination, so several can coexist in one target.
   const installBundle = async (id: string): Promise<{ key: string; file: string }> => {
     const result = await run(['install', id, '--from', await makeBundle(id), '--target', 'my-vscode', '-o', 'json']);
-    expect(result.exitCode).toBe(0);
-    return { key: `local-src-${id}/${id}`, file: path.join(copilotDir(), 'prompts', `${id}.prompt.md`) };
+    expect(result.exitCode, result.stdout).toBe(0);
+    return { key: `${localCliSourceKey}/${id}`, file: path.join(copilotDir(), 'prompts', `${id}.prompt.md`) };
   };
   const readLocal = async (): Promise<LocalFile> => JSON.parse(await readFile(paths().userLocalLockfile, 'utf8')) as LocalFile;
   const readDesired = async (): Promise<DesiredFile> => JSON.parse(await readFile(paths().userLockfile, 'utf8')) as DesiredFile;
@@ -173,28 +198,55 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
     [paths().userLockfile, paths().userLocalLockfile].map(async (file) => await exists(file) ? await readFile(file, 'utf8') : null)
   );
 
-  const record = (over: Partial<V3Record> & Pick<V3Record, 'sourceId' | 'files'>): V3Record => ({
+  const record = (over: Partial<V3Record> & Pick<V3Record, 'sourceName' | 'files'>): V3Record => ({
     version: '1.0.0',
     installedAt: '2026-01-01T00:00:00.000Z',
-    ...over
+    resolution: { kind: 'unpinned', reason: 'test fixture has no pinned acquisition evidence' },
+    ...over,
+    files: over.files.map((file) => ({
+      checksum: 'a'.repeat(64),
+      installedChecksum: 'b'.repeat(64),
+      ...file
+    }))
   });
+  const materialization = (value: V3Record): Omit<V3Record, 'sourceName'> & { sourceKey: string } => {
+    const { sourceName, ...recordValue } = value;
+    return { ...recordValue, sourceKey: portableSourceKey(sourceName) };
+  };
   // Hand-written v3 pair, for states no install produces.
   const writeV3 = async (
     bundles: Record<string, V3Record>,
     baseDir: string = path.join(workspace, 'managed')
   ): Promise<void> => {
+    const portableBundles = Object.fromEntries(Object.entries(bundles).map(([fixtureKey, rec]) => {
+      const key = logicalKey(rec.sourceName, fixtureKey.slice(fixtureKey.lastIndexOf('/') + 1));
+      return [key, rec];
+    }));
     await mkdir(path.dirname(paths().userLockfile), { recursive: true });
     await writeFile(paths().userLockfile, JSON.stringify({
+      $schema: 'https://github.com/AmadeusITGroup/ai-primitives-hub/schemas/lockfile-v3.schema.json',
       version: '3.0.0',
-      bundles: Object.fromEntries(Object.entries(bundles).map(([key, rec]) => [key, { version: rec.version, sourceId: rec.sourceId }])),
-      sources: Object.fromEntries(Object.values(bundles).map((rec) => [rec.sourceId, { type: 'local', url: workspace }]))
+      bundles: Object.fromEntries(Object.entries(portableBundles).map(([key, rec]) => [key, {
+        version: rec.version,
+        sourceKey: portableSourceKey(rec.sourceName),
+        resolution: rec.resolution
+      }])),
+      sources: Object.fromEntries([...new Set(Object.values(bundles).map((rec) => rec.sourceName))]
+        .map((sourceName) => [portableSourceKey(sourceName), portableSource(sourceName)]))
     }, null, 2));
     await writeFile(paths().userLocalLockfile, JSON.stringify({
       version: '3.0.0',
       generatedAt: '2026-01-01T00:00:00.000Z',
       generatedBy: 'test',
       migration: { lockfileV3: 'complete' },
-      targets: { 'my-vscode': { targetType: 'vscode', scope: 'user', baseDir, bundles } }
+      targets: {
+        'my-vscode': {
+          targetType: 'vscode',
+          scope: 'user',
+          baseDir,
+          bundles: Object.fromEntries(Object.entries(portableBundles).map(([key, rec]) => [key, materialization(rec)]))
+        }
+      }
     }, null, 2));
   };
   const writeManaged = async (...relative: string[]): Promise<string[]> => {
@@ -220,7 +272,7 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
   };
 
   beforeEach(async () => {
-    workspace = await mkdtemp(path.join(os.tmpdir(), 'cli-uninstall-unified-test-'));
+    workspace = await mkdtemp(path.join(await realpath(os.tmpdir()), 'cli-uninstall-unified-test-'));
     bundleDir = path.join(workspace, 'bundle');
     env = {
       HOME: workspace,
@@ -240,7 +292,7 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
   it.each(['json', 'text'])('reports removed paths when a bundle removal fails midway in %s output', async (output) => {
     const [first, second] = await writeManaged('prompts/a.prompt.md', 'prompts/b.prompt.md');
     await writeV3({ 'src-a/local-foo': record({
-      sourceId: 'src-a', files: [{ path: 'prompts/a.prompt.md' }, { path: 'prompts/b.prompt.md' }]
+      sourceName: 'src-a', files: [{ path: 'prompts/a.prompt.md' }, { path: 'prompts/b.prompt.md' }]
     }) });
     const fs = new RecordingFs(workspace);
     fs.failOnce('remove', (file) => file === second, new Error('EACCES during removal'));
@@ -261,7 +313,7 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
   it('bulk uninstall preserves the failed bundle applied-effects details in JSON', async () => {
     const [first, second] = await writeManaged('prompts/a.prompt.md', 'prompts/b.prompt.md');
     await writeV3({ 'src-a/local-foo': record({
-      sourceId: 'src-a', files: [{ path: 'prompts/a.prompt.md' }, { path: 'prompts/b.prompt.md' }]
+      sourceName: 'src-a', files: [{ path: 'prompts/a.prompt.md' }, { path: 'prompts/b.prompt.md' }]
     }) });
     const fs = new RecordingFs(workspace);
     fs.failOnce('remove', (file) => file === second, new Error('EACCES during removal'));
@@ -274,15 +326,16 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
   it('clears a migrated unmanaged legacy id from a real target while leaving its files and showing the reason', async () => {
     const [legacyFile] = await writeManaged('legacy.prompt.md');
     const legacyId = 'legacy-bundle-1.0.0';
-    await seedV2(legacyId, [{ path: 'legacy.prompt.md', checksum: 'legacy-source-hash' }]);
+    await seedV2(legacyId, [{ path: 'legacy.prompt.md', checksum: 'a'.repeat(64) }]);
     const before = await readFile(legacyFile, 'utf8');
     await install();
     const local = await readLocal();
-    const key = 'legacy-source/legacy-bundle';
+    const [key] = Object.keys(local.targets.unmanaged.bundles);
     const reason = local.targets.unmanaged.bundles[key].unmanagedReason;
+    expect(key).toMatch(/^unresolved\/[a-f0-9]{64}$/);
     expect(reason).toBeDefined();
 
-    const result = await run(['uninstall', '--bundle', legacyId, '--target', 'my-vscode']);
+    const result = await run(['uninstall', '--bundle', key, '--target', 'my-vscode']);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain(reason);
     expect((await readLocal()).targets.unmanaged?.bundles[key]).toBeUndefined();
@@ -319,7 +372,7 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
       expect(data.lockfile).toBe(paths().userLockfile);
     });
 
-    it('accepts the full sourceId/bundleId key', async () => {
+    it('accepts the full sourceKey/bundleId key', async () => {
       await install();
 
       const result = await uninstall(['--bundle', installedKey()]);
@@ -405,8 +458,8 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
     it('refuses an id offered by two sources, naming both keys, and changes nothing', async () => {
       const [fileA, fileB] = await writeManaged('prompts/a.prompt.md', 'prompts/b.prompt.md');
       await writeV3({
-        'src-a/local-foo': record({ sourceId: 'src-a', files: [{ path: 'prompts/a.prompt.md' }] }),
-        'src-b/local-foo': record({ sourceId: 'src-b', files: [{ path: 'prompts/b.prompt.md' }] })
+        'src-a/local-foo': record({ sourceName: 'src-a', files: [{ path: 'prompts/a.prompt.md' }] }),
+        'src-b/local-foo': record({ sourceName: 'src-b', files: [{ path: 'prompts/b.prompt.md' }] })
       });
       const before = await lockfileBytes();
       const recording = new RecordingFs();
@@ -416,9 +469,9 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
       expect(result.exitCode).toBe(1);
       const { errors } = parse<null>(result.stdout);
       expect(errors[0].code).toBe('BUNDLE.AMBIGUOUS_ID');
-      expect(errors[0].message).toContain('src-a/local-foo');
-      expect(errors[0].message).toContain('src-b/local-foo');
-      expect(errors[0].hint).toContain('sourceId/bundleId');
+      expect(errors[0].message).toContain(keyA('local-foo'));
+      expect(errors[0].message).toContain(keyB('local-foo'));
+      expect(errors[0].hint).toContain('sourceKey/bundleId');
       expect(recording.writes).toEqual([]);
       expect(await lockfileBytes()).toEqual(before);
       expect(await exists(fileA)).toBe(true);
@@ -428,18 +481,18 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
     it('removes only the named source\'s files when the full key disambiguates', async () => {
       const [fileA, fileB] = await writeManaged('prompts/a.prompt.md', 'prompts/b.prompt.md');
       await writeV3({
-        'src-a/local-foo': record({ sourceId: 'src-a', files: [{ path: 'prompts/a.prompt.md' }] }),
-        'src-b/local-foo': record({ sourceId: 'src-b', files: [{ path: 'prompts/b.prompt.md' }] })
+        'src-a/local-foo': record({ sourceName: 'src-a', files: [{ path: 'prompts/a.prompt.md' }] }),
+        'src-b/local-foo': record({ sourceName: 'src-b', files: [{ path: 'prompts/b.prompt.md' }] })
       });
 
-      const result = await uninstall(['--bundle', 'src-b/local-foo']);
+      const result = await uninstall(['--bundle', keyB('local-foo')]);
 
       expect(result.exitCode).toBe(0);
       expect(parse<UninstallData>(result.stdout).data.removed).toEqual([fileB]);
       expect(await exists(fileA)).toBe(true);
       expect(await exists(fileB)).toBe(false);
-      expect(Object.keys((await readLocal()).targets['my-vscode'].bundles)).toEqual(['src-a/local-foo']);
-      expect(Object.keys((await readDesired()).bundles)).toEqual(['src-a/local-foo']);
+      expect(Object.keys((await readLocal()).targets['my-vscode'].bundles)).toEqual([keyA('local-foo')]);
+      expect(Object.keys((await readDesired()).bundles)).toEqual([keyA('local-foo')]);
     });
 
     it('leaves the files of an unmanaged record in place, drops the record, and says why in JSON and text', async () => {
@@ -447,7 +500,7 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
       const reason = 'destination could not be proven from bundle-relative path';
       await writeV3({
         'src-a/local-foo': record({
-          sourceId: 'src-a',
+          sourceName: 'src-a',
           state: 'unmanaged',
           unmanagedReason: reason,
           files: [{ path: 'prompts/kept.prompt.md' }]
@@ -467,7 +520,7 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
 
       await writeV3({
         'src-a/local-foo': record({
-          sourceId: 'src-a',
+          sourceName: 'src-a',
           state: 'unmanaged',
           unmanagedReason: reason,
           files: [{ path: 'prompts/kept.prompt.md' }]
@@ -486,27 +539,29 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
       await writeFile(outside, '# outside\n');
       await mkdir(path.join(workspace, 'managed'), { recursive: true });
       await writeV3({
-        'src-a/local-foo': record({ sourceId: 'src-a', files: [{ path: '../outside.md' }] })
+        'src-a/local-foo': record({ sourceName: 'src-a', files: [{ path: '../outside.md' }] })
       });
+      const before = await lockfileBytes();
+      const recording = new RecordingFs();
 
-      const result = await uninstall(['--bundle', 'local-foo']);
+      const result = await uninstall(['--bundle', 'local-foo'], recording);
 
-      expect(result.exitCode).toBe(0);
-      const { data } = parse<UninstallData>(result.stdout);
-      expect(data.removed).toEqual([]);
-      expect(data.skipped).toEqual([outside]);
+      expect(result.exitCode).toBe(1);
+      expect(parse<null>(result.stdout).errors[0].code).toBe('CONFIG.INVALID_LOCKFILE_V3');
+      expect(recording.writes).toEqual([]);
+      expect(await lockfileBytes()).toEqual(before);
       await expect(readFile(outside, 'utf8')).resolves.toBe('# outside\n');
     });
 
     it('removes the recorded files of a local-only v3 pair (no desired file) and drops the record', async () => {
       const [file] = await writeManaged('prompts/a.prompt.md');
-      await writeV3({ 'src-a/local-foo': record({ sourceId: 'src-a', files: [{ path: 'prompts/a.prompt.md' }] }) });
+      await writeV3({ 'src-a/local-foo': record({ sourceName: 'src-a', files: [{ path: 'prompts/a.prompt.md' }] }) });
       await rm(paths().userLockfile);
 
       const result = await uninstall(['--bundle', 'local-foo']);
 
       expect(result.exitCode).toBe(0);
-      expect(parse<UninstallData>(result.stdout).data).toMatchObject({ key: 'src-a/local-foo', removed: [file], skipped: [] });
+      expect(parse<UninstallData>(result.stdout).data).toMatchObject({ key: keyA('local-foo'), removed: [file], skipped: [] });
       expect(await exists(file)).toBe(false);
       expect((await readLocal()).targets['my-vscode']).toBeUndefined();
       // undeployBundle writes the pair, so the missing desired half is created, empty.
@@ -606,7 +661,7 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
       await writeManaged('prompts/kept.prompt.md');
       await writeV3({
         'src-a/local-foo': record({
-          sourceId: 'src-a',
+          sourceName: 'src-a',
           state: 'unmanaged',
           unmanagedReason: reason,
           files: [{ path: 'prompts/kept.prompt.md' }]
@@ -631,25 +686,22 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
 
       expect(result.exitCode).toBe(0);
       const envelope = parse<unknown>(result.stdout);
-      expect(envelope.status).toBe('ok');
-      expect(envelope.data).toEqual({
-        dryRun: true, target: 'my-vscode', bundle: 'local-foo', key: 'legacy-source/local-foo', files: [], unmanaged: true
-      });
+      expect(envelope.status).toBe('warning');
+      expect(envelope.data).toMatchObject({ bundle: 'local-foo', reason: 'not found in lockfile' });
       expect(recording.writes).toEqual([]);
       await expect(readFile(paths().userLockfile, 'utf8')).resolves.toBe(before);
       expect(await exists(paths().userLocalLockfile)).toBe(false);
 
       const text = await run(['uninstall', '--bundle', 'local-foo', '--target', 'my-vscode', '--dry-run'], flagOn, recording);
 
-      expect(text.stdout).toContain('Would drop the migrated unmanaged record "legacy-source/local-foo"');
-      expect(text.stdout).toContain('its files stay in place');
+      expect(text.stdout).toContain('Bundle "local-foo" is not installed in target "my-vscode". Nothing to uninstall.');
       expect(recording.writes).toEqual([]);
       await expect(readFile(paths().userLockfile, 'utf8')).resolves.toBe(before);
     });
 
     it('lists the recorded files of a local-only v3 pair (no desired file) and writes nothing', async () => {
       await writeManaged('prompts/a.prompt.md');
-      await writeV3({ 'src-a/local-foo': record({ sourceId: 'src-a', files: [{ path: 'prompts/a.prompt.md' }] }) });
+      await writeV3({ 'src-a/local-foo': record({ sourceName: 'src-a', files: [{ path: 'prompts/a.prompt.md' }] }) });
       await rm(paths().userLockfile);
       const recording = new RecordingFs();
 
@@ -657,7 +709,7 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
 
       expect(result.exitCode).toBe(0);
       const { data } = parse<{ key: string; files: string[] }>(result.stdout);
-      expect(data).toMatchObject({ key: 'src-a/local-foo', files: [path.join('prompts', 'a.prompt.md')] });
+      expect(data).toMatchObject({ key: keyA('local-foo'), files: [path.join('prompts', 'a.prompt.md')] });
       expect(recording.writes).toEqual([]);
       expect(await exists(paths().userLockfile)).toBe(false);
     });
@@ -683,9 +735,9 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
       const reason = 'unrecoverable source descriptor';
       await writeManaged('prompts/a.prompt.md', 'prompts/b.prompt.md');
       await writeV3({
-        'src-a/managed-one': record({ sourceId: 'src-a', files: [{ path: 'prompts/a.prompt.md' }] }),
+        'src-a/managed-one': record({ sourceName: 'src-a', files: [{ path: 'prompts/a.prompt.md' }] }),
         'src-a/legacy-one': record({
-          sourceId: 'src-a',
+          sourceName: 'src-a',
           state: 'unmanaged',
           unmanagedReason: reason,
           files: [{ path: 'prompts/b.prompt.md' }]
@@ -704,9 +756,9 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
         unmanaged: { key: string; reason: string }[];
       }>(result.stdout);
       expect(data.dryRun).toBe(true);
-      expect(data.bundles).toEqual(['src-a/managed-one', 'src-a/legacy-one']);
+      expect(data.bundles).toEqual([keyA('managed-one'), keyA('legacy-one')]);
       expect(data.files).toEqual([path.join('prompts', 'a.prompt.md')]);
-      expect(data.unmanaged).toEqual([{ key: 'src-a/legacy-one', reason }]);
+      expect(data.unmanaged).toEqual([{ key: keyA('legacy-one'), reason }]);
       expect(recording.writes).toEqual([]);
       expect(await lockfileBytes()).toEqual(before);
     });
@@ -728,7 +780,12 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
       const local = await readLocal();
       local.targets.elsewhere = {
         baseDir: path.join(workspace, 'elsewhere'),
-        bundles: { 'src-x/other': record({ sourceId: 'src-x', files: [{ path: 'prompts/other.prompt.md' }] }) }
+        bundles: {
+          [keyX('other')]: materialization(record({
+            sourceName: 'src-x',
+            files: [{ path: 'prompts/other.prompt.md' }]
+          }))
+        }
       };
       await writeFile(paths().userLocalLockfile, JSON.stringify(local, null, 2));
       return { installed, neighbour, otherFile };
@@ -749,7 +806,7 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
       }
       await expect(readFile(neighbour, 'utf8')).resolves.toBe('# mine\n');
       await expect(readFile(otherFile, 'utf8')).resolves.toBe('# other\n');
-      expect(Object.keys((await readLocal()).targets.elsewhere.bundles)).toEqual(['src-x/other']);
+      expect(Object.keys((await readLocal()).targets.elsewhere.bundles)).toEqual([keyX('other')]);
       expect(Object.keys((await readLocal()).targets['my-vscode']?.bundles ?? {})).toEqual([]);
       expect(data).not.toHaveProperty('desiredOnly');
     });
@@ -795,25 +852,30 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
     it('reports a desired-only key for an empty target, and a dry-run lists it without writing', async () => {
       await writeV3({});
       const desired = JSON.parse(await readFile(paths().userLockfile, 'utf8')) as { bundles: Record<string, unknown> };
-      desired.bundles['src-b/lonely'] = { version: '1.0.0', sourceId: 'src-b' };
+      desired.bundles[keyB('lonely')] = {
+        version: '1.0.0',
+        sourceKey: portableSourceKey('src-b'),
+        resolution: { kind: 'unpinned', reason: 'test fixture has no pinned acquisition evidence' }
+      };
+      desired.sources[portableSourceKey('src-b')] = portableSource('src-b');
       await writeFile(paths().userLockfile, JSON.stringify(desired, null, 2));
       const before = await lockfileBytes();
       const recording = new RecordingFs();
 
       const dryRun = await uninstall(['--all', '--dry-run'], recording);
 
-      expect(parse<{ desiredOnly: string[] }>(dryRun.stdout).data.desiredOnly).toEqual(['src-b/lonely']);
+      expect(parse<{ desiredOnly: string[] }>(dryRun.stdout).data.desiredOnly).toEqual([keyB('lonely')]);
       expect(recording.writes).toEqual([]);
 
       const result = await uninstall(['--all'], recording);
 
       expect(result.exitCode).toBe(0);
       expect(parse<UninstallAllData & { desiredOnly: string[] }>(result.stdout).data)
-        .toMatchObject({ uninstalled: 0, desiredOnly: ['src-b/lonely'] });
+        .toMatchObject({ uninstalled: 0, desiredOnly: [keyB('lonely')] });
       expect(recording.writes).toEqual([]);
       expect(await lockfileBytes()).toEqual(before);
       const text = await run(['uninstall', '--all', '--target', 'my-vscode']);
-      expect(text.stdout).toContain('Desired but not installed on my-vscode: src-b/lonely.');
+      expect(text.stdout).toContain(`Desired but not installed on my-vscode: ${keyB('lonely')}.`);
     });
 
     it('says what it removed in text mode', async () => {
@@ -871,9 +933,9 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
       const reason = 'unrecoverable source descriptor';
       const [managedFile, keptFile] = await writeManaged('prompts/a.prompt.md', 'prompts/b.prompt.md');
       const bundles = {
-        'src-a/managed-one': record({ sourceId: 'src-a', files: [{ path: 'prompts/a.prompt.md' }] }),
+        'src-a/managed-one': record({ sourceName: 'src-a', files: [{ path: 'prompts/a.prompt.md' }] }),
         'src-a/legacy-one': record({
-          sourceId: 'src-a',
+          sourceName: 'src-a',
           state: 'unmanaged',
           unmanagedReason: reason,
           files: [{ path: 'prompts/b.prompt.md' }]
@@ -887,8 +949,8 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
       const { data } = parse<UninstallAllData>(json.stdout);
       expect(data.uninstalled).toBe(2);
       expect(data.bundles).toEqual([
-        { id: 'src-a/managed-one', removed: 1, skipped: 0 },
-        { id: 'src-a/legacy-one', removed: 0, skipped: 1, unmanagedReason: reason }
+        { id: keyA('managed-one'), removed: 1, skipped: 0 },
+        { id: keyA('legacy-one'), removed: 0, skipped: 1, unmanagedReason: reason }
       ]);
       expect(await exists(managedFile)).toBe(false);
       expect(await exists(keptFile)).toBe(true);
@@ -897,7 +959,7 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
       await writeV3(bundles);
       const text = await run(['uninstall', '--all', '--target', 'my-vscode']);
 
-      expect(text.stdout).toContain('src-a/legacy-one');
+      expect(text.stdout).toContain(keyA('legacy-one'));
       expect(text.stdout).toContain(reason);
       expect(await exists(keptFile)).toBe(true);
     });
@@ -916,7 +978,7 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
   });
 
   describe('v2 lockfile', () => {
-    const reasonFragment = 'destination could not be proven from bundle-relative path';
+    const reasonFragment = 'Portable source and manifest identity were not verified.';
     // An interrupted migration: v2 desired file plus a v3 local file without the completion marker.
     const seedInterruptedMigration = async (bundles: Record<string, V3Record>): Promise<void> => {
       await seedV2('older-bundle', []);
@@ -929,7 +991,10 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
             targetType: 'vscode',
             scope: 'user',
             baseDir: path.join(workspace, 'managed'),
-            bundles
+            bundles: Object.fromEntries(Object.entries(bundles).map(([fixtureKey, value]) => [
+              logicalKey(value.sourceName, fixtureKey.slice(fixtureKey.lastIndexOf('/') + 1)),
+              materialization(value)
+            ]))
           }
         }
       }, null, 2));
@@ -971,8 +1036,8 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
     it('refuses an id with two matching records without migrating the store', async () => {
       await writeManaged('prompts/a.prompt.md', 'prompts/b.prompt.md');
       await seedInterruptedMigration({
-        'src-a/local-foo': record({ sourceId: 'src-a', files: [{ path: 'prompts/a.prompt.md' }] }),
-        'src-b/local-foo': record({ sourceId: 'src-b', files: [{ path: 'prompts/b.prompt.md' }] })
+        'src-a/local-foo': record({ sourceName: 'src-a', files: [{ path: 'prompts/a.prompt.md' }] }),
+        'src-b/local-foo': record({ sourceName: 'src-b', files: [{ path: 'prompts/b.prompt.md' }] })
       });
       const before = await lockfileBytes();
       const recording = new RecordingFs();
@@ -982,8 +1047,8 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
       expect(result.exitCode).toBe(1);
       const { errors } = parse<null>(result.stdout);
       expect(errors[0].code).toBe('BUNDLE.AMBIGUOUS_ID');
-      expect(errors[0].message).toContain('src-a/local-foo');
-      expect(errors[0].message).toContain('src-b/local-foo');
+      expect(errors[0].message).toContain(keyA('local-foo'));
+      expect(errors[0].message).toContain(keyB('local-foo'));
       expect(recording.writes).toEqual([]);
       expect(await lockfileBytes()).toEqual(before);
     });
@@ -991,7 +1056,7 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
     it('surfaces the migration, with its reasons, alongside a real removal when an interrupted migration resumes', async () => {
       const [file] = await writeManaged('prompts/a.prompt.md');
       await seedInterruptedMigration({
-        'src-a/local-foo': record({ sourceId: 'src-a', files: [{ path: 'prompts/a.prompt.md' }] })
+        'src-a/local-foo': record({ sourceName: 'src-a', files: [{ path: 'prompts/a.prompt.md' }] })
       });
 
       const result = await uninstall(['--bundle', 'local-foo']);
@@ -1000,7 +1065,7 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
       const { data } = parse<UninstallData>(result.stdout);
       expect(data.removed).toEqual([file]);
       expect(data.migration?.unmanaged).toHaveLength(1);
-      expect(data.migration?.unmanaged[0].key).toBe('legacy-source/older-bundle');
+      expect(data.migration?.unmanaged[0].key).toMatch(/^unresolved\/[a-f0-9]{64}$/);
       expect(data.migration?.unmanaged[0].reason).toBe(reasonFragment);
       expect(await exists(file)).toBe(false);
     });
@@ -1008,8 +1073,8 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
     it('--all surfaces the migration reasons in JSON and in text when an interrupted migration resumes', async () => {
       const [fileA, fileB] = await writeManaged('prompts/a.prompt.md', 'prompts/b.prompt.md');
       const bundles = {
-        'src-a/one': record({ sourceId: 'src-a', files: [{ path: 'prompts/a.prompt.md' }] }),
-        'src-a/two': record({ sourceId: 'src-a', files: [{ path: 'prompts/b.prompt.md' }] })
+        'src-a/one': record({ sourceName: 'src-a', files: [{ path: 'prompts/a.prompt.md' }] }),
+        'src-a/two': record({ sourceName: 'src-a', files: [{ path: 'prompts/b.prompt.md' }] })
       };
       await seedInterruptedMigration(bundles);
 
@@ -1018,7 +1083,11 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
       expect(json.exitCode).toBe(0);
       const { data } = parse<UninstallAllData>(json.stdout);
       expect(data.uninstalled).toBe(2);
-      expect(data.migration?.unmanaged).toEqual([{ key: 'legacy-source/older-bundle', reason: reasonFragment }]);
+      expect(data.migration?.unmanaged).toHaveLength(1);
+      expect(data.migration?.unmanaged[0]).toMatchObject({
+        key: expect.stringMatching(/^unresolved\/[a-f0-9]{64}$/),
+        reason: reasonFragment
+      });
       expect(await exists(fileA)).toBe(false);
       expect(await exists(fileB)).toBe(false);
 
@@ -1029,7 +1098,7 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
       const text = await run(['uninstall', '--all', '--target', 'my-vscode']);
 
       expect(text.exitCode).toBe(0);
-      expect(text.stdout).toContain(`Left unmanaged: legacy-source/older-bundle (${reasonFragment}).`);
+      expect(text.stdout).toMatch(new RegExp(`Left unmanaged: unresolved/[a-f0-9]{64} \\(${reasonFragment}\\)\\.`));
     });
   });
 
@@ -1109,7 +1178,7 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
     it('refuses a bare uninstall whose detection selects the v3 user lockfile', async () => {
       await install();
       const before = await lockfileBytes();
-      const recording = new RecordingFs();
+      const recording = new RecordingFs(workspace);
 
       const result = await run(['uninstall', '--target', 'my-vscode', '-o', 'json'], flagOn, recording);
 

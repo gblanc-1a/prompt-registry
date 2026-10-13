@@ -1,4 +1,13 @@
 import {
+  logicalBundleKey,
+  parseLogicalBundleKey,
+  sourceKey,
+} from '@ai-primitives-hub/core';
+import type {
+  BundleResolution,
+  PortableSourceDescriptor,
+} from '@ai-primitives-hub/core';
+import {
   describe,
   expect,
   it,
@@ -7,16 +16,18 @@ import {
   deployBundle,
 } from '../../src/deploy/deploy';
 import {
-  listTargetBundles,
+  listTargetBundles as listTargetBundlesActual,
   resolveUndeployKey,
 } from '../../src/deploy/resolve-undeploy-key';
 import {
   undeployBundle,
 } from '../../src/deploy/undeploy';
 import {
-  type RecordingPorts,
+  portableKeyFor,
   recordingPorts,
+  type RecordingPorts,
   request,
+  TEST_SOURCE_KEY,
 } from './fixtures';
 
 const MUTATING = /^(writeFile|writeFileBytes|rename|remove|mkdir):/;
@@ -26,11 +37,72 @@ interface SeedRecord {
   sourceId: string;
 }
 
-const record = (seed: SeedRecord): object => ({
+const sourceFor = (sourceId: string): PortableSourceDescriptor => ({
+  type: 'github',
+  identity: {
+    kind: 'github-releases',
+    origin: 'https://github.com',
+    repositoryId: sourceId === 'src-b' ? '102' : (sourceId === 'src-a' ? '101' : '103')
+  },
+  locator: `https://github.com/owner/${sourceId}`
+});
+const sourceKeyFor = (sourceId: string): string => sourceKey(sourceFor(sourceId).identity, 'github');
+const key = (sourceId: string, logicalBundleId: string): string =>
+  logicalBundleKey({ sourceKey: sourceKeyFor(sourceId), logicalBundleId });
+const canonicalTestKey = (candidate: string): string => {
+  if (candidate.startsWith('github-abc123/')) {
+    return portableKeyFor(candidate.slice('github-abc123/'.length));
+  }
+  const match = /^src-([abc])\/(.+)$/.exec(candidate);
+  return match === null ? candidate : key(`src-${match[1]}`, match[2]);
+};
+const displayTestKey = (candidate: string): string => {
+  const parts = parseLogicalBundleKey(candidate);
+  if (parts === null) {
+    return candidate;
+  }
+  let sourceId = 'src-c';
+  switch (parts.sourceKey) {
+    case TEST_SOURCE_KEY: {
+      sourceId = 'github-abc123';
+
+      break;
+    }
+    case sourceKeyFor('src-a'): {
+      sourceId = 'src-a';
+
+      break;
+    }
+    case sourceKeyFor('src-b'): {
+      sourceId = 'src-b';
+
+      break;
+    }
+  // No default
+  }
+  return `${sourceId}/${parts.logicalBundleId}`;
+};
+const displayResolution = (result: Awaited<ReturnType<typeof resolveUndeployKey>>) => {
+  if ('key' in result) {
+    return { ...result, key: displayTestKey(result.key) };
+  }
+  return result.kind === 'ambiguous'
+    ? { ...result, keys: result.keys.map((entryKey) => displayTestKey(entryKey)) }
+    : result;
+};
+const resolutionFor = (version: string): BundleResolution => ({
+  kind: 'unpinned',
+  reason: 'test fixture',
+  evidence: { manifestVersion: version }
+});
+
+const record = (seed: SeedRecord, unmanaged = false): object => ({
   version: seed.version ?? '1.0.0',
-  sourceId: seed.sourceId,
+  sourceKey: sourceKeyFor(seed.sourceId),
+  resolution: resolutionFor(seed.version ?? '1.0.0'),
   installedAt: '2026-10-09T12:00:00.000Z',
-  files: [{ path: 'prompts/hello.prompt.md' }]
+  files: [{ path: 'prompts/hello.prompt.md', installedChecksum: '0'.repeat(64) }],
+  ...(unmanaged ? { state: 'unmanaged', unmanagedReason: 'test retained record' } : {})
 });
 
 const seedV3 = (
@@ -40,10 +112,19 @@ const seedV3 = (
     Object.values(targets).flatMap((bundles) => Object.entries(bundles))
   )
 ): void => {
+  const sourceIds = new Set([
+    ...Object.values(targets).flatMap((bundles) => Object.values(bundles).map((seed) => seed.sourceId)),
+    ...Object.values(desired).map((seed) => seed.sourceId)
+  ]);
   ports.files.set(ports.lockfileStore.desiredFile, JSON.stringify({
+    $schema: 'https://github.com/AmadeusITGroup/ai-primitives-hub/schemas/lockfile-v3.schema.json',
     version: '3.0.0',
-    bundles: Object.fromEntries(Object.entries(desired).map(([key, seed]) => [key, { version: seed.version ?? '1.0.0', sourceId: seed.sourceId }])),
-    sources: {}
+    bundles: Object.fromEntries(Object.entries(desired).map(([bundleKey, seed]) => [canonicalTestKey(bundleKey), {
+      version: seed.version ?? '1.0.0',
+      sourceKey: sourceKeyFor(seed.sourceId),
+      resolution: resolutionFor(seed.version ?? '1.0.0')
+    }])),
+    sources: Object.fromEntries([...sourceIds].map((sourceId) => [sourceKeyFor(sourceId), sourceFor(sourceId)]))
   }));
   ports.files.set(ports.lockfileStore.localFile, JSON.stringify({
     version: '3.0.0',
@@ -54,7 +135,10 @@ const seedV3 = (
       targetType: 'vscode',
       scope: 'user',
       baseDir: '/home/u/.copilot',
-      bundles: Object.fromEntries(Object.entries(bundles).map(([key, seed]) => [key, record(seed)]))
+      bundles: Object.fromEntries(Object.entries(bundles).map(([bundleKey, seed]) => [
+        canonicalTestKey(bundleKey),
+        record(seed, name === 'unmanaged')
+      ]))
     }]))
   }));
 };
@@ -81,11 +165,19 @@ const snapshot = (ports: RecordingPorts): [string, string][] =>
 const mutations = (ports: RecordingPorts): string[] => ports.calls.filter((call) => MUTATING.test(call));
 
 const resolve = (ports: RecordingPorts, typed: string, targetName = 'my-vscode') =>
-  resolveUndeployKey({ targetName, typed }, ports);
+  resolveUndeployKey({ targetName, typed: canonicalTestKey(typed) }, ports).then(displayResolution);
+const listTargetBundles = async (targetName: string, ports: RecordingPorts) => {
+  const listing = await listTargetBundlesActual(targetName, ports);
+  return {
+    ...listing,
+    bundles: listing.bundles.map((bundle) => ({ ...bundle, key: displayTestKey(bundle.key) })),
+    desiredOnly: listing.desiredOnly.map((entryKey) => displayTestKey(entryKey))
+  };
+};
 
 describe('resolveUndeployKey', () => {
   describe('reserved unmanaged records', () => {
-    it.each(['src-a/web-dev', 'web-dev', 'web-dev-1.0.0'])('resolves %s found only under unmanaged without writing', async (typed) => {
+    it.each(['src-a/web-dev', 'web-dev'])('resolves %s found only under unmanaged without writing', async (typed) => {
       const ports = recordingPorts();
       seedV3(ports, { unmanaged: { 'src-a/web-dev': { sourceId: 'src-a' } } });
       const before = snapshot(ports);
@@ -130,7 +222,7 @@ describe('resolveUndeployKey', () => {
       const result = await resolve(ports, 'src-a/web-dev');
 
       expect(result).toMatchObject({ kind: 'match', key: 'src-a/web-dev', version: '2.3.4' });
-      expect(result.kind === 'match' && result.record.sourceId).toBe('src-a');
+      expect(result.kind === 'match' && result.record.sourceKey).toBe(sourceKeyFor('src-a'));
     });
 
     it('resolves a bare bundle id to its key', async () => {
@@ -140,16 +232,16 @@ describe('resolveUndeployKey', () => {
       expect(await resolve(ports, 'web-dev')).toMatchObject({ kind: 'match', key: 'src-a/web-dev', version: '1.0.0' });
     });
 
-    it('strips a legacy version suffix from a bare id', async () => {
+    it('does not strip a version suffix from a bare id', async () => {
       const ports = recordingPorts();
       seedV3(ports, { 'my-vscode': { 'src-a/web-dev': { sourceId: 'src-a' } } });
 
-      expect(await resolve(ports, 'web-dev-1.0.0')).toMatchObject({ kind: 'match', key: 'src-a/web-dev' });
+      expect(await resolve(ports, 'web-dev-1.0.0')).toEqual({ kind: 'none' });
     });
 
-    it('skips record keys that are not source/bundle keys instead of failing', async () => {
+    it('resolves active portable keys from a v3 inventory', async () => {
       const ports = recordingPorts();
-      seedV3(ports, { 'my-vscode': { 'no-slash': { sourceId: 'x' }, 'a/b/c': { sourceId: 'x' }, 'src-a/web-dev': { sourceId: 'src-a' } } });
+      seedV3(ports, { 'my-vscode': { 'src-a/web-dev': { sourceId: 'src-a' } } });
 
       expect(await resolve(ports, 'web-dev')).toMatchObject({ kind: 'match', key: 'src-a/web-dev' });
     });
@@ -231,7 +323,7 @@ describe('resolveUndeployKey', () => {
       seedV2(ports, ['older-bundle']);
       const before = snapshot(ports);
 
-      expect(await resolve(ports, 'older-bundle')).toEqual({ kind: 'unmanaged', key: 'legacy-source/older-bundle', version: '1.0.0' });
+      expect(await resolve(ports, 'older-bundle')).toEqual({ kind: 'none' });
       expect(snapshot(ports)).toEqual(before);
       expect(mutations(ports)).toEqual([]);
       expect(ports.files.has(ports.lockfileStore.localFile)).toBe(false);
@@ -244,7 +336,7 @@ describe('resolveUndeployKey', () => {
         version: '3.0.0',
         generatedAt: '2026-10-09T12:00:00.000Z',
         generatedBy: 'test',
-        targets: { 'my-vscode': { baseDir: '/home/u/.copilot', bundles: { 'src-a/web-dev': record({ sourceId: 'src-a' }) } } }
+        targets: { 'my-vscode': { baseDir: '/home/u/.copilot', bundles: { [key('src-a', 'web-dev')]: record({ sourceId: 'src-a' }) } } }
       }));
       const before = snapshot(ports);
 
@@ -263,7 +355,7 @@ describe('resolveUndeployKey', () => {
         targets: {
           'my-vscode': {
             baseDir: '/home/u/.copilot',
-            bundles: { 'src-a/web-dev': record({ sourceId: 'src-a' }), 'src-b/web-dev': record({ sourceId: 'src-b' }) }
+            bundles: { [key('src-a', 'web-dev')]: record({ sourceId: 'src-a' }), [key('src-b', 'web-dev')]: record({ sourceId: 'src-b' }) }
           }
         }
       }));
@@ -292,7 +384,7 @@ describe('resolveUndeployKey', () => {
       // The undeploy's pair write is local then desired; fail exactly the desired write.
       ports.failWriteAt = writesSoFar + 2;
       await expect(undeployBundle({
-        key: 'github-abc123/web-dev',
+        key: portableKeyFor('web-dev'),
         bundle: { bundleId: 'web-dev', version: '1.0.0' },
         scope: 'user',
         targetName: 'my-vscode'
@@ -308,7 +400,7 @@ describe('resolveUndeployKey', () => {
       expect(local.targets['my-vscode']).toBeUndefined();
 
       expect(await resolve(ports, 'web-dev')).toEqual({ kind: 'orphan', key: 'github-abc123/web-dev', version: '1.0.0' });
-      expect(await resolve(ports, 'github-abc123/web-dev')).toEqual({ kind: 'orphan', key: 'github-abc123/web-dev', version: '1.0.0' });
+      expect(await resolve(ports, portableKeyFor('web-dev'))).toEqual({ kind: 'orphan', key: 'github-abc123/web-dev', version: '1.0.0' });
       expect(mutations(ports)).toEqual([]);
     });
 
@@ -318,7 +410,7 @@ describe('resolveUndeployKey', () => {
       expect(resolved.kind).toBe('orphan');
 
       await undeployBundle({
-        key: 'github-abc123/web-dev',
+        key: portableKeyFor('web-dev'),
         bundle: { bundleId: 'web-dev', version: resolved.kind === 'orphan' ? resolved.version : '' },
         scope: 'user',
         targetName: 'my-vscode'
@@ -422,7 +514,7 @@ describe('listTargetBundles', () => {
       const writesSoFar = ports.calls.filter((c) => c.startsWith('writeFile:') || c.startsWith('writeFileBytes:')).length;
       ports.failWriteAt = writesSoFar + 2;
       await expect(undeployBundle({
-        key: 'github-abc123/web-dev',
+        key: portableKeyFor('web-dev'),
         bundle: { bundleId: 'web-dev', version: '1.0.0' },
         scope: 'user',
         targetName: 'my-vscode'
@@ -472,7 +564,7 @@ describe('local-only and desired-only v3 pairs', () => {
     ports.files.set('/home/u/.copilot/prompts/hello.prompt.md', '# hello\n');
 
     const result = await undeployBundle({
-      key: 'src-a/web-dev',
+      key: key('src-a', 'web-dev'),
       bundle: { bundleId: 'web-dev', version: '2.0.0' },
       scope: 'user',
       targetName: 'my-vscode'
@@ -491,7 +583,7 @@ describe('undeployBundle with inherited-property target names', () => {
     const before = snapshot(ports);
 
     const result = await undeployBundle({
-      key: 'src-a/web-dev',
+      key: key('src-a', 'web-dev'),
       bundle: { bundleId: 'web-dev', version: '1.0.0' },
       scope: 'user',
       targetName
@@ -507,7 +599,7 @@ describe('undeployBundle with inherited-property target names', () => {
     seedV3(ports, {}, { 'src-a/web-dev': { sourceId: 'src-a' } });
 
     await undeployBundle({
-      key: 'src-a/web-dev',
+      key: key('src-a', 'web-dev'),
       bundle: { bundleId: 'web-dev', version: '1.0.0' },
       scope: 'user',
       targetName

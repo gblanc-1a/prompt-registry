@@ -33,8 +33,11 @@ import type {
 import {
   emptyDesiredLockfileV3,
   emptyLocalLockfileV3,
+  LOCKFILE_V3_SCHEMA_URL,
   LockfileGenerationMismatchError,
   readLockfileV3Pair,
+  validateDesiredLockfileV3ForMigration,
+  validateLocalLockfileV3ForMigration,
   writeV3File,
 } from './lockfile-v3';
 import type {
@@ -677,6 +680,132 @@ const hasLegacyLocalShape = (raw: JsonObject): boolean => {
   });
 };
 
+type MigrationDocumentKind = 'historical' | 'mixed' | 'interrupted' | 'amended' | 'malformed';
+
+interface MigrationDocumentClassification {
+  kind: MigrationDocumentKind;
+  error?: unknown;
+}
+
+const isCurrentDesiredRow = (key: string, value: unknown): boolean => {
+  const parts = parseLogicalBundleKey(key);
+  const entry = getObject(value);
+  return parts !== null
+    && (entry === undefined
+      || (!('sourceId' in entry) && !('sourceType' in entry) && !('archiveSha' in entry)));
+};
+
+const currentDesiredRows = (raw: JsonObject): Record<string, unknown> => {
+  const bundles = getObject(raw.bundles) ?? {};
+  return Object.fromEntries(Object.entries(bundles).filter(([key, value]) => isCurrentDesiredRow(key, value)));
+};
+
+const validateCurrentDesiredRows = (raw: JsonObject, file: string, rows: Record<string, unknown>): void => {
+  const currentSourceKeys = new Set(Object.values(rows).flatMap((value) => {
+    const sourceKey = getString(getObject(value)?.sourceKey);
+    return sourceKey === undefined ? [] : [sourceKey];
+  }));
+  const sources = getObject(raw.sources) ?? {};
+  const projection: JsonObject = {
+    ...raw,
+    $schema: LOCKFILE_V3_SCHEMA_URL,
+    version: '3.0.0',
+    bundles: rows,
+    sources: Object.fromEntries(Object.entries(sources).filter(([key]) => currentSourceKeys.has(key)))
+  };
+  delete projection.generatedAt;
+  delete projection.generatedBy;
+  delete projection.migration;
+  validateDesiredLockfileV3ForMigration(projection, file);
+};
+
+const isCurrentLocalRow = (key: string, value: unknown): boolean => {
+  const record = getObject(value);
+  return parseLogicalBundleKey(key) === null
+    ? /^unresolved\/[a-f0-9]{64}$/.test(key)
+    : record === undefined || !('sourceId' in record);
+};
+
+const validateCurrentLocalRows = (raw: JsonObject, file: string): number => {
+  const targets = getObject(raw.targets) ?? {};
+  let currentRowCount = 0;
+  const currentTargets = Object.fromEntries(Object.entries(targets).flatMap(([name, targetValue]) => {
+    const target = getObject(targetValue);
+    const bundles = getObject(target?.bundles);
+    if (target === undefined || bundles === undefined) {
+      return [];
+    }
+    const currentBundles = Object.fromEntries(
+      Object.entries(bundles).filter(([key, value]) => isCurrentLocalRow(key, value))
+    );
+    if (Object.keys(currentBundles).length === 0) {
+      return [];
+    }
+    currentRowCount += Object.keys(currentBundles).length;
+    return [[name, { ...target, bundles: currentBundles }]];
+  }));
+  if (currentRowCount > 0) {
+    validateLocalLockfileV3ForMigration({ ...raw, targets: currentTargets }, file);
+  }
+  return currentRowCount;
+};
+
+const classifyV3MigrationDocument = (
+  raw: JsonObject,
+  file: string,
+  role: 'desired' | 'local',
+  hasLegacyCompanion: boolean
+): MigrationDocumentClassification => {
+  const hasLegacyShape = role === 'desired'
+    ? hasLegacyDesiredShape(raw)
+    : hasLegacyLocalShape(raw);
+
+  try {
+    if (role === 'desired') {
+      const rows = currentDesiredRows(raw);
+      if (Object.keys(rows).length > 0) {
+        if (hasLegacyShape || hasLegacyCompanion) {
+          validateCurrentDesiredRows(raw, file, rows);
+        } else {
+          validateDesiredLockfileV3ForMigration(raw, file);
+        }
+        return {
+          kind: hasLegacyShape || hasLegacyCompanion ? 'mixed' : 'amended'
+        };
+      }
+      if (!hasLegacyShape) {
+        if (hasLegacyCompanion && isObject(raw.bundles) && isObject(raw.sources)) {
+          validateCurrentDesiredRows(raw, file, {});
+          return { kind: 'mixed' };
+        }
+        validateDesiredLockfileV3ForMigration(raw, file);
+        return { kind: 'amended' };
+      }
+      validateCurrentDesiredRows(raw, file, {});
+    } else {
+      const currentRows = validateCurrentLocalRows(raw, file);
+      if (currentRows > 0) {
+        return {
+          kind: hasLegacyShape || hasLegacyCompanion
+            ? 'mixed'
+            : (getObject(raw.migration)?.lockfileV3 === 'complete' ? 'amended' : 'interrupted')
+        };
+      }
+      if (!hasLegacyShape) {
+        validateLocalLockfileV3ForMigration(raw, file);
+        return {
+          kind: getObject(raw.migration)?.lockfileV3 === 'complete' ? 'amended' : 'interrupted'
+        };
+      }
+      validateLocalLockfileV3ForMigration({ ...raw, targets: {} }, file);
+    }
+  } catch (error) {
+    return { kind: 'malformed', error };
+  }
+
+  return { kind: 'historical' };
+};
+
 const hasAmendedDesiredShape = (raw: JsonObject | null): boolean =>
   raw !== null
   && raw.version === '3.0.0'
@@ -800,6 +929,21 @@ const collectSnapshot = async (
       migrationRequired = true;
     }
     documents.set(file, parsed);
+  }
+
+  const hasLegacyCompanion = sources.legacyFiles.some((file) => documents.has(file));
+  for (const [file, raw] of documents) {
+    if (raw.version !== '3.0.0') {
+      continue;
+    }
+    const role = file === sources.localFile || isObject(raw.targets) ? 'local' : 'desired';
+    const classification = classifyV3MigrationDocument(raw, file, role, hasLegacyCompanion);
+    if (classification.kind === 'malformed') {
+      throw classification.error;
+    }
+    if (classification.kind === 'historical' || classification.kind === 'mixed') {
+      migrationRequired = true;
+    }
   }
 
   const desiredCandidates = [...sources.legacyFiles, sources.desiredFile]

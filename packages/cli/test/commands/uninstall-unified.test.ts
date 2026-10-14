@@ -105,6 +105,7 @@ interface V3Record {
   installedAt: string;
   state?: 'unmanaged';
   unmanagedReason?: string;
+  legacy?: { originalKey: string; version: string };
   files: { path: string; checksum?: string; installedChecksum?: string }[];
 }
 
@@ -115,7 +116,7 @@ interface LocalFile {
 interface DesiredFile {
   bundles: Record<string, { version: string; sourceKey: string; resolution: BundleResolution }>;
   sources: Record<string, unknown>;
-  unresolved?: { originalKey: string; version: string }[];
+  unresolved?: { originalKey: string; version: string; reason: string }[];
 }
 
 const exists = async (p: string): Promise<boolean> => {
@@ -271,6 +272,49 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
     await mkdir(path.dirname(paths().userLockfile), { recursive: true });
     await writeLockfile(paths().userLockfile, legacy, new NodeFileSystem());
   };
+  const writeUnresolvedPair = async (
+    originalKey: string,
+    targetNames: string[]
+  ): Promise<{ key: string; protectedFile: string }> => {
+    const key = `unresolved/${'e'.repeat(64)}`;
+    const protectedFile = path.join(workspace, 'managed', 'prompts', 'legacy.prompt.md');
+    await mkdir(path.dirname(protectedFile), { recursive: true });
+    await writeFile(protectedFile, '# keep legacy file\n');
+    await mkdir(path.dirname(paths().userLockfile), { recursive: true });
+    await writeFile(paths().userLockfile, JSON.stringify({
+      $schema: 'https://github.com/AmadeusITGroup/ai-primitives-hub/schemas/lockfile-v3.schema.json',
+      version: '3.0.0',
+      bundles: {},
+      sources: {},
+      unresolved: [{
+        originalKey,
+        version: '1.0.0',
+        reason: 'Portable identity could not be proven.'
+      }]
+    }, null, 2));
+    await writeFile(paths().userLocalLockfile, JSON.stringify({
+      version: '3.0.0',
+      generatedAt: '2026-01-01T00:00:00.000Z',
+      generatedBy: 'test',
+      migration: { lockfileV3: 'complete' },
+      targets: Object.fromEntries(targetNames.map((name) => [name, {
+        targetType: 'vscode',
+        scope: 'user',
+        baseDir: path.join(workspace, 'managed'),
+        bundles: {
+          [key]: {
+            version: '1.0.0',
+            installedAt: '2026-01-01T00:00:00.000Z',
+            state: 'unmanaged',
+            unmanagedReason: 'Portable identity could not be proven.',
+            legacy: { originalKey, version: '1.0.0' },
+            files: [{ path: 'prompts/legacy.prompt.md', installedChecksum: 'b'.repeat(64) }]
+          }
+        }
+      }]))
+    }, null, 2));
+    return { key, protectedFile };
+  };
 
   beforeEach(async () => {
     workspace = await mkdtemp(path.join(await realpath(os.tmpdir()), 'cli-uninstall-unified-test-'));
@@ -349,6 +393,51 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
       expect.objectContaining({ originalKey: legacyId })
     );
     expect(await readFile(legacyFile, 'utf8')).toBe(before);
+  });
+
+  it('retries desired-only unresolved intent after a local-first cleanup failure', async () => {
+    const originalKey = 'legacy-bundle-1.0.0';
+    const { key, protectedFile } = await writeUnresolvedPair(originalKey, ['my-vscode']);
+    const failedFs = new RecordingFs();
+    failedFs.failOnce('rename', (file) => file === paths().userLockfile, new Error('desired write refused'));
+
+    const failed = await uninstall(['--bundle', originalKey], failedFs);
+
+    expect(failed.exitCode).toBe(1);
+    expect((await readLocal()).targets['my-vscode']).toBeUndefined();
+    expect((await readDesired()).unresolved).toContainEqual(expect.objectContaining({ originalKey }));
+    await expect(readFile(protectedFile, 'utf8')).resolves.toBe('# keep legacy file\n');
+
+    const retried = await uninstall(['--bundle', originalKey], new RecordingFs());
+
+    expect(retried.exitCode).toBe(0);
+    expect(parse<UninstallData>(retried.stdout).data.key).toBe(originalKey);
+    expect((await readDesired()).unresolved).toBeUndefined();
+    expect((await readLocal()).targets['my-vscode']).toBeUndefined();
+    await expect(readFile(protectedFile, 'utf8')).resolves.toBe('# keep legacy file\n');
+    expect(key).toMatch(/^unresolved\/[a-f0-9]{64}$/);
+  });
+
+  it('retains unresolved intent until the final target owner is removed', async () => {
+    const originalKey = 'legacy-bundle-1.0.0';
+    expect((await run(['target', 'add', 'other-vscode', '--type', 'vscode', '-o', 'json'])).exitCode).toBe(0);
+    const { protectedFile } = await writeUnresolvedPair(originalKey, ['my-vscode', 'other-vscode']);
+
+    const first = await uninstall(['--bundle', originalKey]);
+
+    expect(first.exitCode).toBe(0);
+    expect((await readLocal()).targets['my-vscode']).toBeUndefined();
+    expect((await readLocal()).targets['other-vscode']).toBeDefined();
+    expect((await readDesired()).unresolved).toContainEqual(expect.objectContaining({ originalKey }));
+
+    const last = await run([
+      'uninstall', '--bundle', originalKey, '--target', 'other-vscode', '-o', 'json'
+    ]);
+
+    expect(last.exitCode).toBe(0);
+    expect((await readLocal()).targets['other-vscode']).toBeUndefined();
+    expect((await readDesired()).unresolved).toBeUndefined();
+    await expect(readFile(protectedFile, 'utf8')).resolves.toBe('# keep legacy file\n');
   });
 
   describe('--bundle', () => {
@@ -484,6 +573,52 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
       expect(await lockfileBytes()).toEqual(before);
       expect(await exists(fileA)).toBe(true);
       expect(await exists(fileB)).toBe(true);
+    });
+
+    it('does not let a retained historical alias shadow an active logical ID', async () => {
+      const [activeFile, historicalFile] = await writeManaged('prompts/active.md', 'prompts/historical.md');
+      await writeV3({
+        'src-a/local-foo': record({ sourceName: 'src-a', files: [{ path: 'prompts/active.md' }] }),
+        'src-b/local-foo': record({ sourceName: 'src-b', files: [{ path: 'prompts/historical.md' }] })
+      });
+      const desired = await readDesired();
+      desired.unresolved = [{
+        originalKey: 'local-foo',
+        version: '1.0.0',
+        reason: 'Portable identity could not be proven.'
+      }];
+      await writeFile(paths().userLockfile, JSON.stringify(desired, null, 2));
+      const local = JSON.parse(await readFile(paths().userLocalLockfile, 'utf8')) as {
+        targets: Record<string, { baseDir: string; bundles: Record<string, Record<string, unknown>> }>;
+      };
+      const historical = local.targets['my-vscode'].bundles[keyB('local-foo')];
+      delete local.targets['my-vscode'].bundles[keyB('local-foo')];
+      local.targets.unmanaged = {
+        baseDir: path.join(workspace, 'managed'),
+        bundles: {
+          [keyB('local-foo')]: {
+            ...historical,
+            state: 'unmanaged',
+            unmanagedReason: 'Historical identity is not proven.',
+            legacy: { originalKey: 'local-foo', version: '1.0.0' }
+          }
+        }
+      };
+      await writeFile(paths().userLocalLockfile, JSON.stringify(local, null, 2));
+      const before = await lockfileBytes();
+      const recording = new RecordingFs();
+
+      const result = await uninstall(['--bundle', 'local-foo'], recording);
+
+      expect(result.exitCode).toBe(1);
+      const { errors } = parse<null>(result.stdout);
+      expect(errors[0].code).toBe('BUNDLE.AMBIGUOUS_ID');
+      expect(errors[0].message).toContain(keyA('local-foo'));
+      expect(errors[0].message).toContain(keyB('local-foo'));
+      expect(recording.writes).toEqual([]);
+      expect(await lockfileBytes()).toEqual(before);
+      expect(await exists(activeFile)).toBe(true);
+      expect(await exists(historicalFile)).toBe(true);
     });
 
     it('removes only the named source\'s files when the full key disambiguates', async () => {

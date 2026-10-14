@@ -548,6 +548,15 @@ async function runUnifiedBundleUninstall(
     });
     return 0;
   }
+  if (dryRun && resolution.kind === 'intent') {
+    formatOutput({
+      ctx, command: 'uninstall', output: fmt, status: 'ok',
+      data: { dryRun: true, target: target.name, bundle: typed, key, files: [], unresolvedIntent: true },
+      textRenderer: (d) => `[dry-run] Would clear the retained unresolved intent "${d.key}"; no files are removed.\n`
+        + 'Run without --dry-run to apply.\n'
+    });
+    return 0;
+  }
   if (dryRun) {
     const record = resolution.kind === 'match' ? resolution.record : undefined;
     const unmanagedReason = isUnmanagedRecord(record) ? record.unmanagedReason : undefined;
@@ -586,7 +595,8 @@ async function runUnifiedBundleUninstall(
     key,
     bundle: { bundleId: bundleHalf(key), version },
     scope: 'user',
-    targetName: resolution.kind === 'unmanaged' ? 'unmanaged' : target.name
+    targetName: resolution.kind === 'unmanaged' ? resolution.targetName ?? 'unmanaged' : target.name,
+    ...(resolution.kind === 'intent' ? { unresolvedIntent: resolution.evidence } : {})
   }, ports);
   const reported = result.migration;
   formatOutput({

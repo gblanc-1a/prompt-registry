@@ -108,8 +108,11 @@ export async function undeployBundle(
     : undefined;
   const previewOrphan = Object.hasOwn(preview.pair.desired.bundles, key)
     && !Object.values(preview.pair.local.targets).some((target) => Object.hasOwn(target.bundles, key));
+  const previewUnresolvedIntent = req.unresolvedIntent !== undefined
+    && removeDesiredUnresolvedIntent(preview.pair.desired, req.unresolvedIntent) !== preview.pair.desired
+    && !hasUnresolvedMaterializationOwner(preview.pair.local, req.unresolvedIntent);
 
-  if (previewRecord === undefined && !previewOrphan) {
+  if (previewRecord === undefined && !previewOrphan && !previewUnresolvedIntent) {
     return {
       key,
       removed: [],
@@ -140,6 +143,27 @@ export async function undeployBundle(
     : undefined;
 
   if (bundleRecord === undefined || targetRecord === undefined) {
+    if (req.unresolvedIntent !== undefined) {
+      const desiredWithoutIntent = removeDesiredUnresolvedIntent(pair.desired, req.unresolvedIntent);
+      if (
+        desiredWithoutIntent !== pair.desired
+        && !hasUnresolvedMaterializationOwner(pair.local, req.unresolvedIntent)
+      ) {
+        await runStateStage('undeploy', 'state-write', state, () => writeLockfileV3Pair(
+          ports.lockfileStore,
+          { desired: desiredWithoutIntent, local: pair.local },
+          state.fs
+        ));
+        return {
+          key,
+          removed: [],
+          skipped: [],
+          lockfile: ports.lockfileStore.localFile,
+          migration
+        };
+      }
+    }
+
     // No materialization record for this target/key. Either it was never
     // installed, or a prior attempt's local write dropped it but its desired
     // write failed (§8.4) — distinguish by checking for that orphan.

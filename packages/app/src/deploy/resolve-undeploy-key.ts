@@ -16,8 +16,14 @@ import {
   parseLogicalBundleKey,
 } from '@ai-primitives-hub/core';
 import type {
+  LegacyIdentityEvidence,
+} from '@ai-primitives-hub/core';
+import type {
   LockfileV3BundleRecord,
   LockfileV3Pair,
+} from '../stores/lockfile-v3';
+import {
+  hasUnresolvedMaterializationOwner,
 } from '../stores/lockfile-v3';
 import {
   readLockfilePair,
@@ -40,7 +46,8 @@ export interface TargetBundle {
 /** Outcome of resolving a typed bundle id. */
 export type UndeployKeyResolution =
   | ({ kind: 'match' } & TargetBundle)
-  | { kind: 'unmanaged'; key: string; version: string }
+  | { kind: 'unmanaged'; key: string; version: string; targetName?: string }
+  | { kind: 'intent'; key: string; version: string; evidence: LegacyIdentityEvidence }
   | {
     /**
      * Desired state names the key but no target materializes it — a prior uninstall's
@@ -77,11 +84,10 @@ const matchesBareId = (key: string, typed: string): boolean => {
 /**
  * Resolve a typed bundle id to the logical key to uninstall from a target.
  *
- * Order: an exact full key recorded under the target; an exact full key that is an
- * orphaned desired entry; then an exact logical-ID scan over the target's records and
- * the orphaned desired entries together. Version suffixes are never guessed. Keys recorded under
- * other targets never match. Own-property lookups only, so `constructor`, `toString`
- * and `__proto__` are never matches.
+ * Exact keys win before aliases; otherwise active keys, retained original keys, and
+ * desired-only unresolved intent are considered together. Version suffixes are never
+ * guessed. Keys recorded under other targets never match. Own-property lookups only,
+ * so `constructor`, `toString` and `__proto__` are never matches.
  * @param input - The target and what the user typed.
  * @param input.targetName - Target the uninstall is scoped to.
  * @param input.typed - A full `sourceId/bundleId` key or a bare bundle id.
@@ -100,26 +106,19 @@ export const resolveUndeployKey = async (
     !Object.entries(pair.local.targets).some(([name, target]) => name !== 'unmanaged' && Object.hasOwn(target.bundles, key)));
 
   if (Object.hasOwn(records, typed)) {
+    const record = records[typed];
     if (targetName === 'unmanaged') {
-      return { kind: 'unmanaged', key: typed, version: records[typed].version };
+      return {
+        kind: 'unmanaged',
+        key: typed,
+        version: record.version,
+        ...(targetName === 'unmanaged' ? {} : { targetName })
+      };
     }
-    return { kind: 'match', key: typed, version: records[typed].version, record: records[typed] };
+    return { kind: 'match', key: typed, version: record.version, record };
   }
   if (unmanagedKeys.includes(typed)) {
     return { kind: 'unmanaged', key: typed, version: unmanagedRecords[typed].version };
-  }
-  const unresolvedOriginalMatches = unmanagedKeys.filter((key) => {
-    const record = unmanagedRecords[key];
-    return 'state' in record
-      && record.state === 'unmanaged'
-      && record.legacy?.originalKey === typed;
-  });
-  if (unresolvedOriginalMatches.length > 1) {
-    return { kind: 'ambiguous', keys: unresolvedOriginalMatches };
-  }
-  if (unresolvedOriginalMatches.length === 1) {
-    const [key] = unresolvedOriginalMatches;
-    return { kind: 'unmanaged', key, version: unmanagedRecords[key].version };
   }
   const desiredKeys = Object.keys(pair.desired.bundles);
   const orphanKeys = desiredKeys.filter((key) => !isMaterialized(pair, key));
@@ -127,23 +126,87 @@ export const resolveUndeployKey = async (
     return { kind: 'orphan', key: typed, version: pair.desired.bundles[typed].version };
   }
 
+  const candidates: UndeployKeyResolution[] = [];
+  const addCandidate = (candidate: UndeployKeyResolution): void => {
+    const duplicate = candidates.some((existing) => {
+      if (existing.kind !== candidate.kind || !('key' in existing) || !('key' in candidate)
+        || existing.key !== candidate.key || existing.version !== candidate.version) {
+        return false;
+      }
+      if (existing.kind === 'intent' && candidate.kind === 'intent') {
+        return JSON.stringify(existing.evidence) === JSON.stringify(candidate.evidence);
+      }
+      return existing.kind !== 'unmanaged' || candidate.kind !== 'unmanaged'
+        || existing.targetName === candidate.targetName;
+    });
+    if (!duplicate) {
+      candidates.push(candidate);
+    }
+  };
+
   const matchKeys = Object.keys(records).filter((key) => matchesBareId(key, typed));
+  for (const key of matchKeys) {
+    const record = records[key];
+    if (targetName === 'unmanaged') {
+      addCandidate({
+        kind: 'unmanaged',
+        key,
+        version: record.version,
+        ...(targetName === 'unmanaged' ? {} : { targetName })
+      });
+    } else {
+      addCandidate({ kind: 'match', key, version: record.version, record });
+    }
+  }
+
   const orphanMatches = orphanKeys.filter((key) => matchesBareId(key, typed));
-  const unmanagedMatches = matchKeys.length === 0 ? unmanagedKeys.filter((key) => matchesBareId(key, typed)) : [];
-  const keys = [...matchKeys, ...orphanMatches, ...unmanagedMatches];
-  if (keys.length === 0) {
+  for (const key of orphanMatches) {
+    addCandidate({ kind: 'orphan', key, version: pair.desired.bundles[key].version });
+  }
+
+  for (const [key, record] of Object.entries(records)) {
+    if ('state' in record && record.state === 'unmanaged' && record.legacy?.originalKey === typed) {
+      addCandidate({
+        kind: 'unmanaged',
+        key,
+        version: record.version,
+        ...(targetName === 'unmanaged' ? {} : { targetName })
+      });
+    }
+  }
+  for (const key of unmanagedKeys) {
+    const record = unmanagedRecords[key];
+    if ('state' in record && record.state === 'unmanaged' && record.legacy?.originalKey === typed) {
+      addCandidate({ kind: 'unmanaged', key, version: record.version });
+    }
+  }
+
+  if (matchKeys.length === 0 && orphanMatches.length === 0) {
+    for (const key of unmanagedKeys.filter((candidate) => matchesBareId(candidate, typed))) {
+      addCandidate({ kind: 'unmanaged', key, version: unmanagedRecords[key].version });
+    }
+  }
+
+  for (const intent of pair.desired.unresolved ?? []) {
+    if (intent.originalKey !== typed || hasUnresolvedMaterializationOwner(pair.local, intent)) {
+      continue;
+    }
+    const { reason: _, ...evidence } = intent;
+    addCandidate({ kind: 'intent', key: intent.originalKey, version: intent.version, evidence });
+  }
+
+  if (candidates.length === 0) {
     return { kind: 'none' };
   }
-  if (keys.length > 1) {
-    return { kind: 'ambiguous', keys };
+  if (candidates.length > 1) {
+    return {
+      kind: 'ambiguous',
+      keys: [...new Set(candidates.flatMap((candidate) => (
+        'key' in candidate ? [candidate.key] : []
+      )))].toSorted()
+    };
   }
-  const [only] = keys;
-  if (unmanagedMatches.includes(only) || (targetName === 'unmanaged' && matchKeys.includes(only))) {
-    return { kind: 'unmanaged', key: only, version: unmanagedRecords[only].version };
-  }
-  return matchKeys.length === 1
-    ? { kind: 'match', key: only, version: records[only].version, record: records[only] }
-    : { kind: 'orphan', key: only, version: pair.desired.bundles[only].version };
+  return candidates[0];
 };
 
 /** What a bulk uninstall of a target sees. */

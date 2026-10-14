@@ -8,6 +8,7 @@ import type {
   ExtractedFiles,
   FileSystem,
   InstallationScope,
+  LegacyIdentityEvidence,
   PlacementDestination,
   PortableSourceDescriptor,
   PrimitiveKind,
@@ -160,6 +161,8 @@ export interface UndeployRequest {
   scope: 'user' | 'repository';
   /** Target name. */
   targetName: string;
+  /** Exact retained desired intent to clear after a local-first cleanup retry. */
+  unresolvedIntent?: LegacyIdentityEvidence;
   /**
    * Workspace root, required at repository scope (design §3.1). Unused by
    * `undeployBundle` itself: the materialization record already carries its

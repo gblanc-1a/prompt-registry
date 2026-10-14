@@ -161,7 +161,8 @@ const seedV2 = (ports: RecordingPorts, bundleIds: string[]): void => {
 
 const seedUnresolved = (
   ports: RecordingPorts,
-  entries: { key: string; originalKey: string; version: string }[]
+  entries: { key: string; originalKey: string; version: string }[],
+  targetName = 'unmanaged'
 ): void => {
   ports.files.set(ports.lockfileStore.desiredFile, JSON.stringify({
     $schema: 'https://github.com/AmadeusITGroup/ai-primitives-hub/schemas/lockfile-v3.schema.json',
@@ -178,7 +179,7 @@ const seedUnresolved = (
     generatedBy: 'test',
     migration: { lockfileV3: 'complete' },
     targets: {
-      unmanaged: {
+      [targetName]: {
         baseDir: '/home/u/.copilot',
         bundles: Object.fromEntries(entries.map(({ key: unresolvedKey, originalKey, version }) => [
           unresolvedKey,
@@ -213,6 +214,97 @@ const listTargetBundles = async (targetName: string, ports: RecordingPorts) => {
 };
 
 describe('resolveUndeployKey', () => {
+  it('resolves retained originalKey evidence in the selected named target without writing', async () => {
+    const ports = recordingPorts();
+    const unresolvedKey = `unresolved/${'c'.repeat(64)}`;
+    seedUnresolved(ports, [{ key: unresolvedKey, originalKey: 'legacy-bundle', version: '1.0.0' }], 'my-vscode');
+    const before = snapshot(ports);
+
+    expect(await resolve(ports, 'legacy-bundle')).toEqual({
+      kind: 'unmanaged',
+      key: unresolvedKey,
+      version: '1.0.0',
+      targetName: 'my-vscode'
+    });
+    expect(await resolve(ports, 'legacy-bundle', 'other-vscode')).toEqual({ kind: 'none' });
+    expect(snapshot(ports)).toEqual(before);
+    expect(mutations(ports)).toEqual([]);
+  });
+
+  it('merges active logical IDs and retained aliases so a historical alias cannot shadow a live key', async () => {
+    const ports = recordingPorts();
+    seedV3(ports, { 'my-vscode': { 'src-a/web-dev': { sourceId: 'src-a' } } });
+    const desired = JSON.parse(ports.files.get(ports.lockfileStore.desiredFile) as string) as Record<string, unknown>;
+    desired.unresolved = [{
+      originalKey: 'web-dev',
+      version: '1.0.0',
+      reason: 'Portable identity could not be proven.'
+    }];
+    ports.files.set(ports.lockfileStore.desiredFile, JSON.stringify(desired));
+    const local = JSON.parse(ports.files.get(ports.lockfileStore.localFile) as string) as {
+      targets: Record<string, { baseDir: string; bundles: Record<string, Record<string, unknown>> }>;
+    };
+    const unresolvedKey = `unresolved/${'d'.repeat(64)}`;
+    local.targets.unmanaged = {
+      baseDir: '/home/u/.copilot',
+      bundles: {
+        [unresolvedKey]: {
+          version: '1.0.0',
+          installedAt: '2026-10-09T12:00:00.000Z',
+          state: 'unmanaged',
+          unmanagedReason: 'Portable identity could not be proven.',
+          legacy: { originalKey: 'web-dev', version: '1.0.0' },
+          files: [{ path: 'prompts/legacy.prompt.md', installedChecksum: 'a'.repeat(64) }]
+        }
+      }
+    };
+    ports.files.set(ports.lockfileStore.localFile, JSON.stringify(local));
+    const before = snapshot(ports);
+
+    expect(await resolve(ports, 'web-dev')).toEqual({
+      kind: 'ambiguous',
+      keys: ['src-a/web-dev', unresolvedKey]
+    });
+    expect(await resolve(ports, 'src-a/web-dev')).toMatchObject({
+      kind: 'match',
+      key: 'src-a/web-dev'
+    });
+    expect(snapshot(ports)).toEqual(before);
+    expect(mutations(ports)).toEqual([]);
+  });
+
+  it('resolves a desired-only unresolved intent by exact originalKey for retry cleanup', async () => {
+    const ports = recordingPorts();
+    ports.files.set(ports.lockfileStore.desiredFile, JSON.stringify({
+      $schema: 'https://github.com/AmadeusITGroup/ai-primitives-hub/schemas/lockfile-v3.schema.json',
+      version: '3.0.0',
+      bundles: {},
+      sources: {},
+      unresolved: [{
+        originalKey: 'legacy-bundle',
+        version: '1.0.0',
+        reason: 'Portable identity could not be proven.'
+      }]
+    }));
+    ports.files.set(ports.lockfileStore.localFile, JSON.stringify({
+      version: '3.0.0',
+      generatedAt: '2026-10-09T12:00:00.000Z',
+      generatedBy: 'test',
+      migration: { lockfileV3: 'complete' },
+      targets: {}
+    }));
+    const before = snapshot(ports);
+
+    expect(await resolve(ports, 'legacy-bundle')).toEqual({
+      kind: 'intent',
+      key: 'legacy-bundle',
+      version: '1.0.0',
+      evidence: { originalKey: 'legacy-bundle', version: '1.0.0' }
+    });
+    expect(snapshot(ports)).toEqual(before);
+    expect(mutations(ports)).toEqual([]);
+  });
+
   describe('reserved unmanaged records', () => {
     it('resolves an exact retained originalKey to its unresolved record without writing', async () => {
       const ports = recordingPorts();

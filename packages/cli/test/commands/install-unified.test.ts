@@ -954,6 +954,35 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
       await expect(readFile(destination(), 'utf8')).resolves.toContain('Hello Prompt');
     });
 
+    it('does not sanitize an unsupported amended-v3 field just because retained intent makes migration pending', async () => {
+      await installOnce();
+      await editDesired((desired) => {
+        const entry = desired.bundles[replayKey()] as unknown as Record<string, unknown>;
+        entry.unsupported = 'must remain untouched';
+        desired.unresolved = [{
+          originalKey: 'old-source/legacy-bundle',
+          version: '0.9.0',
+          reason: 'Portable identity could not be proven.'
+        }];
+      });
+      const userPaths = resolveUserConfigPaths(env);
+      const local = JSON.parse(await readFile(userPaths.userLocalLockfile, 'utf8')) as Record<string, unknown>;
+      delete local.migration;
+      await writeFile(userPaths.userLocalLockfile, JSON.stringify(local, null, 2));
+      const desiredBefore = await readFile(userPaths.userLockfile, 'utf8');
+      const localBefore = await readFile(userPaths.userLocalLockfile, 'utf8');
+      const recording = new RecordingFs();
+
+      const result = await replay([], recording);
+
+      expect(result.exitCode).toBe(1);
+      expect(parse<null>(result.stdout).errors[0].code).toBe('CONFIG.INVALID_LOCKFILE_V3');
+      expect(recording.writes).toEqual([]);
+      await expect(readFile(userPaths.userLockfile, 'utf8')).resolves.toBe(desiredBefore);
+      await expect(readFile(userPaths.userLocalLockfile, 'utf8')).resolves.toBe(localBefore);
+      await expect(readFile(destination(), 'utf8')).resolves.toContain('Hello Prompt');
+    });
+
     it('reports an unrecognized AI_PRIMITIVES_HUB_UNIFIED_DEPLOY value as USAGE.INVALID_FLAG', async () => {
       const result = await run(['install', '--lockfile', lockfilePath(), '--target', 'my-vscode', '-o', 'json'], {
         AI_PRIMITIVES_HUB_UNIFIED_DEPLOY: 'maybe'

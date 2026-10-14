@@ -571,6 +571,44 @@ describe('planLockfileMigration', () => {
 
     expect(plan).toMatchObject({ pendingWrite: false, report: null });
   });
+
+  it('keeps malformed amended v3 strict when retained intent and an incomplete marker make conversion pending', async () => {
+    const fs = fakeFs();
+    const sourceId = sourceKey(verifiedSource.identity, verifiedSource.type);
+    const desired = {
+      $schema: 'https://github.com/AmadeusITGroup/ai-primitives-hub/schemas/lockfile-v3.schema.json',
+      version: '3.0.0',
+      bundles: {
+        [`${sourceId}/reviewer`]: {
+          version: '1.0.0',
+          sourceKey: sourceId,
+          resolution: { kind: 'unpinned', reason: 'test fixture' },
+          unsupported: 'must not be sanitized'
+        }
+      },
+      sources: { [sourceId]: verifiedSource },
+      unresolved: [{
+        originalKey: 'old/reviewer',
+        version: '0.9.0',
+        reason: 'Portable identity could not be proven.'
+      }]
+    };
+    const local = {
+      version: '3.0.0',
+      generatedAt: NOW,
+      generatedBy: OPTS.generatedBy,
+      targets: {}
+    };
+    fs.files.set(userSources.desiredFile, JSON.stringify(desired));
+    fs.files.set(userSources.localFile, JSON.stringify(local));
+    const before = [...fs.files.entries()];
+
+    await expect(planLockfileMigration(userSources, fs, OPTS))
+      .rejects.toMatchObject({ code: 'CONFIG.INVALID_LOCKFILE_V3' });
+
+    expect([...fs.files.entries()]).toEqual(before);
+    expect(fs.order).toEqual([]);
+  });
 });
 
 describe('offline portable identity migration', () => {

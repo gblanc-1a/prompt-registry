@@ -50,6 +50,24 @@ const desiredSnapshot = (): string => JSON.stringify({
 const writeCallCount = (calls: string[]): number =>
   calls.filter((c) => c.startsWith('writeFile:') || c.startsWith('writeFileBytes:')).length;
 
+const unsafeRecordedPaths = [
+  'C:relative.txt',
+  'C:/absolute.txt',
+  '\\\\server\\share\\file',
+  'nested\\file',
+  'a/../file',
+  './file',
+  'a//file',
+  '',
+  '/home/u/.copilot/prompts/absolute-leftover.prompt.md',
+  '../outside/escape.prompt.md',
+  '.',
+  'a/..',
+  'a/../',
+  'C:\\outside\\escape.prompt.md',
+  '..\\outside\\escape.prompt.md'
+];
+
 describe('undeployBundle', () => {
   it('does not migrate an empty legacy store when an uninstall lookup has no match', async () => {
     const ports = recordingPorts({ failWriteAt: 2 });
@@ -80,34 +98,24 @@ describe('undeployBundle', () => {
     expect(ports.files.get(sourcePath)).toBe('# live source\n');
   });
 
-  it.each([
-    'C:relative.txt',
-    'C:/absolute.txt',
-    '\\\\server\\share\\file',
-    'nested\\file',
-    'a/../file',
-    './file',
-    'a//file',
-    '',
-    '/home/u/.copilot/prompts/absolute-leftover.prompt.md',
-    '../outside/escape.prompt.md',
-    '.',
-    'a/..',
-    'a/../'
-  ])('rejects noncanonical or escaping recorded paths before removal: %s', (recordedPath) => {
+  it.each(unsafeRecordedPaths)('rejects noncanonical or escaping recorded paths before removal: %s', (recordedPath) => {
     expect(resolveRecordedPath('/home/u/.copilot', recordedPath).safe).toBe(false);
   });
-  it.each([
-    'C:\\outside\\escape.prompt.md',
-    '..\\outside\\escape.prompt.md'
-  ])('refuses an invalid Windows recorded path through public undeploy without mutation: %s', async (recordedPath) => {
+
+  it.each(unsafeRecordedPaths)('refuses an unsafe recorded path through public undeploy without mutation: %s', async (recordedPath) => {
     const ports = recordingPorts();
     await deployBundle(request(), ports);
     const local = readPair(ports).local;
     local.targets['my-vscode'].bundles[portableKeyFor('web-dev')].files[0].path = recordedPath;
     ports.files.set(ports.lockfileStore.localFile, JSON.stringify(local));
-    const protectedFile = '/outside/escape.prompt.md';
-    ports.files.set(protectedFile, '# keep\n');
+    const protectedFiles = [
+      '/outside/escape.prompt.md',
+      '/home/u/outside/escape.prompt.md',
+      '/home/u/.copilot/prompts/absolute-leftover.prompt.md'
+    ];
+    for (const file of protectedFiles) {
+      ports.files.set(file, '# keep\n');
+    }
     const before = [...ports.files];
     const callsBefore = ports.calls.length;
 
@@ -115,7 +123,7 @@ describe('undeployBundle', () => {
       .rejects.toMatchObject({ code: 'CONFIG.INVALID_LOCKFILE_V3' });
 
     expect([...ports.files]).toEqual(before);
-    expect(ports.files.get(protectedFile)).toBe('# keep\n');
+    expect(protectedFiles.map((file) => ports.files.get(file))).toEqual(protectedFiles.map(() => '# keep\n'));
     expect(ports.calls.slice(callsBefore).filter((call) =>
       /^(writeFile|writeFileBytes|rename|remove|mkdir):/.test(call))).toEqual([]);
   });

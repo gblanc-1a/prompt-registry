@@ -56,7 +56,7 @@ import type {
 
 export const LOCKFILE_V3_VERSION = '3.0.0';
 
-const LOCKFILE_V3_SCHEMA_URL =
+export const LOCKFILE_V3_SCHEMA_URL =
   'https://github.com/AmadeusITGroup/ai-primitives-hub/schemas/lockfile-v3.schema.json';
 
 /** Paths to the v3 lockfile pair. */
@@ -682,6 +682,22 @@ const validateLocalState = (value: unknown, file: string): LocalLockfileV3 => {
   }
   return local as unknown as LocalLockfileV3;
 };
+
+/**
+ * Validate a desired half when migration classifies it as current amended v3.
+ * @param value
+ * @param file
+ */
+export const validateDesiredLockfileV3ForMigration = (value: unknown, file: string): DesiredLockfileV3 =>
+  validateDesiredState(value, file);
+
+/**
+ * Validate a local half when migration classifies it as current amended v3.
+ * @param value
+ * @param file
+ */
+export const validateLocalLockfileV3ForMigration = (value: unknown, file: string): LocalLockfileV3 =>
+  validateLocalState(value, file);
 
 const readV3File = async <T>(
   file: string,

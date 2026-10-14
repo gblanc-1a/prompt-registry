@@ -123,6 +123,29 @@ describe('deployBundle', () => {
     expect(ports.calls).toEqual([]);
   });
 
+  it('refuses NUL in portable source configuration before migration or placement', async () => {
+    const ports = recordingPorts();
+    const legacy = JSON.stringify({
+      version: '2.0.0', generatedAt: ports.now, generatedBy: 'test', bundles: {}, sources: {}
+    });
+    ports.files.set(ports.lockfileStore.desiredFile, legacy);
+    const before = [...ports.files];
+
+    await expect(deployBundle({
+      ...request(),
+      source: {
+        ...request().source,
+        descriptor: {
+          ...request().source.descriptor,
+          config: { ref: 'main\u0000suffix' }
+        }
+      }
+    }, ports)).rejects.toMatchObject({ code: 'BUNDLE.INVALID_SOURCE_DESCRIPTOR' });
+
+    expect([...ports.files]).toEqual(before);
+    expect(ports.calls).toEqual([]);
+  });
+
   it('preserves archive checksum refusal before migration for a mismatched bytes-only request', async () => {
     const ports = recordingPorts();
     const legacy = JSON.stringify({

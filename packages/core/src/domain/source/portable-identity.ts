@@ -158,8 +158,8 @@ const invalidLocator = (message: string): RegistryError => new RegistryError({
 });
 
 const requireText = (value: unknown, label: string): string => {
-  if (typeof value !== 'string' || value.trim().length === 0) {
-    throw invalidIdentity(`${label} must be a non-empty string.`);
+  if (typeof value !== 'string' || value.trim().length === 0 || value.includes('\0')) {
+    throw invalidIdentity(`${label} must be a non-empty string without NUL characters.`);
   }
   return value;
 };
@@ -430,8 +430,8 @@ const onlyKeys = (value: Record<string, unknown>, allowed: readonly string[], la
 };
 
 const requiredText = (value: unknown, label: string): string => {
-  if (typeof value !== 'string' || value.trim() === '') {
-    throw invalidDescriptor(`${label} must be a non-empty string.`);
+  if (typeof value !== 'string' || value.trim() === '' || value.includes('\0')) {
+    throw invalidDescriptor(`${label} must be a non-empty string without NUL characters.`);
   }
   return value;
 };

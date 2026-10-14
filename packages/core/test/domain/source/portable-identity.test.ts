@@ -262,6 +262,38 @@ describe('portable source identity', () => {
     })).toThrow(RegistryError);
   });
 
+  it.each(['ref', 'credentialRef', 'collectionsPath', 'skillsPath', 'indexFile'])(
+    'rejects NUL in source configuration field %s',
+    (field) => {
+      const valid = sourceAt('https://github.com/team/repo');
+
+      expect(() => assertPortableSourceDescriptor({
+        ...valid,
+        config: { [field]: 'selector\u0000suffix' }
+      })).toThrow(RegistryError);
+    }
+  );
+
+  it.each(['ref', 'skillsPath'])('rejects NUL in GitHub tree identity selector %s', (field) => {
+    const descriptor: PortableSourceDescriptor = {
+      type: 'skills',
+      identity: {
+        kind: 'github-tree',
+        origin: 'https://github.com',
+        repositoryId: '42',
+        ref: 'main',
+        skillsPath: 'skills'
+      },
+      locator: 'https://github.com/owner/repo'
+    };
+    const identity = {
+      ...descriptor.identity,
+      [field]: 'selector\u0000suffix'
+    };
+
+    expect(() => assertPortableSourceDescriptor({ ...descriptor, identity })).toThrow(RegistryError);
+  });
+
   it('includes external-local binding names and consumed selectors in identity', () => {
     const externalSource = (bindingName: string, collectionsPath: string): SourceIdentity => ({
       kind: 'external-local',

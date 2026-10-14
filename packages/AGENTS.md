@@ -19,6 +19,7 @@ CLI / Extension → app → infra → core
 - Implement external systems in `infra` behind a core port. Add a source adapter by copying one in `infra/src/adapters/`, implementing `SourceAdapter`, and wiring it into `app`'s `createSourceAdapter` switch.
 - `app` orchestrates only — it composes ports and adapters, holds no business rules, and takes storage via the injected `AppStorage` port (never `vscode.ExtensionContext`).
 - `cli` commands stay thin: parse/format I/O, delegate everything else to `app`. Clipanion is pinned exactly (`4.0.0-rc.4`, no `^`).
+- Lockfile naming follows the dual-naming rule (ADR-0004) and is deliberately different per scope ([ADR-0008](../docs/contributor-guide/architecture/adr/0008-unified-bundle-deploy-and-lockfile-v3.md)). The CLI's **user-scope** state is the XDG pair `ai-primitives-hub.lock.json` (desired state) and `ai-primitives-hub.local.lock.json` (materialization), schema `3.0.0` only behind `AI_PRIMITIVES_HUB_UNIFIED_DEPLOY`; with the flag off it stays a single `2.0.0` file of the first name. The **repository** lockfiles keep `prompt-registry.lock.json` / `prompt-registry.local.lock.json` and the `2.0.0` schema until slice 3. Do not rename the repository files or "unify" the two sets of names.
 
 ## Commands
 

@@ -40,17 +40,34 @@
 import * as crypto from 'node:crypto';
 import type {
   Bundle,
+  BundleResolution,
   Clock,
   GitHubApi,
+  PortableBundlePayload,
+  PortableBundleSelection,
   RegistrySource,
   SourceMetadata,
   ValidationResult,
+} from '@ai-primitives-hub/core';
+import {
+  assertResolutionSourceCompatibility,
+  assertResolutionVersion,
+  RegistryError,
+  sourceContentDigest,
 } from '@ai-primitives-hub/core';
 import archiver from 'archiver';
 import * as yaml from 'js-yaml';
 import {
   BaseSourceAdapter,
 } from './base-source-adapter';
+import {
+  assertSupportedKnownDigests,
+  githubRawFileUrl,
+  parseGitHubRepositoryLocator,
+  readGitHubTreeAtCommit,
+  resolveGitHubCommit,
+  resolveGitHubSourceIdentity,
+} from './github-portable-resolution';
 
 const DEFAULT_BRANCH = 'main';
 /** SKILL.md fetches (one per discovered skill) are batched this many at a time. */
@@ -141,6 +158,19 @@ function calculateContentHash(files: { path: string; sha?: string }[]): string {
     hash.update('|');
   }
   return hash.digest('hex');
+}
+
+function portableSkillError(code: string, message: string): RegistryError {
+  return new RegistryError({
+    code,
+    message,
+    hint: 'Resolve the requested skill at its recorded GitHub commit and verify its source content digest.'
+  });
+}
+
+function isCanonicalSkillSelector(value: string): boolean {
+  return value.length > 0 && value !== '.' && value !== '..'
+    && !value.includes('/') && !value.includes('\\') && !value.includes('\0');
 }
 
 export class SkillsAdapter extends BaseSourceAdapter {
@@ -339,7 +369,7 @@ export class SkillsAdapter extends BaseSourceAdapter {
         keywords: SKILL_TAGS
       },
       common: {
-        directories: [`skills/${skill.id}`],
+        directories: [skill.path],
         files: [],
         include_patterns: ['**/*'],
         exclude_patterns: []
@@ -357,7 +387,7 @@ export class SkillsAdapter extends BaseSourceAdapter {
           id: skill.id,
           name: skill.name,
           description: skill.description,
-          file: `skills/${skill.id}/SKILL.md`,
+          file: `${skill.path}/SKILL.md`,
           type: 'skill',
           tags: SKILL_TAGS
         }
@@ -410,6 +440,32 @@ export class SkillsAdapter extends BaseSourceAdapter {
     return finished;
   }
 
+  private skillSelector(bundleId: string, owner: string, repo: string, skillRoot: string, pinnedPath?: string): string | undefined {
+    if (pinnedPath !== undefined) {
+      const pinnedPathPrefix = `${skillRoot}/`;
+      if (!pinnedPath.startsWith(pinnedPathPrefix)) {
+        throw portableSkillError('BUNDLE.ARTIFACT_PIN_MISMATCH', `Pinned skill path "${pinnedPath}" is outside the skills directory.`);
+      }
+      const selector = pinnedPath.slice(pinnedPathPrefix.length);
+      if (!isCanonicalSkillSelector(selector)) {
+        return undefined;
+      }
+      if (this.skillSelector(bundleId, owner, repo, skillRoot) !== selector) {
+        throw portableSkillError(
+          'BUNDLE.LOGICAL_BUNDLE_MISMATCH',
+          `Requested skill "${bundleId}" does not match recorded skill path "${pinnedPath}".`
+        );
+      }
+      return selector;
+    }
+    const publicIdPrefix = `skills-${owner}-${repo}-`;
+    if (bundleId.startsWith(publicIdPrefix)) {
+      const selector = bundleId.slice(publicIdPrefix.length);
+      return isCanonicalSkillSelector(selector) ? selector : undefined;
+    }
+    return isCanonicalSkillSelector(bundleId) ? bundleId : undefined;
+  }
+
   // --- Public API ---------------------------------------------------------
 
   public async fetchBundles(): Promise<Bundle[]> {
@@ -421,6 +477,148 @@ export class SkillsAdapter extends BaseSourceAdapter {
       throw new Error(`Failed to fetch skills: ${error instanceof Error ? error.message : error}`);
     }
     return skills.map((skill) => this.createBundleFromSkill(skill, owner, repo));
+  }
+
+  /**
+   * Resolve one skill using a commit-pinned tree and return its raw source files.
+   * @param selection - Requested skill ID, version and optional replay pin.
+   */
+  public async resolvePortableBundle(selection: PortableBundleSelection): Promise<PortableBundlePayload | null> {
+    if (selection.resolution && selection.version !== undefined) {
+      assertResolutionVersion(selection.resolution, selection.version);
+    }
+    const portableSource = await resolveGitHubSourceIdentity(
+      this.source,
+      this.githubApi,
+      selection.expectedSource
+    );
+    if (selection.resolution) {
+      assertResolutionSourceCompatibility(portableSource, selection.resolution);
+    }
+    if (portableSource.identity.kind !== 'github-tree') {
+      throw portableSkillError('BUNDLE.INVALID_SOURCE_IDENTITY', 'Skills resolution requires a GitHub tree source identity.');
+    }
+    const coordinates = parseGitHubRepositoryLocator(portableSource.locator);
+    const publicCoordinates = parseGitHubRepositoryLocator(selection.expectedSource?.locator ?? this.source.url);
+    const pinned = selection.resolution?.kind === 'pinned'
+      && selection.resolution.provider === 'github-tree'
+      ? selection.resolution
+      : undefined;
+    const unpinnedEvidence = selection.resolution?.kind === 'unpinned'
+      ? selection.resolution.evidence
+      : undefined;
+    assertSupportedKnownDigests(
+      unpinnedEvidence,
+      ['sourceContentSha256'],
+      'Skills GitHub tree resolution'
+    );
+    const recordedBundlePath = pinned?.bundlePath
+      ?? unpinnedEvidence?.knownPins?.bundlePath;
+    const recordedCommitSha = pinned?.commitSha
+      ?? unpinnedEvidence?.knownPins?.commitSha;
+    const skillRoot = portableSource.identity.skillsPath ?? 'skills';
+    const selector = this.skillSelector(
+      selection.bundleId,
+      publicCoordinates.owner,
+      publicCoordinates.repo,
+      skillRoot,
+      recordedBundlePath
+    );
+    if (!selector) {
+      if (recordedBundlePath !== undefined) {
+        throw portableSkillError('BUNDLE.ARTIFACT_PIN_MISMATCH', `Recorded skill path "${recordedBundlePath}" is invalid.`);
+      }
+      return null;
+    }
+    const bundlePath = `${skillRoot}/${selector}`;
+    if (recordedBundlePath !== undefined && recordedBundlePath !== bundlePath) {
+      throw portableSkillError('BUNDLE.ARTIFACT_PIN_MISMATCH', `Recorded skill path "${recordedBundlePath}" does not match "${bundlePath}".`);
+    }
+
+    if (recordedCommitSha !== undefined && !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(recordedCommitSha)) {
+      throw portableSkillError('BUNDLE.ARTIFACT_PIN_MISMATCH', `Recorded GitHub commit ID "${recordedCommitSha}" is invalid.`);
+    }
+    const commitSha = recordedCommitSha
+      ?? await resolveGitHubCommit(this.githubApi, coordinates, portableSource.identity.ref);
+    const tree = await readGitHubTreeAtCommit(this.githubApi, coordinates, commitSha);
+    const entries = tree.filter((entry) => (
+      entry.type === 'blob'
+      && entry.path.startsWith(`${bundlePath}/`)
+      && typeof entry.sha === 'string'
+    ));
+    if (!entries.some((entry) => entry.path === `${bundlePath}/SKILL.md`)) {
+      return null;
+    }
+
+    const rawFiles = new Map<string, Uint8Array>();
+    for (const entry of entries) {
+      const relativePath = entry.path.slice(bundlePath.length + 1);
+      rawFiles.set(relativePath, await this.githubApi.download(githubRawFileUrl(coordinates, commitSha, entry.path)));
+    }
+    const skillMd = rawFiles.get('SKILL.md');
+    if (!skillMd) {
+      return null;
+    }
+    const frontmatter = parseFrontmatter(Buffer.from(skillMd).toString('utf8'));
+    const contentHash = calculateContentHash(entries);
+    const version = formatSkillVersion(contentHash);
+    if (selection.version !== undefined && selection.version !== version) {
+      throw portableSkillError(
+        'BUNDLE.RESOLUTION_VERSION_MISMATCH',
+        `Requested version "${selection.version}" does not match the skill version at commit ${commitSha}.`
+      );
+    }
+    const sourceContentSha256 = sourceContentDigest(rawFiles);
+    const recordedVersion = pinned?.version ?? unpinnedEvidence?.manifestVersion;
+    if (recordedVersion !== undefined && recordedVersion !== version) {
+      throw portableSkillError('BUNDLE.ARTIFACT_PIN_MISMATCH', `Skill version at commit ${commitSha} does not match its recorded version.`);
+    }
+    if (pinned && pinned.sourceContentSha256 !== sourceContentSha256) {
+      throw portableSkillError('BUNDLE.ARTIFACT_PIN_MISMATCH', `Skill source content at commit ${commitSha} does not match its recorded digest.`);
+    }
+    if (selection.resolution?.kind === 'unpinned'
+      && selection.resolution.evidence?.knownDigests?.sourceContentSha256 !== undefined
+      && selection.resolution.evidence.knownDigests.sourceContentSha256 !== sourceContentSha256) {
+      throw portableSkillError('BUNDLE.ARTIFACT_PIN_MISMATCH', 'Skill source files do not match their recorded content digest.');
+    }
+
+    const skill: SkillItem = {
+      id: selector,
+      name: frontmatter.name || selector,
+      description: frontmatter.description || '',
+      license: frontmatter.license,
+      path: bundlePath,
+      files: [...rawFiles.keys()],
+      contentHash
+    };
+    const outputFiles = new Map<string, Uint8Array>([
+      ['deployment-manifest.yml', Buffer.from(yaml.dump(this.createDeploymentManifest(
+        skill,
+        publicCoordinates.owner,
+        publicCoordinates.repo
+      )), 'utf8')]
+    ]);
+    for (const [relativePath, bytes] of rawFiles) {
+      outputFiles.set(`${bundlePath}/${relativePath}`, bytes);
+    }
+
+    const resolution: BundleResolution = {
+      kind: 'pinned',
+      provider: 'github-tree',
+      version,
+      commitSha,
+      bundlePath,
+      sourceContentSha256
+    };
+    return {
+      source: portableSource,
+      logicalBundleId: selector,
+      manifestId: this.buildBundleId(publicCoordinates.owner, publicCoordinates.repo, selector),
+      version,
+      resolution,
+      files: outputFiles,
+      sourceFiles: rawFiles
+    };
   }
 
   public async downloadBundle(bundle: Bundle): Promise<Buffer> {

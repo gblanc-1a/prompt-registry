@@ -327,7 +327,7 @@ suite('E2E: Repository-Level Installation Tests', () => {
       const lockfilePath = path.join(workspaceRoot, LOCKFILE_NAME);
       const mockLockfile = {
         $schema: 'https://github.com/AmadeusITGroup/prompt-registry/schemas/lockfile.schema.json',
-        version: '1.0.0',
+        version: '2.0.0',
         generatedAt: new Date().toISOString(),
         generatedBy: 'prompt-registry@1.0.0',
         bundles: {

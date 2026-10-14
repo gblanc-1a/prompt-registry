@@ -20,6 +20,7 @@ import type {
   DirEntry,
   FileStat,
   FileSystem,
+  LinkStat,
 } from '../../src/ports/filesystem';
 import type {
   GitHubApi,
@@ -97,6 +98,14 @@ class InMemoryFileSystem implements FileSystem {
       size: contents.length,
       mtimeMs: 0
     };
+  }
+
+  public async lstat(_path: string): Promise<LinkStat> {
+    throw new Error('lstat not stubbed');
+  }
+
+  public async rename(_from: string, _to: string): Promise<void> {
+    throw new Error('rename not stubbed');
   }
 
   public async remove(path: string): Promise<void> {

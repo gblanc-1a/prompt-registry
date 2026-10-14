@@ -13,6 +13,9 @@
 import * as assert from 'node:assert';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import {
+  UnsupportedLockfileVersionError,
+} from '@ai-primitives-hub/core';
 import * as sinon from 'sinon';
 import * as vscode from 'vscode';
 import {
@@ -88,6 +91,59 @@ suite('LockfileManager', () => {
     sandbox.restore();
     LockfileManager.resetInstance();
     cleanupTempDir(tempDir);
+  });
+
+  suite('unsupported lockfile writer safety', () => {
+    const getManager = (): LockfileManager => LockfileManager.getInstance(tempDir);
+    for (const mode of ['commit', 'local-only'] as const) {
+      for (const operation of ['createOrUpdate', 'remove', 'remapSourceId', 'updateCommitMode'] as const) {
+        test(`${operation} rejects a v3 ${mode} file without replacing it`, async () => {
+          const manager = getManager();
+          const filePath = mode === 'commit' ? manager.getLockfilePath() : manager.getLocalLockfilePath();
+          const original = JSON.stringify({
+            version: '3.0.0', bundles: { valuable: { version: '1.0.0', sourceId: 'test-source' } },
+            sources: { 'test-source': { type: 'github', url: 'https://github.com/owner/repo' } }
+          });
+          fs.writeFileSync(filePath, original);
+          const run = (): Promise<void> => {
+            switch (operation) {
+              case 'createOrUpdate': { return manager.createOrUpdate({ ...createTestOptions('new'), commitMode: mode });
+              }
+              case 'remove': { return manager.remove('valuable');
+              }
+              case 'remapSourceId': { return manager.remapSourceId('test-source', 'replacement', createMockSourceEntry('github', 'https://github.com/owner/replacement'));
+              }
+              case 'updateCommitMode': { return manager.updateCommitMode('valuable', mode === 'commit' ? 'local-only' : 'commit');
+              }
+            }
+          };
+          await assert.rejects(run, UnsupportedLockfileVersionError);
+          assert.strictEqual(fs.readFileSync(filePath, 'utf8'), original);
+        });
+      }
+    }
+
+    test('updateCommitMode preflights a v3 destination before removing its v2 source entry', async () => {
+      const manager = LockfileManager.getInstance(tempDir);
+      await manager.createOrUpdate(createTestOptions('valuable'));
+      const before = fs.readFileSync(lockfilePath, 'utf8');
+      const local = manager.getLocalLockfilePath();
+      const unsupported = JSON.stringify({ version: '3.0.0', targets: {} });
+      fs.writeFileSync(local, unsupported);
+      await assert.rejects(() => manager.updateCommitMode('valuable', 'local-only'), UnsupportedLockfileVersionError);
+      assert.strictEqual(fs.readFileSync(lockfilePath, 'utf8'), before);
+      assert.strictEqual(fs.readFileSync(local, 'utf8'), unsupported);
+    });
+
+    test('remapSourceId preflights both halves before rewriting either one', async () => {
+      const manager = LockfileManager.getInstance(tempDir);
+      await manager.createOrUpdate(createTestOptions('valuable'));
+      const before = fs.readFileSync(lockfilePath, 'utf8');
+      const local = manager.getLocalLockfilePath();
+      fs.writeFileSync(local, JSON.stringify({ version: '3.0.0', targets: {} }));
+      await assert.rejects(() => manager.remapSourceId('test-source', 'replacement', createMockSourceEntry('github', 'https://github.com/owner/replacement')), UnsupportedLockfileVersionError);
+      assert.strictEqual(fs.readFileSync(lockfilePath, 'utf8'), before);
+    });
   });
 
   suite('Singleton Pattern', () => {

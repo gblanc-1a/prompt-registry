@@ -14,6 +14,7 @@
  */
 export * from './collection';
 export * from './context-detection';
+export * from './deploy';
 export * from './discovery';
 export * from './install';
 export * from './mcp';

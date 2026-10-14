@@ -78,7 +78,7 @@ suite('Extension Activation Integration', () => {
       // Arrange
       const mockLockfile = {
         $schema: 'https://example.com/lockfile.schema.json',
-        version: '1.0.0',
+        version: '2.0.0',
         generatedAt: new Date().toISOString(),
         generatedBy: 'prompt-registry@1.0.0',
         bundles: {
@@ -108,7 +108,7 @@ suite('Extension Activation Integration', () => {
 
       // Assert
       assert.ok(lockfile, 'Lockfile should be detected');
-      assert.strictEqual(lockfile?.version, '1.0.0');
+      assert.strictEqual(lockfile?.version, '2.0.0');
       assert.ok(lockfile?.bundles['test-bundle'], 'Bundle should be in lockfile');
     });
 
@@ -155,7 +155,7 @@ suite('Extension Activation Integration', () => {
       // Arrange
       const mockLockfile = {
         $schema: 'https://example.com/lockfile.schema.json',
-        version: '1.0.0',
+        version: '2.0.0',
         generatedAt: new Date().toISOString(),
         generatedBy: 'prompt-registry@1.0.0',
         bundles: {
@@ -232,7 +232,7 @@ suite('Extension Activation Integration', () => {
 
       const mockLockfile = {
         $schema: 'https://example.com/lockfile.schema.json',
-        version: '1.0.0',
+        version: '2.0.0',
         generatedAt: new Date().toISOString(),
         generatedBy: 'prompt-registry@1.0.0',
         bundles: {},
@@ -298,7 +298,7 @@ suite('Extension Activation Integration', () => {
 
       const mockLockfile = {
         $schema: 'https://example.com/lockfile.schema.json',
-        version: '1.0.0',
+        version: '2.0.0',
         generatedAt: new Date().toISOString(),
         generatedBy: 'prompt-registry@1.0.0',
         bundles: {},

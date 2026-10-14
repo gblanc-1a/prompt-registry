@@ -12,9 +12,11 @@
  */
 import {
   access,
+  lstat,
   mkdir,
   readdir,
   readFile,
+  rename,
   rm,
   stat,
   writeFile,
@@ -23,6 +25,7 @@ import type {
   DirEntry,
   FileStat,
   FileSystem,
+  LinkStat,
 } from '@ai-primitives-hub/core';
 
 export class NodeFileSystem implements FileSystem {
@@ -81,6 +84,21 @@ export class NodeFileSystem implements FileSystem {
       size: stats.size,
       mtimeMs: stats.mtimeMs
     };
+  }
+
+  public async lstat(path: string): Promise<LinkStat> {
+    const stats = await lstat(path);
+    return {
+      isDirectory: stats.isDirectory(),
+      isFile: stats.isFile(),
+      isSymbolicLink: stats.isSymbolicLink(),
+      size: stats.size,
+      mtimeMs: stats.mtimeMs
+    };
+  }
+
+  public async rename(from: string, to: string): Promise<void> {
+    await rename(from, to);
   }
 
   public async remove(path: string, opts?: { recursive?: boolean }): Promise<void> {

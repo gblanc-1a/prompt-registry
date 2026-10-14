@@ -25,7 +25,8 @@
       "description": "Lockfile schema version",
       "pattern": "^\\d+\\.\\d+\\.\\d+$",
       "examples": [
-        "2.0.0"
+        "2.0.0",
+        "3.0.0"
       ]
     },
     "generatedAt": {

@@ -13,17 +13,22 @@
  * whole adapter unit-testable without a real filesystem, at the cost of
  * not yet supporting binary files in a bundle — everything in the
  * `prompt`/`instruction`/`chat-mode`/`agent`/`skill` primitive kinds is
- * text today. Revisit (add a binary-safe `FileSystem.readFileBuffer`) if a
- * real bundle ever needs one.
+ * text today. The portable resolver uses `FileSystem.readFileBytes` for
+ * raw snapshot inventories; this legacy ZIP path retains its text behavior.
  * @module adapters/local-adapter
  */
 import * as path from 'node:path';
 import type {
   Bundle,
   FileSystem,
+  PortableBundlePayload,
+  PortableBundleSelection,
   RegistrySource,
   SourceMetadata,
   ValidationResult,
+} from '@ai-primitives-hub/core';
+import {
+  RegistryError,
 } from '@ai-primitives-hub/core';
 import archiver from 'archiver';
 import * as yaml from 'js-yaml';
@@ -35,6 +40,15 @@ import {
   resolveLocalPath,
   toFileUrl,
 } from './local-path';
+import {
+  assertLocalResolutionCompatible,
+  filesBelow,
+  readLocalSourceEntries,
+  readLocalSourceFiles,
+  recordedLocalBundleSelector,
+  resolveLocalBundleResolution,
+  resolveLocalSource,
+} from './local-portable-resolution';
 
 interface LocalManifest {
   id: string;
@@ -55,6 +69,15 @@ interface LocalManifest {
 
 const MANIFEST_FILE_NAME = 'deployment-manifest.yml';
 const SIZE_UNITS = ['B', 'KB', 'MB', 'GB'];
+
+const isDirectBundleSelector = (selector: string): boolean => selector.length > 0
+  && selector !== '.'
+  && selector !== '..'
+  && !selector.startsWith('/')
+  && !/^[a-zA-Z]:/.test(selector)
+  && !selector.includes('/')
+  && !selector.includes('\\')
+  && !selector.includes('\0');
 
 export class LocalAdapter extends BaseSourceAdapter {
   public readonly type = 'local';
@@ -225,6 +248,139 @@ export class LocalAdapter extends BaseSourceAdapter {
     }
 
     return bundles;
+  }
+
+  /**
+   * Resolve a manifest-selected local bundle into a portable raw-file snapshot.
+   * @param selection - Requested manifest ID, version and optional replay pin.
+   */
+  public async resolvePortableBundle(selection: PortableBundleSelection): Promise<PortableBundlePayload | null> {
+    const resolved = resolveLocalSource(this.source, selection.localLocation, selection.expectedSource);
+    assertLocalResolutionCompatible(resolved.source, selection.resolution);
+    const recordedSelector = recordedLocalBundleSelector(selection.resolution);
+    const selectedSelector = selection.bundleSelector ?? recordedSelector;
+    if (selection.bundleSelector !== undefined && !isDirectBundleSelector(selection.bundleSelector)) {
+      throw new RegistryError({
+        code: 'BUNDLE.INVALID_SOURCE_CONTENT_PATH',
+        message: `Selected local bundle selector ${JSON.stringify(selection.bundleSelector)} is not a direct child of the configured source.`,
+        hint: 'Select the bundle directory itself beneath the configured local source.'
+      });
+    }
+    if (recordedSelector !== undefined && (!isDirectBundleSelector(recordedSelector)
+      || (selection.bundleSelector !== undefined && selection.bundleSelector !== recordedSelector))) {
+      throw new RegistryError({
+        code: 'BUNDLE.ARTIFACT_PIN_MISMATCH',
+        message: `Recorded local bundle selector ${JSON.stringify(recordedSelector)} does not match the selected local bundle directory.`,
+        hint: 'Use the direct bundle directory selector recorded by the local-snapshot pin.'
+      });
+    }
+    const sourceFiles = new Map<string, Uint8Array>();
+    const addBundleFiles = async (bundleSelector: string): Promise<void> => {
+      const bundleRoot = path.join(resolved.root, bundleSelector);
+      const bundleFiles = await readLocalSourceFiles(this.fs, bundleRoot);
+      for (const [filePath, bytes] of bundleFiles) {
+        sourceFiles.set(`${bundleSelector}/${filePath}`, bytes);
+      }
+    };
+    if (selectedSelector === undefined) {
+      for (const entry of await readLocalSourceEntries(this.fs, resolved.root)) {
+        if (entry.name.length === 0 || entry.name === '.' || entry.name === '..'
+          || entry.name.includes('/') || entry.name.includes('\\') || entry.name.includes('\0')) {
+          throw new RegistryError({
+            code: 'BUNDLE.INVALID_SOURCE_CONTENT_PATH',
+            message: `Local source entry ${JSON.stringify(entry.name)} is not a portable file or directory name.`,
+            hint: 'Local source inventories support canonical POSIX-relative paths only.'
+          });
+        }
+        if (!entry.isDirectory) {
+          continue;
+        }
+        const bundleRoot = path.join(resolved.root, entry.name);
+        const stat = await this.fs.lstat(bundleRoot);
+        if (stat.isSymbolicLink || !stat.isDirectory
+          || !await this.fs.exists(path.join(bundleRoot, MANIFEST_FILE_NAME))) {
+          continue;
+        }
+        await addBundleFiles(entry.name);
+      }
+    } else {
+      await addBundleFiles(selectedSelector);
+    }
+    const selectorCandidates = selectedSelector === undefined
+      ? [...new Set([...sourceFiles.keys()]
+        .filter((filePath) => filePath.endsWith(`/${MANIFEST_FILE_NAME}`) && filePath.split('/').length === 2)
+        .map((filePath) => filePath.split('/')[0]))]
+      : [selectedSelector];
+    const matches: { selector: string; manifest: LocalManifest }[] = [];
+
+    for (const candidateSelector of selectorCandidates) {
+      if (!isDirectBundleSelector(candidateSelector)) {
+        continue;
+      }
+      const manifestPath = `${candidateSelector}/${MANIFEST_FILE_NAME}`;
+      const bytes = sourceFiles.get(manifestPath);
+      if (bytes === undefined) {
+        continue;
+      }
+      let candidateManifest: LocalManifest | undefined;
+      try {
+        const parsed = yaml.load(Buffer.from(bytes).toString('utf8')) as Partial<LocalManifest> | undefined;
+        if (parsed && typeof parsed.id === 'string' && parsed.id.trim() !== ''
+          && typeof parsed.version === 'string' && parsed.version.trim() !== '') {
+          candidateManifest = parsed as LocalManifest;
+        }
+      } catch {
+        candidateManifest = undefined;
+      }
+      if (candidateManifest !== undefined
+        && (selection.bundleId === '' || candidateManifest.id === selection.bundleId)) {
+        matches.push({ selector: candidateSelector, manifest: candidateManifest });
+      } else if (recordedSelector !== undefined) {
+        throw new RegistryError({
+          code: 'BUNDLE.ARTIFACT_PIN_MISMATCH',
+          message: `Recorded local bundle selector ${JSON.stringify(candidateSelector)} does not contain requested bundle "${selection.bundleId}".`,
+          hint: 'Restore the bundle at the recorded selector or explicitly resolve a new local snapshot.'
+        });
+      }
+    }
+
+    if (matches.length === 0) {
+      if (recordedSelector !== undefined) {
+        throw new RegistryError({
+          code: 'BUNDLE.ARTIFACT_PIN_MISMATCH',
+          message: `Recorded local bundle selector ${JSON.stringify(recordedSelector)} is missing from the configured source.`,
+          hint: 'Restore the bundle at the recorded selector or explicitly resolve a new local snapshot.'
+        });
+      }
+      return null;
+    }
+    if (matches.length > 1) {
+      throw new RegistryError({
+        code: 'BUNDLE.AMBIGUOUS_LOCAL_BUNDLE',
+        message: `More than one local bundle has manifest ID "${selection.bundleId}".`,
+        hint: 'Remove the duplicate or select a source with a unique deployment-manifest.yml ID.'
+      });
+    }
+
+    const [{ selector, manifest }] = matches;
+    const files = filesBelow(sourceFiles, selector);
+    const resolution = resolveLocalBundleResolution(
+      resolved.source,
+      selection,
+      selector,
+      manifest.version,
+      files,
+      files.get(MANIFEST_FILE_NAME)
+    );
+    return {
+      source: resolved.source,
+      logicalBundleId: manifest.id,
+      manifestId: manifest.id,
+      version: manifest.version,
+      resolution,
+      files,
+      sourceFiles: files
+    };
   }
 
   public async validate(): Promise<ValidationResult> {

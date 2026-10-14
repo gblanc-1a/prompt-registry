@@ -75,9 +75,11 @@ describe('createTestContext', () => {
   it('can accept a custom fs implementation', async () => {
     const customFs: FsAbstraction = {
       readFile: (): Promise<string> => Promise.resolve('custom'),
+      readFileBytes: (): Promise<Uint8Array> => Promise.resolve(new Uint8Array()),
       exists: (): Promise<boolean> => Promise.resolve(false),
       readJson: <T>(): Promise<T> => Promise.resolve(JSON.parse('{}') as T),
       writeFile: (): Promise<void> => Promise.resolve(),
+      writeFileBytes: (): Promise<void> => Promise.resolve(),
       writeJson: (): Promise<void> => Promise.resolve(),
       mkdir: (): Promise<void> => Promise.resolve(),
       readDir: (): Promise<string[]> => Promise.resolve([]),
@@ -88,6 +90,14 @@ describe('createTestContext', () => {
         size: 0,
         mtimeMs: 0
       }),
+      lstat: (): Promise<{ isFile: boolean; isDirectory: boolean; isSymbolicLink: boolean; size: number; mtimeMs: number }> => Promise.resolve({
+        isFile: false,
+        isDirectory: false,
+        isSymbolicLink: false,
+        size: 0,
+        mtimeMs: 0
+      }),
+      rename: (): Promise<void> => Promise.resolve(),
       remove: (): Promise<void> => Promise.resolve()
     };
     const ctx = createTestContext({ fs: customFs });

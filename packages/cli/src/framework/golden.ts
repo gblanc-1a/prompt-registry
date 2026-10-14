@@ -22,6 +22,10 @@
  * @module framework/golden
  */
 import type {
+  HttpClient,
+  TokenProvider,
+} from '@ai-primitives-hub/core';
+import type {
   CommandClass,
 } from 'clipanion';
 import type {
@@ -46,6 +50,10 @@ export interface RunCommandOptions {
   name?: string;
   /** Binary version reported by --version. Default: `0.0.0-test`. */
   version?: string;
+  /** Optional external HTTP boundary for registered commands. */
+  http?: HttpClient;
+  /** Optional credentials boundary paired with `http`. */
+  tokens?: TokenProvider;
   /** Test-Context overrides (env, cwd, etc.). */
   context?: TestContextOptions;
 }
@@ -75,7 +83,9 @@ export const runCommand = async (
     name: opts.name ?? 'ai-primitives-hub',
     version: opts.version ?? '0.0.0-test',
     commands: opts.commands ?? [],
-    commandClasses: opts.commandClasses
+    commandClasses: opts.commandClasses,
+    http: opts.http,
+    tokens: opts.tokens
   });
   return {
     exitCode,

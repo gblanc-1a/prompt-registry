@@ -22,6 +22,33 @@ If you select a hub during first-run setup, all sources defined in that hub are 
 | `skills` | GitHub repository with skills | Active |
 | `local-skills` | Local filesystem skills directory | Active |
 
+The status column describes source support in the broader product; it does not mean that
+every type is supported by the opt-in portable CLI deployment path.
+
+## Portable CLI deployment
+
+The portable v3 lifecycle is an opt-in **CLI user-scope** path
+(`AI_PRIMITIVES_HUB_UNIFIED_DEPLOY=1`). It is off by default and is not wired into the
+VS Code extension. The `vscode` user target is the verified target for this slice.
+
+The portable path currently resolves GitHub release sources, GitHub-backed `skills` and
+`awesome-copilot` tree sources, and local snapshots such as `local` and
+`local-awesome-copilot`. GitHub release bundles must be ZIP archives; other archive formats
+are not supported by this install path. Replays use the recorded provider coordinates and
+content digest rather than selecting a newer release.
+
+Workspace-local source roots are recorded relative to the workspace. A local source outside
+the workspace needs an explicit named binding from the active hub configuration; matching
+by directory basename is not supported. Shared desired state stores the portable relative
+locator or binding name, never the machine's absolute source root. The machine-local
+materialization file can contain target paths needed for local cleanup.
+
+`local-skills` is a live source. The portable CLI copy-based deployment refuses to install
+it until live-link placement is integrated; this does not change the existing source
+behavior outside that opt-in path. Azure DevOps and Artifactory portable lifecycle
+integration, as well as VS Code extension integration, are deferred. The v3 path does not
+silently fall back to GitHub for an unsupported source.
+
 ## Adding a Source
 
 Open the Command Palette (`Ctrl+Shift+P` on Windows/Linux or `Cmd+Shift+P` on

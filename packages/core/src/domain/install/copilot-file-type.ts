@@ -12,6 +12,9 @@
  * the CLI to depend on directly.
  * @module domain/install/copilot-file-type
  */
+import type {
+  PrimitiveKind,
+} from '../primitive/types';
 
 /**
  * Normalize a prompt ID to a safe string for use in file names.
@@ -204,4 +207,89 @@ export function getRepositoryTargetDirectory(type: CopilotFileType): string {
  */
 export function getFileExtension(type: CopilotFileType): string {
   return FILE_EXTENSIONS[type];
+}
+
+/**
+ * Canonical primitive kind → Copilot file-type alias.
+ *
+ * `getTargetFileName` speaks the alias vocabulary (`instructions`,
+ * `chatmode`); manifest-driven placement routes on canonical
+ * `PrimitiveKind`. This is the bridge, and it is explicit so the
+ * mapping is not re-derived per call site (design 4.7).
+ * @param kind - Canonical primitive kind.
+ * @returns The Copilot alias, or null when the kind has none.
+ */
+export function copilotFileTypeForKind(kind: PrimitiveKind): CopilotFileType | null {
+  switch (kind) {
+    case 'prompt': {
+      return 'prompt';
+    }
+    case 'instruction': {
+      return 'instructions';
+    }
+    case 'chat-mode': {
+      return 'chatmode';
+    }
+    case 'agent': {
+      return 'agent';
+    }
+    case 'skill': {
+      return 'skill';
+    }
+    default: {
+      return null;
+    }
+  }
+}
+
+/** How a kind's on-disk name is derived (design 4.4). */
+export type KindNameShape = 'copilot-suffixed' | 'directory' | 'plain-file' | 'not-placed';
+
+const DIRECTORY_KINDS: readonly PrimitiveKind[] = ['skill', 'plugin', 'power'];
+
+/**
+ * Classify a kind's naming shape.
+ * @param kind - Canonical primitive kind.
+ * @returns The naming shape that applies to it.
+ */
+export function nameShapeForKind(kind: PrimitiveKind): KindNameShape {
+  if (kind === 'mcp-server') {
+    return 'not-placed';
+  }
+  if (DIRECTORY_KINDS.includes(kind)) {
+    return 'directory';
+  }
+  return copilotFileTypeForKind(kind) === null ? 'plain-file' : 'copilot-suffixed';
+}
+
+/**
+ * Compute the on-disk name for one placed primitive.
+ *
+ * Normalizes the id exactly once, here, so no caller passes a raw
+ * manifest id through (`UserScopeService:393` and `BundleInstaller:272`
+ * both did, which is the behavior change design §13 records).
+ * @param kind - Canonical primitive kind.
+ * @param id - Manifest item id; may be a YAML-parsed number.
+ * @param sourceBasename - Basename of the bundle-relative source path.
+ * @returns File name, directory name, or null when the kind is not placed.
+ */
+export function destinationNameForKind(
+  kind: PrimitiveKind,
+  id: string,
+  sourceBasename: string
+): string | null {
+  const shape = nameShapeForKind(kind);
+  if (shape === 'not-placed') {
+    return null;
+  }
+  if (shape === 'plain-file') {
+    return sourceBasename.replace(/^.*[/\\]/, '');
+  }
+  const normalized = normalizePromptId(id);
+  if (shape === 'directory') {
+    return normalized;
+  }
+  const alias = copilotFileTypeForKind(kind);
+  // `shape === 'copilot-suffixed'` is derived from a non-null alias above.
+  return getTargetFileName(normalized, alias as CopilotFileType);
 }

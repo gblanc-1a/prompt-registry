@@ -8,6 +8,10 @@
  * @module ports/source-adapter
  */
 import type {
+  PortableBundlePayload,
+  PortableBundleSelection,
+} from '../domain/bundle/resolution';
+import type {
   Bundle,
 } from '../domain/bundle/types';
 import type {
@@ -25,6 +29,13 @@ export interface SourceAdapter {
   readonly source: RegistrySource;
 
   fetchBundles(): Promise<Bundle[]>;
+
+  /**
+   * Resolve and read a bundle through the portable identity contract.
+   * During migration, absence is an unsupported-capability error at the caller,
+   * never evidence that the requested artifact was resolved.
+   */
+  resolvePortableBundle?(selection: PortableBundleSelection): Promise<PortableBundlePayload | null>;
 
   /**
    * Download a bundle's archive.

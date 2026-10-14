@@ -62,8 +62,44 @@ export const renderError = (err: unknown, ctx: Context): void => {
   if (re.docsUrl !== undefined) {
     lines.push(`  docs: ${re.docsUrl}`);
   }
-  ctx.stderr.write(`${lines.join('\n')}\n`);
+  ctx.stderr.write(`${lines.join('\n')}\n${renderAppliedEffects(re.context?.appliedEffects)}`);
 };
+
+/**
+ * Render paths actually affected by a failed lifecycle operation.
+ * @param effects Serialized RegistryError.context.appliedEffects.
+ * @returns Human-readable stage, applied paths and cleanup failures.
+ */
+export function renderAppliedEffects(effects: unknown): string {
+  if (typeof effects !== 'object' || effects === null) {
+    return '';
+  }
+  const values = effects as Record<string, unknown>;
+  const lines: string[] = [];
+  if (typeof values.stage === 'string') {
+    lines.push(`  failing stage: ${values.stage}`);
+  }
+  for (const [key, label] of [
+    ['written', 'written'], ['created', 'created'], ['removed', 'removed'], ['cleanedUp', 'cleaned up']
+  ]) {
+    const paths = values[key];
+    if (Array.isArray(paths)) {
+      const strings = paths.filter((entry): entry is string => typeof entry === 'string');
+      if (strings.length > 0) {
+        lines.push(`  ${label}: ${strings.join(', ')}`);
+      }
+    }
+  }
+  if (Array.isArray(values.cleanupFailures)) {
+    const failures: unknown[] = values.cleanupFailures;
+    for (const entry of failures) {
+      if (typeof entry === 'object' && entry !== null && 'path' in entry && 'message' in entry) {
+        lines.push(`  cleanup failed: ${String(entry.path)} (${String(entry.message)})`);
+      }
+    }
+  }
+  return lines.length === 0 ? '' : `${lines.join('\n')}\n`;
+}
 
 const asInternalError = (err: unknown): RegistryError => {
   const message = err instanceof Error ? err.message : String(err);
@@ -97,7 +133,7 @@ export const failWith = (
       command,
       output,
       status: 'error',
-      data: null,
+      data: err.context?.appliedEffects ?? null,
       errors: [err.toJSON()]
     });
   } else {

@@ -25,6 +25,9 @@ import {
 import type {
   LockfileFs,
 } from '@ai-primitives-hub/app';
+import {
+  UnsupportedLockfileVersionError,
+} from '@ai-primitives-hub/core';
 import * as vscode from 'vscode';
 import {
   Lockfile,
@@ -242,6 +245,9 @@ export class LockfileManager {
     try {
       return await readLockfile(lockfilePath, lockfileFs);
     } catch (error) {
+      if (error instanceof UnsupportedLockfileVersionError) {
+        throw error;
+      }
       this.logger.error(`Failed to read ${commitMode} lockfile:`, error instanceof Error ? error : undefined);
       return null;
     }
@@ -620,6 +626,9 @@ export class LockfileManager {
     try {
       return await readLockfile(this.lockfilePath, lockfileFs);
     } catch (error) {
+      if (error instanceof UnsupportedLockfileVersionError) {
+        throw error;
+      }
       this.logger.error('Failed to read lockfile:', error instanceof Error ? error : undefined);
       return null;
     }
@@ -630,7 +639,17 @@ export class LockfileManager {
    * @returns Validation result with errors and warnings
    */
   public async validate(): Promise<LockfileValidationResult> {
-    const lockfile = await this.read();
+    let lockfile: Lockfile | null;
+    try {
+      lockfile = await this.read();
+    } catch (error) {
+      return {
+        valid: false,
+        errors: [error instanceof Error ? error.message : String(error)],
+        warnings: [],
+        schemaVersion: undefined
+      };
+    }
 
     if (!lockfile) {
       return {
@@ -799,13 +818,13 @@ export class LockfileManager {
   public async remove(bundleId: string): Promise<void> {
     // First, try to find the bundle in the main lockfile
     const mainLockfile = await this.readLockfileByMode('commit');
+    const localLockfile = await this.readLockfileByMode('local-only');
     if (mainLockfile && mainLockfile.bundles[bundleId]) {
       await this.removeFromLockfileByMode(bundleId, mainLockfile, 'commit');
       return;
     }
 
     // If not in main lockfile, try the local lockfile
-    const localLockfile = await this.readLockfileByMode('local-only');
     if (localLockfile && localLockfile.bundles[bundleId]) {
       await this.removeFromLockfileByMode(bundleId, localLockfile, 'local-only');
       return;
@@ -906,12 +925,13 @@ export class LockfileManager {
     const bundleEntry = sourceLockfile.bundles[bundleId];
     const sourceEntry = sourceLockfile.sources[bundleEntry.sourceId];
 
+    // Read the destination before removal: an unsupported half is not absence.
+    let targetLockfile = await this.readLockfileByMode(newMode);
     // Remove from source lockfile first (atomic removal)
     await this.removeFromLockfileByMode(bundleId, sourceLockfile, currentMode);
 
     // Add to target lockfile
     // Read or create target lockfile
-    let targetLockfile = await this.readLockfileByMode(newMode);
     const targetLockfilePath = this.getLockfilePathForMode(newMode);
     const isTargetLocalLockfile = newMode === 'local-only';
     const targetLockfileExistedBefore = fs.existsSync(targetLockfilePath);
@@ -966,8 +986,11 @@ export class LockfileManager {
     newSourceId: string,
     newSourceDescriptor: LockfileSourceEntry
   ): Promise<void> {
-    for (const mode of ['commit', 'local-only'] as const) {
-      const lockfile = await this.readLockfileByMode(mode);
+    const halves = [
+      { mode: 'commit' as const, lockfile: await this.readLockfileByMode('commit') },
+      { mode: 'local-only' as const, lockfile: await this.readLockfileByMode('local-only') }
+    ];
+    for (const { mode, lockfile } of halves) {
       if (!lockfile) {
         continue;
       }

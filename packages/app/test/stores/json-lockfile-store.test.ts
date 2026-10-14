@@ -9,6 +9,9 @@
  */
 import * as nodePath from 'node:path';
 import {
+  UnsupportedLockfileVersionError,
+} from '@ai-primitives-hub/core';
+import {
   describe,
   expect,
   it,
@@ -224,5 +227,87 @@ describe('remapSourceId', () => {
 
     expect(lock.bundles['bundle-a'].sourceId).toBe('github-old');
     expect(lock.sources['github-old']).toBeDefined();
+  });
+});
+
+describe('readLockfile version gate', () => {
+  it('refuses a lockfile whose major this build does not know', async () => {
+    const fs = {
+      exists: async () => true,
+      readFile: async () => JSON.stringify({ version: '4.0.0', bundles: {}, sources: {} }),
+      writeFile: async () => undefined
+    };
+
+    await expect(readLockfile('/tmp/x.lock.json', fs))
+      .rejects.toThrow(UnsupportedLockfileVersionError);
+
+    try {
+      await readLockfile('/tmp/x.lock.json', fs);
+    } catch (err) {
+      expect((err as UnsupportedLockfileVersionError).code).toBe('LOCKFILE.UNSUPPORTED_VERSION');
+    }
+  });
+
+  it('refuses a 3.0.0 lockfile (v2 store must not read v3 state)', async () => {
+    const fs = {
+      exists: async () => true,
+      readFile: async () => JSON.stringify({ version: '3.0.0', bundles: {}, sources: {}, targets: {} }),
+      writeFile: async () => undefined
+    };
+
+    await expect(readLockfile('/tmp/x.lock.json', fs))
+      .rejects.toThrow(UnsupportedLockfileVersionError);
+
+    try {
+      await readLockfile('/tmp/x.lock.json', fs);
+    } catch (err) {
+      expect((err as UnsupportedLockfileVersionError).code).toBe('LOCKFILE.UNSUPPORTED_VERSION');
+    }
+  });
+
+  it('prevents v3 corruption through read gate (v3 cannot reach upsert)', async () => {
+    // Before the fix: reading v3 state succeeded, upsert re-stamped to 2.0.0,
+    // and writeLockfile passed because it only checked the version field,
+    // producing a hybrid file (v2 stamp + v3 structures).
+    //
+    // After the fix: readLockfile refuses v3 major, so v3 state cannot reach
+    // the mutation helpers and no hybrid file can be produced through normal flow.
+
+    const fs = {
+      exists: async () => true,
+      readFile: async () => JSON.stringify({ version: '3.0.0', bundles: {}, sources: {}, targets: {} }),
+      writeFile: async () => undefined
+    };
+
+    // The read gate prevents v3 from being loaded
+    await expect(readLockfile('/tmp/x.lock.json', fs))
+      .rejects.toThrow(UnsupportedLockfileVersionError);
+
+    // Therefore v3 payload cannot reach upsertBundleEntry through normal operation,
+    // and the hybrid-file corruption path described in design §5.12:1129-1131 is closed.
+  });
+
+  it('refuses to re-stamp a 3.0.0 file as 2.0.0', async () => {
+    const writes: string[] = [];
+    const fs = {
+      exists: async () => true,
+      readFile: async () => JSON.stringify({ version: '3.0.0', bundles: {}, sources: {} }),
+      writeFile: async (_p: string, contents: string) => {
+        writes.push(contents);
+      }
+    };
+
+    await expect(writeLockfile(
+      '/tmp/x.lock.json',
+      { version: '3.0.0', bundles: {}, sources: {} } as never,
+      fs
+    )).rejects.toThrow(UnsupportedLockfileVersionError);
+    expect(writes).toEqual([]);
+
+    try {
+      await writeLockfile('/tmp/x.lock.json', { version: '3.0.0', bundles: {}, sources: {} } as never, fs);
+    } catch (err) {
+      expect((err as UnsupportedLockfileVersionError).code).toBe('LOCKFILE.UNSUPPORTED_VERSION');
+    }
   });
 });

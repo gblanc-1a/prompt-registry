@@ -502,7 +502,7 @@ suite('E2E: Setup State Flows', () => {
      */
     const createMockLockfile = () => ({
       $schema: 'https://example.com/lockfile.schema.json',
-      version: '1.0.0',
+      version: '2.0.0',
       generatedAt: new Date().toISOString(),
       generatedBy: 'prompt-registry@0.0.2',
       bundles: {

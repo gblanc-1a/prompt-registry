@@ -33,19 +33,39 @@
  * `Bundle` field - a pure behavior-parity fix, not a type-system change.
  * @module adapters/awesome-copilot-adapter
  */
+import * as crypto from 'node:crypto';
 import type {
   Bundle,
+  BundleResolution,
   Clock,
+  ExternalInputPin,
   GitHubApi,
+  PortableBundlePayload,
+  PortableBundleSelection,
   RegistrySource,
   SourceMetadata,
   ValidationResult,
+} from '@ai-primitives-hub/core';
+import {
+  assertResolutionSourceCompatibility,
+  assertResolutionVersion,
+  isCredentialFreeHttpUrl,
+  RegistryError,
+  sourceContentDigest,
 } from '@ai-primitives-hub/core';
 import archiver from 'archiver';
 import * as yaml from 'js-yaml';
 import {
   BaseSourceAdapter,
 } from './base-source-adapter';
+import {
+  assertSupportedKnownDigests,
+  githubRawFileUrl,
+  parseGitHubRepositoryLocator,
+  readGitHubTreeAtCommit,
+  resolveGitHubCommit,
+  resolveGitHubSourceIdentity,
+} from './github-portable-resolution';
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const DEFAULT_BRANCH = 'main';
@@ -82,6 +102,66 @@ interface GitHubContentEntry {
   name: string;
   path: string;
   type: 'file' | 'dir';
+}
+
+function portableCollectionError(code: string, message: string): RegistryError {
+  return new RegistryError({
+    code,
+    message,
+    hint: 'Resolve the requested collection at its recorded GitHub commit and verify every selected input.'
+  });
+}
+
+function isCanonicalRepoPath(value: string): boolean {
+  return value.length > 0 && !value.startsWith('/') && !value.includes('\\') && !value.includes('\0')
+    && !/^[a-zA-Z]:/.test(value)
+    && value.split('/').every((segment) => segment.length > 0 && segment !== '.' && segment !== '..');
+}
+
+function sha256(bytes: Uint8Array): string {
+  return crypto.createHash('sha256').update(bytes).digest('hex');
+}
+
+function parsePortableCollection(bytes: Uint8Array): CollectionManifest {
+  let parsed: unknown;
+  try {
+    parsed = yaml.load(Buffer.from(bytes).toString('utf8'));
+  } catch (error) {
+    throw portableCollectionError(
+      'BUNDLE.INVALID_COLLECTION_MANIFEST',
+      `Failed to parse GitHub collection manifest: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+  if (typeof parsed !== 'object' || parsed === null) {
+    throw portableCollectionError('BUNDLE.INVALID_COLLECTION_MANIFEST', 'GitHub collection manifest must be an object.');
+  }
+  const collection = parsed as CollectionManifest;
+  if (typeof collection.id !== 'string' || collection.id.trim() === '' || collection.id.includes('/')
+    || typeof collection.name !== 'string' || collection.name.trim() === ''
+    || typeof collection.description !== 'string' || !Array.isArray(collection.items)) {
+    throw portableCollectionError(
+      'BUNDLE.INVALID_COLLECTION_MANIFEST',
+      'GitHub collection manifest must declare id, name, description and an items array.'
+    );
+  }
+  if (collection.items.some((item) => (
+    typeof item !== 'object'
+    || item === null
+    || typeof item.path !== 'string'
+    || !['prompt', 'instruction', 'chat-mode', 'agent', 'skill'].includes(item.kind)
+  ))) {
+    throw portableCollectionError('BUNDLE.INVALID_COLLECTION_MANIFEST', 'Collection items must declare a valid path and supported kind.');
+  }
+  return collection;
+}
+
+function externalOutputPath(input: string, kind: ItemKind): string {
+  const url = new URL(input);
+  const filename = url.pathname.split('/').findLast(Boolean) ?? 'external-input';
+  if (kind === 'skill') {
+    return `skills/${filename}`;
+  }
+  return `prompts/${filename}`;
 }
 
 const KIND_TO_MANIFEST_TYPE: Record<ItemKind, ManifestPromptType> = {
@@ -284,16 +364,23 @@ export class AwesomeCopilotAdapter extends BaseSourceAdapter {
     return bundle;
   }
 
-  private createDeploymentManifest(collection: CollectionManifest): Record<string, unknown> {
+  private createDeploymentManifest(
+    collection: CollectionManifest,
+    itemOutputPaths?: ReadonlyMap<string, string>
+  ): Record<string, unknown> {
     const prompts = collection.items.map((item) => {
+      const resolvedFile = itemOutputPaths?.get(item.path);
       if (item.kind === 'skill') {
-        const skillMatch = /skills\/([^/]+)\/SKILL\.md/.exec(item.path);
+        const skillIdentityPath = /^https?:\/\//i.test(item.path)
+          ? item.path
+          : resolvedFile ?? item.path;
+        const skillMatch = /skills\/([^/]+)\/SKILL\.md/.exec(skillIdentityPath);
         const skillName = skillMatch ? skillMatch[1] : 'unknown-skill';
         return {
           id: skillName,
           name: titleCase(skillName.replace(/-/g, ' ')),
           description: `Skill from ${collection.name}`,
-          file: item.path,
+          file: resolvedFile ?? item.path,
           type: 'skill' as const,
           tags: collection.tags ?? []
         };
@@ -305,7 +392,7 @@ export class AwesomeCopilotAdapter extends BaseSourceAdapter {
         id,
         name: titleCase(id.replace(/-/g, ' ')),
         description: `From ${collection.name}`,
-        file: `prompts/${filename}`,
+        file: resolvedFile ?? `prompts/${filename}`,
         type: KIND_TO_MANIFEST_TYPE[item.kind],
         tags: collection.tags ?? []
       };
@@ -360,6 +447,36 @@ export class AwesomeCopilotAdapter extends BaseSourceAdapter {
     return finished;
   }
 
+  private async findCollectionPath(
+    coordinates: ReturnType<typeof parseGitHubRepositoryLocator>,
+    collectionRoot: string,
+    bundleId: string,
+    commitSha: string,
+    tree: { path: string; type: string }[]
+  ): Promise<string | undefined> {
+    const candidates = tree.filter((entry) => (
+      entry.type === 'blob'
+      && entry.path.startsWith(`${collectionRoot}/`)
+      && entry.path.slice(collectionRoot.length + 1).split('/').length === 1
+      && entry.path.endsWith('.collection.yml')
+    ));
+    for (const candidate of candidates) {
+      const bytes = await this.githubApi.download(githubRawFileUrl(
+        coordinates,
+        commitSha,
+        candidate.path
+      ));
+      try {
+        if (parsePortableCollection(bytes).id === bundleId) {
+          return candidate.path;
+        }
+      } catch {
+        continue;
+      }
+    }
+    return undefined;
+  }
+
   public async fetchBundles(): Promise<Bundle[]> {
     if (this.cache && this.clock.now() - this.cache.cachedAtMs < CACHE_TTL_MS) {
       return this.cache.bundles;
@@ -388,6 +505,233 @@ export class AwesomeCopilotAdapter extends BaseSourceAdapter {
 
     this.cache = { bundles, cachedAtMs: this.clock.now() };
     return bundles;
+  }
+
+  /**
+   * Resolve a collection and all selected inputs from one immutable repository commit.
+   * @param selection - Requested collection ID, version and optional replay pin.
+   */
+  public async resolvePortableBundle(selection: PortableBundleSelection): Promise<PortableBundlePayload | null> {
+    if (selection.resolution && selection.version !== undefined) {
+      assertResolutionVersion(selection.resolution, selection.version);
+    }
+    const portableSource = await resolveGitHubSourceIdentity(
+      this.source,
+      this.githubApi,
+      selection.expectedSource,
+      this.branch
+    );
+    if (selection.resolution) {
+      assertResolutionSourceCompatibility(portableSource, selection.resolution);
+    }
+    if (portableSource.identity.kind !== 'github-tree') {
+      throw portableCollectionError('BUNDLE.INVALID_SOURCE_IDENTITY', 'Collection resolution requires a GitHub tree source identity.');
+    }
+    const coordinates = parseGitHubRepositoryLocator(portableSource.locator);
+    const pinned = selection.resolution?.kind === 'pinned'
+      && selection.resolution.provider === 'github-tree'
+      ? selection.resolution
+      : undefined;
+    const unpinnedEvidence = selection.resolution?.kind === 'unpinned'
+      ? selection.resolution.evidence
+      : undefined;
+    assertSupportedKnownDigests(
+      unpinnedEvidence,
+      ['sourceContentSha256'],
+      'Awesome Copilot GitHub tree resolution'
+    );
+    const collectionRoot = portableSource.identity.collectionsPath ?? this.collectionsPath;
+    const recordedCommitSha = pinned?.commitSha ?? unpinnedEvidence?.knownPins?.commitSha;
+    const recordedCollectionPath = pinned?.bundlePath
+      ?? unpinnedEvidence?.knownPins?.bundlePath
+      ?? unpinnedEvidence?.knownPins?.collectionPath;
+    if (recordedCommitSha !== undefined && !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/i.test(recordedCommitSha)) {
+      throw portableCollectionError('BUNDLE.ARTIFACT_PIN_MISMATCH', `Recorded GitHub commit ID "${recordedCommitSha}" is invalid.`);
+    }
+    const commitSha = recordedCommitSha
+      ?? await resolveGitHubCommit(this.githubApi, coordinates, portableSource.identity.ref);
+    const tree = await readGitHubTreeAtCommit(this.githubApi, coordinates, commitSha);
+    const collectionPath = recordedCollectionPath ?? await this.findCollectionPath(
+      coordinates,
+      collectionRoot,
+      selection.bundleId,
+      commitSha,
+      tree
+    );
+    if (!collectionPath) {
+      return null;
+    }
+    if (!collectionPath.startsWith(`${collectionRoot}/`) || !isCanonicalRepoPath(collectionPath)) {
+      throw portableCollectionError('BUNDLE.INVALID_COLLECTION_PATH', `Collection path ${JSON.stringify(collectionPath)} is not a safe path under ${collectionRoot}.`);
+    }
+    const manifestEntry = tree.find((entry) => entry.type === 'blob' && entry.path === collectionPath);
+    if (!manifestEntry) {
+      throw portableCollectionError('BUNDLE.ARTIFACT_PIN_MISMATCH', `Pinned collection path ${collectionPath} is missing at commit ${commitSha}.`);
+    }
+    const manifestBytes = await this.githubApi.download(githubRawFileUrl(coordinates, commitSha, collectionPath));
+    const collection = parsePortableCollection(manifestBytes);
+    if (collection.id !== selection.bundleId) {
+      if (recordedCollectionPath !== undefined) {
+        throw portableCollectionError(
+          'BUNDLE.LOGICAL_BUNDLE_MISMATCH',
+          `Collection manifest ID "${collection.id}" does not match requested bundle "${selection.bundleId}".`
+        );
+      }
+      return null;
+    }
+    const version = collection.version ?? '1.0.0';
+    if (selection.version !== undefined && selection.version !== version) {
+      throw portableCollectionError(
+        'BUNDLE.RESOLUTION_VERSION_MISMATCH',
+        `Requested version "${selection.version}" does not match collection manifest version "${version}".`
+      );
+    }
+    const recordedVersion = pinned?.version ?? unpinnedEvidence?.manifestVersion;
+    if (recordedVersion !== undefined && recordedVersion !== version) {
+      throw portableCollectionError('BUNDLE.ARTIFACT_PIN_MISMATCH', `Collection manifest at ${collectionPath} does not match its recorded pin.`);
+    }
+    if (recordedCollectionPath !== undefined && recordedCollectionPath !== collectionPath) {
+      throw portableCollectionError('BUNDLE.ARTIFACT_PIN_MISMATCH', `Collection manifest at ${collectionPath} does not match its recorded path.`);
+    }
+
+    const inputFiles = new Map<string, Uint8Array>([[collectionPath, manifestBytes]]);
+    const outputFiles = new Map<string, Uint8Array>();
+    const outputSourcePaths = new Map<string, string>();
+    const itemOutputPaths = new Map<string, string>();
+    const externalPinsByIdentity = new Map<string, ExternalInputPin>();
+    const externalLimitations: string[] = [];
+    const recordedExternalPins = pinned?.externalInputs ?? [];
+    const consumedExternalIdentities = new Set<string>();
+    const addSelectedOutput = (outputPath: string, sourcePath: string, bytes: Uint8Array): void => {
+      const previousSourcePath = outputSourcePaths.get(outputPath);
+      if (previousSourcePath !== undefined && previousSourcePath !== sourcePath) {
+        throw portableCollectionError(
+          'BUNDLE.OUTPUT_PATH_COLLISION',
+          `Selected collection inputs ${JSON.stringify(previousSourcePath)} and ${JSON.stringify(sourcePath)} both map to output path ${JSON.stringify(outputPath)}.`
+        );
+      }
+      outputSourcePaths.set(outputPath, sourcePath);
+      outputFiles.set(outputPath, bytes);
+    };
+
+    for (const item of collection.items) {
+      if (typeof item.path !== 'string' || item.path.trim() === '') {
+        throw portableCollectionError('BUNDLE.INVALID_COLLECTION_MANIFEST', 'Collection items must have non-empty paths.');
+      }
+      if (/^https?:\/\//i.test(item.path)) {
+        if (!isCredentialFreeHttpUrl(item.path)) {
+          throw portableCollectionError('CONFIG.INVALID_SOURCE_LOCATOR', 'External collection input URL contains credentials or is invalid.');
+        }
+        const bytes = await this.githubApi.download(item.path);
+        const digest = sha256(bytes);
+        const recorded = recordedExternalPins.find((candidate) => candidate.identity === item.path);
+        if (pinned && (!recorded || recorded.sourceContentSha256 !== digest)) {
+          throw portableCollectionError('BUNDLE.ARTIFACT_PIN_MISMATCH', `External input ${item.path} does not match its recorded digest.`);
+        }
+        if (recorded) {
+          consumedExternalIdentities.add(recorded.identity);
+        }
+        externalPinsByIdentity.set(item.path, { identity: item.path, sourceContentSha256: digest });
+        externalLimitations.push(item.path);
+        const outputPath = externalOutputPath(item.path, item.kind);
+        const urlPath = new URL(item.path).pathname;
+        const filename = urlPath.split('/').findLast(Boolean) ?? 'external-input';
+        const digestPath = `external/${sha256(Buffer.from(item.path, 'utf8'))}/${filename}`;
+        inputFiles.set(digestPath, bytes);
+        addSelectedOutput(outputPath, item.path, bytes);
+        itemOutputPaths.set(item.path, outputPath);
+        continue;
+      }
+      if (!isCanonicalRepoPath(item.path)) {
+        throw portableCollectionError('BUNDLE.INVALID_COLLECTION_PATH', `Collection item path ${JSON.stringify(item.path)} is not a safe repository-relative path.`);
+      }
+      if (item.kind === 'skill') {
+        const skillDirectory = item.path.slice(0, item.path.lastIndexOf('/'));
+        const files = tree.filter((entry) => entry.type === 'blob' && entry.path.startsWith(`${skillDirectory}/`));
+        if (files.length === 0) {
+          throw portableCollectionError('BUNDLE.MISSING_COLLECTION_INPUT', `Collection skill input ${item.path} is missing at commit ${commitSha}.`);
+        }
+        for (const entry of files) {
+          const bytes = await this.githubApi.download(githubRawFileUrl(coordinates, commitSha, entry.path));
+          inputFiles.set(entry.path, bytes);
+          addSelectedOutput(entry.path, entry.path, bytes);
+        }
+      } else {
+        const entry = tree.find((candidate) => candidate.type === 'blob' && candidate.path === item.path);
+        if (!entry) {
+          throw portableCollectionError('BUNDLE.MISSING_COLLECTION_INPUT', `Collection input ${item.path} is missing at commit ${commitSha}.`);
+        }
+        const bytes = await this.githubApi.download(githubRawFileUrl(coordinates, commitSha, item.path));
+        inputFiles.set(item.path, bytes);
+        const filename = item.path.split('/').at(-1) ?? 'bundle-item';
+        addSelectedOutput(`prompts/${filename}`, item.path, bytes);
+      }
+    }
+    if (pinned && consumedExternalIdentities.size !== recordedExternalPins.length) {
+      throw portableCollectionError('BUNDLE.ARTIFACT_PIN_MISMATCH', 'The recorded external-input pins do not match the collection inputs.');
+    }
+
+    const externalPins = [...externalPinsByIdentity.values()];
+    const sourceContentSha256 = sourceContentDigest(inputFiles);
+    if (pinned && pinned.sourceContentSha256 !== sourceContentSha256) {
+      throw portableCollectionError('BUNDLE.ARTIFACT_PIN_MISMATCH', `Collection content at commit ${commitSha} does not match its recorded digest.`);
+    }
+    if (selection.resolution?.kind === 'unpinned'
+      && selection.resolution.evidence?.knownDigests?.sourceContentSha256 !== undefined
+      && selection.resolution.evidence.knownDigests.sourceContentSha256 !== sourceContentSha256) {
+      throw portableCollectionError('BUNDLE.ARTIFACT_PIN_MISMATCH', 'Collection content does not match its recorded source-content digest.');
+    }
+
+    const deploymentManifest = this.createDeploymentManifest(collection, itemOutputPaths);
+    const manifestPrompts = deploymentManifest.prompts;
+    if (Array.isArray(manifestPrompts)) {
+      const missingFiles: string[] = [];
+      for (const prompt of manifestPrompts as unknown[]) {
+        if (typeof prompt !== 'object' || prompt === null) {
+          continue;
+        }
+        const path = (prompt as { file?: unknown }).file;
+        if (typeof path === 'string' && !outputFiles.has(path)) {
+          missingFiles.push(path);
+        }
+      }
+      if (missingFiles.length > 0) {
+        throw portableCollectionError(
+          'BUNDLE.MISSING_COLLECTION_INPUT',
+          `Generated collection manifest references files that were not acquired: ${missingFiles.join(', ')}.`
+        );
+      }
+    }
+    outputFiles.set('deployment-manifest.yml', Buffer.from(yaml.dump(deploymentManifest), 'utf8'));
+    const resolution: BundleResolution = externalLimitations.length > 0 && !pinned
+      ? {
+        kind: 'unpinned',
+        reason: 'External collection inputs are mutable URLs and cannot be covered by the repository commit pin.',
+        evidence: {
+          knownPins: { commitSha, collectionPath },
+          knownDigests: { sourceContentSha256 },
+          manifestVersion: version,
+          externalInputLimitations: [...new Set(externalLimitations)]
+        }
+      }
+      : {
+        kind: 'pinned',
+        provider: 'github-tree',
+        version,
+        commitSha,
+        bundlePath: collectionPath,
+        sourceContentSha256,
+        ...(externalPins.length > 0 ? { externalInputs: externalPins } : {})
+      };
+    return {
+      source: portableSource,
+      logicalBundleId: collection.id,
+      manifestId: collection.id,
+      version,
+      resolution,
+      files: outputFiles,
+      sourceFiles: inputFiles
+    };
   }
 
   public async downloadBundle(bundle: Bundle): Promise<Buffer> {

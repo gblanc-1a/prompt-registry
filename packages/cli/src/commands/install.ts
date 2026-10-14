@@ -18,13 +18,29 @@
 import * as path from 'node:path';
 import {
   checksumFiles,
+  createDeployRequest,
+  deployBundle,
+  type DeployPorts,
+  type DeployRequest,
+  type DeployResult,
   emptyLockfile,
   FileTreeTargetWriter,
   type Lockfile,
   type LockfileBundleEntry,
+  LockfileGenerationMismatchError,
   type LockfileSourceEntry,
+  type LockfileV3Pair,
+  migrateLockfileIfNeeded,
+  type PlacementContext,
+  planDeploy,
+  planLockfileMigration,
   readLockfile,
+  readLockfilePair,
+  readLockfileV3Pair,
+  resolvePortableBundle,
   resolveUserConfigPaths,
+  type SourceAdapterFactoryDeps,
+  type SourceAuthenticationContext,
   type TargetWriter,
   TransformerRegistry,
   upsertBundleEntry,
@@ -33,19 +49,31 @@ import {
   writeTargetSafely,
 } from '@ai-primitives-hub/app';
 import type {
+  BundleResolution,
   BundleResolver,
   GitHubApi,
   GitHubRepositoryTarget,
   GitHubSourceAuthCategory,
   HttpClient,
   HubSourceSpec,
+  LocalSourceLocation,
+  PortableBundlePayload,
+  PortableBundleSelection,
+  PortableSourceDescriptor,
   RegistrySource,
   Target,
   TokenProvider,
 } from '@ai-primitives-hub/core';
 import {
+  assertResolutionSourceCompatibility,
+  assertResolutionVersion,
+  assertSourceKey,
   getInstallableBundleFiles,
+  isSafeDiagnosticValue,
   parseBundleSpec,
+  parseLogicalBundleKey,
+  sourceKey as portableSourceKey,
+  sameArtifactResolution,
   validateManifest,
 } from '@ai-primitives-hub/core';
 import {
@@ -61,17 +89,28 @@ import {
   HubStore,
   isGitHubAppAuthEnabled,
   NodeHttpClient,
+  NodeProcessRunner,
   parseGitHubRepositoryTarget,
   readLocalBundle,
   type RepositoryCommitMode,
   RepositoryScopeWriter,
   RepositoryScopeWriterAdapter,
+  resolveLocalPath,
   resolveUserConfigDir,
   SourceDispatcher,
   StaticTokenProvider,
   TargetStateStore,
   ZipBundleExtractor,
 } from '@ai-primitives-hub/infra';
+import {
+  assertUnifiedDeploySupported,
+  buildDeployPorts,
+  buildPlacementContext,
+  renderMigration,
+  runtimeAssetRootFor,
+  transformerFor,
+  unifiedDeployRequested,
+} from '../deploy-wiring';
 import {
   Command,
   createHubManager,
@@ -91,6 +130,7 @@ import {
   type OutputFormat,
   readTargetsSafely,
   RegistryError,
+  renderAppliedEffects,
   resolveEffectiveTarget,
   resolveTarget,
   resolveTargetName,
@@ -268,6 +308,12 @@ export interface InstallOptions {
   /** Dry-run: validate + plan the install but write nothing. */
   dryRun?: boolean;
   /**
+   * Deploy over locally modified files and untracked collisions. Honored
+   * only when `AI_PRIMITIVES_HUB_UNIFIED_DEPLOY` is enabled; inert on the
+   * legacy path.
+   */
+  force?: boolean;
+  /**
    * Comma-separated allowlist of target names this run is permitted
    * to write to. Defense-in-depth for CI; refuses any --target outside
    * the set even if the target is configured.
@@ -354,6 +400,8 @@ export class InstallCommand extends BaseInstallCommand {
         --source <hub-id>       Hub ID to list bundles from (use with --interactive for selection)
         --interactive           Interactive mode: select bundles from a list
         --dry-run               Validate and plan without writing
+        --force                 Deploy over locally modified files and untracked collisions
+                                (only with AI_PRIMITIVES_HUB_UNIFIED_DEPLOY enabled; ignored otherwise)
         --scope <scope>         Installation scope (user or repository)
         --commit-mode <mode>    Commit mode for repository scope
         --verbose               Show detailed progress and error messages
@@ -373,6 +421,7 @@ export class InstallCommand extends BaseInstallCommand {
   public source = Option.String('--source');
   public interactive = Option.Boolean('--interactive', false);
   public dryRun = Option.Boolean('--dry-run');
+  public force = Option.Boolean('--force');
   public scope = Option.String('--scope');
   public commitMode = Option.String('--commit-mode');
   public verbose = Option.Boolean('--verbose', false);
@@ -392,6 +441,7 @@ export class InstallCommand extends BaseInstallCommand {
       target: this.target,
       from: this.from,
       dryRun: this.dryRun,
+      force: this.force,
       source: this.source,
       interactive: this.interactive,
       allowTarget: this.allowTarget,
@@ -695,15 +745,17 @@ async function interactiveBundleSelection(
 
     const installedCount = await installSelectedBundles(selectedBundles, sourceMap, opts, target, ctx, fmt);
 
+    const incomplete = installedCount < selectedBundles.length;
+    const unifiedFailure = incomplete && unifiedDeployRequested(ctx);
     formatOutput({
       ctx,
       command: 'install',
       output: fmt,
-      status: 'ok',
+      status: unifiedFailure ? 'warning' : 'ok',
       data: { installed: installedCount, total: selectedBundles.length },
       textRenderer: (d) => `Installed ${d.installed}/${d.total} bundles\n`
     });
-    return 0;
+    return unifiedFailure ? 1 : 0;
   } catch (err) {
     return failWith(ctx, fmt, 'install', buildInstallError(err));
   }
@@ -842,6 +894,366 @@ function checkAllowTarget(targetName: string, opts: InstallOptions): void {
   }
 }
 
+interface UnifiedInstallArgs {
+  ctx: Context;
+  fmt: OutputFormat;
+  target: Target;
+  dryRun: boolean;
+  force: boolean;
+  request: Omit<DeployRequest, 'force'>;
+  /** Extra keys merged into the output `data` (e.g. remote `source` and `sha256`). */
+  extra?: Record<string, unknown>;
+}
+
+type UnifiedMigration = DeployResult['migration'];
+
+/**
+ * Read the lockfile pair's raw contents, `null` for an absent file, so a run can
+ * report whether it actually changed them.
+ * @param ctx CLI context.
+ * @param paths Lockfile pair paths.
+ * @param paths.desiredFile Desired-state file path.
+ * @param paths.localFile Local materialization file path.
+ * @returns Raw contents of the desired and local files.
+ */
+async function snapshotLockfiles(
+  ctx: Context,
+  paths: { desiredFile: string; localFile: string }
+): Promise<(string | null)[]> {
+  return await Promise.all([paths.desiredFile, paths.localFile].map(
+    async (file) => await ctx.fs.exists(file) ? await ctx.fs.readFile(file) : null
+  ));
+}
+
+const unifiedPortsFor = (ctx: Context, target: Target): DeployPorts => ({
+  ...buildDeployPorts(ctx, { scope: 'user' }),
+  transformer: transformerFor(target)
+});
+
+const sourceAdapterDepsFor = (
+  ctx: Context,
+  httpClient: HttpClient,
+  fallbackTokenProviders: TokenProvider[],
+  sourceAuthentication?: ReadonlyMap<string, SourceAuthenticationContext>
+): SourceAdapterFactoryDeps => ({
+  fs: ctx.fs,
+  clock: ctx.clock,
+  httpClient,
+  processRunner: new NodeProcessRunner(),
+  fallbackTokenProviders,
+  ...(sourceAuthentication === undefined ? {} : { sourceAuthentication })
+});
+
+const resolveExplicitPortableBundle = async (
+  source: RegistrySource,
+  selection: PortableBundleSelection,
+  deps: SourceAdapterFactoryDeps,
+  ports: DeployPorts
+): Promise<PortableBundlePayload> => {
+  const payload = await resolvePortableBundle(source, selection, deps);
+  const { pair } = await readLockfilePair(ports.lockfileStore, ports.fs, {
+    generatedBy: ports.generatedBy ?? 'ai-primitives-hub',
+    now: ports.now ?? new Date().toISOString()
+  });
+  const key = `${portableSourceKey(payload.source.identity, payload.source.type)}/${payload.logicalBundleId}`;
+  const previous = pair.desired.bundles[key];
+  if (previous === undefined || previous.version !== payload.version
+    || previous.resolution.kind !== 'unpinned' || previous.resolution.evidence === undefined) {
+    return payload;
+  }
+  return await resolvePortableBundle(source, {
+    ...selection,
+    version: payload.version,
+    expectedSource: payload.source,
+    resolution: previous.resolution
+  }, deps);
+};
+
+const LOCAL_PORTABLE_TYPES = new Set(['local', 'local-awesome-copilot', 'local-skills']);
+
+const localLocationForConfiguredSource = (
+  source: RegistrySource,
+  ctx: Context
+): LocalSourceLocation => {
+  const configuredPath = source.url.startsWith('~/') && ctx.env.HOME !== undefined
+    ? path.join(ctx.env.HOME, source.url.slice(2))
+    : resolveLocalPath(source.url);
+  const workspaceRoot = path.resolve(ctx.cwd());
+  const absoluteRoot = path.isAbsolute(configuredPath)
+    ? path.resolve(configuredPath)
+    : path.resolve(workspaceRoot, configuredPath);
+  const relativeRoot = path.relative(workspaceRoot, absoluteRoot);
+  if (relativeRoot === '..' || relativeRoot.startsWith(`..${path.sep}`) || path.isAbsolute(relativeRoot)) {
+    if (!path.isAbsolute(configuredPath)) {
+      throw new RegistryError({
+        code: 'CONFIG.MISSING_LOCAL_BINDING',
+        message: `Local source "${source.id}" is outside the selected workspace and has no absolute named binding.`,
+        hint: 'Configure an absolute local source path in the active hub; relative paths are anchored to the selected workspace.'
+      });
+    }
+    return { kind: 'binding', name: source.id, root: absoluteRoot };
+  }
+  return { kind: 'workspace', root: workspaceRoot };
+};
+
+const sourceConfigFromDescriptor = (
+  sourceKey: string,
+  descriptor: PortableSourceDescriptor
+): RegistrySource => {
+  if (!['github', 'local', 'awesome-copilot', 'local-awesome-copilot', 'skills', 'local-skills', 'azure-devops'].includes(descriptor.type)) {
+    throw new RegistryError({
+      code: 'BUNDLE.UNSUPPORTED_PORTABLE_RESOLUTION',
+      message: `Replay does not have a retained source adapter for "${descriptor.type}".`
+    });
+  }
+  const identity = descriptor.identity;
+  const config: NonNullable<RegistrySource['config']> = { ...descriptor.config };
+  switch (identity.kind) {
+    case 'github-tree': {
+      config.branch = identity.ref;
+      if (identity.collectionsPath !== undefined) {
+        config.collectionsPath = identity.collectionsPath;
+      }
+      if (identity.skillsPath !== undefined) {
+        config.skillsPath = identity.skillsPath;
+      }
+
+      break;
+    }
+    case 'azure-devops-tree': {
+      config.branch = identity.ref;
+      config.collectionsPath = identity.collectionsPath;
+
+      break;
+    }
+    case 'workspace-local': {
+      if (identity.collectionsPath !== undefined) {
+        config.collectionsPath = identity.collectionsPath;
+      }
+      if (identity.skillsPath !== undefined) {
+        config.skillsPath = identity.skillsPath;
+      }
+
+      break;
+    }
+    case 'external-local': {
+      if (identity.collectionsPath !== undefined) {
+        config.collectionsPath = identity.collectionsPath;
+      }
+      if (identity.skillsPath !== undefined) {
+        config.skillsPath = identity.skillsPath;
+      }
+
+      break;
+    }
+  // No default
+  }
+  let url = descriptor.locator;
+  if (LOCAL_PORTABLE_TYPES.has(descriptor.type) && identity.kind === 'workspace-local') {
+    url = identity.root === '.' ? './' : `./${identity.root}`;
+  }
+  return {
+    id: sourceKey,
+    name: sourceKey,
+    type: descriptor.type as RegistrySource['type'],
+    url,
+    enabled: true,
+    priority: 0,
+    config
+  };
+};
+
+const runtimeSourceForReplay = async (
+  sourceKey: string,
+  descriptor: PortableSourceDescriptor,
+  ctx: Context
+): Promise<{ source: RegistrySource; localLocation?: LocalSourceLocation }> => {
+  const source = sourceConfigFromDescriptor(sourceKey, descriptor);
+  if (!LOCAL_PORTABLE_TYPES.has(descriptor.type)) {
+    return { source };
+  }
+  if (descriptor.identity.kind === 'workspace-local') {
+    return { source, localLocation: { kind: 'workspace', root: path.resolve(ctx.cwd()) } };
+  }
+  if (descriptor.identity.kind !== 'external-local') {
+    throw new RegistryError({
+      code: 'BUNDLE.INVALID_SOURCE_IDENTITY',
+      message: `Local source "${sourceKey}" has no workspace root or named external binding.`
+    });
+  }
+  const bindingName = descriptor.identity.bindingName;
+
+  const paths = resolveUserConfigPaths(ctx.env);
+  const activeHubId = await new ActiveHubStore(paths.activeHub, ctx.fs).get();
+  if (activeHubId === null) {
+    throw new RegistryError({
+      code: 'CONFIG.MISSING_LOCAL_BINDING',
+      message: `No active local source configuration provides binding "${bindingName}".`,
+      hint: 'Activate a hub with a local source whose configured ID matches the recorded binding name.'
+    });
+  }
+  const { config } = await new HubStore(paths.hubs, ctx.fs).load(activeHubId);
+  const configured = config.sources.find((candidate) => candidate.id === bindingName);
+  if (configured === undefined || configured.type !== descriptor.type) {
+    throw new RegistryError({
+      code: 'CONFIG.MISSING_LOCAL_BINDING',
+      message: `The active hub has no "${descriptor.type}" source bound as "${bindingName}".`,
+      hint: 'Configure the exact named local source in the active hub before replaying this lockfile.'
+    });
+  }
+  const runtimeSource = { ...source, url: configured.url };
+  const configuredPath = resolveLocalPath(runtimeSource.url);
+  if (!path.isAbsolute(configuredPath)) {
+    throw new RegistryError({
+      code: 'CONFIG.MISSING_LOCAL_BINDING',
+      message: `External local binding "${bindingName}" must resolve to an absolute configured path.`,
+      hint: 'Configure the source URL as an absolute local path; replay never resolves an external binding against process CWD.'
+    });
+  }
+  return {
+    source: runtimeSource,
+    localLocation: {
+      kind: 'binding',
+      name: bindingName,
+      root: path.resolve(configuredPath)
+    }
+  };
+};
+
+const dryRunNotMigrated = (cause: LockfileGenerationMismatchError): RegistryError => new RegistryError({
+  code: 'CONFIG.LOCKFILE_NOT_MIGRATED',
+  message: `install: the lockfile at ${cause.file} is a v${cause.found} lockfile and has not been migrated to v${cause.expected}, so a dry run cannot plan against it.`,
+  hint: 'Run the install without --dry-run to migrate it — migration runs on install, never on a dry run.',
+  context: { file: cause.file, found: cause.found, expected: cause.expected },
+  cause
+});
+
+const portableResolutionDigest = (resolution: BundleResolution): string | undefined => {
+  if (resolution.kind !== 'pinned') {
+    return undefined;
+  }
+  switch (resolution.provider) {
+    case 'github-release':
+    case 'artifactory-object': {
+      return resolution.archiveSha256;
+    }
+    case 'github-tree':
+    case 'azure-devops-tree':
+    case 'local-snapshot': {
+      return resolution.sourceContentSha256;
+    }
+  }
+};
+
+const portableResolutionReport = (
+  resolution: BundleResolution,
+  version: string,
+  subject = 'Portable resolution before deployment'
+): string => {
+  if (resolution.kind === 'pinned') {
+    const digest = portableResolutionDigest(resolution);
+    return `${subject}: pinned ${resolution.provider}@${resolution.version}`
+      + `${digest === undefined ? '' : ` sha256:${digest}`}\n`;
+  }
+  if (resolution.kind === 'live') {
+    return `${subject}: live source selection at version ${version}.\n`;
+  }
+  const reason = isSafeDiagnosticValue(resolution.reason) ? resolution.reason : 'the adapter did not provide a safe diagnostic';
+  const knownDigests = Object.entries(resolution.evidence?.knownDigests ?? {})
+    .map(([name, digest]) => `${name}=sha256:${digest}`)
+    .join(', ');
+  const limitations = (resolution.evidence?.externalInputLimitations ?? [])
+    .filter((limitation) => isSafeDiagnosticValue(limitation))
+    .join('; ');
+  return `${subject}: unpinned ${version}; ${reason}`
+    + `${knownDigests === '' ? '; no known digests' : `; retained known digests: ${knownDigests}`}`
+    + `${limitations === '' ? '' : `; external-input limitations: ${limitations}`}\n`;
+};
+
+/**
+ * Flag-on install: plan (dry-run) or deploy through `app/deploy`, then render
+ * the legacy envelope keys plus `collisions`, `satisfied` and `migration`.
+ * @param args Install arguments.
+ * @returns Exit code.
+ */
+async function runUnifiedInstall(args: UnifiedInstallArgs): Promise<number> {
+  const {
+    ctx, fmt, target, dryRun, force, request, extra
+  } = args;
+  const ports = unifiedPortsFor(ctx, target);
+  const bundle = { id: request.bundle.bundleId, version: request.bundle.version };
+  ctx.stderr.write(portableResolutionReport(request.resolution, bundle.version));
+
+  if (dryRun) {
+    const plan = await planDeploy({ ...request, force }, ports).catch((cause: unknown) => {
+      // Migration runs on install, never on a dry run, so a v2 lockfile cannot be planned against.
+      throw cause instanceof LockfileGenerationMismatchError ? dryRunNotMigrated(cause) : cause;
+    });
+    formatOutput({
+      ctx,
+      command: 'install',
+      output: fmt,
+      status: 'ok',
+      data: {
+        dryRun: true,
+        target: target.name,
+        bundle,
+        resolution: request.resolution,
+        files: [...(request.files?.keys() ?? [])],
+        destinations: plan.destinations.map((d) => d.to),
+        skipped: plan.skipped,
+        collisions: plan.collisions,
+        satisfied: plan.satisfied,
+        drifted: plan.drifted,
+        ...(plan.duplicates.length === 0 ? {} : { duplicates: plan.duplicates }),
+        ...extra
+      },
+      textRenderer: (d) => `Dry run: would install ${d.bundle.id}@${d.bundle.version} `
+        + `(${d.destinations.length} destination${d.destinations.length === 1 ? '' : 's'}, `
+        + `${d.collisions.length} collision${d.collisions.length === 1 ? '' : 's'}, `
+        + `${d.satisfied.length} already satisfied) into target "${d.target}".\n`
+    });
+    return 0;
+  }
+
+  const before = await snapshotLockfiles(ctx, ports.lockfileStore);
+  const result = await deployBundle({ ...request, force }, ports);
+  const after = await snapshotLockfiles(ctx, result.lockfiles);
+  const lockfileUpdated = before.some((content, i) => content !== after[i]);
+  formatOutput({
+    ctx,
+    command: 'install',
+    output: fmt,
+    status: result.collisions.length > 0 || result.retained.length > 0 || result.duplicates.length > 0 ? 'warning' : 'ok',
+    data: {
+      target: target.name,
+      bundle,
+      resolution: request.resolution,
+      written: result.written,
+      skipped: result.skipped,
+      lockfile: result.lockfiles.desiredFile,
+      collisions: result.collisions,
+      satisfied: result.satisfied,
+      migration: result.migration,
+      ...(result.duplicates.length === 0 ? {} : { duplicates: result.duplicates }),
+      ...(result.retained.length === 0 ? {} : { retained: result.retained }),
+      ...(result.retired.length === 0 ? {} : { retired: result.retired }),
+      ...extra
+    },
+    warnings: result.collisions.length > 0
+      ? result.collisions.map((c) => `${c.to}: existing untracked file left in place (use --force to overwrite)`)
+      : undefined,
+    textRenderer: (d) => `Installed ${d.bundle.id}@${d.bundle.version} into target "${d.target}" `
+      + `(${d.written.length} written, ${d.skipped.length} skipped, ${d.satisfied.length} already satisfied, `
+      + `${d.collisions.length} collision${d.collisions.length === 1 ? '' : 's'}). `
+      + `${lockfileUpdated ? `Updated ${d.lockfile}.` : 'Lockfile unchanged.'}\n`
+      + result.duplicates.map((entry) => `Duplicate destination ${entry.to}: ${entry.ids.join(', ')}; first item wins, later items skipped.\n`).join('')
+      + (result.retained.length === 0 ? '' : `Retained old files with ownership (modified, shared or unsafe): ${result.retained.join(', ')}.\n`)
+      + renderMigration(d.migration)
+  });
+  return 0;
+}
+
 /**
  * Perform local install from directory.
  * @param opts Install options.
@@ -856,8 +1268,82 @@ async function performLocalInstall(
   ctx: Context,
   fmt: OutputFormat
 ): Promise<number> {
+  let unified = false;
   try {
     const effectiveTarget = resolveEffectiveTarget(ctx, target, opts);
+    // Refuse before any read: an unsupported scope must not touch the source tree or the lockfiles.
+    unified = unifiedDeployRequested(ctx);
+    if (unified) {
+      assertUnifiedDeploySupported(effectiveTarget);
+      const workspaceRoot = path.resolve(ctx.cwd());
+      const localSourceTypes = new Set(['local', 'local-awesome-copilot', 'local-skills']);
+      let source: RegistrySource;
+      let localLocation: LocalSourceLocation;
+      let bundleSelector: string | undefined;
+      if (opts.sourceConfig === undefined) {
+        const selectedBundlePath = path.resolve(workspaceRoot, opts.from as string);
+        const sourceRoot = path.dirname(selectedBundlePath);
+        const relativeRoot = path.relative(workspaceRoot, sourceRoot);
+        if (relativeRoot === '..' || relativeRoot.startsWith(`..${path.sep}`) || path.isAbsolute(relativeRoot)) {
+          throw new RegistryError({
+            code: 'CONFIG.MISSING_LOCAL_BINDING',
+            message: `install: local source "${opts.from}" is outside the selected workspace and has no named source binding.`,
+            hint: 'Configure the local source explicitly in the active hub or place the bundle beneath the selected workspace.'
+          });
+        }
+        const portableRoot = relativeRoot === '' ? '.' : relativeRoot.split(path.sep).join('/');
+        source = {
+          id: 'cli-from',
+          name: '--from local source',
+          type: 'local',
+          url: portableRoot === '.' ? './' : `./${portableRoot}`,
+          enabled: true,
+          priority: 0
+        };
+        localLocation = { kind: 'workspace', root: workspaceRoot };
+        bundleSelector = path.relative(sourceRoot, selectedBundlePath).split(path.sep).join('/');
+      } else {
+        if (!localSourceTypes.has(opts.sourceConfig.type)) {
+          throw new RegistryError({
+            code: 'BUNDLE.INVALID_SOURCE_IDENTITY',
+            message: `install: --from cannot be combined with non-local source "${opts.sourceConfig.id}".`,
+            hint: 'Use a local source configuration or omit --from to resolve through the configured adapter.'
+          });
+        }
+        source = opts.sourceConfig;
+        const configuredPath = resolveLocalPath(source.url);
+        const absoluteRoot = path.isAbsolute(configuredPath)
+          ? path.resolve(configuredPath)
+          : path.resolve(workspaceRoot, configuredPath);
+        const relativeRoot = path.relative(workspaceRoot, absoluteRoot);
+        localLocation = relativeRoot === '..' || relativeRoot.startsWith(`..${path.sep}`) || path.isAbsolute(relativeRoot)
+          ? { kind: 'binding', name: source.id, root: absoluteRoot }
+          : { kind: 'workspace', root: workspaceRoot };
+      }
+      const payload = await resolveExplicitPortableBundle(source, {
+        bundleId: opts.bundle ?? '',
+        ...(bundleSelector === undefined ? {} : { bundleSelector }),
+        localLocation
+      }, sourceAdapterDepsFor(
+        ctx,
+        opts.http ?? new NodeHttpClient(),
+        [opts.tokens ?? defaultTokenProvider(ctx.env)]
+      ), unifiedPortsFor(ctx, effectiveTarget));
+      const placement = await buildPlacementContext(ctx, effectiveTarget);
+      return await runUnifiedInstall({
+        ctx,
+        fmt,
+        target: effectiveTarget,
+        dryRun: opts.dryRun === true,
+        force: opts.force === true,
+        request: createDeployRequest({
+          payload,
+          targetName: effectiveTarget.name,
+          runtimeAssetRoot: runtimeAssetRootFor(ctx),
+          placement
+        })
+      });
+    }
     const files = await readLocalBundle(opts.from as string, ctx.fs);
     const manifest = validateManifest(files, {
       expectedId: opts.bundle ?? '',
@@ -883,12 +1369,13 @@ async function performLocalInstall(
     const writerFactory = createWriterFactory(ctx, opts);
     const writer = writerFactory(effectiveTarget);
     const targetFiles = getInstallableBundleFiles(files, manifest);
+    const lockPath = lockfilePathForTarget(ctx, effectiveTarget);
+    // Read before the first write: a 3.0.0 lockfile must refuse here, not after the files are placed.
+    const existing = await readLockfile(lockPath, ctx.fs) ?? emptyLockfile('ai-primitives-hub-cli');
     const result = await writeTargetSafely(writer, effectiveTarget, targetFiles);
 
     const scope = effectiveTarget.scope;
     const commitMode = effectiveTarget.commitMode ?? 'commit';
-    const lockPath = lockfilePathForTarget(ctx, effectiveTarget);
-    const existing = await readLockfile(lockPath, ctx.fs) ?? emptyLockfile('ai-primitives-hub-cli');
     const localSourceId = `local-${path.basename(opts.from as string)}`;
     const entry: LockfileBundleEntry = {
       version: manifest.version,
@@ -927,6 +1414,9 @@ async function performLocalInstall(
     });
     return 0;
   } catch (cause) {
+    if (unified && cause instanceof RegistryError) {
+      throw cause;
+    }
     const raw = (cause as { code?: string }).code;
     const code = raw !== undefined && /^(BUNDLE|FS|NETWORK|USAGE|CONFIG)\.[A-Z0-9_]+$/.test(raw)
       ? raw
@@ -939,6 +1429,423 @@ async function performLocalInstall(
       cause: cause instanceof Error ? cause : undefined
     });
   }
+}
+
+const failureReason = (cause: unknown): string => cause instanceof Error ? cause.message : String(cause);
+
+/**
+ * Refuse any lockfile other than the user desired file. Replayed entries are recorded in the
+ * user pair, so replaying a repository-scoped or otherwise foreign file would write its bundles
+ * and source descriptors over unrelated user state. Paths are compared `path.resolve`d, so a
+ * `/./` or relative spelling of the user file is accepted; a symlink alias is not followed and is
+ * refused (conservative). Called before the file is read.
+ * @param ports Deploy ports; their lockfile store is the pair replayed entries are recorded in.
+ * @param lockPath Lockfile requested for replay.
+ * @param cwd Directory relative paths are resolved against.
+ * @throws {RegistryError} BUNDLE.UNSUPPORTED_SCOPE (Task 12's code: same cause, same remedy) for any other file.
+ */
+function assertReplayLockfileIsUserFile(ports: DeployPorts, lockPath: string, cwd: string): void {
+  const userFile = ports.lockfileStore.desiredFile;
+  if (path.resolve(cwd, lockPath) !== path.resolve(cwd, userFile)) {
+    throw new RegistryError({
+      code: 'BUNDLE.UNSUPPORTED_SCOPE',
+      message: `install: the lockfile ${lockPath} is not the user lockfile (${userFile}); repository-scoped and other lockfiles are not yet supported with unifiedDeploy enabled (slice 3).`,
+      hint: 'Unset AI_PRIMITIVES_HUB_UNIFIED_DEPLOY to use the current repository-scope path.',
+      context: { file: lockPath, userLockfile: userFile }
+    });
+  }
+}
+
+/**
+ * Read the user desired state to replay. A v2 user lockfile is migrated unless this is a
+ * dry run (migration runs on install, never on a dry run).
+ * @param ports Deploy ports (their lockfile store is the pair replayed entries are recorded in).
+ * @param dryRun Whether this is a dry run.
+ * @returns The desired state and the migration report, when one ran.
+ * @throws {RegistryError} CONFIG.LOCKFILE_NOT_MIGRATED for a v2 lockfile on a dry run.
+ */
+async function readReplayDesired(
+  ports: DeployPorts,
+  dryRun: boolean
+): Promise<{
+  pair: LockfileV3Pair;
+  desired: LockfileV3Pair['desired'];
+  migration: UnifiedMigration;
+  pendingMigration: boolean;
+}> {
+  const defaults = { generatedBy: ports.generatedBy ?? 'ai-primitives-hub', now: new Date().toISOString() };
+  try {
+    const { pair } = await readLockfileV3Pair(ports.lockfileStore, ports.fs, defaults);
+    return { pair, desired: pair.desired, migration: null, pendingMigration: false };
+  } catch (cause) {
+    if (cause instanceof LockfileGenerationMismatchError) {
+      if (dryRun) {
+        throw dryRunNotMigrated(cause);
+      }
+      const generationPreview = await planLockfileMigration(ports.lockfileStore, ports.fs, defaults);
+      return {
+        pair: generationPreview.pair,
+        desired: generationPreview.pair.desired,
+        migration: generationPreview.report,
+        pendingMigration: generationPreview.pendingWrite
+      };
+    }
+    if (!(cause instanceof RegistryError) || cause.code !== 'CONFIG.INVALID_LOCKFILE_V3') {
+      throw cause;
+    }
+    let shapePreview: Awaited<ReturnType<typeof planLockfileMigration>>;
+    try {
+      shapePreview = await planLockfileMigration(ports.lockfileStore, ports.fs, defaults);
+    } catch {
+      throw cause;
+    }
+    if (!shapePreview.pendingWrite) {
+      throw cause;
+    }
+    return {
+      pair: shapePreview.pair,
+      desired: shapePreview.pair.desired,
+      migration: shapePreview.report,
+      pendingMigration: true
+    };
+  }
+}
+
+interface ReplayRequestArgs {
+  key: string;
+  desired: LockfileV3Pair['desired'];
+  target: Target;
+  placement: PlacementContext;
+  ctx: Context;
+  http: HttpClient;
+  tokens: TokenProvider;
+  verbose: boolean;
+  sourceAwareDependencyCache?: SourceAwareInstallDependencyCache;
+}
+
+/**
+ * Build the deploy request from the recorded portable source and artifact pin. The key and
+ * source descriptor are validated before provider access; pinned replay supplies the recorded
+ * coordinates to the adapter and never chooses a version from a catalog.
+ * @param args Entry and fetch dependencies.
+ * @returns The deploy request.
+ * @throws {Error} With an actionable reason when the entry cannot be replayed.
+ */
+async function buildReplayRequest(args: ReplayRequestArgs): Promise<Omit<DeployRequest, 'force'>> {
+  const { key, desired, target, placement, ctx } = args;
+  const entry = desired.bundles[key];
+  const parsed = parseLogicalBundleKey(key);
+  if (parsed === null) {
+    throw new Error(`"${key}" is not a {sourceKey}/{logicalBundleId} bundle key, so it cannot be replayed`);
+  }
+  if (parsed.sourceKey !== entry.sourceKey) {
+    throw new Error(`the key names source "${parsed.sourceKey}" but the entry records sourceKey "${entry.sourceKey}"; fix the lockfile before replaying it`);
+  }
+  const descriptor = desired.sources[entry.sourceKey];
+  if (descriptor === undefined) {
+    throw new Error(`source "${entry.sourceKey}" has no descriptor in the lockfile's sources, so it cannot be replayed`);
+  }
+  assertSourceKey(entry.sourceKey, descriptor);
+  assertResolutionSourceCompatibility(descriptor, entry.resolution);
+  assertResolutionVersion(entry.resolution, entry.version);
+  const runtime = await runtimeSourceForReplay(entry.sourceKey, descriptor, ctx);
+  let sourceAuthentication: ReadonlyMap<string, SourceAuthenticationContext> | undefined;
+  if (args.sourceAwareDependencyCache !== undefined && !LOCAL_PORTABLE_TYPES.has(runtime.source.type)) {
+    const repoSlug = extractRepoSlug(descriptor.locator);
+    const dependencies = await args.sourceAwareDependencyCache.get(repoSlug, runtime.source);
+    sourceAuthentication = new Map([[runtime.source.id, {
+      category: dependencies.authenticationCategory,
+      target: dependencies.repositoryTarget,
+      tokenProvider: dependencies.downloadTokens
+    }]]);
+  }
+  const payload = await resolvePortableBundle(runtime.source, {
+    bundleId: parsed.logicalBundleId,
+    version: entry.version,
+    expectedSource: descriptor,
+    resolution: entry.resolution,
+    ...(runtime.localLocation === undefined ? {} : { localLocation: runtime.localLocation })
+  }, sourceAdapterDepsFor(
+    ctx,
+    args.http,
+    [args.tokens],
+    sourceAuthentication
+  ));
+  if (payload.logicalBundleId !== parsed.logicalBundleId) {
+    throw new RegistryError({
+      code: 'BUNDLE.LOGICAL_BUNDLE_MISMATCH',
+      message: `Source resolution returned logical bundle "${payload.logicalBundleId}" for recorded key "${key}".`
+    });
+  }
+  return createDeployRequest({
+    payload,
+    targetName: target.name,
+    runtimeAssetRoot: runtimeAssetRootFor(ctx),
+    placement
+  });
+}
+
+/**
+ * Flag-on `install --lockfile`: replay each desired entry of a v3 lockfile through
+ * `app/deploy`, or plan it (read-only) on a dry run. One entry failing does not stop the
+ * others: each `deployBundle` is an independent, non-transactional operation (the pair is
+ * written local-first, then desired) that removes only the files it created on failure and does
+ * not restore bytes it overwrote (design §9.2), so a failed entry can leave partial state
+ * that the next replay converges.
+ * @param opts Install options.
+ * @param target Effective target (user scope, already checked).
+ * @param ctx CLI context.
+ * @param fmt Output format.
+ * @param lockPath Absolute path of the lockfile to replay.
+ * @returns Exit code: 1 when any entry failed.
+ */
+async function performUnifiedLockfileInstall(
+  opts: InstallOptions,
+  target: Target,
+  ctx: Context,
+  fmt: OutputFormat,
+  lockPath: string
+): Promise<number> {
+  const dryRun = opts.dryRun === true;
+  const force = opts.force === true;
+  const ports = unifiedPortsFor(ctx, target);
+  assertReplayLockfileIsUserFile(ports, lockPath, ctx.cwd());
+  const {
+    pair: replayPair,
+    desired,
+    migration: migrationPreview,
+    pendingMigration
+  } = await readReplayDesired(ports, dryRun);
+  const placement = await buildPlacementContext(ctx, target);
+  const http = opts.http ?? new NodeHttpClient();
+  const tokens = opts.tokens ?? defaultTokenProvider(ctx.env);
+  const sourceAwareDependencyCache = isGitHubAppAuthEnabled(ctx.env)
+    ? createSourceAwareInstallDependencyCache(http, ctx)
+    : undefined;
+  const keys = Object.keys(desired.bundles);
+
+  const replayed: string[] = [];
+  const failures: { key: string; reason: string; error?: ReturnType<RegistryError['toJSON']> }[] =
+    (desired.unresolved ?? []).map((intent) => ({
+      key: intent.originalKey,
+      reason: `Unresolved legacy intent at version ${intent.version} cannot be replayed: ${intent.reason}`
+    }));
+  const written: string[] = [];
+  const destinations: string[] = [];
+  const drifted: string[] = [];
+  const satisfied: string[] = [];
+  const skipped: { key: string; from: string; reason: string }[] = [];
+  const collisions: { to: string; reason: string }[] = [];
+  const duplicates: { to: string; ids: string[] }[] = [];
+  const resolutionTransitions: {
+    key: string;
+    previous: BundleResolution;
+    acquired: BundleResolution;
+    historicalReproducibility: 'not-established';
+  }[] = [];
+  const prepared: {
+    key: string;
+    request: Omit<DeployRequest, 'force'>;
+    plan: Awaited<ReturnType<typeof planDeploy>>;
+  }[] = [];
+  let replayValidationFailed = false;
+  let migration: UnifiedMigration = null;
+
+  if (opts.verbose === true) {
+    ctx.stdout.write(`[verbose] Planning to replay ${keys.length} bundles\n`);
+  }
+
+  for (const key of keys) {
+    try {
+      const request = await buildReplayRequest({
+        key,
+        desired,
+        target,
+        placement,
+        ctx,
+        http,
+        tokens,
+        verbose: opts.verbose ?? false,
+        sourceAwareDependencyCache
+      });
+      const plan = await planDeploy({ ...request, force }, ports, { pair: replayPair });
+      prepared.push({ key, request, plan });
+    } catch (cause) {
+      if (dryRun && cause instanceof LockfileGenerationMismatchError) {
+        throw dryRunNotMigrated(cause);
+      }
+      failures.push({ key, reason: failureReason(cause), ...(cause instanceof RegistryError ? { error: cause.toJSON() } : {}) });
+      replayValidationFailed = true;
+    }
+  }
+
+  if (pendingMigration && replayValidationFailed) {
+    for (const item of prepared) {
+      failures.push({
+        key: item.key,
+        reason: 'Replay was not applied because another entry failed source and pin preflight; no migration or deployment writes were made.'
+      });
+    }
+    prepared.length = 0;
+  } else {
+    if (!dryRun) {
+      for (const { key, request } of prepared) {
+        const previous = desired.bundles[key]?.resolution;
+        if (previous === undefined || sameArtifactResolution(previous, request.resolution)) {
+          continue;
+        }
+        resolutionTransitions.push({
+          key,
+          previous,
+          acquired: request.resolution,
+          historicalReproducibility: 'not-established'
+        });
+        ctx.stderr.write(
+          portableResolutionReport(previous, request.bundle.version, `Replay resolution for ${key} previously recorded`).trimEnd()
+          + '\n'
+          + portableResolutionReport(request.resolution, request.bundle.version, `Replay resolution for ${key} newly acquired`).trimEnd()
+          + '; this is a new resolution, not proof of historical reproducibility.\n'
+        );
+      }
+    }
+    if (!dryRun && pendingMigration) {
+      const migrated = await migrateLockfileIfNeeded(ports.lockfileStore, ports.fs, {
+        generatedBy: ports.generatedBy ?? 'ai-primitives-hub',
+        now: ports.now ?? new Date().toISOString()
+      });
+      migration = migrated.report;
+    }
+  }
+
+  for (const item of prepared) {
+    const { key, request, plan } = item;
+    if (dryRun) {
+      destinations.push(...plan.destinations.map((d) => d.to));
+      drifted.push(...plan.drifted);
+      satisfied.push(...plan.satisfied);
+      skipped.push(...plan.skipped.map((s) => ({ key, ...s })));
+      collisions.push(...plan.collisions);
+      duplicates.push(...plan.duplicates);
+      replayed.push(key);
+      continue;
+    }
+    try {
+      const result = await deployBundle({ ...request, force }, ports);
+      migration ??= result.migration;
+      written.push(...result.written);
+      satisfied.push(...result.satisfied);
+      skipped.push(...result.skipped.map((s) => ({ key, ...s })));
+      collisions.push(...result.collisions);
+      duplicates.push(...result.duplicates);
+      replayed.push(key);
+    } catch (cause) {
+      failures.push({ key, reason: failureReason(cause), ...(cause instanceof RegistryError ? { error: cause.toJSON() } : {}) });
+    }
+  }
+
+  const warnings = [
+    ...failures.map((f) => `${f.key}: ${f.reason}`),
+    ...collisions.map((c) => `${c.to}: existing untracked file left in place (use --force to overwrite)`)
+  ];
+  const failureText = (list: typeof failures): string => list.length === 0
+    ? '.\n'
+    : `; ${list.length} failure${list.length === 1 ? '' : 's'}:\n`
+      + list.map((f) => `  - ${f.key}: ${f.reason}\n${renderAppliedEffects(f.error?.context?.appliedEffects)}`).join('');
+  const status = warnings.length > 0 ? 'warning' : 'ok';
+
+  if (dryRun) {
+    formatOutput({
+      ctx,
+      command: 'install',
+      output: fmt,
+      status,
+      data: {
+        dryRun: true,
+        lockfile: lockPath,
+        target: target.name,
+        replayPlanned: keys.length,
+        wouldReplay: replayed,
+        destinations,
+        skipped,
+        collisions,
+        satisfied,
+        drifted,
+        failures,
+        ...(pendingMigration ? { migrationPreview } : {}),
+        ...(duplicates.length === 0 ? {} : { duplicates })
+      },
+      warnings: warnings.length > 0 ? warnings : undefined,
+      textRenderer: (d) => `Dry run: would replay ${d.wouldReplay.length}/${d.replayPlanned} bundles `
+        + `(${d.destinations.length} destination${d.destinations.length === 1 ? '' : 's'}, `
+        + `${d.collisions.length} collision${d.collisions.length === 1 ? '' : 's'}, `
+        + `${d.satisfied.length} already satisfied) into target "${d.target}"${failureText(d.failures)}`
+    });
+    return failures.length === 0 ? 0 : 1;
+  }
+
+  formatOutput({
+    ctx,
+    command: 'install',
+    output: fmt,
+    status,
+    data: {
+      lockfile: lockPath,
+      target: target.name,
+      replayPlanned: keys.length,
+      replayed,
+      failures,
+      written,
+      skipped,
+      collisions,
+      satisfied,
+      migration,
+      ...(resolutionTransitions.length === 0 ? {} : { resolutionTransitions }),
+      ...(duplicates.length === 0 ? {} : { duplicates })
+    },
+    warnings: warnings.length > 0 ? warnings : undefined,
+    textRenderer: (d) => `Replay: ${d.replayed.length}/${d.replayPlanned} bundles installed into target "${d.target}" `
+      + `(${d.written.length} written, ${d.satisfied.length} already satisfied, `
+      + `${d.collisions.length} collision${d.collisions.length === 1 ? '' : 's'})${failureText(d.failures)}`
+      + duplicates.map((entry) => `Duplicate destination ${entry.to}: first item wins, later items skipped.\n`).join('')
+      + renderMigration(d.migration)
+  });
+  return failures.length === 0 ? 0 : 1;
+}
+
+/**
+ * Flag-off `install --lockfile --dry-run`: say which entries a replay would install,
+ * without fetching or writing anything (not the writer, not the target state).
+ * @param lock Lockfile that would be replayed.
+ * @param lockPath Path of that lockfile.
+ * @param target Effective target.
+ * @param ctx CLI context.
+ * @param fmt Output format.
+ * @returns Exit code 0.
+ */
+function reportLockfileReplayPlan(
+  lock: Lockfile,
+  lockPath: string,
+  target: Target,
+  ctx: Context,
+  fmt: OutputFormat
+): number {
+  const wouldReplay = Object.keys(lock.bundles);
+  formatOutput({
+    ctx,
+    command: 'install',
+    output: fmt,
+    status: 'ok',
+    data: {
+      dryRun: true,
+      lockfile: lockPath,
+      target: target.name,
+      replayPlanned: wouldReplay.length,
+      wouldReplay
+    },
+    textRenderer: (d) => `Dry run: would replay ${d.replayPlanned} bundle${d.replayPlanned === 1 ? '' : 's'} `
+      + `from ${d.lockfile} into target "${d.target}".\n`
+  });
+  return 0;
 }
 
 /**
@@ -956,11 +1863,33 @@ async function performLockfileInstall(
   fmt: OutputFormat
 ): Promise<number> {
   const effectiveTarget = resolveEffectiveTarget(ctx, target, opts);
+  let unified: boolean;
+  try {
+    unified = unifiedDeployRequested(ctx);
+  } catch (cause) {
+    throw new RegistryError({
+      code: 'USAGE.INVALID_FLAG',
+      message: `install: ${failureReason(cause)}`,
+      hint: 'Set AI_PRIMITIVES_HUB_UNIFIED_DEPLOY to 1, true, yes, 0, false or no, or unset it.',
+      cause
+    });
+  }
+  // Refuse before reading any lockfile: an unsupported scope must not touch the user pair.
+  if (unified) {
+    assertUnifiedDeploySupported(effectiveTarget);
+  }
   const lockfile = opts.lockfile as string;
   const lockPath = path.isAbsolute(lockfile)
     ? lockfile
     : path.join(ctx.cwd(), lockfile);
+  if (unified) {
+    return await performUnifiedLockfileInstall(opts, effectiveTarget, ctx, fmt, lockPath);
+  }
   const lock = await readLockfile(lockPath, ctx.fs) ?? emptyLockfile('ai-primitives-hub-cli');
+  if (opts.dryRun === true) {
+    // Parity with the local and remote branches, which have always checked this (design §10).
+    return reportLockfileReplayPlan(lock, lockPath, effectiveTarget, ctx, fmt);
+  }
   const bundleIds = Object.keys(lock.bundles);
   const http = opts.http ?? new NodeHttpClient();
   const tokens = opts.tokens ?? defaultTokenProvider(ctx.env);
@@ -1034,9 +1963,16 @@ async function performRemoteInstall(
 ): Promise<number> {
   try {
     const effectiveTarget = resolveEffectiveTarget(ctx, target, opts);
+    // Refuse before any network, auth or lockfile effect.
+    const unified = unifiedDeployRequested(ctx);
+    if (unified) {
+      assertUnifiedDeploySupported(effectiveTarget);
+    }
     const spec = parseBundleSpec(opts.bundle as string);
+    const configuredSource = opts.sourceConfig;
+    const sourceIsLocal = configuredSource !== undefined && LOCAL_PORTABLE_TYPES.has(configuredSource.type);
     const repoSlug = opts.source ?? spec.sourceId;
-    if (repoSlug === undefined || repoSlug.length === 0) {
+    if (!sourceIsLocal && (repoSlug === undefined || repoSlug.length === 0)) {
       throw new RegistryError({
         code: 'USAGE.MISSING_FLAG',
         message: 'install: a remote install needs --source <owner/repo> (or `install owner/repo:<bundleId>`).',
@@ -1048,14 +1984,70 @@ async function performRemoteInstall(
     }
     const http = opts.http ?? new NodeHttpClient();
     const tokens = opts.tokens ?? defaultTokenProvider(ctx.env);
+    if (unified && sourceIsLocal) {
+      const source = configuredSource;
+      const payload = await resolveExplicitPortableBundle(source, {
+        bundleId: spec.bundleId,
+        ...(spec.bundleVersion === 'latest' ? {} : { version: spec.bundleVersion }),
+        localLocation: localLocationForConfiguredSource(source, ctx)
+      }, sourceAdapterDepsFor(ctx, http, [tokens]), unifiedPortsFor(ctx, effectiveTarget));
+      if (payload.resolution.kind === 'live') {
+        throw new RegistryError({
+          code: 'BUNDLE.UNSUPPORTED_LIVE_DEPLOYMENT',
+          message: 'Live local-skills deployment is not supported by copy-only targets; no files or lockfile state were changed.',
+          hint: 'Use a snapshot-capable local source or disable unifiedDeploy until live-link placement is available.'
+        });
+      }
+      return await runUnifiedInstall({
+        ctx,
+        fmt,
+        target: effectiveTarget,
+        dryRun: opts.dryRun === true,
+        force: opts.force === true,
+        request: createDeployRequest({
+          payload,
+          targetName: effectiveTarget.name,
+          runtimeAssetRoot: runtimeAssetRootFor(ctx),
+          placement: await buildPlacementContext(ctx, effectiveTarget)
+        })
+      });
+    }
+    if (unified && configuredSource !== undefined
+      && !['github', 'skills', 'awesome-copilot'].includes(configuredSource.type)) {
+      const payload = await resolveExplicitPortableBundle(configuredSource, {
+        bundleId: spec.bundleId,
+        ...(spec.bundleVersion === 'latest' ? {} : { version: spec.bundleVersion })
+      }, sourceAdapterDepsFor(ctx, http, [tokens]), unifiedPortsFor(ctx, effectiveTarget));
+      if (payload.resolution.kind === 'live') {
+        throw new RegistryError({
+          code: 'BUNDLE.UNSUPPORTED_LIVE_DEPLOYMENT',
+          message: 'Live source deployment is not supported by copy-only targets; no files or lockfile state were changed.',
+          hint: 'Use a snapshot-capable source or disable unifiedDeploy until live-link placement is available.'
+        });
+      }
+      return await runUnifiedInstall({
+        ctx,
+        fmt,
+        target: effectiveTarget,
+        dryRun: opts.dryRun === true,
+        force: opts.force === true,
+        request: createDeployRequest({
+          payload,
+          targetName: effectiveTarget.name,
+          runtimeAssetRoot: runtimeAssetRootFor(ctx),
+          placement: await buildPlacementContext(ctx, effectiveTarget)
+        })
+      });
+    }
+    const remoteSlug = repoSlug as string;
     let githubApi: GitHubApi;
     let downloadTokens: TokenProvider;
     let repositoryTarget: GitHubRepositoryTarget | undefined;
     let authenticationCategory: Exclude<GitHubSourceAuthCategory, 'unresolved'> | undefined;
     if (isGitHubAppAuthEnabled(ctx.env)) {
       const dependencies = opts.sourceAwareDependencyCache === undefined
-        ? await sourceAwareInstallDependencies(repoSlug, opts.sourceConfig, http, ctx)
-        : await opts.sourceAwareDependencyCache.get(repoSlug, opts.sourceConfig);
+        ? await sourceAwareInstallDependencies(remoteSlug, configuredSource, http, ctx)
+        : await opts.sourceAwareDependencyCache.get(remoteSlug, configuredSource);
       githubApi = dependencies.githubApi;
       downloadTokens = dependencies.downloadTokens;
       repositoryTarget = dependencies.repositoryTarget;
@@ -1065,15 +2057,66 @@ async function performRemoteInstall(
       downloadTokens = tokens;
     }
 
+    if (unified) {
+      const fallbackTarget = repositoryTarget
+        ?? parseGitHubRepositoryTarget(configuredSource?.url ?? `https://github.com/${remoteSlug}`);
+      const portableSource: RegistrySource = configuredSource ?? {
+        id: `cli-${remoteSlug}`,
+        name: remoteSlug,
+        type: 'github',
+        url: `https://${fallbackTarget.host}/${fallbackTarget.owner}/${fallbackTarget.repository}`,
+        enabled: true,
+        priority: 0
+      };
+      const sourceAuthentication = repositoryTarget === undefined || authenticationCategory === undefined
+        ? undefined
+        : new Map<string, SourceAuthenticationContext>([[portableSource.id, {
+          category: authenticationCategory,
+          target: repositoryTarget,
+          tokenProvider: downloadTokens
+        }]]);
+      const payload = await resolveExplicitPortableBundle(portableSource, {
+        bundleId: spec.bundleId,
+        ...(spec.bundleVersion === 'latest' ? {} : { version: spec.bundleVersion })
+      }, sourceAdapterDepsFor(ctx, http, [downloadTokens], sourceAuthentication), unifiedPortsFor(ctx, effectiveTarget));
+      const request = createDeployRequest({
+        payload,
+        targetName: effectiveTarget.name,
+        runtimeAssetRoot: runtimeAssetRootFor(ctx),
+        placement: await buildPlacementContext(ctx, effectiveTarget)
+      });
+      const portableCollectionsPath = payload.source.config?.collectionsPath ?? payload.source.config?.skillsPath;
+      return await runUnifiedInstall({
+        ctx,
+        fmt,
+        target: effectiveTarget,
+        dryRun: opts.dryRun === true,
+        force: opts.force === true,
+        request,
+        extra: {
+          source: {
+            type: payload.source.type,
+            repo: remoteSlug,
+            sourceId: portableSource.id,
+            url: payload.source.locator,
+            ...(portableCollectionsPath === undefined ? {} : { collectionsPath: portableCollectionsPath })
+          },
+          ...(request.expectedArchiveSha === undefined
+            ? {}
+            : { sha256: request.expectedArchiveSha.replace(/^sha256:/, '') })
+        }
+      });
+    }
+
     // Use SourceDispatcher to select the appropriate resolver based on source config
     let resolver: BundleResolver;
     if (opts.sourceConfig) {
       const dispatcher = new SourceDispatcher({ githubApi, fs: ctx.fs });
       const selectedResolver = dispatcher.resolverFor(opts.sourceConfig);
-      resolver = selectedResolver ?? new GitHubBundleResolver({ repoSlug, githubApi });
+      resolver = selectedResolver ?? new GitHubBundleResolver({ repoSlug: remoteSlug, githubApi });
     } else {
       // Default to GitHub resolver when no source config is provided
-      resolver = new GitHubBundleResolver({ repoSlug, githubApi });
+      resolver = new GitHubBundleResolver({ repoSlug: remoteSlug, githubApi });
     }
 
     const downloader = new HttpsBundleDownloader(http, downloadTokens, repositoryTarget, authenticationCategory);
@@ -1083,9 +2126,9 @@ async function performRemoteInstall(
     if (installable === null) {
       throw new RegistryError({
         code: 'BUNDLE.NOT_FOUND',
-        message: `install: ${spec.bundleId} not found at ${repoSlug}`,
+        message: `install: ${spec.bundleId} not found at ${remoteSlug}`,
         hint: 'Check the source slug and that a release with the requested version + asset (bundle.zip) exists.',
-        context: { spec, repoSlug }
+        context: { spec, repoSlug: remoteSlug }
       });
     }
     const dl = await downloader.download(installable);
@@ -1104,7 +2147,7 @@ async function performRemoteInstall(
           dryRun: true,
           target: effectiveTarget.name,
           bundle: { id: manifest.id, version: manifest.version },
-          source: { type: 'github', repo: repoSlug, downloadUrl: installable.downloadUrl },
+          source: { type: 'github', repo: remoteSlug, downloadUrl: installable.downloadUrl },
           sha256: dl.sha256,
           files: [...files.keys()]
         },
@@ -1117,11 +2160,12 @@ async function performRemoteInstall(
     const writerFactory = createWriterFactory(ctx, opts);
     const writer = writerFactory(effectiveTarget);
     const targetFiles = getInstallableBundleFiles(files, manifest);
+    const lockPath = lockfilePathForTarget(ctx, effectiveTarget);
+    // Read before the first write: a 3.0.0 lockfile must refuse here, not after the files are placed.
+    const existing = await readLockfile(lockPath, ctx.fs) ?? emptyLockfile('ai-primitives-hub-cli');
     const result = await writeTargetSafely(writer, effectiveTarget, targetFiles);
     const scope = effectiveTarget.scope;
     const commitMode = effectiveTarget.commitMode ?? 'commit';
-    const lockPath = lockfilePathForTarget(ctx, effectiveTarget);
-    const existing = await readLockfile(lockPath, ctx.fs) ?? emptyLockfile('ai-primitives-hub-cli');
     const entry: LockfileBundleEntry = {
       version: manifest.version,
       sourceId: installable.ref.sourceId,
@@ -1137,7 +2181,7 @@ async function performRemoteInstall(
     const collectionsPath = opts.sourceConfig?.config?.collectionsPath;
     nextLock = upsertSource(nextLock, installable.ref.sourceId, {
       type: opts.sourceConfig?.type ?? 'github',
-      url: `https://github.com/${repoSlug}`,
+      url: `https://github.com/${remoteSlug}`,
       ...(collectionsPath ? { collectionsPath } : {})
     });
     await writeLockfile(lockPath, nextLock, ctx.fs);
@@ -1150,7 +2194,7 @@ async function performRemoteInstall(
       data: {
         target: effectiveTarget.name,
         bundle: { id: manifest.id, version: manifest.version },
-        source: { type: 'github', repo: repoSlug, sourceId: installable.ref.sourceId },
+        source: { type: 'github', repo: remoteSlug, sourceId: installable.ref.sourceId },
         sha256: dl.sha256,
         written: result.written,
         skipped: result.skipped,
@@ -1501,7 +2545,7 @@ function handleInstallError(
 /**
  * Fetch a bundle's extracted files from a lockfile source entry —
  * dispatches on `src.type` (`local`, or `github`/AwesomeCopilot via
- * `entry.sourceId`'s prefix) and resolves/downloads/extracts
+ * `entry.sourceId`'s prefix on the legacy flag-off path) and resolves/downloads/extracts
  * accordingly. Shared by lockfile replay (`replaySingleEntry`) and
  * `profile.ts`'s bundle activation loop.
  * @param src Lockfile source entry describing where to fetch from.
@@ -1534,8 +2578,7 @@ export async function fetchFilesForSource(
   if (src.type === 'github' || src.type === 'skills' || src.type === 'awesome-copilot') {
     // Check if this is an awesome-copilot source (detected by sourceId prefix)
     const isAwesomeCopilot = src.type === 'awesome-copilot'
-      || bundleId.startsWith('awesome-copilot-')
-      || entry.sourceId.startsWith('awesome-copilot-');
+      || (!unifiedDeployRequested(ctx) && (bundleId.startsWith('awesome-copilot-') || entry.sourceId.startsWith('awesome-copilot-')));
     const sourceConfig: RegistrySource = {
       id: entry.sourceId,
       name: entry.sourceId,

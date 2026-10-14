@@ -49,6 +49,7 @@ import {
   type RegistrySource,
   type Target,
   type TokenProvider,
+  UnsupportedLockfileVersionError,
   validateManifest,
 } from '@ai-primitives-hub/core';
 import {
@@ -436,6 +437,7 @@ async function activateBundleForTarget(
  * @param targets Targets to remove the profile's bundles from.
  */
 async function deactivateProfileBundles(ctx: Context, state: ProfileActivationState, targets: Target[]): Promise<void> {
+  await preflightProfileLockfiles(ctx, targets);
   for (const configuredTarget of targets) {
     const target = resolveEffectiveTarget(ctx, configuredTarget);
     if (target.scope === 'repository') {
@@ -448,7 +450,10 @@ async function deactivateProfileBundles(ctx: Context, state: ProfileActivationSt
       for (const bundleId of state.syncedBundles) {
         try {
           await pipeline.run(bundleId);
-        } catch {
+        } catch (cause) {
+          if (cause instanceof UnsupportedLockfileVersionError) {
+            throw cause;
+          }
           // Best-effort cleanup.
         }
       }
@@ -458,11 +463,35 @@ async function deactivateProfileBundles(ctx: Context, state: ProfileActivationSt
       for (const bundleId of state.syncedBundles) {
         try {
           await runUserScopeUninstall(bundleId, lockPath, target, ctx, writer);
-        } catch {
+        } catch (cause) {
+          if (cause instanceof UnsupportedLockfileVersionError) {
+            throw cause;
+          }
           // Best-effort cleanup.
         }
       }
     }
+  }
+}
+
+/**
+ * Gate every legacy lockfile a profile operation can touch before mutations.
+ * Repository removal searches both commit modes, while user removal uses XDG.
+ * @param ctx CLI context.
+ * @param targets Previous/new profile targets.
+ */
+export async function preflightProfileLockfiles(ctx: Context, targets: Target[]): Promise<void> {
+  const files = new Set<string>();
+  for (const configured of targets) {
+    const target = resolveEffectiveTarget(ctx, configured);
+    files.add(lockfilePathForTarget(ctx, target));
+    if (target.scope === 'repository') {
+      files.add(lockfilePathForTarget(ctx, target, 'commit'));
+      files.add(lockfilePathForTarget(ctx, target, 'local-only'));
+    }
+  }
+  for (const file of files) {
+    await readLockfile(file, ctx.fs);
   }
 }
 
@@ -499,6 +528,10 @@ export async function runProfileActivation(
   // Enforce a single globally-active profile: deactivate whatever was
   // previously active (if anything) before installing the new one.
   const previouslyActive = await built.activations.listAll();
+  // Activation records predate target tracking. Conservatively gate all configured
+  // targets when a previous profile exists, including targets outside --target.
+  const previousTargets = previouslyActive.length === 0 ? [] : await loadTargets(ctx);
+  await preflightProfileLockfiles(ctx, [...previousTargets, ...effectiveTargets]);
   for (const prev of previouslyActive) {
     await deactivateProfileBundles(ctx, prev, effectiveTargets);
     await built.activations.delete(prev.hubId, prev.profileId);

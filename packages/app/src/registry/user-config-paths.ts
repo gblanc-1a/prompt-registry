@@ -44,6 +44,8 @@ export interface UserConfigPaths {
   tokenCache: string;
   /** {root}/ai-primitives-hub.lock.json (user-scope lockfile) */
   userLockfile: string;
+  /** {root}/ai-primitives-hub.local.lock.json (user-scope materialization) */
+  userLocalLockfile: string;
 }
 
 /**
@@ -60,6 +62,7 @@ export const resolveUserConfigPaths = (env: Record<string, string | undefined>):
     activeHub: path.join(root, 'active-hub.json'),
     userTargets: path.join(root, 'targets.yml'),
     tokenCache: path.join(root, 'token'),
-    userLockfile: path.join(root, 'ai-primitives-hub.lock.json')
+    userLockfile: path.join(root, 'ai-primitives-hub.lock.json'),
+    userLocalLockfile: path.join(root, 'ai-primitives-hub.local.lock.json')
   };
 };

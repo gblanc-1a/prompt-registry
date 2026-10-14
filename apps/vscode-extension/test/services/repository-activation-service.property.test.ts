@@ -618,7 +618,7 @@ suite('RepositoryActivationService - Property Tests (Missing Sources/Hubs)', () 
 
           const lockfile: Lockfile = {
             $schema: LOCKFILE_DEFAULTS.SCHEMA_URL,
-            version: '1.0.0',
+            version: LOCKFILE_DEFAULTS.VERSION,
             generatedAt: new Date().toISOString(),
             generatedBy: LOCKFILE_DEFAULTS.GENERATED_BY,
             bundles: {},

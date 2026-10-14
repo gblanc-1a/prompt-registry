@@ -10,7 +10,7 @@ import {
   assertSourceKey,
   classifyLegacyIdentity,
   classifyLockfileVersion,
-  isCredentialFreeHttpUrl,
+  isSafeDiagnosticValue,
   legacyIdentityRetentionKey,
   parseLogicalBundleKey,
   planIdentityMappings,
@@ -349,10 +349,11 @@ const isSafeHistoricalValue = (value: string): boolean => {
     || value.includes('\\')
     || /^file:/i.test(value)
     || /(token|password|secret|credential|authorization|api[_-]?key)\s*=/i.test(value)
+    || !isSafeDiagnosticValue(value)
   ) {
     return false;
   }
-  return !/^https?:\/\//i.test(value) || isCredentialFreeHttpUrl(value);
+  return true;
 };
 
 const historicalUnpinnedResolution = (
@@ -1477,6 +1478,33 @@ const ensureTarget = (
   return target;
 };
 
+const assertTargetBindingCompatible = (
+  row: IdentityPlanRow,
+  local: LocalLockfileV3
+): void => {
+  for (const localRow of row.localRows) {
+    if (localRow.targetName === UNMANAGED_TARGET_KEY) {
+      continue;
+    }
+    const existing = local.targets[localRow.targetName];
+    if (existing === undefined) {
+      continue;
+    }
+    const incoming = targetFromLegacyRow(localRow);
+    if (
+      existing.baseDir !== incoming.baseDir
+      || existing.scope !== incoming.scope
+      || existing.targetType !== incoming.targetType
+    ) {
+      throw new Error(
+        `Cannot migrate legacy materialization for target "${localRow.targetName}": `
+        + 'its root, scope, or type conflicts with the existing target binding. '
+        + 'Keep the legacy state intact and resolve the target conflict before retrying.'
+      );
+    }
+  }
+};
+
 const mergeMaterialization = (
   target: LockfileV3TargetRecord,
   key: string,
@@ -1513,27 +1541,29 @@ const decisionForInput = (
   input: LegacyIdentityInput,
   decisions: readonly ReturnType<typeof classifyLegacyIdentity>[]
 ): ReturnType<typeof classifyLegacyIdentity> => {
-  if (input.proven !== undefined) {
-    const key = `${portableSourceKey(input.proven.source.identity, input.proven.source.type)}/${input.proven.logicalBundleId}`;
-    const mapped = decisions.find((decision) => decision.kind === 'mapped' && decision.key === key);
-    if (mapped !== undefined) {
-      return mapped;
+  const expected = classifyLegacyIdentity({ ...input, proven: undefined });
+  if (expected.kind === 'unresolved') {
+    const unresolved = decisions.find((decision) =>
+      decision.kind === 'unresolved'
+      && decision.evidence.originalKey === input.legacyKey
+      && decision.evidence.version === input.version
+      && decision.evidence.sourceRef === expected.evidence.sourceRef
+      && stableJson(decision.evidence.descriptor) === stableJson(expected.evidence.descriptor)
+      && stableJson(decision.evidence.knownResolution) === stableJson(input.knownResolution)
+      && decision.evidence.originalLocalRoot === input.originalLocalRoot
+    );
+    if (unresolved !== undefined) {
+      return unresolved;
     }
   }
-  const expected = classifyLegacyIdentity({ ...input, proven: undefined });
-  if (expected.kind !== 'unresolved') {
-    return expected;
+
+  const independentlyClassified = classifyLegacyIdentity(input);
+  if (independentlyClassified.kind !== 'mapped') {
+    return independentlyClassified;
   }
-  const unresolved = decisions.find((decision) =>
-    decision.kind === 'unresolved'
-    && decision.evidence.originalKey === input.legacyKey
-    && decision.evidence.version === input.version
-    && decision.evidence.sourceRef === expected.evidence.sourceRef
-    && stableJson(decision.evidence.descriptor) === stableJson(expected.evidence.descriptor)
-    && stableJson(decision.evidence.knownResolution) === stableJson(input.knownResolution)
-    && decision.evidence.originalLocalRoot === input.originalLocalRoot
-  );
-  return unresolved ?? classifyLegacyIdentity(input);
+  return decisions.find((decision) =>
+    decision.kind === 'mapped' && decision.key === independentlyClassified.key
+  ) ?? independentlyClassified;
 };
 
 const retainDecision = (
@@ -1606,6 +1636,7 @@ const buildPair = (
   const decisions = planIdentityMappings(identityRows.map(({ input }) => input));
 
   for (const row of identityRows) {
+    assertTargetBindingCompatible(row, local);
     let decision = decisionForInput(row.input, decisions);
     if (decision.kind === 'mapped' && conflictsWithExistingMaterialization(row.input, decision, row.localRows, local)) {
       decision = retainDecision(

@@ -194,6 +194,77 @@ describe('classifyLegacyIdentity', () => {
 });
 
 describe('planIdentityMappings', () => {
+  it('maps aliases with canonical identity and artifact matches despite display-only locator and tag changes', () => {
+    const firstResolution = {
+      kind: 'pinned' as const,
+      provider: 'github-release' as const,
+      version: '1.0.0',
+      releaseId: '77',
+      assetId: '88',
+      archiveSha256: 'a'.repeat(64),
+      tag: 'v1.0.0'
+    };
+    const renamedSource: PortableSourceDescriptor = {
+      ...githubSource,
+      locator: 'https://github.com/acme/renamed-agents'
+    };
+    const result = planIdentityMappings([
+      {
+        legacyKey: 'old-a/reviewer',
+        version: '1.0.0',
+        knownResolution: firstResolution,
+        proven: { source: githubSource, logicalBundleId: 'reviewer' }
+      },
+      {
+        legacyKey: 'old-b/reviewer',
+        version: '1.0.0',
+        knownResolution: { ...firstResolution, tag: 'release-1.0.0' },
+        proven: { source: renamedSource, logicalBundleId: 'reviewer' }
+      }
+    ]);
+
+    expect(result.map((decision) => decision.kind)).toEqual(['mapped', 'mapped']);
+    expect(result.map((decision) => decision.kind === 'mapped' && decision.source.locator))
+      .toEqual(['https://github.com/acme/renamed-agents', 'https://github.com/acme/agents']);
+    expect(result.map((decision) => decision.kind === 'mapped' && decision.resolution.kind === 'pinned'
+      ? decision.resolution.tag
+      : undefined))
+      .toEqual(['release-1.0.0', 'v1.0.0']);
+  });
+
+  it('keeps aliases unresolved when release identity or archive digest differs', () => {
+    const firstResolution = {
+      kind: 'pinned' as const,
+      provider: 'github-release' as const,
+      version: '1.0.0',
+      releaseId: '77',
+      assetId: '88',
+      archiveSha256: 'a'.repeat(64),
+      tag: 'v1.0.0'
+    };
+    const result = planIdentityMappings([
+      {
+        legacyKey: 'old-a/reviewer',
+        version: '1.0.0',
+        knownResolution: firstResolution,
+        proven
+      },
+      {
+        legacyKey: 'old-b/reviewer',
+        version: '1.0.0',
+        knownResolution: {
+          ...firstResolution,
+          releaseId: '99',
+          archiveSha256: 'b'.repeat(64),
+          tag: 'v1.0.0'
+        },
+        proven
+      }
+    ]);
+
+    expect(result.map((decision) => decision.kind)).toEqual(['unresolved', 'unresolved']);
+  });
+
   it('retains every alias when different historical versions collapse to one portable key', () => {
     const inputs: LegacyIdentityInput[] = [
       { legacyKey: 'source/agent-v1', version: '1.0.0', proven },

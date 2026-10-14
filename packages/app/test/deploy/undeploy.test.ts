@@ -13,6 +13,9 @@ import {
   undeployBundle,
 } from '../../src/deploy/undeploy';
 import {
+  migrateLockfileIfNeeded,
+} from '../../src/stores/migrate-lockfile-v3';
+import {
   portableKeyFor,
   readPair,
   recordingPorts,
@@ -69,6 +72,235 @@ const unsafeRecordedPaths = [
 ];
 
 describe('undeployBundle', () => {
+  it('keeps an incompatible alias unresolved and unmanaged beside a valid sibling through cleanup', async () => {
+    const ports = recordingPorts();
+    const goodLegacyKey = 'good-source/demo';
+    const badLegacyKey = 'bad-source/demo';
+    const legacyDesiredPath = '/work/legacy-desired.lock.json';
+    const legacyLocalPath = '/work/legacy-local.lock.json';
+    ports.lockfileStore.legacyFiles = [legacyDesiredPath, legacyLocalPath];
+    const goodResolution = {
+      kind: 'pinned',
+      provider: 'github-release',
+      version: '1.0.0',
+      releaseId: '77',
+      assetId: '88',
+      archiveSha256: 'a'.repeat(64)
+    };
+    const badResolution = {
+      kind: 'pinned',
+      provider: 'local-snapshot',
+      version: '1.0.0',
+      bundleSelector: 'demo',
+      sourceContentSha256: 'b'.repeat(64)
+    };
+    ports.files.set(legacyDesiredPath, JSON.stringify({
+      version: '3.0.0',
+      bundles: {
+        [goodLegacyKey]: { version: '1.0.0', sourceId: 'good-source', resolution: goodResolution },
+        [badLegacyKey]: { version: '1.0.0', sourceId: 'bad-source', resolution: badResolution }
+      },
+      sources: {
+        'good-source': { type: 'github', url: TEST_SOURCE.locator, branch: 'main' },
+        'bad-source': { type: 'github', url: TEST_SOURCE.locator, branch: 'main' }
+      }
+    }));
+    ports.files.set(legacyLocalPath, JSON.stringify({
+      version: '3.0.0',
+      generatedAt: '2026-10-08T12:00:00.000Z',
+      generatedBy: 'legacy-cli',
+      targets: {
+        'cursor-user': {
+          targetType: 'cursor',
+          scope: 'user',
+          baseDir: '/home/u/.copilot',
+          bundles: {
+            [goodLegacyKey]: {
+              version: '1.0.0',
+              sourceId: 'good-source',
+              installedAt: '2026-10-08T12:00:00.000Z',
+              files: [{ path: 'prompts/good.md', installedChecksum: 'c'.repeat(64) }]
+            },
+            [badLegacyKey]: {
+              version: '1.0.0',
+              sourceId: 'bad-source',
+              installedAt: '2026-10-08T12:00:00.000Z',
+              files: [{ path: 'prompts/bad.md', installedChecksum: 'd'.repeat(64) }]
+            }
+          }
+        }
+      }
+    }));
+    ports.files.set('/home/u/.copilot/prompts/good.md', '# good bundle\n');
+    ports.files.set('/home/u/.copilot/prompts/bad.md', '# incompatible alias\n');
+
+    const migrated = await migrateLockfileIfNeeded(ports.lockfileStore, ports.fs, {
+      generatedBy: 'test-harness',
+      now: '2026-10-09T12:00:00.000Z',
+      identityEvidence: [
+        {
+          legacyKey: goodLegacyKey,
+          version: '1.0.0',
+          sourceId: 'good-source',
+          proven: { source: TEST_SOURCE, logicalBundleId: 'demo' }
+        },
+        {
+          legacyKey: badLegacyKey,
+          version: '1.0.0',
+          sourceId: 'bad-source',
+          proven: { source: TEST_SOURCE, logicalBundleId: 'demo' }
+        }
+      ]
+    });
+    const key = portableKeyFor('demo');
+    const unresolvedIntent = migrated.pair.desired.unresolved?.find(
+      (intent) => intent.originalKey === badLegacyKey
+    );
+    const unmanaged = Object.entries(migrated.pair.local.targets['cursor-user'].bundles)
+      .find(([recordKey]) => recordKey.startsWith('unresolved/'));
+    let cleanup: Awaited<ReturnType<typeof undeployBundle>> | undefined;
+    if (unresolvedIntent !== undefined && unmanaged !== undefined) {
+      cleanup = await undeployBundle({
+        key: unmanaged[0],
+        bundle: { bundleId: 'demo', version: '1.0.0' },
+        scope: 'user',
+        targetName: 'cursor-user',
+        unresolvedIntent
+      }, ports);
+    }
+
+    expect(migrated.pair.desired.bundles[key].resolution).toEqual(goodResolution);
+    expect(unresolvedIntent).toMatchObject({
+      originalKey: badLegacyKey,
+      knownResolution: badResolution
+    });
+    expect(migrated.pair.local.targets['cursor-user'].bundles[key].files)
+      .toEqual([{ path: 'prompts/good.md', installedChecksum: 'c'.repeat(64) }]);
+    expect(unmanaged?.[1]).toMatchObject({
+      state: 'unmanaged',
+      files: [{ path: 'prompts/bad.md', installedChecksum: 'd'.repeat(64) }],
+      legacy: { originalKey: badLegacyKey, knownResolution: badResolution }
+    });
+    expect(cleanup).toMatchObject({ removed: [], skipped: ['/home/u/.copilot/prompts/bad.md'] });
+    expect(ports.files.get('/home/u/.copilot/prompts/bad.md')).toBe('# incompatible alias\n');
+    expect(ports.files.get('/home/u/.copilot/prompts/good.md')).toBe('# good bundle\n');
+    expect(ports.files.get(ports.lockfileStore.desiredFile)).not.toContain(badLegacyKey);
+    expect(ports.files.get(ports.lockfileStore.localFile)).not.toContain('unresolved/');
+  });
+
+  it('refuses migration before offline cleanup can rebind same-named target ownership to another root', async () => {
+    const ports = recordingPorts();
+    const key = portableKeyFor('reviewer');
+    const legacyKey = 'legacy-source/reviewer@1.0.0';
+    const legacyDesiredPath = '/work/legacy-desired.lock.json';
+    const legacyLocalPath = '/work/legacy-local.lock.json';
+    ports.lockfileStore.legacyFiles = [legacyDesiredPath, legacyLocalPath];
+    const resolution = {
+      kind: 'unpinned',
+      reason: 'Historical artifact pin metadata is incomplete.',
+      evidence: { knownPins: { manifestVersion: '1.0.0' } }
+    };
+    const desiredBefore = JSON.stringify({
+      version: '3.0.0',
+      bundles: { [key]: { version: '1.0.0', sourceKey: TEST_SOURCE_KEY, resolution } },
+      sources: { [TEST_SOURCE_KEY]: TEST_SOURCE }
+    });
+    const localBefore = JSON.stringify({
+      version: '3.0.0',
+      generatedAt: '2026-10-09T12:00:00.000Z',
+      generatedBy: 'test-harness',
+      targets: {
+        'cursor-user': {
+          targetType: 'cursor',
+          scope: 'user',
+          baseDir: '/new/root',
+          bundles: {
+            [key]: {
+              version: '1.0.0',
+              sourceKey: TEST_SOURCE_KEY,
+              resolution,
+              installedAt: '2026-10-09T12:00:00.000Z',
+              files: [{ path: 'prompts/new.md', installedChecksum: 'a'.repeat(64) }]
+            }
+          }
+        }
+      }
+    });
+    const historicalDesired = JSON.stringify({
+      version: '3.0.0',
+      bundles: {
+        [legacyKey]: {
+          version: '1.0.0',
+          sourceId: 'legacy-source',
+          resolution
+        }
+      },
+      sources: {
+        'legacy-source': { type: 'github', url: TEST_SOURCE.locator, branch: 'main' }
+      }
+    });
+    const historicalLocal = JSON.stringify({
+      version: '3.0.0',
+      generatedAt: '2026-10-08T12:00:00.000Z',
+      generatedBy: 'legacy-cli',
+      targets: {
+        'cursor-user': {
+          targetType: 'cursor',
+          scope: 'user',
+          baseDir: '/old/root',
+          bundles: {
+            [legacyKey]: {
+              version: '1.0.0',
+              sourceId: 'legacy-source',
+              installedAt: '2026-10-08T12:00:00.000Z',
+              files: [{ path: 'prompts/old.md', installedChecksum: 'b'.repeat(64) }]
+            }
+          }
+        }
+      }
+    });
+    ports.files.set(ports.lockfileStore.desiredFile, desiredBefore);
+    ports.files.set(ports.lockfileStore.localFile, localBefore);
+    ports.files.set(legacyDesiredPath, historicalDesired);
+    ports.files.set(legacyLocalPath, historicalLocal);
+    ports.files.set('/new/root/prompts/new.md', '# currently managed\n');
+    ports.files.set('/new/root/prompts/old.md', '# unrelated neighbor\n');
+    ports.files.set('/old/root/prompts/old.md', '# original historical file\n');
+    const before = [...ports.files.entries()];
+
+    let refusal: unknown;
+    try {
+      await migrateLockfileIfNeeded(ports.lockfileStore, ports.fs, {
+        generatedBy: 'test-harness',
+        now: '2026-10-09T12:00:00.000Z',
+        identityEvidence: [{
+          legacyKey,
+          version: '1.0.0',
+          sourceId: 'legacy-source',
+          proven: { source: TEST_SOURCE, logicalBundleId: 'reviewer' }
+        }]
+      });
+      await undeployBundle({
+        key,
+        bundle: { bundleId: 'reviewer', version: '1.0.0' },
+        scope: 'user',
+        targetName: 'cursor-user'
+      }, ports);
+    } catch (cause) {
+      refusal = cause;
+    }
+
+    expect([...ports.files.entries()]).toEqual(before);
+    expect(ports.calls.filter((call) => /^(writeFile|writeFileBytes|rename|remove|mkdir):/.test(call)))
+      .toEqual([]);
+    expect(ports.files.get('/new/root/prompts/new.md')).toBe('# currently managed\n');
+    expect(ports.files.get('/new/root/prompts/old.md')).toBe('# unrelated neighbor\n');
+    expect(ports.files.get('/old/root/prompts/old.md')).toBe('# original historical file\n');
+    expect(refusal).toMatchObject({
+      message: expect.stringMatching(/target.*cursor-user.*binding/i)
+    });
+  });
+
   it('does not migrate an empty legacy store when an uninstall lookup has no match', async () => {
     const ports = recordingPorts({ failWriteAt: 2 });
     const legacy = JSON.stringify({

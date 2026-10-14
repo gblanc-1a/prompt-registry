@@ -189,6 +189,36 @@ describe('readLockfileV3Pair', () => {
 });
 
 describe('writeLockfileV3Pair', () => {
+  it.each([
+    'Imported from https://alice:secret@registry.example/input',
+    'Cached via https://registry.example/input?X-Amz-Signature=secret'
+  ])('refuses a labelled credential URL in a known pin without writing either half', async (value) => {
+    const mockFs = fakeFs();
+    const source = {
+      ...emptyDesiredLockfileV3(),
+      sources: { [PORTABLE_SOURCE_KEY]: structuredClone(PORTABLE_SOURCE) }
+    };
+    const desired = upsertDesiredBundle(source, PORTABLE_BUNDLE_KEY, {
+      version: '1.0.0',
+      sourceKey: PORTABLE_SOURCE_KEY,
+      resolution: {
+        kind: 'unpinned',
+        reason: 'Historical resolution is incomplete.',
+        evidence: {
+          knownPins: { location: value },
+          knownDigests: { archiveSha256: 'd'.repeat(64) }
+        }
+      }
+    });
+
+    await expect(writeLockfileV3Pair(userPaths, {
+      desired,
+      local: emptyLocalLockfileV3('cli', NOW)
+    }, mockFs)).rejects.toThrow(/credential|safe diagnostic/i);
+
+    expect(mockFs.files.size).toBe(0);
+  });
+
   it('writes the local file before the desired file (§8.4 ordering)', async () => {
     const mockFs = fakeFs();
 

@@ -14,6 +14,7 @@ import type {
 import {
   assertResolutionSourceCompatibility,
   assertResolutionVersion,
+  sameArtifactResolution,
 } from '../bundle/resolution';
 import type {
   PortableSourceDescriptor,
@@ -22,6 +23,7 @@ import {
   assertSourceKey,
   isCredentialFreeHttpUrl,
   isSafeDiagnosticValue,
+  sameSourceIdentity,
   sourceKey,
 } from '../source/portable-identity';
 import type {
@@ -437,21 +439,28 @@ export const planIdentityMappings = (
     if (group.length < 2 && !materializationsConflict(group.map(({ input }) => input))) {
       continue;
     }
+    const initial = group[0];
+    if (initial === undefined || initial.decision.kind !== 'mapped') {
+      continue;
+    }
+    const initialDecision = initial.decision;
     const versions = new Set(group.map(({ input }) => input.version));
-    const resolutions = new Set(group.map(({ decision }) =>
-      decision.kind === 'mapped' ? stableJson(decision.resolution) : ''
-    ));
-    const sources = new Set(group.map(({ decision }) =>
-      decision.kind === 'mapped' ? stableJson(decision.source) : ''
-    ));
+    const resolutionsConflict = group.some(({ decision }) =>
+      decision.kind !== 'mapped'
+      || (!sameArtifactResolution(initialDecision.resolution, decision.resolution)
+        && stableJson(initialDecision.resolution) !== stableJson(decision.resolution))
+    );
+    const sourcesConflict = group.some(({ decision }) =>
+      decision.kind !== 'mapped' || !sameSourceIdentity(initialDecision.source, decision.source)
+    );
     const localRoots = new Set(group
       .filter(({ decision }) => decision.kind === 'mapped' && LOCAL_TYPES.has(decision.source.type))
       .map(({ input }) => input.originalLocalRoot)
       .filter((root): root is string => root !== undefined));
     if (
       versions.size > 1
-      || resolutions.size > 1
-      || sources.size > 1
+      || resolutionsConflict
+      || sourcesConflict
       || localRoots.size > 1
       || materializationsConflict(group.map(({ input }) => input))
     ) {

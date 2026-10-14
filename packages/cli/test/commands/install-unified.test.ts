@@ -61,6 +61,7 @@ import {
 } from '../../src/commands/uninstall';
 import {
   createTestContext,
+  runCli,
   runCommand,
 } from '../../src/framework';
 import {
@@ -444,7 +445,12 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
       bundles: Record<string, {
         version: string;
         sourceKey: string;
-        resolution: { kind: string; version?: string };
+        resolution: {
+          kind: string;
+          version?: string;
+          sourceContentSha256?: string;
+          evidence?: { knownDigests?: { sourceContentSha256?: string } };
+        };
       }>;
       sources: Record<string, unknown>;
       unresolved?: { originalKey: string; sourceRef?: string; version: string; reason: string }[];
@@ -537,6 +543,107 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
       expect(data.replayed).toEqual([replayKey()]);
       expect(data.written).toEqual([]);
       expect(data.satisfied).toEqual([destination()]);
+    });
+
+    it('reports a newly acquired replay resolution before mutating an already-satisfied install', async () => {
+      await installOnce();
+      const before = await readDesired();
+      const sourceDigest = before.bundles[replayKey()].resolution.sourceContentSha256;
+      if (sourceDigest === undefined) {
+        throw new Error('The installed local snapshot must record its source-content digest.');
+      }
+      await editDesired((desired) => {
+        desired.bundles[replayKey()].resolution = {
+          kind: 'unpinned',
+          reason: 'Historical artifact coordinates were not retained.',
+          evidence: { knownDigests: { sourceContentSha256: sourceDigest } }
+        };
+      });
+
+      const observedFs = new class extends NodeFileSystem {
+        public reportAtFirstMutation: string | undefined;
+
+        private observe(): void {
+          this.reportAtFirstMutation ??= this.getReport();
+        }
+
+        public getReport: () => string = () => '';
+
+        public override async mkdir(dir: string, opts?: { recursive?: boolean }): Promise<void> {
+          this.observe();
+          await super.mkdir(dir, opts);
+        }
+
+        public override async writeFile(file: string, contents: string): Promise<void> {
+          this.observe();
+          await super.writeFile(file, contents);
+        }
+
+        public override async writeFileBytes(file: string, bytes: Uint8Array): Promise<void> {
+          this.observe();
+          await super.writeFileBytes(file, bytes);
+        }
+
+        public override async rename(from: string, to: string): Promise<void> {
+          this.observe();
+          await super.rename(from, to);
+        }
+
+        public override async remove(file: string, opts?: { recursive?: boolean }): Promise<void> {
+          this.observe();
+          await super.remove(file, opts);
+        }
+      }();
+      const ctx = createTestContext({
+        cwd: workspace,
+        fs: observedFs,
+        env: { ...env, ...flagOn }
+      });
+      observedFs.getReport = () => ctx.stderr.captured();
+
+      const exitCode = await runCli([
+        'install',
+        '--lockfile',
+        lockfilePath(),
+        '--target',
+        'my-vscode',
+        '-o',
+        'json'
+      ], {
+        ctx,
+        name: 'ai-primitives-hub',
+        version: '0.0.0-test',
+        commands: [],
+        commandClasses: [InstallCommand]
+      });
+
+      expect(exitCode).toBe(0);
+      const { data } = parse<{
+        replayed: string[];
+        satisfied: string[];
+        resolutionTransitions?: {
+          key: string;
+          previous: { kind: string };
+          acquired: { kind: string; provider?: string };
+          historicalReproducibility: string;
+        }[];
+      }>(ctx.stdout.captured());
+      expect(data.replayed).toEqual([replayKey()]);
+      expect(data.satisfied).toEqual([destination()]);
+      expect(data.resolutionTransitions).toEqual([{
+        key: replayKey(),
+        previous: expect.objectContaining({ kind: 'unpinned' }),
+        acquired: expect.objectContaining({ kind: 'pinned', provider: 'local-snapshot' }),
+        historicalReproducibility: 'not-established'
+      }]);
+      expect(ctx.stderr.captured()).toContain(`Replay resolution for ${replayKey()}`);
+      expect(ctx.stderr.captured()).toContain('not proof of historical reproducibility');
+      expect(observedFs.reportAtFirstMutation).toContain('not proof of historical reproducibility');
+      expect((await readDesired()).bundles[replayKey()].resolution).toMatchObject({
+        kind: 'pinned',
+        provider: 'local-snapshot'
+      });
+      await expect(readFile(destination(), 'utf8')).resolves.toContain('Hello Prompt');
     });
 
     it('--dry-run plans each desired entry and writes nothing', async () => {

@@ -73,6 +73,7 @@ import {
   parseBundleSpec,
   parseLogicalBundleKey,
   sourceKey as portableSourceKey,
+  sameArtifactResolution,
   validateManifest,
 } from '@ai-primitives-hub/core';
 import {
@@ -1100,7 +1101,7 @@ const runtimeSourceForReplay = async (
       hint: 'Configure the exact named local source in the active hub before replaying this lockfile.'
     });
   }
-  const runtimeSource = { ...configured, id: sourceKey, name: configured.name };
+  const runtimeSource = { ...source, url: configured.url };
   const configuredPath = resolveLocalPath(runtimeSource.url);
   if (!path.isAbsolute(configuredPath)) {
     throw new RegistryError({
@@ -1144,14 +1145,18 @@ const portableResolutionDigest = (resolution: BundleResolution): string | undefi
   }
 };
 
-const portableResolutionReport = (resolution: BundleResolution, version: string): string => {
+const portableResolutionReport = (
+  resolution: BundleResolution,
+  version: string,
+  subject = 'Portable resolution before deployment'
+): string => {
   if (resolution.kind === 'pinned') {
     const digest = portableResolutionDigest(resolution);
-    return `Portable resolution before deployment: pinned ${resolution.provider}@${resolution.version}`
+    return `${subject}: pinned ${resolution.provider}@${resolution.version}`
       + `${digest === undefined ? '' : ` sha256:${digest}`}\n`;
   }
   if (resolution.kind === 'live') {
-    return `Portable resolution before deployment: live source selection at version ${version}.\n`;
+    return `${subject}: live source selection at version ${version}.\n`;
   }
   const reason = isSafeDiagnosticValue(resolution.reason) ? resolution.reason : 'the adapter did not provide a safe diagnostic';
   const knownDigests = Object.entries(resolution.evidence?.knownDigests ?? {})
@@ -1160,7 +1165,7 @@ const portableResolutionReport = (resolution: BundleResolution, version: string)
   const limitations = (resolution.evidence?.externalInputLimitations ?? [])
     .filter((limitation) => isSafeDiagnosticValue(limitation))
     .join('; ');
-  return `Portable resolution before deployment: unpinned ${version}; ${reason}`
+  return `${subject}: unpinned ${version}; ${reason}`
     + `${knownDigests === '' ? '; no known digests' : `; retained known digests: ${knownDigests}`}`
     + `${limitations === '' ? '' : `; external-input limitations: ${limitations}`}\n`;
 };
@@ -1632,6 +1637,12 @@ async function performUnifiedLockfileInstall(
   const skipped: { key: string; from: string; reason: string }[] = [];
   const collisions: { to: string; reason: string }[] = [];
   const duplicates: { to: string; ids: string[] }[] = [];
+  const resolutionTransitions: {
+    key: string;
+    previous: BundleResolution;
+    acquired: BundleResolution;
+    historicalReproducibility: 'not-established';
+  }[] = [];
   const prepared: {
     key: string;
     request: Omit<DeployRequest, 'force'>;
@@ -1676,12 +1687,34 @@ async function performUnifiedLockfileInstall(
       });
     }
     prepared.length = 0;
-  } else if (!dryRun && pendingMigration) {
-    const migrated = await migrateLockfileIfNeeded(ports.lockfileStore, ports.fs, {
-      generatedBy: ports.generatedBy ?? 'ai-primitives-hub',
-      now: ports.now ?? new Date().toISOString()
-    });
-    migration = migrated.report;
+  } else {
+    if (!dryRun) {
+      for (const { key, request } of prepared) {
+        const previous = desired.bundles[key]?.resolution;
+        if (previous === undefined || sameArtifactResolution(previous, request.resolution)) {
+          continue;
+        }
+        resolutionTransitions.push({
+          key,
+          previous,
+          acquired: request.resolution,
+          historicalReproducibility: 'not-established'
+        });
+        ctx.stderr.write(
+          portableResolutionReport(previous, request.bundle.version, `Replay resolution for ${key} previously recorded`).trimEnd()
+          + '\n'
+          + portableResolutionReport(request.resolution, request.bundle.version, `Replay resolution for ${key} newly acquired`).trimEnd()
+          + '; this is a new resolution, not proof of historical reproducibility.\n'
+        );
+      }
+    }
+    if (!dryRun && pendingMigration) {
+      const migrated = await migrateLockfileIfNeeded(ports.lockfileStore, ports.fs, {
+        generatedBy: ports.generatedBy ?? 'ai-primitives-hub',
+        now: ports.now ?? new Date().toISOString()
+      });
+      migration = migrated.report;
+    }
   }
 
   for (const item of prepared) {
@@ -1766,6 +1799,7 @@ async function performUnifiedLockfileInstall(
       collisions,
       satisfied,
       migration,
+      ...(resolutionTransitions.length === 0 ? {} : { resolutionTransitions }),
       ...(duplicates.length === 0 ? {} : { duplicates })
     },
     warnings: warnings.length > 0 ? warnings : undefined,

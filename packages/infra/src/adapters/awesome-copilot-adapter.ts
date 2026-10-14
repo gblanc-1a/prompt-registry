@@ -596,11 +596,23 @@ export class AwesomeCopilotAdapter extends BaseSourceAdapter {
 
     const inputFiles = new Map<string, Uint8Array>([[collectionPath, manifestBytes]]);
     const outputFiles = new Map<string, Uint8Array>();
+    const outputSourcePaths = new Map<string, string>();
     const itemOutputPaths = new Map<string, string>();
     const externalPinsByIdentity = new Map<string, ExternalInputPin>();
     const externalLimitations: string[] = [];
     const recordedExternalPins = pinned?.externalInputs ?? [];
     const consumedExternalIdentities = new Set<string>();
+    const addSelectedOutput = (outputPath: string, sourcePath: string, bytes: Uint8Array): void => {
+      const previousSourcePath = outputSourcePaths.get(outputPath);
+      if (previousSourcePath !== undefined && previousSourcePath !== sourcePath) {
+        throw portableCollectionError(
+          'BUNDLE.OUTPUT_PATH_COLLISION',
+          `Selected collection inputs ${JSON.stringify(previousSourcePath)} and ${JSON.stringify(sourcePath)} both map to output path ${JSON.stringify(outputPath)}.`
+        );
+      }
+      outputSourcePaths.set(outputPath, sourcePath);
+      outputFiles.set(outputPath, bytes);
+    };
 
     for (const item of collection.items) {
       if (typeof item.path !== 'string' || item.path.trim() === '') {
@@ -626,7 +638,7 @@ export class AwesomeCopilotAdapter extends BaseSourceAdapter {
         const filename = urlPath.split('/').findLast(Boolean) ?? 'external-input';
         const digestPath = `external/${sha256(Buffer.from(item.path, 'utf8'))}/${filename}`;
         inputFiles.set(digestPath, bytes);
-        outputFiles.set(outputPath, bytes);
+        addSelectedOutput(outputPath, item.path, bytes);
         itemOutputPaths.set(item.path, outputPath);
         continue;
       }
@@ -642,7 +654,7 @@ export class AwesomeCopilotAdapter extends BaseSourceAdapter {
         for (const entry of files) {
           const bytes = await this.githubApi.download(githubRawFileUrl(coordinates, commitSha, entry.path));
           inputFiles.set(entry.path, bytes);
-          outputFiles.set(entry.path, bytes);
+          addSelectedOutput(entry.path, entry.path, bytes);
         }
       } else {
         const entry = tree.find((candidate) => candidate.type === 'blob' && candidate.path === item.path);
@@ -652,7 +664,7 @@ export class AwesomeCopilotAdapter extends BaseSourceAdapter {
         const bytes = await this.githubApi.download(githubRawFileUrl(coordinates, commitSha, item.path));
         inputFiles.set(item.path, bytes);
         const filename = item.path.split('/').at(-1) ?? 'bundle-item';
-        outputFiles.set(`prompts/${filename}`, bytes);
+        addSelectedOutput(`prompts/${filename}`, item.path, bytes);
       }
     }
     if (pinned && consumedExternalIdentities.size !== recordedExternalPins.length) {

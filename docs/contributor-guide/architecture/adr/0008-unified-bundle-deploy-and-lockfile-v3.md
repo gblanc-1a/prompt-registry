@@ -140,17 +140,20 @@ checking its version.
   modified old-only files with their records and reports them. Symbolic links
   below the configured placement root are refused; replacement/adoption remains
   a later slice.
-- **Negative, slice 1 only:** new remote installs do not persist `archiveSha` yet
-  (existing verified pins survive same-key, same-version redeploy);
-  the replay loop of `install --lockfile` and the `--all` loop of `uninstall`
-  live in `packages/cli` and move toward `app` later; flagged
-  `uninstall --lockfile` and bare `uninstall` are refused until repository
-  scope arrives; and `vscode` is the only verified target.
-- **Source-identity amendment, not yet implemented:** the branch-era slice-1
-  `sourceId`/`archiveSha` shape must be replaced before further supported v3 writers
-  ship. V3 has not been released, so its schema can be amended in place; old
-  branch shapes are migration inputs, not valid payloads for the amended writer.
-  Identity contracts/recording can no longer wait until slice 9.
+- **Positive:** portable user-scope installs persist provider resolution pins
+  and known archive/source-content digests when the adapter can establish them.
+- **Negative, slice 1 only:** the replay loop of `install --lockfile` and the
+  `--all` uninstall loop live in `packages/cli` and move toward `app` later;
+  flagged `uninstall --lockfile` and bare `uninstall` remain refused until
+  repository scope arrives; and `vscode` is the only verified target.
+- **Source-identity amendment, delivered for the opt-in CLI user-scope
+  lifecycle:** Tasks 1–7 replace the branch-era `sourceId`/`archiveSha` shape
+  with portable source descriptors and resolution evidence; the VS Code user
+  target is verified at the shared deploy boundary. Azure/Artifactory provider
+  lifecycle integration, repository-scope migration, and the extension cutover
+  remain deferred. V3 has not been released, so its schema can still be amended
+  in place; old branch shapes are migration inputs, not valid payloads for the
+  amended writer.
 - **Positive:** local names and hub membership no longer determine shared identity.
   A GitHub rename with a verified matching repository ID preserves logical keys.
   Artifactory remains an explicit channel compatible with

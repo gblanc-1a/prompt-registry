@@ -38,6 +38,7 @@ import type {
 } from '@ai-primitives-hub/core';
 import {
   sourceKey as portableSourceKey,
+  sourceContentDigest,
 } from '@ai-primitives-hub/core';
 import {
   ActiveHubStore,
@@ -1081,6 +1082,100 @@ describe('unified deploy, CLI user scope, vscode', () => {
     expect(await readFile(desiredLockfile, 'utf8')).toBe(desiredBytes);
     expect((await readDesired()).bundles[key].resolution).toEqual(desired.bundles[key].resolution);
     expect((await readDesired()).sources[sourceId]).toEqual(desired.sources[sourceId]);
+  });
+
+  it('replays recorded local collection selectors from an unchanged external binding', async () => {
+    const sourceRoot = path.join(workspace, 'bound-collection');
+    const collectionSelector = 'recorded/web-dev.collection.yml';
+    const collectionBytes = new TextEncoder().encode([
+      'id: web-dev',
+      'name: Web Dev',
+      'description: Bound local collection',
+      'version: 1.0.0',
+      'items:',
+      '  - path: prompts/hello.prompt.md',
+      '    kind: prompt'
+    ].join('\n'));
+    const promptBytes = new TextEncoder().encode('# Bound collection content\n');
+    const promptPath = 'prompts/hello.prompt.md';
+    await mkdir(path.join(sourceRoot, 'recorded'), { recursive: true });
+    await mkdir(path.join(sourceRoot, 'prompts'), { recursive: true });
+    await writeFile(path.join(sourceRoot, collectionSelector), collectionBytes);
+    await writeFile(path.join(sourceRoot, promptPath), promptBytes);
+
+    const descriptor: PortableSourceDescriptor = {
+      type: 'local-awesome-copilot',
+      identity: { kind: 'external-local', bindingName: 'bound', collectionsPath: 'recorded' },
+      locator: 'bound'
+    };
+    const sourceId = portableSourceKey(descriptor.identity, descriptor.type);
+    const key = `${sourceId}/web-dev`;
+    const resolution = {
+      kind: 'pinned',
+      provider: 'local-snapshot',
+      version: '1.0.0',
+      bundleSelector: collectionSelector,
+      sourceContentSha256: sourceContentDigest(new Map([
+        [collectionSelector, collectionBytes],
+        [promptPath, promptBytes]
+      ]))
+    };
+    await mkdir(path.dirname(desiredLockfile), { recursive: true });
+    await writeFile(desiredLockfile, JSON.stringify({
+      $schema: 'https://github.com/AmadeusITGroup/ai-primitives-hub/schemas/lockfile-v3.schema.json',
+      version: '3.0.0',
+      bundles: {
+        [key]: {
+          version: '1.0.0',
+          sourceKey: sourceId,
+          resolution
+        }
+      },
+      sources: { [sourceId]: descriptor }
+    }, null, 2));
+
+    const userPaths = resolveUserConfigPaths(env);
+    const hubId = 'bound-local-hub';
+    const hubFile = path.join(userPaths.hubs, `${hubId}.yml`);
+    const hub: HubConfig = {
+      version: '1.0.0',
+      metadata: {
+        name: 'Bound local source',
+        description: 'Replay source binding fixture',
+        maintainer: 'test',
+        updatedAt: '2026-10-14T00:00:00.000Z'
+      },
+      sources: [{
+        id: 'bound',
+        name: 'Bound collection',
+        type: 'local-awesome-copilot',
+        url: sourceRoot,
+        enabled: true,
+        priority: 0,
+        config: { collectionsPath: 'changed' }
+      }],
+      profiles: [{
+        id: 'default',
+        name: 'Default',
+        bundles: []
+      }]
+    };
+    const nodeFs = new NodeFileSystem();
+    await new HubStore(userPaths.hubs, nodeFs).save(hubId, hub, { type: 'local', location: hubFile });
+    await new ActiveHubStore(userPaths.activeHub, nodeFs).set(hubId);
+    const recordingFs = new RecordingFs(workspace);
+
+    const result = await runFlagOn([
+      'install', '--lockfile', desiredLockfile, '--target', 'my-vscode', '-o', 'json'
+    ], recordingFs);
+
+    expect(result.exitCode, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`).toBe(0);
+    const { data } = parseJson<{ replayed: string[]; failures: { key: string }[] }>(result.stdout);
+    expect(data.replayed).toEqual([key]);
+    expect(data.failures).toEqual([]);
+    expect(await readFile(path.join(copilotDir, 'prompts', 'hello.prompt.md'), 'utf8'))
+      .toBe('# Bound collection content\n');
+    expect(JSON.parse(await readFile(desiredLockfile, 'utf8')).sources[sourceId]).toEqual(descriptor);
   });
 
   it('keeps a missing external binding as an actionable replay failure without writes', async () => {

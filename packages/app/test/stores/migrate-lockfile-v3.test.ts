@@ -822,6 +822,52 @@ describe('offline portable identity migration', () => {
     });
   });
 
+  it('omits labelled credential URLs from historical pins while retaining safe IDs and digests', async () => {
+    const fs = fakeFs();
+    const legacy = v2WithOneBundle();
+    const entry = legacy.bundles['web-dev'] as Record<string, unknown>;
+    const userinfoUrl = 'Imported from https://alice:secret@registry.example/input';
+    const querySecretUrl = 'Cached via https://registry.example/input?X-Amz-Signature=secret';
+    entry.resolution = {
+      kind: 'unpinned',
+      reason: 'Historical resolution is incomplete.',
+      evidence: {
+        knownPins: {
+          provider: 'github-release',
+          releaseId: '77',
+          assetId: '88',
+          location: userinfoUrl,
+          mirror: querySecretUrl
+        },
+        knownDigests: { archiveSha256: 'a'.repeat(64) }
+      }
+    };
+    fs.files.set(userSources.desiredFile, JSON.stringify(legacy));
+
+    const migrated = await migrateLockfileIfNeeded(userSources, fs, OPTS);
+    const knownResolution = migrated.pair.desired.unresolved?.[0].knownResolution;
+    const persisted = fs.files.get(userSources.desiredFile) as string;
+
+    expect(knownResolution).toMatchObject({
+      kind: 'unpinned',
+      evidence: {
+        knownPins: {
+          provider: 'github-release',
+          releaseId: '77',
+          assetId: '88'
+        },
+        knownDigests: { archiveSha256: 'a'.repeat(64) }
+      }
+    });
+    const knownPins = knownResolution?.kind === 'unpinned'
+      ? knownResolution.evidence?.knownPins
+      : undefined;
+    expect(knownPins).not.toHaveProperty('location');
+    expect(knownPins).not.toHaveProperty('mirror');
+    expect(persisted).not.toContain('location');
+    expect(persisted).not.toContain('mirror');
+  });
+
   it('rekeys branch-era v3 state using supplied proof and preserves ownership and known evidence', async () => {
     const fs = fakeFs();
     const branchPair = branchEraV3Pair();

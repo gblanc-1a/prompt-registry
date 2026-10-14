@@ -14,6 +14,7 @@ import type {
 } from '../source/portable-identity';
 import {
   assertPortableSourceDescriptor,
+  isSafeDiagnosticValue,
 } from '../source/portable-identity';
 
 interface GithubReleasePin {
@@ -229,7 +230,12 @@ export const assertBundleResolution: (value: unknown) => asserts value is Bundle
             throw invalidResolution(`unpinned evidence cannot contain secret field ${JSON.stringify(name)}.`);
           }
           resolutionText(name, 'unpinned known pin name');
-          resolutionText(pin, `unpinned known pin ${name}`);
+          const pinValue = resolutionText(pin, `unpinned known pin ${name}`);
+          if (!isSafeDiagnosticValue(pinValue)) {
+            throw invalidResolution(
+              `unpinned evidence known pin ${JSON.stringify(name)} contains credential material or an unsafe URL.`
+            );
+          }
         }
       }
       if (evidence.knownDigests !== undefined) {

@@ -26,6 +26,18 @@ import {
 import * as os from 'node:os';
 import * as path from 'node:path';
 import {
+  resolveUserConfigPaths,
+} from '@ai-primitives-hub/app';
+import type {
+  HubConfig,
+  PortableSourceDescriptor,
+} from '@ai-primitives-hub/core';
+import {
+  sourceKey as portableSourceKey,
+} from '@ai-primitives-hub/core';
+import {
+  ActiveHubStore,
+  HubStore,
   NodeFileSystem,
 } from '@ai-primitives-hub/infra';
 import {
@@ -34,6 +46,7 @@ import {
   describe,
   expect,
   it,
+  vi,
 } from 'vitest';
 import {
   InstallCommand,
@@ -65,6 +78,17 @@ import {
 import {
   createSlice1Bundle,
 } from '../fixtures/slice1-bundle';
+
+vi.mock('inquirer', () => ({
+  default: {
+    prompt: (questions: unknown) => {
+      const [question] = questions as { name: string }[];
+      return question?.name === 'selectedBundles'
+        ? { selectedBundles: ['web-dev'] }
+        : { proceed: true };
+    }
+  }
+}));
 
 interface JsonEnvelope<T> {
   status: string;
@@ -308,6 +332,196 @@ describe('unified deploy, CLI user scope, vscode', () => {
     });
     const recordedFiles = local.targets['my-vscode'].bundles[key].files;
     expect(recordedFiles.toSorted((a, b) => a.path.localeCompare(b.path))).toEqual(expectedFiles);
+  });
+
+  it('keeps the registered install/replay/uninstall lifecycle on one portable key and pin', async () => {
+    const installed = await runFlagOn(INSTALL_ARGV);
+    expect(installed.exitCode, `stdout:\n${installed.stdout}\nstderr:\n${installed.stderr}`).toBe(0);
+
+    const initialDesired = await readDesired();
+    const [key] = Object.keys(initialDesired.bundles);
+    if (key === undefined) {
+      throw new Error('The registered install did not record desired state.');
+    }
+    const initialRecord = (await readLocal()).targets['my-vscode'].bundles[key];
+    const initialFiles = initialRecord.files;
+    const desiredBytes = await readFile(desiredLockfile, 'utf8');
+    await rm(copilotDir, { recursive: true, force: true });
+
+    const replayed = await runFlagOn([
+      'install', '--lockfile', desiredLockfile, '--target', 'my-vscode', '-o', 'json'
+    ]);
+
+    expect(replayed.exitCode, `stdout:\n${replayed.stdout}\nstderr:\n${replayed.stderr}`).toBe(0);
+    expect(parseJson<{ replayed: string[]; failures: unknown[] }>(replayed.stdout).data).toMatchObject({
+      replayed: [key],
+      failures: []
+    });
+    expect(await listTree(copilotDir)).toEqual(EXPECTED_TREE);
+    expect(await readFile(desiredLockfile, 'utf8')).toBe(desiredBytes);
+    const replayedDesired = await readDesired();
+    const replayedRecord = (await readLocal()).targets['my-vscode'].bundles[key];
+    expect(replayedDesired.bundles[key]).toEqual(initialDesired.bundles[key]);
+    expect(replayedRecord.sourceKey).toBe(initialRecord.sourceKey);
+    expect(replayedRecord.resolution).toEqual(initialRecord.resolution);
+    expect(replayedRecord.files).toEqual(initialFiles);
+
+    const removed = await runFlagOn(['uninstall', '--bundle', key, '--target', 'my-vscode']);
+
+    expect(removed.exitCode, `stdout:\n${removed.stdout}\nstderr:\n${removed.stderr}`).toBe(0);
+    expect(await listTree(copilotDir)).toEqual([]);
+    expect((await readDesired()).bundles).toEqual({});
+    expect((await readLocal()).targets).toEqual({});
+  });
+
+  it('keeps logical keys and exact local pins stable when the registry source alias changes', async () => {
+    const hubId = 'portable-source-aliases';
+    const userPaths = resolveUserConfigPaths(env);
+    const hubFile = path.join(userPaths.hubs, `${hubId}.yml`);
+    const hubStore = new HubStore(userPaths.hubs, new NodeFileSystem());
+    const activeHubStore = new ActiveHubStore(userPaths.activeHub, new NodeFileSystem());
+    const registryBundle = path.join(workspace, 'registry', 'web-dev');
+    await mkdir(registryBundle, { recursive: true });
+    await writeReleaseArchive(registryBundle, createSlice1Bundle());
+    const localHub = (sourceAlias: string): HubConfig => ({
+      version: '1.0.0',
+      metadata: {
+        name: 'Portable source aliases',
+        description: 'Alias-independence fixture',
+        maintainer: 'test',
+        updatedAt: '2026-10-14T00:00:00.000Z'
+      },
+      sources: [{
+        id: sourceAlias,
+        name: `Friendly ${sourceAlias}`,
+        type: 'local',
+        url: './registry',
+        enabled: true,
+        priority: 0
+      }],
+      profiles: [{
+        id: 'default',
+        name: 'Default',
+        bundles: [{ id: 'web-dev', version: '1.0.0', source: sourceAlias, required: true }]
+      }]
+    });
+    const reference = { type: 'local' as const, location: hubFile };
+    await hubStore.save(hubId, localHub('registry-a'), reference);
+    await activeHubStore.set(hubId);
+
+    const first = await runFlagOn([
+      'install', '--source', hubId, '--interactive', '--target', 'my-vscode', '-o', 'json'
+    ]);
+    expect(first.exitCode, `stdout:\n${first.stdout}\nstderr:\n${first.stderr}`).toBe(0);
+    const firstDesiredBytes = await readFile(desiredLockfile, 'utf8');
+    const firstDesired = await readDesired();
+    const [key] = Object.keys(firstDesired.bundles);
+    if (key === undefined) {
+      throw new Error('The first source alias did not record desired state.');
+    }
+    const firstRecord = (await readLocal()).targets['my-vscode'].bundles[key];
+
+    await hubStore.save(hubId, localHub('registry-b'), reference);
+    const second = await runFlagOn([
+      'install', '--source', hubId, '--interactive', '--target', 'my-vscode', '-o', 'json'
+    ]);
+
+    expect(second.exitCode, `stdout:\n${second.stdout}\nstderr:\n${second.stderr}`).toBe(0);
+    const secondDesired = await readDesired();
+    const secondRecord = (await readLocal()).targets['my-vscode'].bundles[key];
+    const sourceId = key.slice(0, key.indexOf('/'));
+    expect(Object.keys(secondDesired.bundles)).toEqual([key]);
+    expect(secondDesired.bundles[key]).toEqual(firstDesired.bundles[key]);
+    expect(secondDesired.sources[sourceId]).toEqual({
+      type: 'local',
+      identity: { kind: 'workspace-local', root: 'registry' },
+      locator: 'registry'
+    });
+    expect(secondRecord.sourceKey).toBe(sourceId);
+    expect(secondRecord.resolution).toEqual(firstRecord.resolution);
+    expect(secondRecord.files).toEqual(firstRecord.files);
+    expect(secondDesired.bundles[key]).not.toHaveProperty('sourceId');
+    expect(secondRecord).not.toHaveProperty('sourceId');
+    expect(JSON.stringify(secondDesired)).not.toContain(workspace);
+    expect(JSON.stringify(secondDesired)).not.toContain('registry-a');
+    expect(JSON.stringify(secondDesired)).not.toContain('registry-b');
+    expect(await readFile(desiredLockfile, 'utf8')).toBe(firstDesiredBytes);
+    expect(portableSourceKey(
+      { kind: 'workspace-local', root: 'registry' },
+      'local'
+    )).toBe(sourceId);
+  });
+
+  it('keeps a missing external binding as an actionable replay failure without writes', async () => {
+    const descriptor: PortableSourceDescriptor = {
+      type: 'local',
+      identity: { kind: 'external-local', bindingName: 'missing-registry' },
+      locator: 'missing-registry'
+    };
+    const sourceId = portableSourceKey(descriptor.identity, descriptor.type);
+    const key = `${sourceId}/web-dev`;
+    const rawDesired = `${JSON.stringify({
+      $schema: 'https://github.com/AmadeusITGroup/ai-primitives-hub/schemas/lockfile-v3.schema.json',
+      version: '3.0.0',
+      bundles: {
+        [key]: {
+          version: '1.0.0',
+          sourceKey: sourceId,
+          resolution: {
+            kind: 'pinned',
+            provider: 'local-snapshot',
+            version: '1.0.0',
+            bundleSelector: 'web-dev',
+            sourceContentSha256: 'a'.repeat(64)
+          }
+        }
+      },
+      sources: { [sourceId]: descriptor }
+    }, null, 2)}\n`;
+    await mkdir(path.dirname(desiredLockfile), { recursive: true });
+    await writeFile(desiredLockfile, rawDesired, 'utf8');
+    const recordingFs = new RecordingFs(workspace);
+
+    const result = await runFlagOn([
+      'install', '--lockfile', desiredLockfile, '--target', 'my-vscode', '-o', 'json'
+    ], recordingFs);
+
+    expect(result.exitCode).toBe(1);
+    const { data } = parseJson<{
+      replayed: string[];
+      failures: { key: string; reason: string; error?: { code: string } }[];
+    }>(result.stdout);
+    expect(data.replayed).toEqual([]);
+    expect(data.failures).toHaveLength(1);
+    expect(data.failures[0].key).toBe(key);
+    expect(data.failures[0].reason).toContain('No active local source configuration provides binding "missing-registry"');
+    expect(data.failures[0].error?.code).toBe('CONFIG.MISSING_LOCAL_BINDING');
+    expect(await readFile(desiredLockfile, 'utf8')).toBe(rawDesired);
+    expect(await exists(localLockfile)).toBe(false);
+    expect(await listTree(copilotDir)).toEqual([]);
+    expect(recordingFs.writes).toEqual([]);
+  });
+
+  it('runs a local dry-run with rejecting mutation ports and leaves both state halves untouched', async () => {
+    const recordingFs = new RecordingFs(workspace);
+    const writeFileSpy = vi.spyOn(recordingFs, 'writeFile').mockRejectedValue(new Error('dry-run mutation forbidden'));
+    const writeFileBytesSpy = vi.spyOn(recordingFs, 'writeFileBytes').mockRejectedValue(new Error('dry-run mutation forbidden'));
+    const mkdirSpy = vi.spyOn(recordingFs, 'mkdir').mockRejectedValue(new Error('dry-run mutation forbidden'));
+    const renameSpy = vi.spyOn(recordingFs, 'rename').mockRejectedValue(new Error('dry-run mutation forbidden'));
+    const removeSpy = vi.spyOn(recordingFs, 'remove').mockRejectedValue(new Error('dry-run mutation forbidden'));
+
+    const result = await runFlagOn([...INSTALL_ARGV, '--dry-run', '-o', 'json'], recordingFs);
+
+    expect(result.exitCode, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`).toBe(0);
+    expect(parseJson<{ dryRun: boolean }>(result.stdout).data.dryRun).toBe(true);
+    expect(writeFileSpy).not.toHaveBeenCalled();
+    expect(writeFileBytesSpy).not.toHaveBeenCalled();
+    expect(mkdirSpy).not.toHaveBeenCalled();
+    expect(renameSpy).not.toHaveBeenCalled();
+    expect(removeSpy).not.toHaveBeenCalled();
+    expect(await listTree(copilotDir)).toEqual([]);
+    expect(await exists(desiredLockfile)).toBe(false);
+    expect(await exists(localLockfile)).toBe(false);
   });
 
   it('uninstall removes exactly those paths and nothing else', async () => {
@@ -583,5 +797,59 @@ describe('unified deploy, CLI user scope, vscode', () => {
     expect((await readDesired()).version).toBe('2.0.0');
     // The legacy path writes one file and never creates the local half.
     expect(await exists(localLockfile)).toBe(false);
+  });
+
+  it('fails a live local-skills install before placement or lockfile writes', async () => {
+    const skillsRoot = path.join(workspace, 'local-skills');
+    const skillFile = path.join(skillsRoot, 'skills', 'web-dev', 'SKILL.md');
+    await mkdir(path.dirname(skillFile), { recursive: true });
+    await writeFile(skillFile, '---\nname: Web Dev\n---\n# Instructions\n', 'utf8');
+
+    const userPaths = resolveUserConfigPaths(env);
+    const hubId = 'live-local-skills';
+    const hubFile = path.join(userPaths.hubs, `${hubId}.yml`);
+    const hub: HubConfig = {
+      version: '1.0.0',
+      metadata: {
+        name: 'Live local skills',
+        description: 'Local live-install refusal fixture',
+        maintainer: 'test',
+        updatedAt: '2026-10-14T00:00:00.000Z'
+      },
+      sources: [{
+        id: 'skills-alias',
+        name: 'Skills alias',
+        type: 'local-skills',
+        url: './local-skills',
+        enabled: true,
+        priority: 0
+      }],
+      profiles: [{
+        id: 'default',
+        name: 'Default',
+        bundles: [{ id: 'web-dev', version: '1.0.0', source: 'skills-alias', required: true }]
+      }]
+    };
+    const nodeFs = new NodeFileSystem();
+    await new HubStore(userPaths.hubs, nodeFs).save(hubId, hub, { type: 'local', location: hubFile });
+    await new ActiveHubStore(userPaths.activeHub, nodeFs).set(hubId);
+    const recordingFs = new RecordingFs(workspace);
+
+    const result = await runFlagOn(
+      ['install', '--source', hubId, '--interactive', '--target', 'my-vscode', '-o', 'json'],
+      recordingFs
+    );
+
+    expect(result.exitCode, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`).toBe(1);
+    expect(result.stdout + result.stderr).toContain('Live local-skills deployment is not supported by copy-only targets');
+    expect(await listTree(copilotDir)).toEqual([]);
+    expect(await readFile(skillFile, 'utf8')).toBe('---\nname: Web Dev\n---\n# Instructions\n');
+    expect(await exists(desiredLockfile)).toBe(false);
+    expect(await exists(localLockfile)).toBe(false);
+    expect(recordingFs.writes.some((file) => file.startsWith(copilotDir))).toBe(false);
+    const nonHubWrites = recordingFs.writes.filter((file) =>
+      file !== userPaths.hubs && !file.startsWith(`${userPaths.hubs}${path.sep}`)
+    );
+    expect(nonHubWrites).toEqual([]);
   });
 });

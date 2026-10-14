@@ -983,6 +983,46 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
       await expect(readFile(destination(), 'utf8')).resolves.toContain('Hello Prompt');
     });
 
+    it('refuses malformed empty local targets before replay can convert retained ownership', async () => {
+      await installOnce();
+      await editDesired((desired) => {
+        desired.unresolved = [{
+          originalKey: 'legacy/reviewer',
+          version: '1.0.0',
+          reason: 'Portable identity could not be proven.'
+        }];
+      });
+      const userPaths = resolveUserConfigPaths(env);
+      const local = JSON.parse(await readFile(userPaths.userLocalLockfile, 'utf8')) as {
+        migration?: unknown;
+        targets: Record<string, { baseDir: unknown; bundles: Record<string, unknown> }>;
+      };
+      delete local.migration;
+      local.targets['my-vscode'].bundles[`unresolved/${'a'.repeat(64)}`] = {
+        version: '1.0.0',
+        installedAt: '2026-10-09T12:00:00.000Z',
+        state: 'unmanaged',
+        unmanagedReason: 'Portable identity could not be proven.',
+        legacy: { originalKey: 'legacy/reviewer', version: '1.0.0' },
+        files: [{ path: 'prompts/legacy.md', installedChecksum: 'a'.repeat(64) }]
+      };
+      local.targets.bad = { baseDir: 42, bundles: {} };
+      await writeFile(userPaths.userLocalLockfile, JSON.stringify(local, null, 2));
+      const desiredBefore = await readFile(userPaths.userLockfile, 'utf8');
+      const localBefore = await readFile(userPaths.userLocalLockfile, 'utf8');
+      const recording = new RecordingFs();
+
+      const result = await replay([], recording);
+
+      expect(result.exitCode).toBe(1);
+      expect(parse<null>(result.stdout).errors?.[0]?.code, result.stdout + result.stderr)
+        .toBe('CONFIG.INVALID_LOCKFILE_V3');
+      expect(recording.writes).toEqual([]);
+      await expect(readFile(userPaths.userLockfile, 'utf8')).resolves.toBe(desiredBefore);
+      await expect(readFile(userPaths.userLocalLockfile, 'utf8')).resolves.toBe(localBefore);
+      await expect(readFile(destination(), 'utf8')).resolves.toContain('Hello Prompt');
+    });
+
     it('reports an unrecognized AI_PRIMITIVES_HUB_UNIFIED_DEPLOY value as USAGE.INVALID_FLAG', async () => {
       const result = await run(['install', '--lockfile', lockfilePath(), '--target', 'my-vscode', '-o', 'json'], {
         AI_PRIMITIVES_HUB_UNIFIED_DEPLOY: 'maybe'

@@ -231,6 +231,33 @@ describe('resolveUndeployKey', () => {
     expect(mutations(ports)).toEqual([]);
   });
 
+  it('deduplicates a bare logical id and legacy alias owned by the same selected record', async () => {
+    const ports = recordingPorts();
+    seedV3(ports, { 'my-vscode': { 'src-a/foo': { sourceId: 'src-a' } } });
+    const local = JSON.parse(ports.files.get(ports.lockfileStore.localFile) as string) as {
+      targets: Record<string, { bundles: Record<string, Record<string, unknown>> }>;
+    };
+    const owner = local.targets['my-vscode'].bundles[canonicalTestKey('src-a/foo')];
+    owner.state = 'unmanaged';
+    owner.unmanagedReason = 'retained historical owner';
+    owner.legacy = { originalKey: 'foo', version: '1.0.0' };
+    ports.files.set(ports.lockfileStore.localFile, JSON.stringify(local));
+    const before = snapshot(ports);
+
+    expect(await resolve(ports, 'foo')).toMatchObject({
+      kind: 'match',
+      key: 'src-a/foo',
+      version: '1.0.0',
+      record: {
+        state: 'unmanaged',
+        unmanagedReason: 'retained historical owner',
+        legacy: { originalKey: 'foo', version: '1.0.0' }
+      }
+    });
+    expect(snapshot(ports)).toEqual(before);
+    expect(mutations(ports)).toEqual([]);
+  });
+
   it('merges active logical IDs and retained aliases so a historical alias cannot shadow a live key', async () => {
     const ports = recordingPorts();
     seedV3(ports, { 'my-vscode': { 'src-a/web-dev': { sourceId: 'src-a' } } });

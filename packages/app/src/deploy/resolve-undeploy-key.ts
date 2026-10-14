@@ -127,10 +127,23 @@ export const resolveUndeployKey = async (
   }
 
   const candidates: UndeployKeyResolution[] = [];
+  const ownershipTarget = (candidate: UndeployKeyResolution): string | undefined => {
+    if (candidate.kind === 'match') {
+      return targetName;
+    }
+    return candidate.kind === 'unmanaged' ? candidate.targetName ?? 'unmanaged' : undefined;
+  };
   const addCandidate = (candidate: UndeployKeyResolution): void => {
     const duplicate = candidates.some((existing) => {
-      if (existing.kind !== candidate.kind || !('key' in existing) || !('key' in candidate)
-        || existing.key !== candidate.key || existing.version !== candidate.version) {
+      if (!('key' in existing) || !('key' in candidate) || existing.key !== candidate.key) {
+        return false;
+      }
+      const existingTarget = ownershipTarget(existing);
+      const candidateTarget = ownershipTarget(candidate);
+      if (existingTarget !== undefined && candidateTarget !== undefined) {
+        return existingTarget === candidateTarget;
+      }
+      if (existing.kind !== candidate.kind || existing.version !== candidate.version) {
         return false;
       }
       if (existing.kind === 'intent' && candidate.kind === 'intent') {

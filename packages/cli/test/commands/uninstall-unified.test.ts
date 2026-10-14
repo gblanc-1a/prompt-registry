@@ -469,6 +469,30 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
       expect(data.lockfile).toBe(paths().userLockfile);
     });
 
+    it('cleans up a retained portable unmanaged owner when id and legacy alias are identical', async () => {
+      await install();
+      const local = await readLocal();
+      const owner = local.targets['my-vscode'].bundles[installedKey()];
+      owner.state = 'unmanaged';
+      owner.unmanagedReason = 'Retained historical ownership.';
+      owner.legacy = { originalKey: 'local-foo', version: '1.0.0' };
+      await writeFile(paths().userLocalLockfile, JSON.stringify(local, null, 2));
+      const result = await uninstall(['--bundle', 'local-foo']);
+
+      expect(result.exitCode).toBe(0);
+      const { data } = parse<UninstallData>(result.stdout);
+      expect(data).toMatchObject({
+        bundle: 'local-foo',
+        key: installedKey(),
+        target: 'my-vscode',
+        unmanagedReason: 'Retained historical ownership.',
+        skipped: [destination()]
+      });
+      expect((await readLocal()).targets['my-vscode']?.bundles ?? {}).toEqual({});
+      expect((await readDesired()).bundles).toEqual({});
+      await expect(readFile(destination(), 'utf8')).resolves.toContain('Hello Prompt');
+    });
+
     it('accepts the full sourceKey/bundleId key', async () => {
       await install();
 

@@ -727,26 +727,25 @@ const isCurrentLocalRow = (key: string, value: unknown): boolean => {
 };
 
 const validateCurrentLocalRows = (raw: JsonObject, file: string): number => {
-  const targets = getObject(raw.targets) ?? {};
+  const targets = getObject(raw.targets);
+  if (targets === undefined) {
+    validateLocalLockfileV3ForMigration(raw, file);
+    return 0;
+  }
   let currentRowCount = 0;
-  const currentTargets = Object.fromEntries(Object.entries(targets).flatMap(([name, targetValue]) => {
+  const currentTargets = Object.fromEntries(Object.entries(targets).map(([name, targetValue]) => {
     const target = getObject(targetValue);
     const bundles = getObject(target?.bundles);
     if (target === undefined || bundles === undefined) {
-      return [];
+      return [name, targetValue];
     }
     const currentBundles = Object.fromEntries(
       Object.entries(bundles).filter(([key, value]) => isCurrentLocalRow(key, value))
     );
-    if (Object.keys(currentBundles).length === 0) {
-      return [];
-    }
     currentRowCount += Object.keys(currentBundles).length;
-    return [[name, { ...target, bundles: currentBundles }]];
+    return [name, { ...target, bundles: currentBundles }];
   }));
-  if (currentRowCount > 0) {
-    validateLocalLockfileV3ForMigration({ ...raw, targets: currentTargets }, file);
-  }
+  validateLocalLockfileV3ForMigration({ ...raw, targets: currentTargets }, file);
   return currentRowCount;
 };
 

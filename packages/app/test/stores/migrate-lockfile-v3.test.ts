@@ -13,6 +13,9 @@ import type {
   Lockfile,
 } from '../../src/stores/json-lockfile-store';
 import {
+  readLockfileV3Pair,
+} from '../../src/stores/lockfile-v3';
+import {
   convertV2ToPair,
   migrateLockfileIfNeeded,
   planLockfileMigration,
@@ -605,6 +608,62 @@ describe('planLockfileMigration', () => {
 
     await expect(planLockfileMigration(userSources, fs, OPTS))
       .rejects.toMatchObject({ code: 'CONFIG.INVALID_LOCKFILE_V3' });
+
+    expect([...fs.files.entries()]).toEqual(before);
+    expect(fs.order).toEqual([]);
+  });
+
+  it('validates empty malformed targets before classifying retained ownership as interrupted migration', async () => {
+    const fs = fakeFs();
+    const unresolvedKey = `unresolved/${'a'.repeat(64)}`;
+    const desired = {
+      $schema: 'https://github.com/AmadeusITGroup/ai-primitives-hub/schemas/lockfile-v3.schema.json',
+      version: '3.0.0',
+      bundles: {},
+      sources: {},
+      unresolved: [{
+        originalKey: 'legacy/reviewer',
+        version: '1.0.0',
+        reason: 'Portable identity could not be proven.'
+      }]
+    };
+    const local = {
+      version: '3.0.0',
+      generatedAt: NOW,
+      generatedBy: OPTS.generatedBy,
+      targets: {
+        'my-vscode': {
+          targetType: 'vscode',
+          scope: 'user',
+          baseDir: '/home/user/.copilot',
+          bundles: {
+            [unresolvedKey]: {
+              version: '1.0.0',
+              installedAt: NOW,
+              state: 'unmanaged',
+              unmanagedReason: 'Portable identity could not be proven.',
+              legacy: { originalKey: 'legacy/reviewer', version: '1.0.0' },
+              files: [{ path: 'prompts/legacy.md', installedChecksum: FILE_DIGEST }]
+            }
+          }
+        },
+        bad: { baseDir: 42, bundles: {} }
+      }
+    };
+    fs.files.set(userSources.desiredFile, JSON.stringify(desired));
+    fs.files.set(userSources.localFile, JSON.stringify(local));
+    const before = [...fs.files.entries()];
+
+    await expect(readLockfileV3Pair(userSources, fs, OPTS))
+      .rejects.toMatchObject({
+        code: 'CONFIG.INVALID_LOCKFILE_V3',
+        message: expect.stringContaining('target bad.baseDir')
+      });
+    await expect(planLockfileMigration(userSources, fs, OPTS))
+      .rejects.toMatchObject({
+        code: 'CONFIG.INVALID_LOCKFILE_V3',
+        message: expect.stringContaining('target bad.baseDir')
+      });
 
     expect([...fs.files.entries()]).toEqual(before);
     expect(fs.order).toEqual([]);

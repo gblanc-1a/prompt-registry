@@ -33,7 +33,9 @@ import {
   migrateLockfileIfNeeded,
   type PlacementContext,
   planDeploy,
+  planLockfileMigration,
   readLockfile,
+  readLockfilePair,
   readLockfileV3Pair,
   resolvePortableBundle,
   resolveUserConfigPaths,
@@ -47,6 +49,7 @@ import {
   writeTargetSafely,
 } from '@ai-primitives-hub/app';
 import type {
+  BundleResolution,
   BundleResolver,
   GitHubApi,
   GitHubRepositoryTarget,
@@ -54,6 +57,8 @@ import type {
   HttpClient,
   HubSourceSpec,
   LocalSourceLocation,
+  PortableBundlePayload,
+  PortableBundleSelection,
   PortableSourceDescriptor,
   RegistrySource,
   Target,
@@ -64,8 +69,10 @@ import {
   assertResolutionVersion,
   assertSourceKey,
   getInstallableBundleFiles,
+  isSafeDiagnosticValue,
   parseBundleSpec,
   parseLogicalBundleKey,
+  sourceKey as portableSourceKey,
   validateManifest,
 } from '@ai-primitives-hub/core';
 import {
@@ -934,6 +941,31 @@ const sourceAdapterDepsFor = (
   ...(sourceAuthentication === undefined ? {} : { sourceAuthentication })
 });
 
+const resolveExplicitPortableBundle = async (
+  source: RegistrySource,
+  selection: PortableBundleSelection,
+  deps: SourceAdapterFactoryDeps,
+  ports: DeployPorts
+): Promise<PortableBundlePayload> => {
+  const payload = await resolvePortableBundle(source, selection, deps);
+  const { pair } = await readLockfilePair(ports.lockfileStore, ports.fs, {
+    generatedBy: ports.generatedBy ?? 'ai-primitives-hub',
+    now: ports.now ?? new Date().toISOString()
+  });
+  const key = `${portableSourceKey(payload.source.identity, payload.source.type)}/${payload.logicalBundleId}`;
+  const previous = pair.desired.bundles[key];
+  if (previous === undefined || previous.version !== payload.version
+    || previous.resolution.kind !== 'unpinned' || previous.resolution.evidence === undefined) {
+    return payload;
+  }
+  return await resolvePortableBundle(source, {
+    ...selection,
+    version: payload.version,
+    expectedSource: payload.source,
+    resolution: previous.resolution
+  }, deps);
+};
+
 const LOCAL_PORTABLE_TYPES = new Set(['local', 'local-awesome-copilot', 'local-skills']);
 
 const localLocationForConfiguredSource = (
@@ -1093,6 +1125,44 @@ const dryRunNotMigrated = (cause: LockfileGenerationMismatchError): RegistryErro
   cause
 });
 
+const portableResolutionDigest = (resolution: BundleResolution): string | undefined => {
+  if (resolution.kind !== 'pinned') {
+    return undefined;
+  }
+  switch (resolution.provider) {
+    case 'github-release':
+    case 'artifactory-object': {
+      return resolution.archiveSha256;
+    }
+    case 'github-tree':
+    case 'azure-devops-tree':
+    case 'local-snapshot': {
+      return resolution.sourceContentSha256;
+    }
+  }
+};
+
+const portableResolutionReport = (resolution: BundleResolution, version: string): string => {
+  if (resolution.kind === 'pinned') {
+    const digest = portableResolutionDigest(resolution);
+    return `Portable resolution before deployment: pinned ${resolution.provider}@${resolution.version}`
+      + `${digest === undefined ? '' : ` sha256:${digest}`}\n`;
+  }
+  if (resolution.kind === 'live') {
+    return `Portable resolution before deployment: live source selection at version ${version}.\n`;
+  }
+  const reason = isSafeDiagnosticValue(resolution.reason) ? resolution.reason : 'the adapter did not provide a safe diagnostic';
+  const knownDigests = Object.entries(resolution.evidence?.knownDigests ?? {})
+    .map(([name, digest]) => `${name}=sha256:${digest}`)
+    .join(', ');
+  const limitations = (resolution.evidence?.externalInputLimitations ?? [])
+    .filter((limitation) => isSafeDiagnosticValue(limitation))
+    .join('; ');
+  return `Portable resolution before deployment: unpinned ${version}; ${reason}`
+    + `${knownDigests === '' ? '; no known digests' : `; retained known digests: ${knownDigests}`}`
+    + `${limitations === '' ? '' : `; external-input limitations: ${limitations}`}\n`;
+};
+
 /**
  * Flag-on install: plan (dry-run) or deploy through `app/deploy`, then render
  * the legacy envelope keys plus `collisions`, `satisfied` and `migration`.
@@ -1105,6 +1175,7 @@ async function runUnifiedInstall(args: UnifiedInstallArgs): Promise<number> {
   } = args;
   const ports = unifiedPortsFor(ctx, target);
   const bundle = { id: request.bundle.bundleId, version: request.bundle.version };
+  ctx.stderr.write(portableResolutionReport(request.resolution, bundle.version));
 
   if (dryRun) {
     const plan = await planDeploy({ ...request, force }, ports).catch((cause: unknown) => {
@@ -1120,6 +1191,7 @@ async function runUnifiedInstall(args: UnifiedInstallArgs): Promise<number> {
         dryRun: true,
         target: target.name,
         bundle,
+        resolution: request.resolution,
         files: [...(request.files?.keys() ?? [])],
         destinations: plan.destinations.map((d) => d.to),
         skipped: plan.skipped,
@@ -1149,6 +1221,7 @@ async function runUnifiedInstall(args: UnifiedInstallArgs): Promise<number> {
     data: {
       target: target.name,
       bundle,
+      resolution: request.resolution,
       written: result.written,
       skipped: result.skipped,
       lockfile: result.lockfiles.desiredFile,
@@ -1199,6 +1272,7 @@ async function performLocalInstall(
       const localSourceTypes = new Set(['local', 'local-awesome-copilot', 'local-skills']);
       let source: RegistrySource;
       let localLocation: LocalSourceLocation;
+      let bundleSelector: string | undefined;
       if (opts.sourceConfig === undefined) {
         const selectedBundlePath = path.resolve(workspaceRoot, opts.from as string);
         const sourceRoot = path.dirname(selectedBundlePath);
@@ -1220,6 +1294,7 @@ async function performLocalInstall(
           priority: 0
         };
         localLocation = { kind: 'workspace', root: workspaceRoot };
+        bundleSelector = path.relative(sourceRoot, selectedBundlePath).split(path.sep).join('/');
       } else {
         if (!localSourceTypes.has(opts.sourceConfig.type)) {
           throw new RegistryError({
@@ -1238,14 +1313,15 @@ async function performLocalInstall(
           ? { kind: 'binding', name: source.id, root: absoluteRoot }
           : { kind: 'workspace', root: workspaceRoot };
       }
-      const payload = await resolvePortableBundle(source, {
+      const payload = await resolveExplicitPortableBundle(source, {
         bundleId: opts.bundle ?? '',
+        ...(bundleSelector === undefined ? {} : { bundleSelector }),
         localLocation
       }, sourceAdapterDepsFor(
         ctx,
         opts.http ?? new NodeHttpClient(),
         [opts.tokens ?? defaultTokenProvider(ctx.env)]
-      ));
+      ), unifiedPortsFor(ctx, effectiveTarget));
       const placement = await buildPlacementContext(ctx, effectiveTarget);
       return await runUnifiedInstall({
         ctx,
@@ -1384,20 +1460,47 @@ function assertReplayLockfileIsUserFile(ports: DeployPorts, lockPath: string, cw
 async function readReplayDesired(
   ports: DeployPorts,
   dryRun: boolean
-): Promise<{ desired: LockfileV3Pair['desired']; migration: UnifiedMigration }> {
+): Promise<{
+  pair: LockfileV3Pair;
+  desired: LockfileV3Pair['desired'];
+  migration: UnifiedMigration;
+  pendingMigration: boolean;
+}> {
   const defaults = { generatedBy: ports.generatedBy ?? 'ai-primitives-hub', now: new Date().toISOString() };
   try {
     const { pair } = await readLockfileV3Pair(ports.lockfileStore, ports.fs, defaults);
-    return { desired: pair.desired, migration: null };
+    return { pair, desired: pair.desired, migration: null, pendingMigration: false };
   } catch (cause) {
-    if (!(cause instanceof LockfileGenerationMismatchError)) {
+    if (cause instanceof LockfileGenerationMismatchError) {
+      if (dryRun) {
+        throw dryRunNotMigrated(cause);
+      }
+      const generationPreview = await planLockfileMigration(ports.lockfileStore, ports.fs, defaults);
+      return {
+        pair: generationPreview.pair,
+        desired: generationPreview.pair.desired,
+        migration: generationPreview.report,
+        pendingMigration: generationPreview.pendingWrite
+      };
+    }
+    if (!(cause instanceof RegistryError) || cause.code !== 'CONFIG.INVALID_LOCKFILE_V3') {
       throw cause;
     }
-    if (dryRun) {
-      throw dryRunNotMigrated(cause);
+    let shapePreview: Awaited<ReturnType<typeof planLockfileMigration>>;
+    try {
+      shapePreview = await planLockfileMigration(ports.lockfileStore, ports.fs, defaults);
+    } catch {
+      throw cause;
     }
-    const { pair, report } = await migrateLockfileIfNeeded(ports.lockfileStore, ports.fs, defaults);
-    return { desired: pair.desired, migration: report };
+    if (!shapePreview.pendingWrite) {
+      throw cause;
+    }
+    return {
+      pair: shapePreview.pair,
+      desired: shapePreview.pair.desired,
+      migration: shapePreview.report,
+      pendingMigration: true
+    };
   }
 }
 
@@ -1500,7 +1603,12 @@ async function performUnifiedLockfileInstall(
   const force = opts.force === true;
   const ports = unifiedPortsFor(ctx, target);
   assertReplayLockfileIsUserFile(ports, lockPath, ctx.cwd());
-  const { desired, migration } = await readReplayDesired(ports, dryRun);
+  const {
+    pair: replayPair,
+    desired,
+    migration: migrationPreview,
+    pendingMigration
+  } = await readReplayDesired(ports, dryRun);
   const placement = await buildPlacementContext(ctx, target);
   const http = opts.http ?? new NodeHttpClient();
   const tokens = opts.tokens ?? defaultTokenProvider(ctx.env);
@@ -1522,6 +1630,13 @@ async function performUnifiedLockfileInstall(
   const skipped: { key: string; from: string; reason: string }[] = [];
   const collisions: { to: string; reason: string }[] = [];
   const duplicates: { to: string; ids: string[] }[] = [];
+  const prepared: {
+    key: string;
+    request: Omit<DeployRequest, 'force'>;
+    plan: Awaited<ReturnType<typeof planDeploy>>;
+  }[] = [];
+  let replayValidationFailed = false;
+  let migration: UnifiedMigration = null;
 
   if (opts.verbose === true) {
     ctx.stdout.write(`[verbose] Planning to replay ${keys.length} bundles\n`);
@@ -1540,27 +1655,55 @@ async function performUnifiedLockfileInstall(
         verbose: opts.verbose ?? false,
         sourceAwareDependencyCache
       });
-      if (dryRun) {
-        const plan = await planDeploy({ ...request, force }, ports);
-        destinations.push(...plan.destinations.map((d) => d.to));
-        drifted.push(...plan.drifted);
-        satisfied.push(...plan.satisfied);
-        skipped.push(...plan.skipped.map((s) => ({ key, ...s })));
-        collisions.push(...plan.collisions);
-        duplicates.push(...plan.duplicates);
-      } else {
-        const result = await deployBundle({ ...request, force }, ports);
-        written.push(...result.written);
-        satisfied.push(...result.satisfied);
-        skipped.push(...result.skipped.map((s) => ({ key, ...s })));
-        collisions.push(...result.collisions);
-        duplicates.push(...result.duplicates);
-      }
-      replayed.push(key);
+      const plan = await planDeploy({ ...request, force }, ports, { pair: replayPair });
+      prepared.push({ key, request, plan });
     } catch (cause) {
       if (dryRun && cause instanceof LockfileGenerationMismatchError) {
         throw dryRunNotMigrated(cause);
       }
+      failures.push({ key, reason: failureReason(cause), ...(cause instanceof RegistryError ? { error: cause.toJSON() } : {}) });
+      replayValidationFailed = true;
+    }
+  }
+
+  if (pendingMigration && replayValidationFailed) {
+    for (const item of prepared) {
+      failures.push({
+        key: item.key,
+        reason: 'Replay was not applied because another entry failed source and pin preflight; no migration or deployment writes were made.'
+      });
+    }
+    prepared.length = 0;
+  } else if (!dryRun && pendingMigration) {
+    const migrated = await migrateLockfileIfNeeded(ports.lockfileStore, ports.fs, {
+      generatedBy: ports.generatedBy ?? 'ai-primitives-hub',
+      now: ports.now ?? new Date().toISOString()
+    });
+    migration = migrated.report;
+  }
+
+  for (const item of prepared) {
+    const { key, request, plan } = item;
+    if (dryRun) {
+      destinations.push(...plan.destinations.map((d) => d.to));
+      drifted.push(...plan.drifted);
+      satisfied.push(...plan.satisfied);
+      skipped.push(...plan.skipped.map((s) => ({ key, ...s })));
+      collisions.push(...plan.collisions);
+      duplicates.push(...plan.duplicates);
+      replayed.push(key);
+      continue;
+    }
+    try {
+      const result = await deployBundle({ ...request, force }, ports);
+      migration ??= result.migration;
+      written.push(...result.written);
+      satisfied.push(...result.satisfied);
+      skipped.push(...result.skipped.map((s) => ({ key, ...s })));
+      collisions.push(...result.collisions);
+      duplicates.push(...result.duplicates);
+      replayed.push(key);
+    } catch (cause) {
       failures.push({ key, reason: failureReason(cause), ...(cause instanceof RegistryError ? { error: cause.toJSON() } : {}) });
     }
   }
@@ -1593,6 +1736,7 @@ async function performUnifiedLockfileInstall(
         satisfied,
         drifted,
         failures,
+        ...(pendingMigration ? { migrationPreview } : {}),
         ...(duplicates.length === 0 ? {} : { duplicates })
       },
       warnings: warnings.length > 0 ? warnings : undefined,
@@ -1806,16 +1950,43 @@ async function performRemoteInstall(
     const tokens = opts.tokens ?? defaultTokenProvider(ctx.env);
     if (unified && sourceIsLocal) {
       const source = configuredSource;
-      const payload = await resolvePortableBundle(source, {
+      const payload = await resolveExplicitPortableBundle(source, {
         bundleId: spec.bundleId,
         ...(spec.bundleVersion === 'latest' ? {} : { version: spec.bundleVersion }),
         localLocation: localLocationForConfiguredSource(source, ctx)
-      }, sourceAdapterDepsFor(ctx, http, [tokens]));
+      }, sourceAdapterDepsFor(ctx, http, [tokens]), unifiedPortsFor(ctx, effectiveTarget));
       if (payload.resolution.kind === 'live') {
         throw new RegistryError({
           code: 'BUNDLE.UNSUPPORTED_LIVE_DEPLOYMENT',
           message: 'Live local-skills deployment is not supported by copy-only targets; no files or lockfile state were changed.',
           hint: 'Use a snapshot-capable local source or disable unifiedDeploy until live-link placement is available.'
+        });
+      }
+      return await runUnifiedInstall({
+        ctx,
+        fmt,
+        target: effectiveTarget,
+        dryRun: opts.dryRun === true,
+        force: opts.force === true,
+        request: createDeployRequest({
+          payload,
+          targetName: effectiveTarget.name,
+          runtimeAssetRoot: runtimeAssetRootFor(ctx),
+          placement: await buildPlacementContext(ctx, effectiveTarget)
+        })
+      });
+    }
+    if (unified && configuredSource !== undefined
+      && !['github', 'skills', 'awesome-copilot'].includes(configuredSource.type)) {
+      const payload = await resolveExplicitPortableBundle(configuredSource, {
+        bundleId: spec.bundleId,
+        ...(spec.bundleVersion === 'latest' ? {} : { version: spec.bundleVersion })
+      }, sourceAdapterDepsFor(ctx, http, [tokens]), unifiedPortsFor(ctx, effectiveTarget));
+      if (payload.resolution.kind === 'live') {
+        throw new RegistryError({
+          code: 'BUNDLE.UNSUPPORTED_LIVE_DEPLOYMENT',
+          message: 'Live source deployment is not supported by copy-only targets; no files or lockfile state were changed.',
+          hint: 'Use a snapshot-capable source or disable unifiedDeploy until live-link placement is available.'
         });
       }
       return await runUnifiedInstall({
@@ -1868,10 +2039,10 @@ async function performRemoteInstall(
           target: repositoryTarget,
           tokenProvider: downloadTokens
         }]]);
-      const payload = await resolvePortableBundle(portableSource, {
+      const payload = await resolveExplicitPortableBundle(portableSource, {
         bundleId: spec.bundleId,
         ...(spec.bundleVersion === 'latest' ? {} : { version: spec.bundleVersion })
-      }, sourceAdapterDepsFor(ctx, http, [downloadTokens], sourceAuthentication));
+      }, sourceAdapterDepsFor(ctx, http, [downloadTokens], sourceAuthentication), unifiedPortsFor(ctx, effectiveTarget));
       const request = createDeployRequest({
         payload,
         targetName: effectiveTarget.name,

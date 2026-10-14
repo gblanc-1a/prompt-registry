@@ -75,6 +75,54 @@ describe('deployBundle', () => {
     expect(ports.calls).toEqual([]);
   });
 
+  it('refuses a malformed archive pin before migration or placement', async () => {
+    const ports = recordingPorts();
+    const legacy = JSON.stringify({
+      version: '2.0.0', generatedAt: ports.now, generatedBy: 'test', bundles: {}, sources: {}
+    });
+    ports.files.set(ports.lockfileStore.desiredFile, legacy);
+    const bytes = new TextEncoder().encode('verified archive bytes');
+    const expectedArchiveSha = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+    const before = [...ports.files];
+
+    await expect(deployBundle({
+      ...request(),
+      bytes,
+      expectedArchiveSha,
+      resolution: {
+        kind: 'pinned',
+        provider: 'github-release',
+        version: '1.0.0',
+        releaseId: '0',
+        assetId: '2',
+        archiveSha256: expectedArchiveSha.slice('sha256:'.length)
+      }
+    }, ports)).rejects.toMatchObject({ code: 'BUNDLE.INVALID_RESOLUTION' });
+
+    expect([...ports.files]).toEqual(before);
+    expect(ports.calls).toEqual([]);
+  });
+
+  it('refuses an incomplete portable source descriptor before migration or placement', async () => {
+    const ports = recordingPorts();
+    const legacy = JSON.stringify({
+      version: '2.0.0', generatedAt: ports.now, generatedBy: 'test', bundles: {}, sources: {}
+    });
+    ports.files.set(ports.lockfileStore.desiredFile, legacy);
+    const before = [...ports.files];
+
+    await expect(deployBundle({
+      ...request(),
+      source: {
+        ...request().source,
+        descriptor: { ...request().source.descriptor, config: { ref: '' } }
+      }
+    }, ports)).rejects.toMatchObject({ code: 'BUNDLE.INVALID_SOURCE_DESCRIPTOR' });
+
+    expect([...ports.files]).toEqual(before);
+    expect(ports.calls).toEqual([]);
+  });
+
   it('preserves archive checksum refusal before migration for a mismatched bytes-only request', async () => {
     const ports = recordingPorts();
     const legacy = JSON.stringify({

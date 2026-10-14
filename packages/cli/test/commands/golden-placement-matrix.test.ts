@@ -10,6 +10,7 @@ import {
   mkdir,
   mkdtemp,
   readdir,
+  realpath,
   rm,
   stat,
 } from 'node:fs/promises';
@@ -81,7 +82,7 @@ describe('golden placement matrix', () => {
   let home: string;
 
   beforeEach(async () => {
-    home = await mkdtemp(path.join(os.tmpdir(), 'cli-golden-matrix-'));
+    home = await mkdtemp(path.join(await realpath(os.tmpdir()), 'cli-golden-matrix-'));
   });
 
   afterEach(async () => {

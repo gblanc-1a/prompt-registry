@@ -108,6 +108,19 @@ export const resolveUndeployKey = async (
   if (unmanagedKeys.includes(typed)) {
     return { kind: 'unmanaged', key: typed, version: unmanagedRecords[typed].version };
   }
+  const unresolvedOriginalMatches = unmanagedKeys.filter((key) => {
+    const record = unmanagedRecords[key];
+    return 'state' in record
+      && record.state === 'unmanaged'
+      && record.legacy?.originalKey === typed;
+  });
+  if (unresolvedOriginalMatches.length > 1) {
+    return { kind: 'ambiguous', keys: unresolvedOriginalMatches };
+  }
+  if (unresolvedOriginalMatches.length === 1) {
+    const [key] = unresolvedOriginalMatches;
+    return { kind: 'unmanaged', key, version: unmanagedRecords[key].version };
+  }
   const desiredKeys = Object.keys(pair.desired.bundles);
   const orphanKeys = desiredKeys.filter((key) => !isMaterialized(pair, key));
   if (orphanKeys.includes(typed)) {

@@ -159,6 +159,43 @@ const seedV2 = (ports: RecordingPorts, bundleIds: string[]): void => {
   }));
 };
 
+const seedUnresolved = (
+  ports: RecordingPorts,
+  entries: { key: string; originalKey: string; version: string }[]
+): void => {
+  ports.files.set(ports.lockfileStore.desiredFile, JSON.stringify({
+    $schema: 'https://github.com/AmadeusITGroup/ai-primitives-hub/schemas/lockfile-v3.schema.json',
+    version: '3.0.0',
+    bundles: {},
+    sources: {},
+    unresolved: entries.map(({ originalKey, version }) => ({
+      originalKey, version, reason: 'Portable identity could not be proven.'
+    }))
+  }));
+  ports.files.set(ports.lockfileStore.localFile, JSON.stringify({
+    version: '3.0.0',
+    generatedAt: '2026-10-09T12:00:00.000Z',
+    generatedBy: 'test',
+    migration: { lockfileV3: 'complete' },
+    targets: {
+      unmanaged: {
+        baseDir: '/home/u/.copilot',
+        bundles: Object.fromEntries(entries.map(({ key: unresolvedKey, originalKey, version }) => [
+          unresolvedKey,
+          {
+            version,
+            installedAt: '2026-10-09T12:00:00.000Z',
+            state: 'unmanaged',
+            unmanagedReason: 'Portable identity could not be proven.',
+            legacy: { originalKey, version },
+            files: [{ path: 'prompts/legacy.prompt.md', installedChecksum: 'a'.repeat(64) }]
+          }
+        ]))
+      }
+    }
+  }));
+};
+
 const snapshot = (ports: RecordingPorts): [string, string][] =>
   [...ports.files.entries()].map(([file, content]) => [file, typeof content === 'string' ? content : new TextDecoder().decode(content)]);
 
@@ -177,6 +214,35 @@ const listTargetBundles = async (targetName: string, ports: RecordingPorts) => {
 
 describe('resolveUndeployKey', () => {
   describe('reserved unmanaged records', () => {
+    it('resolves an exact retained originalKey to its unresolved record without writing', async () => {
+      const ports = recordingPorts();
+      const unresolvedKey = `unresolved/${'a'.repeat(64)}`;
+      seedUnresolved(ports, [{ key: unresolvedKey, originalKey: 'legacy-bundle-1.0.0', version: '1.0.0' }]);
+      const before = snapshot(ports);
+
+      expect(await resolve(ports, 'legacy-bundle-1.0.0')).toEqual({
+        kind: 'unmanaged', key: unresolvedKey, version: '1.0.0'
+      });
+      expect(snapshot(ports)).toEqual(before);
+      expect(mutations(ports)).toEqual([]);
+    });
+
+    it('keeps exact originalKey lookup ambiguous when retained evidence has multiple records', async () => {
+      const ports = recordingPorts();
+      seedUnresolved(ports, [
+        { key: `unresolved/${'a'.repeat(64)}`, originalKey: 'legacy-bundle', version: '1.0.0' },
+        { key: `unresolved/${'b'.repeat(64)}`, originalKey: 'legacy-bundle', version: '2.0.0' }
+      ]);
+      const before = snapshot(ports);
+
+      expect(await resolve(ports, 'legacy-bundle')).toEqual({
+        kind: 'ambiguous',
+        keys: [`unresolved/${'a'.repeat(64)}`, `unresolved/${'b'.repeat(64)}`]
+      });
+      expect(snapshot(ports)).toEqual(before);
+      expect(mutations(ports)).toEqual([]);
+    });
+
     it.each(['src-a/web-dev', 'web-dev'])('resolves %s found only under unmanaged without writing', async (typed) => {
       const ports = recordingPorts();
       seedV3(ports, { unmanaged: { 'src-a/web-dev': { sourceId: 'src-a' } } });
@@ -318,12 +384,15 @@ describe('resolveUndeployKey', () => {
   });
 
   describe('v2 store', () => {
-    it('previews the migration in memory: no match leaves the store byte-identical and writes nothing', async () => {
+    it('previews the migration in memory and resolves an exact retained original key without writes', async () => {
       const ports = recordingPorts();
       seedV2(ports, ['older-bundle']);
       const before = snapshot(ports);
 
-      expect(await resolve(ports, 'older-bundle')).toEqual({ kind: 'none' });
+      expect(await resolve(ports, 'older-bundle')).toMatchObject({
+        kind: 'unmanaged',
+        key: expect.stringMatching(/^unresolved\/[a-f0-9]{64}$/)
+      });
       expect(snapshot(ports)).toEqual(before);
       expect(mutations(ports)).toEqual([]);
       expect(ports.files.has(ports.lockfileStore.localFile)).toBe(false);

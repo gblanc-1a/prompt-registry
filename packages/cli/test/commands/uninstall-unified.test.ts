@@ -115,6 +115,7 @@ interface LocalFile {
 interface DesiredFile {
   bundles: Record<string, { version: string; sourceKey: string; resolution: BundleResolution }>;
   sources: Record<string, unknown>;
+  unresolved?: { originalKey: string; version: string }[];
 }
 
 const exists = async (p: string): Promise<boolean> => {
@@ -334,12 +335,19 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
     const reason = local.targets.unmanaged.bundles[key].unmanagedReason;
     expect(key).toMatch(/^unresolved\/[a-f0-9]{64}$/);
     expect(reason).toBeDefined();
+    expect((await readDesired()).unresolved).toContainEqual(
+      expect.objectContaining({ originalKey: legacyId })
+    );
 
-    const result = await run(['uninstall', '--bundle', key, '--target', 'my-vscode']);
+    const result = await run(['uninstall', '--bundle', legacyId, '--target', 'my-vscode', '-o', 'json']);
     expect(result.exitCode).toBe(0);
+    expect(parse<UninstallData>(result.stdout).data.key).toBe(key);
     expect(result.stdout).toContain(reason);
     expect((await readLocal()).targets.unmanaged?.bundles[key]).toBeUndefined();
     expect((await readDesired()).bundles[key]).toBeUndefined();
+    expect((await readDesired()).unresolved ?? []).not.toContainEqual(
+      expect.objectContaining({ originalKey: legacyId })
+    );
     expect(await readFile(legacyFile, 'utf8')).toBe(before);
   });
 
@@ -685,16 +693,21 @@ describe('uninstall command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', 
       const result = await uninstall(['--bundle', 'local-foo', '--dry-run'], recording);
 
       expect(result.exitCode).toBe(0);
-      const envelope = parse<unknown>(result.stdout);
-      expect(envelope.status).toBe('warning');
-      expect(envelope.data).toMatchObject({ bundle: 'local-foo', reason: 'not found in lockfile' });
+      const envelope = parse<{ status: string; data: { dryRun: boolean; bundle: string; key: string; unmanaged: boolean } }>(result.stdout);
+      expect(envelope.status).toBe('ok');
+      expect(envelope.data).toMatchObject({
+        dryRun: true,
+        bundle: 'local-foo',
+        key: expect.stringMatching(/^unresolved\/[a-f0-9]{64}$/),
+        unmanaged: true
+      });
       expect(recording.writes).toEqual([]);
       await expect(readFile(paths().userLockfile, 'utf8')).resolves.toBe(before);
       expect(await exists(paths().userLocalLockfile)).toBe(false);
 
       const text = await run(['uninstall', '--bundle', 'local-foo', '--target', 'my-vscode', '--dry-run'], flagOn, recording);
 
-      expect(text.stdout).toContain('Bundle "local-foo" is not installed in target "my-vscode". Nothing to uninstall.');
+      expect(text.stdout).toContain('Would drop the migrated unmanaged record');
       expect(recording.writes).toEqual([]);
       await expect(readFile(paths().userLockfile, 'utf8')).resolves.toBe(before);
     });

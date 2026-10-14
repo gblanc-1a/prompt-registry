@@ -34,7 +34,7 @@ describe('classifyLegacyIdentity', () => {
     const resolution = {
       kind: 'unpinned' as const,
       reason: 'The historical release metadata was incomplete.',
-      evidence: { knownDigests: { archiveSha256: 'abc123' } }
+      evidence: { knownDigests: { archiveSha256: 'a'.repeat(64) } }
     };
     const result = classifyLegacyIdentity({
       legacyKey: 'machine-source/reviewer@1.2.0',

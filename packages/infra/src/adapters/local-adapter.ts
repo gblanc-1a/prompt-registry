@@ -258,10 +258,19 @@ export class LocalAdapter extends BaseSourceAdapter {
     const resolved = resolveLocalSource(this.source, selection.localLocation, selection.expectedSource);
     assertLocalResolutionCompatible(resolved.source, selection.resolution);
     const recordedSelector = recordedLocalBundleSelector(selection.resolution);
-    if (recordedSelector !== undefined && !isDirectBundleSelector(recordedSelector)) {
+    const selectedSelector = selection.bundleSelector ?? recordedSelector;
+    if (selection.bundleSelector !== undefined && !isDirectBundleSelector(selection.bundleSelector)) {
+      throw new RegistryError({
+        code: 'BUNDLE.INVALID_SOURCE_CONTENT_PATH',
+        message: `Selected local bundle selector ${JSON.stringify(selection.bundleSelector)} is not a direct child of the configured source.`,
+        hint: 'Select the bundle directory itself beneath the configured local source.'
+      });
+    }
+    if (recordedSelector !== undefined && (!isDirectBundleSelector(recordedSelector)
+      || (selection.bundleSelector !== undefined && selection.bundleSelector !== recordedSelector))) {
       throw new RegistryError({
         code: 'BUNDLE.ARTIFACT_PIN_MISMATCH',
-        message: `Recorded local bundle selector ${JSON.stringify(recordedSelector)} is not a direct child of the configured source.`,
+        message: `Recorded local bundle selector ${JSON.stringify(recordedSelector)} does not match the selected local bundle directory.`,
         hint: 'Use the direct bundle directory selector recorded by the local-snapshot pin.'
       });
     }
@@ -273,7 +282,7 @@ export class LocalAdapter extends BaseSourceAdapter {
         sourceFiles.set(`${bundleSelector}/${filePath}`, bytes);
       }
     };
-    if (recordedSelector === undefined) {
+    if (selectedSelector === undefined) {
       for (const entry of await readLocalSourceEntries(this.fs, resolved.root)) {
         if (entry.name.length === 0 || entry.name === '.' || entry.name === '..'
           || entry.name.includes('/') || entry.name.includes('\\') || entry.name.includes('\0')) {
@@ -295,13 +304,13 @@ export class LocalAdapter extends BaseSourceAdapter {
         await addBundleFiles(entry.name);
       }
     } else {
-      await addBundleFiles(recordedSelector);
+      await addBundleFiles(selectedSelector);
     }
-    const selectorCandidates = recordedSelector === undefined
+    const selectorCandidates = selectedSelector === undefined
       ? [...new Set([...sourceFiles.keys()]
         .filter((filePath) => filePath.endsWith(`/${MANIFEST_FILE_NAME}`) && filePath.split('/').length === 2)
         .map((filePath) => filePath.split('/')[0]))]
-      : [recordedSelector];
+      : [selectedSelector];
     const matches: { selector: string; manifest: LocalManifest }[] = [];
 
     for (const candidateSelector of selectorCandidates) {
@@ -323,7 +332,8 @@ export class LocalAdapter extends BaseSourceAdapter {
       } catch {
         candidateManifest = undefined;
       }
-      if (candidateManifest?.id === selection.bundleId) {
+      if (candidateManifest !== undefined
+        && (selection.bundleId === '' || candidateManifest.id === selection.bundleId)) {
         matches.push({ selector: candidateSelector, manifest: candidateManifest });
       } else if (recordedSelector !== undefined) {
         throw new RegistryError({

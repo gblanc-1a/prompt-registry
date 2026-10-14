@@ -157,9 +157,15 @@ export function assertDeployPayload(request: DeployRequest): void {
  * destinations are satisfied even against an older baseline; other edits remain drift.
  * @param request Deployment request.
  * @param ports Read-only boundaries.
+ * @param options
+ * @param options.pair
  * @returns Deployment plan.
  */
-export async function planDeploy(request: DeployRequest, ports: DeployPorts): Promise<DeployPlan> {
+export async function planDeploy(
+  request: DeployRequest,
+  ports: DeployPorts,
+  options: { pair?: LockfileV3Pair } = {}
+): Promise<DeployPlan> {
   const { bundle, source } = request;
   assertReplayableSource(source);
   assertDeployPayload(request);
@@ -167,9 +173,9 @@ export async function planDeploy(request: DeployRequest, ports: DeployPorts): Pr
   const inventory = prepareDeployFiles(request, ports);
   await assertSafeDestinations(ports.fs, request.placement.baseRoot,
     [...inventory.destinations.map((entry) => entry.to), ...inventory.files.map((entry) => entry.to)]);
-  const { pair } = await readLockfileV3Pair(ports.lockfileStore, ports.fs, {
+  const pair = options.pair ?? (await readLockfileV3Pair(ports.lockfileStore, ports.fs, {
     generatedBy: 'planDeploy', now: ports.now ?? new Date().toISOString()
-  });
+  })).pair;
   assertDeploymentState(request, pair);
   const tracked = new Map<string, string>();
   const target = Object.hasOwn(pair.local.targets, request.targetName)

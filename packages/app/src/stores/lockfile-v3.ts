@@ -28,6 +28,7 @@ import {
 } from 'node:crypto';
 import * as path from 'node:path';
 import {
+  assertBundleResolution,
   assertResolutionSourceCompatibility,
   assertResolutionVersion,
   assertSourceKey,
@@ -45,7 +46,6 @@ import type {
   LegacyIdentityEvidence,
   PortableSourceDescriptor,
   RepositoryCommitMode,
-  RetainedSourceType,
   TargetType,
 } from '@ai-primitives-hub/core';
 import type {
@@ -323,12 +323,6 @@ const requireNonEmptyStringArray = (value: unknown, label: string, file: string)
   }
 };
 
-const requireSha256 = (value: unknown, label: string, file: string): void => {
-  if (typeof value !== 'string' || !/^[a-f0-9]{64}$/.test(value)) {
-    invalidV3Shape(file, `${label} must be a lowercase SHA-256 digest.`);
-  }
-};
-
 const isRelativePosixPath = (value: string): boolean => (
   value.length > 0
   && !value.startsWith('/')
@@ -347,96 +341,12 @@ const validateDateTime = (value: unknown, label: string, file: string): void => 
   }
 };
 
-const RETAINED_SOURCE_TYPES = new Set<RetainedSourceType>([
-  'github', 'local', 'awesome-copilot', 'local-awesome-copilot', 'skills',
-  'local-skills', 'azure-devops', 'artifactory'
-]);
-const SOURCE_DESCRIPTOR_KEYS = ['type', 'identity', 'locator', 'config'] as const;
-const SOURCE_CONFIG_KEYS = [
-  'ref', 'collectionsPath', 'skillsPath', 'indexFile', 'authMode', 'credentialRef'
-] as const;
-
-const validateSourceConfig = (value: unknown, file: string): void => {
-  if (value === undefined) {
-    return;
-  }
-  const config = requireObject(value, 'source config', file);
-  requireOnlyKeys(config, SOURCE_CONFIG_KEYS, 'source config', file);
-  for (const key of ['ref', 'collectionsPath', 'skillsPath', 'indexFile', 'credentialRef']) {
-    if (config[key] !== undefined) {
-      const text = requireString(config[key], `source config.${key}`, file);
-      if (key !== 'ref' && key !== 'credentialRef' && !isRelativePosixPath(text)) {
-        invalidV3Shape(file, `source config.${key} must be a portable relative path.`);
-      }
-    }
-  }
-  if (config.authMode !== undefined && config.authMode !== 'anonymous' && config.authMode !== 'bearer') {
-    invalidV3Shape(file, 'source config.authMode must be "anonymous" or "bearer".');
-  }
-};
-
-const identityKeysFor = (
-  type: RetainedSourceType,
-  kind: string
-): readonly string[] | null => {
-  switch (kind) {
-    case 'github-releases': {
-      return ['kind', 'origin', 'repositoryId'];
-    }
-    case 'github-tree': {
-      return [
-        'kind', 'origin', 'repositoryId', 'ref',
-        ...(type === 'skills' ? ['skillsPath'] : ['collectionsPath'])
-      ];
-    }
-    case 'azure-devops-tree': {
-      return ['kind', 'namespace', 'repositoryId', 'ref', 'collectionsPath'];
-    }
-    case 'artifactory-index': {
-      return ['kind', 'root', 'indexFile'];
-    }
-    case 'workspace-local': {
-      return [
-        'kind', 'root',
-        ...(type === 'local-skills' ? ['skillsPath'] : []),
-        ...(type === 'local-awesome-copilot' ? ['collectionsPath'] : [])
-      ];
-    }
-    case 'external-local': {
-      return [
-        'kind', 'bindingName',
-        ...(type === 'local-skills' ? ['skillsPath'] : []),
-        ...(type === 'local-awesome-copilot' ? ['collectionsPath'] : [])
-      ];
-    }
-    default: {
-      return null;
-    }
-  }
-};
-
 const validateSourceDescriptor = (
   value: unknown,
   key: string,
   file: string
 ): PortableSourceDescriptor => {
-  const source = requireObject(value, `source descriptor ${key}`, file);
-  requireExactKeys(source, SOURCE_DESCRIPTOR_KEYS, ['type', 'identity', 'locator'], `source descriptor ${key}`, file);
-  const type = requireString(source.type, `source descriptor ${key}.type`, file);
-  if (!RETAINED_SOURCE_TYPES.has(type as RetainedSourceType)) {
-    invalidV3Shape(file, `source descriptor ${key} uses unsupported adapter type ${JSON.stringify(type)}.`);
-  }
-  const typedType = type as RetainedSourceType;
-  const identity = requireObject(source.identity, `source descriptor ${key}.identity`, file);
-  const kind = requireString(identity.kind, `source descriptor ${key}.identity.kind`, file);
-  const allowedIdentityKeys = identityKeysFor(typedType, kind);
-  if (allowedIdentityKeys === null) {
-    return invalidV3Shape(file, `source descriptor ${key} uses unknown identity kind ${JSON.stringify(kind)}.`);
-  }
-  requireOnlyKeys(identity, allowedIdentityKeys, `source descriptor ${key}.identity`, file);
-  const descriptor = source as unknown as PortableSourceDescriptor;
-  requireString(descriptor.locator, `source descriptor ${key}.locator`, file);
-  validateSourceConfig(source.config, file);
+  const descriptor = value as PortableSourceDescriptor;
   try {
     assertSourceKey(key, descriptor);
   } catch (error) {
@@ -538,159 +448,12 @@ const validateLegacyIdentityEvidence = (value: unknown, file: string): void => {
 };
 
 const validateResolution = (value: unknown, file: string): BundleResolution => {
-  const resolution = requireObject(value, 'bundle resolution', file);
-  const kind = requireString(resolution.kind, 'bundle resolution.kind', file);
-  if (kind === 'live') {
-    requireExactKeys(resolution, ['kind', 'selector'], ['kind', 'selector'], 'live resolution', file);
-    const selector = requireString(resolution.selector, 'live resolution.selector', file);
-    if (!isRelativePosixPath(selector)) {
-      invalidV3Shape(file, 'live resolution.selector must be a portable relative path.');
-    }
-    return resolution as unknown as BundleResolution;
+  try {
+    assertBundleResolution(value);
+  } catch (error) {
+    invalidV3Shape(file, error instanceof Error ? error.message : String(error));
   }
-  if (kind === 'unpinned') {
-    requireExactKeys(resolution, ['kind', 'reason', 'evidence'], ['kind', 'reason'], 'unpinned resolution', file);
-    requireString(resolution.reason, 'unpinned resolution.reason', file);
-    if (resolution.evidence !== undefined) {
-      const evidence = requireObject(resolution.evidence, 'unpinned evidence', file);
-      requireOnlyKeys(
-        evidence,
-        ['knownPins', 'knownDigests', 'manifestVersion', 'externalInputLimitations'],
-        'unpinned evidence',
-        file
-      );
-      if (evidence.knownPins !== undefined) {
-        const knownPins = requireObject(evidence.knownPins, 'unpinned knownPins', file);
-        for (const [name, pin] of Object.entries(knownPins)) {
-          if (/(token|password|secret|credential|authorization|api[_-]?key)/i.test(name)) {
-            invalidV3Shape(file, `unpinned evidence cannot contain secret field ${JSON.stringify(name)}.`);
-          }
-          requireString(name, 'unpinned known pin name', file);
-          requireString(pin, `unpinned known pin ${name}`, file);
-        }
-      }
-      if (evidence.knownDigests !== undefined) {
-        const knownDigests = requireObject(evidence.knownDigests, 'unpinned knownDigests', file);
-        requireOnlyKeys(knownDigests, ['archiveSha256', 'sourceContentSha256', 'manifestSha256'], 'unpinned knownDigests', file);
-        for (const [name, digest] of Object.entries(knownDigests)) {
-          requireSha256(digest, `unpinned known digest ${name}`, file);
-        }
-      }
-      if (evidence.manifestVersion !== undefined) {
-        requireString(evidence.manifestVersion, 'unpinned evidence.manifestVersion', file);
-      }
-      if (evidence.externalInputLimitations !== undefined) {
-        requireNonEmptyStringArray(evidence.externalInputLimitations, 'unpinned evidence.externalInputLimitations', file);
-      }
-    }
-    return resolution as unknown as BundleResolution;
-  }
-  if (kind !== 'pinned') {
-    invalidV3Shape(file, `bundle resolution uses unknown kind ${JSON.stringify(kind)}.`);
-  }
-
-  const provider = requireString(resolution.provider, 'pinned resolution.provider', file);
-  const common = ['kind', 'provider', 'version'];
-  requireString(resolution.version, 'pinned resolution.version', file);
-  let allowed: readonly string[] = [];
-  let required: readonly string[] = [];
-  switch (provider) {
-    case 'github-release': {
-      allowed = [...common, 'releaseId', 'assetId', 'archiveSha256', 'tag'];
-      required = [...common, 'releaseId', 'assetId', 'archiveSha256'];
-      break;
-    }
-    case 'github-tree': {
-      allowed = [...common, 'commitSha', 'bundlePath', 'sourceContentSha256', 'externalInputs'];
-      required = [...common, 'commitSha', 'bundlePath', 'sourceContentSha256'];
-      break;
-    }
-    case 'azure-devops-tree': {
-      allowed = [...common, 'commitId', 'collectionPath', 'sourceContentSha256', 'externalInputs'];
-      required = [...common, 'commitId', 'collectionPath', 'sourceContentSha256'];
-      break;
-    }
-    case 'artifactory-object': {
-      allowed = [...common, 'manifestPath', 'manifestSize', 'manifestSha256', 'archivePath', 'archiveSize', 'archiveSha256'];
-      required = [...common, 'manifestPath', 'manifestSize', 'manifestSha256', 'archivePath', 'archiveSize', 'archiveSha256'];
-      break;
-    }
-    case 'local-snapshot': {
-      allowed = [...common, 'bundleSelector', 'sourceContentSha256'];
-      required = [...common, 'bundleSelector', 'sourceContentSha256'];
-      break;
-    }
-    default: {
-      invalidV3Shape(file, `pinned resolution uses unknown provider ${JSON.stringify(provider)}.`);
-    }
-  }
-  requireExactKeys(resolution, allowed, required, `${provider} resolution`, file);
-  switch (provider) {
-    case 'github-release': {
-      for (const field of ['releaseId', 'assetId']) {
-        if (typeof resolution[field] !== 'string' || !/^[1-9]\d*$/.test(resolution[field])) {
-          invalidV3Shape(file, `pinned resolution.${field} must be a positive decimal GitHub provider ID.`);
-        }
-      }
-      requireSha256(resolution.archiveSha256, 'pinned resolution.archiveSha256', file);
-      if (resolution.tag !== undefined) {
-        requireString(resolution.tag, 'pinned resolution.tag', file);
-      }
-
-      break;
-    }
-    case 'github-tree':
-    case 'azure-devops-tree': {
-      const commitField = provider === 'github-tree' ? 'commitSha' : 'commitId';
-      if (typeof resolution[commitField] !== 'string' || !/^[a-f0-9]{40}$/.test(resolution[commitField])) {
-        invalidV3Shape(file, `pinned resolution.${commitField} must be a 40-character lowercase commit ID.`);
-      }
-      const selectorField = provider === 'github-tree' ? 'bundlePath' : 'collectionPath';
-      const selector = requireString(resolution[selectorField], `pinned resolution.${selectorField}`, file);
-      if (!isRelativePosixPath(selector)) {
-        invalidV3Shape(file, `pinned resolution.${selectorField} must be a portable relative path.`);
-      }
-      requireSha256(resolution.sourceContentSha256, 'pinned resolution.sourceContentSha256', file);
-      if (resolution.externalInputs !== undefined) {
-        if (!Array.isArray(resolution.externalInputs)) {
-          invalidV3Shape(file, 'pinned resolution.externalInputs must be an array.');
-        }
-        for (const input of resolution.externalInputs as unknown[]) {
-          const external = requireObject(input, 'external input pin', file);
-          requireExactKeys(external, ['identity', 'sourceContentSha256'], ['identity', 'sourceContentSha256'], 'external input pin', file);
-          requireString(external.identity, 'external input pin identity', file);
-          requireSha256(external.sourceContentSha256, 'external input pin sourceContentSha256', file);
-        }
-      }
-
-      break;
-    }
-    case 'artifactory-object': {
-      for (const field of ['manifestPath', 'archivePath']) {
-        const selector = requireString(resolution[field], `pinned resolution.${field}`, file);
-        if (!isRelativePosixPath(selector)) {
-          invalidV3Shape(file, `pinned resolution.${field} must be a portable relative path.`);
-        }
-      }
-      for (const field of ['manifestSize', 'archiveSize']) {
-        if (!Number.isSafeInteger(resolution[field]) || (resolution[field] as number) < 0) {
-          invalidV3Shape(file, `pinned resolution.${field} must be a non-negative integer.`);
-        }
-      }
-      requireSha256(resolution.manifestSha256, 'pinned resolution.manifestSha256', file);
-      requireSha256(resolution.archiveSha256, 'pinned resolution.archiveSha256', file);
-
-      break;
-    }
-    default: {
-      const selector = requireString(resolution.bundleSelector, 'pinned resolution.bundleSelector', file);
-      if (!isRelativePosixPath(selector)) {
-        invalidV3Shape(file, 'pinned resolution.bundleSelector must be a portable relative path.');
-      }
-      requireSha256(resolution.sourceContentSha256, 'pinned resolution.sourceContentSha256', file);
-    }
-  }
-  return resolution as unknown as BundleResolution;
+  return value as BundleResolution;
 };
 
 const validateFileEntries = (
@@ -1100,6 +863,67 @@ export const removeDesiredBundle = (
 ): DesiredLockfileV3 => {
   const { [bundleId]: _, ...remaining } = lock.bundles;
   return { ...lock, bundles: remaining };
+};
+
+const stableJson = (value: unknown): string => {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableJson(item)).join(',')}]`;
+  }
+  if (typeof value === 'object' && value !== null) {
+    const entries = Object.entries(value).toSorted(([left], [right]) => left.localeCompare(right));
+    return `{${entries.map(([key, item]) => `${JSON.stringify(key)}:${stableJson(item)}`).join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'undefined';
+};
+
+const matchesLegacyEvidence = (
+  left: LegacyIdentityEvidence,
+  right: LegacyIdentityEvidence
+): boolean =>
+  left.originalKey === right.originalKey
+  && left.version === right.version
+  && left.sourceRef === right.sourceRef
+  && stableJson(left.descriptor ?? null) === stableJson(right.descriptor ?? null)
+  && stableJson(left.knownResolution ?? null) === stableJson(right.knownResolution ?? null);
+
+/**
+ * Check whether any unresolved materialization still owns the retained legacy identity.
+ * @param lock - Local lockfile.
+ * @param evidence - Retained evidence to look up exactly.
+ * @returns Whether a matching unresolved materialization remains.
+ */
+export const hasUnresolvedMaterializationOwner = (
+  lock: LocalLockfileV3,
+  evidence: LegacyIdentityEvidence
+): boolean => Object.values(lock.targets).some((target) =>
+  Object.values(target.bundles).some((record) =>
+    'state' in record
+    && record.state === 'unmanaged'
+    && record.legacy !== undefined
+    && matchesLegacyEvidence(record.legacy, evidence)));
+
+/**
+ * Remove unresolved desired intent that exactly matches retained local evidence.
+ * @param lock - Desired lockfile.
+ * @param evidence - Retained evidence from the final materialization.
+ * @returns New lockfile with matching unresolved intent removed.
+ */
+export const removeDesiredUnresolvedIntent = (
+  lock: DesiredLockfileV3,
+  evidence: LegacyIdentityEvidence
+): DesiredLockfileV3 => {
+  if (lock.unresolved === undefined) {
+    return lock;
+  }
+  const remaining = lock.unresolved.filter((intent) =>
+    !matchesLegacyEvidence(intent, evidence));
+  if (remaining.length === lock.unresolved.length) {
+    return lock;
+  }
+  const { unresolved: _, ...withoutUnresolved } = lock;
+  return remaining.length === 0
+    ? withoutUnresolved
+    : { ...withoutUnresolved, unresolved: remaining };
 };
 
 /**

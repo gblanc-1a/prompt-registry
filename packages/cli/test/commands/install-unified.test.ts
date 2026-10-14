@@ -161,7 +161,7 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
     await writeFile(path.join(bundleDir, 'prompts', 'last.md'), '# last\n');
     const result = await run(['install', 'local-foo', '--from', bundleDir, '--target', 'my-vscode', '-o', output], flagOn);
     const duplicate = path.join(workspace, '.copilot', 'prompts', 'hello-world.prompt.md');
-    expect(result.exitCode).toBe(0);
+    expect(result.exitCode, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`).toBe(0);
     expect(await readFile(duplicate, 'utf8')).toBe('# first\n');
     if (output === 'json') {
       expect(parse<UnifiedInstallData>(result.stdout).data.duplicates).toEqual([
@@ -172,6 +172,25 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
       expect(result.stdout).toContain(duplicate);
       expect(result.stdout).toContain('first');
     }
+  });
+
+  it('uses the exact --from directory when a sibling has the same manifest id', async () => {
+    const sibling = path.join(workspace, 'sibling');
+    await writeReleaseArchive(sibling, createLegacyReleaseArchive({ id: 'local-foo' }));
+    await writeFile(path.join(sibling, 'prompts', 'hello.prompt.md'), '# sibling\n');
+
+    const result = await run(['install', 'local-foo', '--from', bundleDir, '--target', 'my-vscode', '-o', 'json'], flagOn);
+
+    expect(result.exitCode, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`).toBe(0);
+    await expect(readFile(destination(), 'utf8')).resolves.toContain('Hello Prompt');
+  });
+
+  it('derives the bundle id from the selected --from manifest when the positional id is omitted', async () => {
+    const result = await run(['install', '--from', bundleDir, '--target', 'my-vscode', '-o', 'json'], flagOn);
+
+    expect(result.exitCode, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`).toBe(0);
+    expect(parse<UnifiedInstallData>(result.stdout).data.bundle).toEqual({ id: 'local-foo', version: '1.0.0' });
+    await expect(readFile(destination(), 'utf8')).resolves.toContain('Hello Prompt');
   });
 
   it.each(['json', 'text'])('renders applied effects after a state-write failure in %s output and exits nonzero', async (output) => {
@@ -319,6 +338,49 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
     });
   });
 
+  it('reports the selected portable pin before deploying and includes it in JSON output', async () => {
+    const result = await run(['install', 'local-foo', '--from', bundleDir, '--target', 'my-vscode', '-o', 'json'], flagOn);
+
+    expect(result.stderr).toContain('Portable resolution before deployment:');
+    expect(result.stderr).toContain('pinned local-snapshot@1.0.0 sha256:');
+    expect(parse<{ resolution: { kind: string; provider?: string } }>(result.stdout).data.resolution)
+      .toMatchObject({ kind: 'pinned', provider: 'local-snapshot' });
+    expect(result.exitCode).toBe(0);
+    await expect(readFile(destination(), 'utf8')).resolves.toContain('Hello Prompt');
+  });
+
+  it('does not replace same-version unpinned digest evidence with a newly acquired pin', async () => {
+    await run(['install', 'local-foo', '--from', bundleDir, '--target', 'my-vscode', '-o', 'json'], flagOn);
+    const desiredPath = resolveUserConfigPaths(env).userLockfile;
+    const desired = JSON.parse(await readFile(desiredPath, 'utf8')) as {
+      bundles: Record<string, { version: string; resolution: { sourceContentSha256?: string } }>;
+    };
+    const key = `${localSourceKey}/local-foo`;
+    const knownDigest = desired.bundles[key].resolution.sourceContentSha256;
+    if (knownDigest === undefined) {
+      throw new Error('The initial local snapshot must record a source-content digest.');
+    }
+    const unpinnedDesired = JSON.parse(await readFile(desiredPath, 'utf8')) as {
+      bundles: Record<string, { version: string; resolution: unknown }>;
+    };
+    unpinnedDesired.bundles[key].resolution = {
+      kind: 'unpinned',
+      reason: 'Historical artifact coordinates were not retained.',
+      evidence: { knownDigests: { sourceContentSha256: knownDigest } }
+    };
+    await writeFile(desiredPath, JSON.stringify(unpinnedDesired, null, 2));
+    await writeFile(path.join(bundleDir, 'prompts', 'hello.prompt.md'), '# Changed without a version bump\n');
+    const placedBefore = await readFile(destination(), 'utf8');
+    const beforeState = await readFile(desiredPath, 'utf8');
+
+    const result = await run(['install', 'local-foo', '--from', bundleDir, '--target', 'my-vscode', '-o', 'json'], flagOn);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout + result.stderr).toContain('recorded SHA-256 digest');
+    await expect(readFile(destination(), 'utf8')).resolves.toBe(placedBefore);
+    await expect(readFile(desiredPath, 'utf8')).resolves.toBe(beforeState);
+  });
+
   it('dry-run over an un-migrated v2 lockfile refuses with an actionable error and writes nothing', async () => {
     await seedLegacyLockfile();
     const userPaths = resolveUserConfigPaths(env);
@@ -406,6 +468,7 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
       collisions: unknown[];
       skipped: unknown[];
       failures: { key: string; reason: string }[];
+      migrationPreview?: { migrated: string[]; unmanaged: { key: string; reason: string }[] } | null;
     }
 
     const lockfilePath = (): string => resolveUserConfigPaths(env).userLockfile;
@@ -509,6 +572,29 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
       const { errors } = parse<null>(result.stdout);
       expect(errors[0].code).toBe('CONFIG.LOCKFILE_NOT_MIGRATED');
       expect(errors[0].message).toContain(userPaths.userLockfile);
+      expect(recording.writes).toEqual([]);
+      await expect(readFile(userPaths.userLockfile, 'utf8')).resolves.toBe(before);
+      expect(await exists(userPaths.userLocalLockfile)).toBe(false);
+    });
+
+    it('--dry-run previews a classified branch-era v3 lockfile without migrating it', async () => {
+      await seedLegacyLockfile();
+      const userPaths = resolveUserConfigPaths(env);
+      const legacy = JSON.parse(await readFile(userPaths.userLockfile, 'utf8')) as Record<string, unknown>;
+      legacy.version = '3.0.0';
+      await writeFile(userPaths.userLockfile, JSON.stringify(legacy, null, 2));
+      const before = await readFile(userPaths.userLockfile, 'utf8');
+      const recording = new RecordingFs();
+
+      const result = await replay(['--dry-run'], recording);
+
+      expect(result.exitCode).toBe(1);
+      const { data } = parse<DryRunReplayData>(result.stdout);
+      expect(data.failures).toContainEqual(expect.objectContaining({
+        key: 'older-bundle',
+        reason: expect.stringMatching(/unresolved/i)
+      }));
+      expect(data.migrationPreview).not.toBeNull();
       expect(recording.writes).toEqual([]);
       await expect(readFile(userPaths.userLockfile, 'utf8')).resolves.toBe(before);
       expect(await exists(userPaths.userLocalLockfile)).toBe(false);
@@ -842,6 +928,30 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
       expect(result.exitCode).toBe(1);
       expect(parse<null>(result.stdout).errors[0].code).toBe('CONFIG.INVALID_LOCKFILE_V3');
       expect(await exists(destination())).toBe(false);
+    });
+
+    it('keeps malformed amended v3 resolution evidence strict and read-only', async () => {
+      await installOnce();
+      await editDesired((desired) => {
+        const entry = desired.bundles[replayKey()];
+        entry.resolution = {
+          kind: 'pinned',
+          provider: 'local-snapshot',
+          version: entry.version,
+          bundleSelector: 'bundle',
+          sourceContentSha256: 'not-a-sha256'
+        };
+      });
+      const before = await readFile(lockfilePath(), 'utf8');
+      const recording = new RecordingFs();
+
+      const result = await replay([], recording);
+
+      expect(result.exitCode).toBe(1);
+      expect(parse<null>(result.stdout).errors[0].code).toBe('CONFIG.INVALID_LOCKFILE_V3');
+      expect(recording.writes).toEqual([]);
+      await expect(readFile(lockfilePath(), 'utf8')).resolves.toBe(before);
+      await expect(readFile(destination(), 'utf8')).resolves.toContain('Hello Prompt');
     });
 
     it('reports an unrecognized AI_PRIMITIVES_HUB_UNIFIED_DEPLOY value as USAGE.INVALID_FLAG', async () => {
@@ -1212,6 +1322,126 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
         locator: source.url,
         config: { authMode: 'anonymous', credentialRef: 'mirror-auth' }
       });
+    });
+
+    it('routes configured non-GitHub sources through the shared portable capability', async () => {
+      const source: RegistrySource = {
+        id: 'ado-source',
+        name: 'Azure DevOps source',
+        type: 'azure-devops',
+        url: 'https://dev.azure.com/org/project/_git/repository',
+        enabled: true,
+        priority: 0
+      };
+      const target: Target = { name: 'my-vscode', type: 'vscode', scope: 'user' };
+      const ctx = createTestContext({ cwd: workspace, fs: new NodeFileSystem(), env: { ...env, ...flagOn } });
+
+      await expect(installBundleWithSource(remoteBundleId, source, target, ctx, http, tokens, 'json'))
+        .rejects.toMatchObject({
+          code: 'BUNDLE.UNSUPPORTED_PORTABLE_RESOLUTION',
+          message: expect.stringContaining('does not support portable bundle resolution')
+        });
+      expect(httpCalls).toEqual([]);
+    });
+
+    it('reports mutable external-input limitations before any deployment write', async () => {
+      const commitSha = 'c'.repeat(40);
+      const collectionPath = 'collections/external-bundle.collection.yml';
+      const externalUrl = 'https://example.com/prompts/external.prompt.md';
+      const collectionBytes = new TextEncoder().encode([
+        'id: external-bundle',
+        'name: External Bundle',
+        'description: A collection with a mutable external input.',
+        'version: 1.0.0',
+        'items:',
+        `  - path: ${externalUrl}`,
+        '    kind: prompt'
+      ].join('\n'));
+      const responses = new Map<string, Uint8Array>([
+        ['https://api.github.com/repos/owner/repo', new TextEncoder().encode(JSON.stringify({
+          id: 123,
+          full_name: 'owner/repo',
+          html_url: 'https://github.com/owner/repo',
+          default_branch: 'main'
+        }))],
+        ['https://api.github.com/repos/owner/repo/commits/main', new TextEncoder().encode(JSON.stringify({
+          sha: commitSha
+        }))],
+        [`https://api.github.com/repos/owner/repo/git/trees/${commitSha}?recursive=1`, new TextEncoder().encode(JSON.stringify({
+          tree: [{ path: collectionPath, type: 'blob', sha: 'collection' }]
+        }))],
+        [`https://raw.githubusercontent.com/owner/repo/${commitSha}/${collectionPath}`, collectionBytes],
+        [externalUrl, new TextEncoder().encode('# External prompt\n')]
+      ]);
+      const externalHttp: HttpClient = {
+        fetch: (request: HttpRequest): Promise<HttpResponse> => {
+          const body = responses.get(request.url);
+          if (body === undefined) {
+            return Promise.reject(new Error(`Unexpected request: ${request.url}`));
+          }
+          return Promise.resolve({
+            statusCode: 200,
+            body,
+            finalUrl: request.url,
+            headers: {}
+          });
+        }
+      };
+      const source: RegistrySource = {
+        id: 'awesome-source',
+        name: 'Awesome source',
+        type: 'awesome-copilot',
+        url: 'https://github.com/owner/repo',
+        enabled: true,
+        priority: 0,
+        config: { ref: 'main', collectionsPath: 'collections' }
+      };
+      const target: Target = { name: 'my-vscode', type: 'vscode', scope: 'user' };
+      const ctxFs = new class extends NodeFileSystem {
+        public reportAtFirstMutation: string | undefined;
+
+        private observe(): void {
+          this.reportAtFirstMutation ??= this.getReport();
+        }
+
+        public getReport: () => string = () => '';
+
+        public override async mkdir(dir: string, opts?: { recursive?: boolean }): Promise<void> {
+          this.observe();
+          await super.mkdir(dir, opts);
+        }
+
+        public override async writeFile(file: string, contents: string): Promise<void> {
+          this.observe();
+          await super.writeFile(file, contents);
+        }
+
+        public override async writeFileBytes(file: string, bytes: Uint8Array): Promise<void> {
+          this.observe();
+          await super.writeFileBytes(file, bytes);
+        }
+
+        public override async rename(from: string, to: string): Promise<void> {
+          this.observe();
+          await super.rename(from, to);
+        }
+
+        public override async remove(file: string, opts?: { recursive?: boolean }): Promise<void> {
+          this.observe();
+          await super.remove(file, opts);
+        }
+      }();
+      const ctx = createTestContext({ cwd: workspace, fs: ctxFs, env: { ...env, ...flagOn } });
+      ctxFs.getReport = () => ctx.stderr.captured();
+
+      const exitCode = await installBundleWithSource('external-bundle', source, target, ctx, externalHttp, tokens, 'json');
+
+      expect(exitCode).toBe(0);
+      const { data } = parse<{ resolution: { kind: string } }>(ctx.stdout.captured());
+      expect(data.resolution.kind).toBe('unpinned');
+      expect(ctx.stderr.captured()).toContain('Portable resolution before deployment: unpinned 1.0.0');
+      expect(ctx.stderr.captured()).toContain('external-input limitations: https://example.com/prompts/external.prompt.md');
+      expect(ctxFs.reportAtFirstMutation).toContain('external-input limitations: https://example.com/prompts/external.prompt.md');
     });
   });
 

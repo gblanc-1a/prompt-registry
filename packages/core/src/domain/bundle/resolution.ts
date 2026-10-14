@@ -12,6 +12,9 @@ import type {
   LocalSourceLocation,
   PortableSourceDescriptor,
 } from '../source/portable-identity';
+import {
+  assertPortableSourceDescriptor,
+} from '../source/portable-identity';
 
 interface GithubReleasePin {
   kind: 'pinned';
@@ -124,11 +127,229 @@ export interface PortableBundlePayload {
 /** Portable request plus machine-local binding information for bundle resolution. */
 export interface PortableBundleSelection {
   bundleId: string;
+  /** Exact direct-child bundle directory selected by a local acquisition. */
+  bundleSelector?: string;
   version?: string;
   expectedSource?: PortableSourceDescriptor;
   resolution?: BundleResolution;
   localLocation?: LocalSourceLocation;
 }
+
+const invalidResolution = (detail: string): RegistryError => new RegistryError({
+  code: 'BUNDLE.INVALID_RESOLUTION',
+  message: `Bundle resolution is invalid: ${detail}`,
+  hint: 'Use a complete provider pin, valid unpinned evidence, or an explicitly supported live selector.'
+});
+
+type ResolutionRecord = Record<string, unknown>;
+
+const resolutionRecord = (value: unknown, label: string): ResolutionRecord => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw invalidResolution(`${label} must be an object.`);
+  }
+  return value as ResolutionRecord;
+};
+
+const resolutionKeys = (
+  record: ResolutionRecord,
+  allowed: readonly string[],
+  required: readonly string[],
+  label: string
+): void => {
+  const unexpected = Object.keys(record).find((key) => !allowed.includes(key));
+  if (unexpected !== undefined) {
+    throw invalidResolution(`${label} contains unsupported field ${JSON.stringify(unexpected)}.`);
+  }
+  const missing = required.find((key) => !Object.hasOwn(record, key));
+  if (missing !== undefined) {
+    throw invalidResolution(`${label} is missing required field ${JSON.stringify(missing)}.`);
+  }
+};
+
+const resolutionText = (value: unknown, label: string): string => {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw invalidResolution(`${label} must be a non-empty string.`);
+  }
+  return value;
+};
+
+const resolutionSha256 = (value: unknown, label: string): void => {
+  if (typeof value !== 'string' || !/^[a-f0-9]{64}$/.test(value)) {
+    throw invalidResolution(`${label} must be a lowercase SHA-256 digest.`);
+  }
+};
+
+const portableRelativePath = (value: string): boolean => (
+  value.length > 0
+  && !value.startsWith('/')
+  && !/^[a-zA-Z]:/.test(value)
+  && !value.includes('\\')
+  && !value.includes('\0')
+  && !value.includes('://')
+  && value.split('/').every((part) => part.length > 0 && part !== '.' && part !== '..')
+);
+
+const resolutionPath = (value: unknown, label: string): void => {
+  const text = resolutionText(value, label);
+  if (!portableRelativePath(text)) {
+    throw invalidResolution(`${label} must be a canonical relative POSIX path.`);
+  }
+};
+
+const requireResolutionShaField = (record: ResolutionRecord, field: string): void =>
+  resolutionSha256(record[field], field);
+
+/**
+ * Validate every persisted resolution field, including provider coordinates and evidence.
+ * @param value
+ */
+export const assertBundleResolution: (value: unknown) => asserts value is BundleResolution = (value) => {
+  const resolution = resolutionRecord(value, 'resolution');
+  const kind = resolutionText(resolution.kind, 'kind');
+  if (kind === 'live') {
+    resolutionKeys(resolution, ['kind', 'selector'], ['kind', 'selector'], 'live resolution');
+    resolutionPath(resolution.selector, 'live resolution.selector');
+    return;
+  }
+  if (kind === 'unpinned') {
+    resolutionKeys(resolution, ['kind', 'reason', 'evidence'], ['kind', 'reason'], 'unpinned resolution');
+    resolutionText(resolution.reason, 'unpinned resolution.reason');
+    if (resolution.evidence !== undefined) {
+      const evidence = resolutionRecord(resolution.evidence, 'unpinned evidence');
+      resolutionKeys(
+        evidence,
+        ['knownPins', 'knownDigests', 'manifestVersion', 'externalInputLimitations'],
+        [],
+        'unpinned evidence'
+      );
+      if (evidence.knownPins !== undefined) {
+        const knownPins = resolutionRecord(evidence.knownPins, 'unpinned knownPins');
+        for (const [name, pin] of Object.entries(knownPins)) {
+          if (/(token|password|secret|credential|authorization|api[_-]?key)/i.test(name)) {
+            throw invalidResolution(`unpinned evidence cannot contain secret field ${JSON.stringify(name)}.`);
+          }
+          resolutionText(name, 'unpinned known pin name');
+          resolutionText(pin, `unpinned known pin ${name}`);
+        }
+      }
+      if (evidence.knownDigests !== undefined) {
+        const digests = resolutionRecord(evidence.knownDigests, 'unpinned knownDigests');
+        resolutionKeys(digests, ['archiveSha256', 'sourceContentSha256', 'manifestSha256'], [], 'unpinned knownDigests');
+        for (const [name, digest] of Object.entries(digests)) {
+          resolutionSha256(digest, `unpinned known digest ${name}`);
+        }
+      }
+      if (evidence.manifestVersion !== undefined) {
+        resolutionText(evidence.manifestVersion, 'unpinned evidence.manifestVersion');
+      }
+      if (evidence.externalInputLimitations !== undefined
+        && (!Array.isArray(evidence.externalInputLimitations)
+          || evidence.externalInputLimitations.length === 0
+          || evidence.externalInputLimitations.some((item) =>
+            typeof item !== 'string' || item.trim() === ''))) {
+        throw invalidResolution('unpinned evidence.externalInputLimitations must be an array of non-empty strings.');
+      }
+    }
+    return;
+  }
+  if (kind !== 'pinned') {
+    throw invalidResolution(`unknown kind ${JSON.stringify(kind)}.`);
+  }
+
+  const provider = resolutionText(resolution.provider, 'pinned resolution.provider');
+  const common = ['kind', 'provider', 'version'];
+  resolutionText(resolution.version, 'pinned resolution.version');
+  let allowed: readonly string[];
+  let required: readonly string[];
+  switch (provider) {
+    case 'github-release': {
+      allowed = [...common, 'releaseId', 'assetId', 'archiveSha256', 'tag'];
+      required = [...common, 'releaseId', 'assetId', 'archiveSha256'];
+      break;
+    }
+    case 'github-tree': {
+      allowed = [...common, 'commitSha', 'bundlePath', 'sourceContentSha256', 'externalInputs'];
+      required = [...common, 'commitSha', 'bundlePath', 'sourceContentSha256'];
+      break;
+    }
+    case 'azure-devops-tree': {
+      allowed = [...common, 'commitId', 'collectionPath', 'sourceContentSha256', 'externalInputs'];
+      required = [...common, 'commitId', 'collectionPath', 'sourceContentSha256'];
+      break;
+    }
+    case 'artifactory-object': {
+      allowed = [
+        ...common, 'manifestPath', 'manifestSize', 'manifestSha256', 'archivePath', 'archiveSize', 'archiveSha256'
+      ];
+      required = [
+        ...common, 'manifestPath', 'manifestSize', 'manifestSha256', 'archivePath', 'archiveSize', 'archiveSha256'
+      ];
+      break;
+    }
+    case 'local-snapshot': {
+      allowed = [...common, 'bundleSelector', 'sourceContentSha256'];
+      required = [...common, 'bundleSelector', 'sourceContentSha256'];
+      break;
+    }
+    default: {
+      throw invalidResolution(`unknown pinned provider ${JSON.stringify(provider)}.`);
+    }
+  }
+  resolutionKeys(resolution, allowed, required, `${provider} resolution`);
+
+  switch (provider) {
+    case 'github-release': {
+      for (const field of ['releaseId', 'assetId']) {
+        if (typeof resolution[field] !== 'string' || !/^[1-9]\d*$/.test(resolution[field])) {
+          throw invalidResolution(`pinned resolution.${field} must be a positive decimal GitHub provider ID.`);
+        }
+      }
+      requireResolutionShaField(resolution, 'archiveSha256');
+      if (resolution.tag !== undefined) {
+        resolutionText(resolution.tag, 'pinned resolution.tag');
+      }
+      break;
+    }
+    case 'github-tree':
+    case 'azure-devops-tree': {
+      const commitField = provider === 'github-tree' ? 'commitSha' : 'commitId';
+      if (typeof resolution[commitField] !== 'string' || !/^[a-f0-9]{40}$/.test(resolution[commitField])) {
+        throw invalidResolution(`pinned resolution.${commitField} must be a 40-character lowercase commit ID.`);
+      }
+      resolutionPath(resolution[provider === 'github-tree' ? 'bundlePath' : 'collectionPath'], 'pinned selector');
+      requireResolutionShaField(resolution, 'sourceContentSha256');
+      if (resolution.externalInputs !== undefined) {
+        if (!Array.isArray(resolution.externalInputs)) {
+          throw invalidResolution('pinned resolution.externalInputs must be an array.');
+        }
+        for (const item of resolution.externalInputs) {
+          const external = resolutionRecord(item, 'external input pin');
+          resolutionKeys(external, ['identity', 'sourceContentSha256'], ['identity', 'sourceContentSha256'], 'external input pin');
+          resolutionText(external.identity, 'external input pin identity');
+          requireResolutionShaField(external, 'sourceContentSha256');
+        }
+      }
+      break;
+    }
+    case 'artifactory-object': {
+      resolutionPath(resolution.manifestPath, 'pinned resolution.manifestPath');
+      resolutionPath(resolution.archivePath, 'pinned resolution.archivePath');
+      for (const field of ['manifestSize', 'archiveSize']) {
+        if (!Number.isSafeInteger(resolution[field]) || (resolution[field] as number) < 0) {
+          throw invalidResolution(`pinned resolution.${field} must be a non-negative integer.`);
+        }
+      }
+      requireResolutionShaField(resolution, 'manifestSha256');
+      requireResolutionShaField(resolution, 'archiveSha256');
+      break;
+    }
+    case 'local-snapshot': {
+      resolutionPath(resolution.bundleSelector, 'pinned resolution.bundleSelector');
+      requireResolutionShaField(resolution, 'sourceContentSha256');
+      break;
+    }
+  }
+};
 
 const resolutionVersionError = (version: string, recordedVersion: string): RegistryError => new RegistryError({
   code: 'BUNDLE.RESOLUTION_VERSION_MISMATCH',
@@ -178,6 +399,8 @@ export const assertResolutionSourceCompatibility = (
   source: PortableSourceDescriptor,
   resolution: BundleResolution
 ): void => {
+  assertPortableSourceDescriptor(source);
+  assertBundleResolution(resolution);
   if (!resolutionMatchesSource(source, resolution)) {
     throw new RegistryError({
       code: 'BUNDLE.RESOLUTION_SOURCE_MISMATCH',
@@ -297,6 +520,8 @@ export const sameArtifactResolution = (a: BundleResolution, b: BundleResolution)
  * @param version
  */
 export const assertResolutionVersion = (resolution: BundleResolution, version: string): void => {
+  assertBundleResolution(resolution);
+  resolutionText(version, 'manifest version');
   const recordedVersion = resolution.kind === 'pinned'
     ? resolution.version
     : (resolution.kind === 'unpinned'

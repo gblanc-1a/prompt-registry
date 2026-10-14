@@ -401,6 +401,129 @@ const validateLocator = (source: PortableSourceDescriptor): void => {
   }
 };
 
+const invalidDescriptor = (detail: string): RegistryError => new RegistryError({
+  code: 'BUNDLE.INVALID_SOURCE_DESCRIPTOR',
+  message: `Portable source descriptor is invalid: ${detail}`,
+  hint: 'Use only the retained source type, identity fields, locator, and non-secret adapter configuration.'
+});
+
+const SOURCE_TYPES: readonly RetainedSourceType[] = [
+  'github', 'local', 'awesome-copilot', 'local-awesome-copilot', 'skills',
+  'local-skills', 'azure-devops', 'artifactory'
+];
+const SOURCE_CONFIG_KEYS = [
+  'ref', 'collectionsPath', 'skillsPath', 'indexFile', 'authMode', 'credentialRef'
+];
+
+const recordOf = (value: unknown, label: string): Record<string, unknown> => {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw invalidDescriptor(`${label} must be an object.`);
+  }
+  return value as Record<string, unknown>;
+};
+
+const onlyKeys = (value: Record<string, unknown>, allowed: readonly string[], label: string): void => {
+  const unexpected = Object.keys(value).find((key) => !allowed.includes(key));
+  if (unexpected !== undefined) {
+    throw invalidDescriptor(`${label} contains unsupported field ${JSON.stringify(unexpected)}.`);
+  }
+};
+
+const requiredText = (value: unknown, label: string): string => {
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw invalidDescriptor(`${label} must be a non-empty string.`);
+  }
+  return value;
+};
+
+const identityFields = (type: RetainedSourceType, kind: string): readonly string[] | undefined => {
+  switch (kind) {
+    case 'github-releases': {
+      return ['kind', 'origin', 'repositoryId'];
+    }
+    case 'github-tree': {
+      return [
+        'kind', 'origin', 'repositoryId', 'ref',
+        ...(type === 'skills' ? ['skillsPath'] : ['collectionsPath'])
+      ];
+    }
+    case 'azure-devops-tree': {
+      return ['kind', 'namespace', 'repositoryId', 'ref', 'collectionsPath'];
+    }
+    case 'artifactory-index': {
+      return ['kind', 'root', 'indexFile'];
+    }
+    case 'workspace-local': {
+      return [
+        'kind', 'root',
+        ...(type === 'local-skills' ? ['skillsPath'] : []),
+        ...(type === 'local-awesome-copilot' ? ['collectionsPath'] : [])
+      ];
+    }
+    case 'external-local': {
+      return [
+        'kind', 'bindingName',
+        ...(type === 'local-skills' ? ['skillsPath'] : []),
+        ...(type === 'local-awesome-copilot' ? ['collectionsPath'] : [])
+      ];
+    }
+    default: {
+      return undefined;
+    }
+  }
+};
+
+/**
+ * Validate the complete portable descriptor shape before it can be recorded.
+ * @param value
+ */
+export const assertPortableSourceDescriptor: (value: unknown) => asserts value is PortableSourceDescriptor = (value) => {
+  const descriptor = recordOf(value, 'descriptor');
+  onlyKeys(descriptor, ['type', 'identity', 'locator', 'config'], 'descriptor');
+  const type = requiredText(descriptor.type, 'type');
+  if (!SOURCE_TYPES.includes(type as RetainedSourceType)) {
+    throw invalidDescriptor(`type ${JSON.stringify(type)} is not retained by the portable lifecycle.`);
+  }
+  const retainedType = type as RetainedSourceType;
+  const identity = recordOf(descriptor.identity, 'identity');
+  const kind = requiredText(identity.kind, 'identity.kind');
+  const allowedIdentityFields = identityFields(retainedType, kind);
+  if (allowedIdentityFields === undefined || !adapterMatchesKind(retainedType, kind as SourceIdentity['kind'])) {
+    throw invalidDescriptor(`identity kind ${JSON.stringify(kind)} is incompatible with adapter ${JSON.stringify(type)}.`);
+  }
+  onlyKeys(identity, allowedIdentityFields, 'identity');
+  requiredText(descriptor.locator, 'locator');
+  if (descriptor.config !== undefined) {
+    const config = recordOf(descriptor.config, 'config');
+    onlyKeys(config, SOURCE_CONFIG_KEYS, 'config');
+    for (const key of ['ref', 'collectionsPath', 'skillsPath', 'indexFile', 'credentialRef']) {
+      if (config[key] !== undefined) {
+        const text = requiredText(config[key], `config.${key}`);
+        if (key !== 'ref' && key !== 'credentialRef') {
+          try {
+            relativeSelector(text, `config.${key}`);
+          } catch {
+            throw invalidDescriptor(`config.${key} must be a canonical relative POSIX path.`);
+          }
+        }
+      }
+    }
+    if (config.authMode !== undefined && config.authMode !== 'anonymous' && config.authMode !== 'bearer') {
+      throw invalidDescriptor('config.authMode must be "anonymous" or "bearer".');
+    }
+  }
+  const typedDescriptor = descriptor as unknown as PortableSourceDescriptor;
+  try {
+    validateLocator(typedDescriptor);
+    canonicalIdentity(typedDescriptor.identity, typedDescriptor.type);
+  } catch (error) {
+    if (error instanceof RegistryError) {
+      throw error;
+    }
+    throw invalidDescriptor(error instanceof Error ? error.message : String(error));
+  }
+};
+
 /**
  * Create the portable source key from adapter type and canonical identity.
  * @param identity
@@ -423,8 +546,8 @@ export const sameSourceIdentity = (
   a: PortableSourceDescriptor,
   b: PortableSourceDescriptor
 ): boolean => {
-  validateLocator(a);
-  validateLocator(b);
+  assertPortableSourceDescriptor(a);
+  assertPortableSourceDescriptor(b);
   return sourceKey(a.identity, a.type) === sourceKey(b.identity, b.type);
 };
 
@@ -434,7 +557,7 @@ export const sameSourceIdentity = (
  * @param source
  */
 export const assertSourceKey = (key: string, source: PortableSourceDescriptor): void => {
-  validateLocator(source);
+  assertPortableSourceDescriptor(source);
   if (!SOURCE_KEY_PATTERN.test(key)) {
     throw new RegistryError({
       code: 'BUNDLE.INVALID_SOURCE_KEY',

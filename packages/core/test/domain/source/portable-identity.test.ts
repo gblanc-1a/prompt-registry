@@ -7,6 +7,7 @@ import {
   RegistryError,
 } from '../../../src/domain/registry-error';
 import {
+  assertPortableSourceDescriptor,
   assertSourceKey,
   sameSourceIdentity,
   sourceKey,
@@ -249,6 +250,16 @@ describe('portable source identity', () => {
       .toThrow(RegistryError);
     expect(() => assertSourceKey(externalKey, externalSource('other-binding')))
       .toThrow(RegistryError);
+  });
+
+  it('rejects incomplete or unrecordable descriptor configuration', () => {
+    const valid = sourceAt('https://github.com/team/repo');
+    expect(() => assertPortableSourceDescriptor({ ...valid, config: { ref: '' } }))
+      .toThrow(RegistryError);
+    expect(() => assertPortableSourceDescriptor({
+      ...valid,
+      identity: { ...valid.identity, unrecordable: 'field' }
+    })).toThrow(RegistryError);
   });
 
   it('includes external-local binding names and consumed selectors in identity', () => {

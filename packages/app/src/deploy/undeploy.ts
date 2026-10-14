@@ -9,7 +9,9 @@
  * @module deploy/undeploy
  */
 import {
+  hasUnresolvedMaterializationOwner,
   removeDesiredBundle,
+  removeDesiredUnresolvedIntent,
   removeMaterialization,
   writeLockfileV3Pair,
 } from '../stores/lockfile-v3';
@@ -233,6 +235,13 @@ export async function undeployBundle(
     let desiredUpdated = pair.desired;
     if (!otherTargetHasBundle) {
       desiredUpdated = removeDesiredBundle(pair.desired, key);
+      if (
+        'state' in bundleRecord
+        && bundleRecord.legacy !== undefined
+        && !hasUnresolvedMaterializationOwner(localUpdated, bundleRecord.legacy)
+      ) {
+        desiredUpdated = removeDesiredUnresolvedIntent(desiredUpdated, bundleRecord.legacy);
+      }
     }
 
     // 6. Write the pair.

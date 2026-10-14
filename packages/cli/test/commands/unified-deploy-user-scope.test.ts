@@ -18,6 +18,7 @@ import {
   mkdtemp,
   readdir,
   readFile,
+  realpath,
   rm,
   stat,
   writeFile,
@@ -201,7 +202,7 @@ describe('unified deploy, CLI user scope, vscode', () => {
   };
 
   beforeEach(async () => {
-    workspace = await mkdtemp(path.join(os.tmpdir(), 'cli-unified-e2e-'));
+    workspace = await mkdtemp(path.join(await realpath(os.tmpdir()), 'cli-unified-e2e-'));
     bundleDir = path.join(workspace, 'bundle');
     env = {
       HOME: workspace,

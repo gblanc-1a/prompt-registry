@@ -97,6 +97,28 @@ describe('undeployBundle', () => {
   ])('rejects noncanonical or escaping recorded paths before removal: %s', (recordedPath) => {
     expect(resolveRecordedPath('/home/u/.copilot', recordedPath).safe).toBe(false);
   });
+  it.each([
+    'C:\\outside\\escape.prompt.md',
+    '..\\outside\\escape.prompt.md'
+  ])('refuses an invalid Windows recorded path through public undeploy without mutation: %s', async (recordedPath) => {
+    const ports = recordingPorts();
+    await deployBundle(request(), ports);
+    const local = readPair(ports).local;
+    local.targets['my-vscode'].bundles[portableKeyFor('web-dev')].files[0].path = recordedPath;
+    ports.files.set(ports.lockfileStore.localFile, JSON.stringify(local));
+    const protectedFile = '/outside/escape.prompt.md';
+    ports.files.set(protectedFile, '# keep\n');
+    const before = [...ports.files];
+    const callsBefore = ports.calls.length;
+
+    await expect(undeployBundle(undeployRequest(), ports))
+      .rejects.toMatchObject({ code: 'CONFIG.INVALID_LOCKFILE_V3' });
+
+    expect([...ports.files]).toEqual(before);
+    expect(ports.files.get(protectedFile)).toBe('# keep\n');
+    expect(ports.calls.slice(callsBefore).filter((call) =>
+      /^(writeFile|writeFileBytes|rename|remove|mkdir):/.test(call))).toEqual([]);
+  });
   it('reports the paths already removed when a later removal fails', async () => {
     const ports = recordingPorts();
     await deployBundle(skillRequest(), ports);

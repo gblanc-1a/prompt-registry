@@ -4,6 +4,7 @@ import {
   it,
 } from 'vitest';
 import {
+  assertBundleResolution,
   assertResolutionVersion,
   sameArtifactResolution,
 } from '../../../src/domain/bundle/resolution';
@@ -107,6 +108,29 @@ describe('artifact resolution', () => {
   it('rejects a version that disagrees with verified resolution evidence', () => {
     expect(() => assertResolutionVersion(releaseResolution('v1.2.3'), '2.0.0'))
       .toThrow(RegistryError);
+  });
+
+  it('rejects provider pin coordinates that cannot be recorded', () => {
+    expect(() => assertBundleResolution({
+      kind: 'pinned',
+      provider: 'github-release',
+      version: '1.2.3',
+      releaseId: '0',
+      assetId: '12',
+      archiveSha256: 'a'.repeat(64)
+    })).toThrow(RegistryError);
+  });
+
+  it('rejects unsupported fields and malformed digest evidence in resolutions', () => {
+    expect(() => assertBundleResolution({
+      ...releaseResolution('v1.2.3'),
+      locator: 'display-only'
+    })).toThrow(RegistryError);
+    expect(() => assertBundleResolution({
+      kind: 'unpinned',
+      reason: 'Legacy evidence',
+      evidence: { knownDigests: { sourceContentSha256: 'not-a-sha256' } }
+    })).toThrow(RegistryError);
   });
 
   it('does not invent a historical version pin for unpinned evidence', () => {

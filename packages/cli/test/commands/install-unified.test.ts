@@ -57,8 +57,10 @@ import {
   TargetAddCommand,
 } from '../../src/commands/target-add';
 import {
+  UninstallCommand,
+} from '../../src/commands/uninstall';
+import {
   createTestContext,
-  runCli,
   runCommand,
 } from '../../src/framework';
 import {
@@ -1068,6 +1070,15 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
     const remoteSourceKey = sourceKey(remoteSource.identity, remoteSource.type);
     const remoteReplayKey = `${remoteSourceKey}/${remoteBundleId}`;
     let httpCalls: string[];
+    let releaseUnavailable = false;
+    let assetBytes = zipBytes;
+    const externalResponses = new Map<string, HttpResponse>();
+    const asHttpResponse = (url: string, body: Uint8Array, statusCode = 200): HttpResponse => ({
+      statusCode,
+      body,
+      finalUrl: url,
+      headers: {}
+    });
     const releaseAssets = [
       {
         id: 201,
@@ -1095,6 +1106,10 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
     const http: HttpClient = {
       fetch: (request: HttpRequest): Promise<HttpResponse> => {
         httpCalls.push(request.url);
+        const externalResponse = externalResponses.get(request.url);
+        if (externalResponse !== undefined) {
+          return Promise.resolve(externalResponse);
+        }
         if (request.url === 'https://api.github.com/repos/owner/repo') {
           return Promise.resolve({
             statusCode: 200,
@@ -1117,6 +1132,13 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
           });
         }
         if (request.url === 'https://api.github.com/repos/owner/repo/releases/100') {
+          if (releaseUnavailable) {
+            return Promise.resolve(asHttpResponse(
+              request.url,
+              new TextEncoder().encode(JSON.stringify({ message: 'Provider metadata unavailable' })),
+              503
+            ));
+          }
           return Promise.resolve({
             statusCode: 200,
             body: new TextEncoder().encode(JSON.stringify(release)),
@@ -1152,7 +1174,7 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
           return Promise.resolve({ statusCode: 200, body: remoteManifest, finalUrl: request.url, headers: {} });
         }
         if (request.url === 'https://api.github.com/assets/remote-foo') {
-          return Promise.resolve({ statusCode: 200, body: zipBytes, finalUrl: request.url, headers: {} });
+          return Promise.resolve(asHttpResponse(request.url, assetBytes));
         }
         return Promise.reject(new Error(`Unexpected request: ${request.url}`));
       }
@@ -1163,22 +1185,18 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
       argv: string[],
       fs: NodeFileSystem = new NodeFileSystem(),
       flag: Record<string, string> = flagOn
-    ): Promise<{ exitCode: number; stdout: string }> => {
-      const ctx = createTestContext({ cwd: workspace, fs, env: { ...env, ...flag } });
-      const exitCode = await runCli(argv, {
-        ctx,
-        name: 'ai-primitives-hub',
-        version: '0.0.0-test',
-        commands: [],
-        commandClasses: [TargetAddCommand, InstallCommand],
-        http,
-        tokens
-      });
-      return { exitCode, stdout: ctx.stdout.captured() };
-    };
+    ): ReturnType<typeof runCommand> => runCommand(argv, {
+      commandClasses: [TargetAddCommand, InstallCommand, UninstallCommand],
+      context: { cwd: workspace, fs, env: { ...env, ...flag } },
+      http,
+      tokens
+    });
 
     beforeEach(() => {
       httpCalls = [];
+      releaseUnavailable = false;
+      assetBytes = zipBytes;
+      externalResponses.clear();
     });
 
     it('refuses repository scope before any HTTP request', async () => {
@@ -1303,8 +1321,100 @@ describe('install command (AI_PRIMITIVES_HUB_UNIFIED_DEPLOY on, user scope)', ()
         expect(data.replayed).toEqual([key]);
         expect(data.failures).toEqual([]);
         expect(httpCalls).toContain('https://api.github.com/repos/owner/repo/releases/100');
-        expect(httpCalls).not.toContain('https://api.github.com/repos/owner/repo/releases');
+        expect(httpCalls, httpCalls.join('\n')).not.toContain('https://api.github.com/repos/owner/repo/releases');
         await expect(readFile(destination(), 'utf8')).resolves.toContain('Hello Prompt');
+      });
+
+      it('keeps remote ownership and pinned intent after metadata outage, then uninstalls offline', async () => {
+        const installArgv = [
+          'install', remoteBundleId, '--source', 'owner/repo', '--target', 'my-vscode', '-o', 'json'
+        ];
+        const installed = await runRemote(installArgv);
+        expect(installed.exitCode, installed.stdout).toBe(0);
+
+        const userPaths = resolveUserConfigPaths(env);
+        const desiredBefore = await readFile(userPaths.userLockfile, 'utf8');
+        const localBefore = await readFile(userPaths.userLocalLockfile, 'utf8');
+        const localState = JSON.parse(localBefore) as {
+          targets: Record<string, { bundles: Record<string, { sourceKey: string; files: { path: string }[] }> }>;
+        };
+        const bundleRecord = localState.targets['my-vscode'].bundles[key];
+        expect(bundleRecord.files).toContainEqual({ path: 'prompts/hello.prompt.md', checksum: expect.any(String), installedChecksum: expect.any(String) });
+        await rm(destination());
+        httpCalls.length = 0;
+        releaseUnavailable = true;
+        const recording = new RecordingFs(workspace);
+
+        const failedReplay = await replayRemote(recording);
+
+        expect(failedReplay.exitCode).toBe(1);
+        const failedData = parse<{ replayed: string[]; failures: { key: string; reason: string }[] }>(failedReplay.stdout).data;
+        expect(failedData.replayed).toEqual([]);
+        expect(failedData.failures).toHaveLength(1);
+        expect(failedData.failures[0]).toMatchObject({ key });
+        expect(failedData.failures[0].reason).toMatch(/metadata unavailable|releases\/100|503/i);
+        expect(httpCalls).toContain('https://api.github.com/repos/owner/repo/releases/100');
+        expect(httpCalls, httpCalls.join('\n')).not.toContain('https://api.github.com/repos/owner/repo/releases');
+        expect(httpCalls).not.toContain('https://api.github.com/assets/remote-foo');
+        expect(recording.writes).toEqual([]);
+        expect(await readFile(userPaths.userLockfile, 'utf8')).toBe(desiredBefore);
+        expect(await readFile(userPaths.userLocalLockfile, 'utf8')).toBe(localBefore);
+        expect(await exists(destination())).toBe(false);
+
+        httpCalls.length = 0;
+        const removed = await runRemote([
+          'uninstall', '--bundle', key, '--target', 'my-vscode', '-o', 'json'
+        ], new RecordingFs(workspace));
+
+        expect(removed.exitCode, `stdout:\n${removed.stdout}\nstderr:\n${removed.stderr}`).toBe(0);
+        expect(httpCalls).toEqual([]);
+        expect(JSON.parse(await readFile(userPaths.userLockfile, 'utf8'))).toMatchObject({ bundles: {} });
+        expect(JSON.parse(await readFile(userPaths.userLocalLockfile, 'utf8'))).toMatchObject({ targets: {} });
+        expect(await exists(destination())).toBe(false);
+      });
+
+      it('rejects altered bytes for the same pinned asset before placement without latest fallback', async () => {
+        const installed = await runRemote([
+          'install', remoteBundleId, '--source', 'owner/repo', '--target', 'my-vscode', '-o', 'json'
+        ]);
+        expect(installed.exitCode, installed.stdout).toBe(0);
+
+        const userPaths = resolveUserConfigPaths(env);
+        const desiredBefore = await readFile(userPaths.userLockfile, 'utf8');
+        const localBefore = await readFile(userPaths.userLocalLockfile, 'utf8');
+        const changedFiles = new Map(remoteFiles);
+        changedFiles.set('prompts/hello.prompt.md', new TextEncoder().encode('# Changed, same asset ID\n'));
+        assetBytes = buildZip([...changedFiles.entries()].map(([filePath, bytes]) => ({
+          path: filePath,
+          bytes
+        })));
+        const bundleAsset = releaseAssets.find((asset) => asset.id === 200);
+        if (bundleAsset === undefined) {
+          throw new Error('The release fixture is missing its pinned bundle asset.');
+        }
+        bundleAsset.size = assetBytes.byteLength;
+        await rm(destination());
+        httpCalls.length = 0;
+        const recording = new RecordingFs(workspace);
+
+        const failedReplay = await replayRemote(recording);
+
+        expect(failedReplay.exitCode).toBe(1);
+        const { data } = parse<{ replayed: string[]; failures: { key: string; reason: string }[] }>(failedReplay.stdout);
+        expect(data.replayed).toEqual([]);
+        expect(data.failures).toHaveLength(1);
+        expect(data.failures[0]).toMatchObject({
+          key,
+          reason: expect.stringMatching(/hash|checksum|digest|sha/i)
+        });
+        expect(httpCalls).toContain('https://api.github.com/repos/owner/repo/releases/100');
+        expect(httpCalls).toContain('https://api.github.com/assets/remote-foo');
+        expect(httpCalls).not.toContain('https://api.github.com/repos/owner/repo/releases');
+        expect(httpCalls).not.toContain('https://api.github.com/repos/owner/repo/releases/tags/v1.0.0');
+        expect(recording.writes).toEqual([]);
+        expect(await exists(destination())).toBe(false);
+        expect(await readFile(userPaths.userLockfile, 'utf8')).toBe(desiredBefore);
+        expect(await readFile(userPaths.userLocalLockfile, 'utf8')).toBe(localBefore);
       });
 
       it('rejects an incompatible recorded provider descriptor before making HTTP requests', async () => {

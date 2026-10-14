@@ -29,8 +29,12 @@ import {
   resolveUserConfigPaths,
 } from '@ai-primitives-hub/app';
 import type {
+  HttpClient,
+  HttpRequest,
+  HttpResponse,
   HubConfig,
   PortableSourceDescriptor,
+  TokenProvider,
 } from '@ai-primitives-hub/core';
 import {
   sourceKey as portableSourceKey,
@@ -107,7 +111,13 @@ interface DesiredFile {
   version: string;
   bundles: Record<string, { version: string; sourceKey?: string; sourceId?: string; resolution?: unknown }>;
   sources: Record<string, unknown>;
-  unresolved?: { originalKey: string; version: string; sourceRef?: string; reason: string }[];
+  unresolved?: {
+    originalKey: string;
+    version: string;
+    sourceRef?: string;
+    reason: string;
+    knownResolution?: unknown;
+  }[];
   generatedAt?: string;
   targets?: unknown;
 }
@@ -118,6 +128,7 @@ interface LocalRecord {
   state?: string;
   installedAt: string;
   unmanagedReason?: string;
+  legacy?: { originalKey?: string; knownResolution?: unknown };
   files: { path: string; checksum: string; installedChecksum?: string }[];
 }
 
@@ -136,6 +147,13 @@ const EXPECTED_TREE = [
 const INSTALL_ARGV = ['install', '--from', '<bundleDir>', 'web-dev', '--target', 'my-vscode'];
 
 const parseJson = <T>(stdout: string): JsonEnvelope<T> => JSON.parse(stdout) as JsonEnvelope<T>;
+const parseLastJson = <T>(stdout: string): JsonEnvelope<T> => {
+  const line = stdout.split('\n').findLast((candidate) => candidate.startsWith('{"schemaVersion":'));
+  if (line === undefined) {
+    throw new Error(`No JSON output envelope found in:\n${stdout}`);
+  }
+  return parseJson<T>(line);
+};
 
 const exists = async (file: string): Promise<boolean> => {
   try {
@@ -188,7 +206,8 @@ describe('unified deploy, CLI user scope, vscode', () => {
     flag: 'on' | 'off',
     argv: string[],
     // BoundedFs: config and lockfile discovery walk upward without a boundary, so hide everything outside the workspace.
-    fs: NodeFileSystem = new BoundedFs(workspace)
+    fs: NodeFileSystem = new BoundedFs(workspace),
+    providers: { http?: HttpClient; tokens?: TokenProvider } = {}
   ): ReturnType<typeof runCommand> => runCommand(
     argv.map((arg) => (arg === '<bundleDir>' ? bundleDir : arg)),
     {
@@ -197,11 +216,56 @@ describe('unified deploy, CLI user scope, vscode', () => {
         cwd: workspace,
         fs,
         env: { ...env, ...(flag === 'on' ? { AI_PRIMITIVES_HUB_UNIFIED_DEPLOY: '1' } : {}) }
-      }
+      },
+      ...providers
     }
   );
-  const runFlagOn = (argv: string[], fs?: NodeFileSystem): ReturnType<typeof runCommand> => runWith('on', argv, fs);
-  const runFlagOff = (argv: string[], fs?: NodeFileSystem): ReturnType<typeof runCommand> => runWith('off', argv, fs);
+  const runFlagOn = (
+    argv: string[],
+    fs?: NodeFileSystem,
+    providers?: { http?: HttpClient; tokens?: TokenProvider }
+  ): ReturnType<typeof runCommand> => runWith('on', argv, fs, providers);
+  const runFlagOff = (
+    argv: string[],
+    fs?: NodeFileSystem,
+    providers?: { http?: HttpClient; tokens?: TokenProvider }
+  ): ReturnType<typeof runCommand> => runWith('off', argv, fs, providers);
+
+  const configureLiveSkillsHub = async (hubId: string): Promise<string> => {
+    const skillsRoot = path.join(workspace, 'local-skills');
+    const skillFile = path.join(skillsRoot, 'skills', 'web-dev', 'SKILL.md');
+    await mkdir(path.dirname(skillFile), { recursive: true });
+    await writeFile(skillFile, '---\nname: Web Dev\n---\n# Instructions\n', 'utf8');
+
+    const userPaths = resolveUserConfigPaths(env);
+    const hubFile = path.join(userPaths.hubs, `${hubId}.yml`);
+    const hub: HubConfig = {
+      version: '1.0.0',
+      metadata: {
+        name: 'Live local skills',
+        description: 'Local live-install refusal fixture',
+        maintainer: 'test',
+        updatedAt: '2026-10-14T00:00:00.000Z'
+      },
+      sources: [{
+        id: 'skills-alias',
+        name: 'Skills alias',
+        type: 'local-skills',
+        url: './local-skills',
+        enabled: true,
+        priority: 0
+      }],
+      profiles: [{
+        id: 'default',
+        name: 'Default',
+        bundles: [{ id: 'web-dev', version: '1.0.0', source: 'skills-alias', required: true }]
+      }]
+    };
+    const nodeFs = new NodeFileSystem();
+    await new HubStore(userPaths.hubs, nodeFs).save(hubId, hub, { type: 'local', location: hubFile });
+    await new ActiveHubStore(userPaths.activeHub, nodeFs).set(hubId);
+    return skillFile;
+  };
 
   const readDesired = async (): Promise<DesiredFile> => JSON.parse(await readFile(desiredLockfile, 'utf8')) as DesiredFile;
   const readLocal = async (): Promise<LocalFile> => JSON.parse(await readFile(localLockfile, 'utf8')) as LocalFile;
@@ -450,6 +514,573 @@ describe('unified deploy, CLI user scope, vscode', () => {
       { kind: 'workspace-local', root: 'registry' },
       'local'
     )).toBe(sourceId);
+  });
+
+  it('produces identical portable desired state across independent clone roots and replays local bytes', async () => {
+    const secondWorkspace = await realpath(await mkdtemp(path.join(await realpath(os.tmpdir()), 'cli-unified-clone-')));
+    const aliases = ['clone-registry-a', 'clone-registry-b'];
+    const roots = [workspace, secondWorkspace];
+    const rootEnvs = roots.map((root) => ({
+      HOME: root,
+      USERPROFILE: root,
+      XDG_CONFIG_HOME: path.join(root, 'xdg-config'),
+      XDG_CACHE_HOME: path.join(root, 'xdg-cache')
+    }));
+    const denyHttpCalls: string[] = [];
+    const denyHttp: HttpClient = {
+      fetch: (request: HttpRequest): Promise<HttpResponse> => {
+        denyHttpCalls.push(request.url);
+        return Promise.reject(new Error(`Unexpected provider lookup: ${request.url}`));
+      }
+    };
+    try {
+      const pairs: {
+        desiredBytes: string;
+        desired: DesiredFile;
+        local: LocalFile;
+        paths: ReturnType<typeof resolveUserConfigPaths>;
+        copilot: string;
+        root: string;
+      }[] = [];
+
+      for (const [index, root] of roots.entries()) {
+        const rootEnv = rootEnvs[index];
+        const alias = aliases[index];
+        if (rootEnv === undefined || alias === undefined) {
+          throw new Error('The clone-root fixture is incomplete.');
+        }
+        const registryRoot = path.join(root, 'registry');
+        await mkdir(registryRoot, { recursive: true });
+        await writeReleaseArchive(path.join(registryRoot, 'web-dev'), createSlice1Bundle());
+        const paths = resolveUserConfigPaths(rootEnv);
+        const hubId = 'portable-clone';
+        const hubFile = path.join(paths.hubs, `${hubId}.yml`);
+        const hub: HubConfig = {
+          version: '1.0.0',
+          metadata: {
+            name: 'Portable clone source',
+            description: 'Independent workspace root fixture',
+            maintainer: 'test',
+            updatedAt: '2026-10-14T00:00:00.000Z'
+          },
+          sources: [{
+            id: alias,
+            name: `Friendly ${alias}`,
+            type: 'local',
+            url: './registry',
+            enabled: true,
+            priority: 0
+          }],
+          profiles: [{
+            id: 'default',
+            name: 'Default',
+            bundles: [{ id: 'web-dev', version: '1.0.0', source: alias, required: true }]
+          }]
+        };
+        const nodeFs = new NodeFileSystem();
+        await new HubStore(paths.hubs, nodeFs).save(hubId, hub, { type: 'local', location: hubFile });
+        await new ActiveHubStore(paths.activeHub, nodeFs).set(hubId);
+
+        if (root !== workspace) {
+          const targetAdded = await runCommand(
+            ['target', 'add', 'my-vscode', '--type', 'vscode', '-o', 'json'],
+            {
+              commandClasses: [TargetAddCommand, InstallCommand, UninstallCommand, StatusCommand, UpdateCommand],
+              context: { cwd: root, fs: new BoundedFs(root), env: { ...rootEnv, AI_PRIMITIVES_HUB_UNIFIED_DEPLOY: '1' } },
+              http: denyHttp,
+              tokens: { getToken: () => Promise.resolve(undefined) }
+            }
+          );
+          expect(targetAdded.exitCode, targetAdded.stdout).toBe(0);
+        }
+
+        const installed = root === workspace
+          ? await runFlagOn([
+            'install', '--source', hubId, '--interactive', '--target', 'my-vscode', '-o', 'json'
+          ], undefined, { http: denyHttp, tokens: { getToken: () => Promise.resolve(undefined) } })
+          : await runCommand(
+            ['install', '--source', hubId, '--interactive', '--target', 'my-vscode', '-o', 'json'],
+            {
+              commandClasses: [TargetAddCommand, InstallCommand, UninstallCommand, StatusCommand, UpdateCommand],
+              context: { cwd: root, fs: new BoundedFs(root), env: { ...rootEnv, AI_PRIMITIVES_HUB_UNIFIED_DEPLOY: '1' } },
+              http: denyHttp,
+              tokens: { getToken: () => Promise.resolve(undefined) }
+            }
+          );
+        expect(installed.exitCode, `stdout:\n${installed.stdout}\nstderr:\n${installed.stderr}`).toBe(0);
+        const desiredBytes = await readFile(paths.userLockfile, 'utf8');
+        const localBytes = await readFile(paths.userLocalLockfile, 'utf8');
+        const copilot = path.join(root, '.copilot');
+        pairs.push({
+          desiredBytes,
+          desired: JSON.parse(desiredBytes) as DesiredFile,
+          local: JSON.parse(localBytes) as LocalFile,
+          paths,
+          copilot,
+          root
+        });
+      }
+
+      const first = pairs[0];
+      const second = pairs[1];
+      const secondEnv = rootEnvs[1];
+      if (first === undefined || second === undefined || secondEnv === undefined) {
+        throw new Error('Both workspace clones must be installed.');
+      }
+      expect(first.root).not.toBe(second.root);
+      expect(await realpath(path.join(first.root, 'registry'))).not.toBe(await realpath(path.join(second.root, 'registry')));
+      expect(first.desiredBytes).toBe(second.desiredBytes);
+
+      const firstKeys = Object.keys(first.desired.bundles);
+      const secondKeys = Object.keys(second.desired.bundles);
+      expect(firstKeys).toHaveLength(1);
+      expect(secondKeys).toEqual(firstKeys);
+      const key = firstKeys[0];
+      if (key === undefined) {
+        throw new Error('The clone did not record a portable bundle key.');
+      }
+      const sourceId = key.slice(0, key.indexOf('/'));
+      expect(key).toMatch(/^src-[a-f0-9]{64}\/web-dev$/);
+      expect(first.desired.sources[sourceId]).toEqual({
+        type: 'local',
+        identity: { kind: 'workspace-local', root: 'registry' },
+        locator: 'registry'
+      });
+      expect(first.desiredBytes).not.toContain(first.root);
+      expect(first.desiredBytes).not.toContain(second.root);
+      expect(first.desiredBytes).not.toContain(aliases[0]);
+      expect(first.desiredBytes).not.toContain(aliases[1]);
+
+      const firstRecord = first.local.targets['my-vscode'].bundles[key];
+      const secondRecord = second.local.targets['my-vscode'].bundles[key];
+      expect(firstRecord.sourceKey).toBe(sourceId);
+      expect(secondRecord.sourceKey).toBe(sourceId);
+      expect(secondRecord.resolution).toEqual(firstRecord.resolution);
+      expect(secondRecord.files).toEqual(firstRecord.files);
+      expect((firstRecord.resolution as { sourceContentSha256: string }).sourceContentSha256)
+        .toMatch(/^[a-f0-9]{64}$/);
+
+      await rm(second.copilot, { recursive: true, force: true });
+      const replay = await runCommand(
+        ['install', '--lockfile', second.paths.userLockfile, '--target', 'my-vscode', '-o', 'json'],
+        {
+          commandClasses: [TargetAddCommand, InstallCommand, UninstallCommand, StatusCommand, UpdateCommand],
+          context: {
+            cwd: second.root,
+            fs: new BoundedFs(second.root),
+            env: { ...secondEnv, AI_PRIMITIVES_HUB_UNIFIED_DEPLOY: '1' }
+          },
+          http: denyHttp,
+          tokens: { getToken: () => Promise.resolve(undefined) }
+        }
+      );
+      expect(replay.exitCode, `stdout:\n${replay.stdout}\nstderr:\n${replay.stderr}`).toBe(0);
+      expect(parseJson<{ replayed: string[]; failures: unknown[] }>(replay.stdout).data).toMatchObject({
+        replayed: [key],
+        failures: []
+      });
+      expect(await listTree(second.copilot)).toEqual(EXPECTED_TREE);
+      await expect(readFile(path.join(second.copilot, 'prompts', 'hello.prompt.md'), 'utf8')).resolves.toBe('# Hello\n');
+      expect(await readFile(second.paths.userLockfile, 'utf8')).toBe(second.desiredBytes);
+      expect(denyHttpCalls).toEqual([]);
+    } finally {
+      await rm(secondWorkspace, { recursive: true, force: true });
+    }
+  });
+
+  it('resumes a branch-era v3 local-first migration offline without duplicating legacy ownership', async () => {
+    const legacyKey = 'computer-specific/acme.reviewer@1.0.0';
+    const oldBaseDir = path.join(workspace, '.cursor');
+    const oldFile = path.join(oldBaseDir, 'agents', 'reviewer.md');
+    const knownDigest = 'b'.repeat(64);
+    const installedDigest = 'c'.repeat(64);
+    await mkdir(path.dirname(oldFile), { recursive: true });
+    await writeFile(oldFile, '# Existing reviewer\n', 'utf8');
+    await mkdir(path.dirname(desiredLockfile), { recursive: true });
+    await writeFile(desiredLockfile, `${JSON.stringify({
+      version: '3.0.0',
+      generatedAt: '2026-10-12T00:00:00.000Z',
+      generatedBy: 'ai-primitives-hub-cli',
+      migration: { lockfileV3: 'complete' },
+      bundles: {
+        [legacyKey]: {
+          version: '1.0.0',
+          sourceId: 'computer-specific',
+          archiveSha: 'a'.repeat(64)
+        }
+      },
+      sources: {
+        'computer-specific': {
+          type: 'github',
+          url: 'https://github.com/acme/agents',
+          branch: 'main'
+        }
+      },
+      hubs: { shared: { name: 'Shared', url: 'https://example.com/hub.yml' } },
+      profiles: { defaults: { name: 'Defaults', bundleIds: [legacyKey] } }
+    }, null, 2)}\n`, 'utf8');
+    await writeFile(localLockfile, `${JSON.stringify({
+      version: '3.0.0',
+      generatedAt: '2026-10-12T00:00:00.000Z',
+      generatedBy: 'ai-primitives-hub-cli',
+      migration: { lockfileV3: 'complete' },
+      targets: {
+        'cursor-user': {
+          targetType: 'cursor',
+          scope: 'user',
+          baseDir: oldBaseDir,
+          bundles: {
+            [legacyKey]: {
+              version: '1.0.0',
+              sourceId: 'computer-specific',
+              installedAt: '2026-10-12T00:00:00.000Z',
+              commitMode: 'local-only',
+              files: [{
+                path: 'agents/reviewer.md',
+                checksum: knownDigest,
+                installedChecksum: installedDigest
+              }],
+              mcpConfigPath: '.copilot/mcp-config.json',
+              mcpServers: ['reviewer-mcp']
+            }
+          }
+        }
+      }
+    }, null, 2)}\n`, 'utf8');
+
+    const providerCalls: string[] = [];
+    const denyHttp: HttpClient = {
+      fetch: (request: HttpRequest): Promise<HttpResponse> => {
+        providerCalls.push(request.url);
+        return Promise.reject(new Error(`Unexpected provider lookup: ${request.url}`));
+      }
+    };
+    const interruptionFs = new class extends RecordingFs {
+      private interrupted = false;
+
+      public override async rename(from: string, to: string): Promise<void> {
+        await super.rename(from, to);
+        if (!this.interrupted && to === localLockfile) {
+          this.interrupted = true;
+          throw new Error('simulated interruption after local-first write');
+        }
+      }
+    }(workspace);
+    const tokens: TokenProvider = { getToken: () => Promise.resolve(undefined) };
+    const first = await runFlagOn([...INSTALL_ARGV, '-o', 'json'], interruptionFs, { http: denyHttp, tokens });
+
+    expect(first.exitCode).not.toBe(0);
+    expect(first.stdout + first.stderr).toContain('simulated interruption after local-first write');
+    expect((await readLocal()).migration).toBeUndefined();
+    expect(Object.keys((await readDesired()).bundles)).toEqual([legacyKey]);
+    expect(await readFile(oldFile, 'utf8')).toBe('# Existing reviewer\n');
+
+    const resumed = await runFlagOn([...INSTALL_ARGV, '-o', 'json'], new RecordingFs(workspace), { http: denyHttp, tokens });
+
+    expect(resumed.exitCode, `stdout:\n${resumed.stdout}\nstderr:\n${resumed.stderr}`).toBe(0);
+    expect(providerCalls).toEqual([]);
+    expect(await exists(env.XDG_CACHE_HOME)).toBe(false);
+    expect(await readFile(oldFile, 'utf8')).toBe('# Existing reviewer\n');
+    const desired = await readDesired();
+    expect(desired.unresolved).toEqual([
+      expect.objectContaining({ originalKey: legacyKey, sourceRef: 'computer-specific', version: '1.0.0' })
+    ]);
+    expect(Object.keys(desired.bundles)).toHaveLength(1);
+    const local = await readLocal();
+    expect(local.migration).toEqual({ lockfileV3: 'complete' });
+    const oldRecords = Object.values(local.targets['cursor-user'].bundles)
+      .filter((record) => record.state === 'unmanaged');
+    expect(oldRecords).toHaveLength(1);
+    expect(oldRecords[0]).toMatchObject({
+      files: [{ path: 'agents/reviewer.md', checksum: knownDigest, installedChecksum: installedDigest }]
+    });
+    expect(local.targets['my-vscode'].bundles).toHaveProperty(Object.keys(desired.bundles)[0]);
+  });
+
+  it('retains conflicting branch-era aliases, pins, and file baselines as separate reported records', async () => {
+    const firstLegacyKey = 'computer-a/acme.reviewer@1.0.0';
+    const secondLegacyKey = 'computer-b/acme.reviewer@1.0.0';
+    const oldBaseDir = path.join(workspace, '.cursor');
+    const oldFile = path.join(oldBaseDir, 'agents', 'reviewer.md');
+    const firstPin = {
+      kind: 'pinned',
+      provider: 'github-release',
+      version: '1.0.0',
+      releaseId: '100',
+      assetId: '200',
+      archiveSha256: 'a'.repeat(64)
+    };
+    const secondPin = {
+      ...firstPin,
+      releaseId: '300',
+      assetId: '400',
+      archiveSha256: 'd'.repeat(64)
+    };
+    await mkdir(path.dirname(oldFile), { recursive: true });
+    await writeFile(oldFile, '# Conflicting existing reviewer\n', 'utf8');
+    await mkdir(path.dirname(desiredLockfile), { recursive: true });
+    await writeFile(desiredLockfile, `${JSON.stringify({
+      version: '3.0.0',
+      generatedAt: '2026-10-12T00:00:00.000Z',
+      generatedBy: 'ai-primitives-hub-cli',
+      migration: { lockfileV3: 'complete' },
+      bundles: {
+        [firstLegacyKey]: {
+          version: '1.0.0',
+          sourceId: 'computer-a',
+          resolution: firstPin,
+          archiveSha: firstPin.archiveSha256
+        },
+        [secondLegacyKey]: {
+          version: '1.0.0',
+          sourceId: 'computer-b',
+          resolution: secondPin,
+          archiveSha: secondPin.archiveSha256
+        }
+      },
+      sources: {
+        'computer-a': { type: 'github', url: 'https://github.com/acme/agents', branch: 'main' },
+        'computer-b': { type: 'github', url: 'https://github.com/acme/agents', branch: 'main' }
+      }
+    }, null, 2)}\n`, 'utf8');
+    await writeFile(localLockfile, `${JSON.stringify({
+      version: '3.0.0',
+      generatedAt: '2026-10-12T00:00:00.000Z',
+      generatedBy: 'ai-primitives-hub-cli',
+      migration: { lockfileV3: 'complete' },
+      targets: {
+        'cursor-user': {
+          targetType: 'cursor',
+          scope: 'user',
+          baseDir: oldBaseDir,
+          bundles: {
+            [firstLegacyKey]: {
+              version: '1.0.0',
+              sourceId: 'computer-a',
+              resolution: firstPin,
+              installedAt: '2026-10-12T00:00:00.000Z',
+              files: [{ path: 'agents/reviewer.md', checksum: 'b'.repeat(64), installedChecksum: 'c'.repeat(64) }]
+            },
+            [secondLegacyKey]: {
+              version: '1.0.0',
+              sourceId: 'computer-b',
+              resolution: secondPin,
+              installedAt: '2026-10-12T00:00:00.000Z',
+              files: [{ path: 'agents/reviewer.md', checksum: 'e'.repeat(64), installedChecksum: 'f'.repeat(64) }]
+            }
+          }
+        }
+      }
+    }, null, 2)}\n`, 'utf8');
+
+    const providerCalls: string[] = [];
+    const result = await runFlagOn(
+      [...INSTALL_ARGV, '-o', 'json'],
+      new RecordingFs(workspace),
+      {
+        http: {
+          fetch: (request: HttpRequest): Promise<HttpResponse> => {
+            providerCalls.push(request.url);
+            return Promise.reject(new Error(`Unexpected provider lookup: ${request.url}`));
+          }
+        },
+        tokens: { getToken: () => Promise.resolve(undefined) }
+      }
+    );
+
+    expect(result.exitCode, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`).toBe(0);
+    expect(providerCalls).toEqual([]);
+    const desired = await readDesired();
+    expect(desired.unresolved?.map(({ originalKey }) => originalKey).toSorted())
+      .toEqual([firstLegacyKey, secondLegacyKey].toSorted());
+    expect(desired.unresolved?.find(({ originalKey }) => originalKey === firstLegacyKey)?.knownResolution).toEqual(firstPin);
+    expect(desired.unresolved?.find(({ originalKey }) => originalKey === secondLegacyKey)?.knownResolution).toEqual(secondPin);
+    expect(desired.sources).not.toHaveProperty('computer-a');
+    expect(desired.sources).not.toHaveProperty('computer-b');
+
+    const local = await readLocal();
+    const oldRecords = Object.values(local.targets['cursor-user'].bundles)
+      .filter((record) => record.state === 'unmanaged');
+    expect(oldRecords).toHaveLength(2);
+    expect(oldRecords.map((record) => record.files[0]?.checksum).toSorted())
+      .toEqual(['b'.repeat(64), 'e'.repeat(64)].toSorted());
+    expect(oldRecords.map((record) => record.files[0]?.installedChecksum).toSorted())
+      .toEqual(['c'.repeat(64), 'f'.repeat(64)].toSorted());
+    expect(oldRecords.map((record) => record.legacy?.knownResolution).toSorted((a, b) =>
+      JSON.stringify(a).localeCompare(JSON.stringify(b))
+    )).toEqual([firstPin, secondPin].toSorted((a, b) =>
+      JSON.stringify(a).localeCompare(JSON.stringify(b))
+    ));
+    const migration = parseJson<{ migration: { unmanaged: { key: string; reason: string }[] } }>(result.stdout).data.migration;
+    expect(migration.unmanaged).toHaveLength(2);
+    expect(migration.unmanaged.every(({ reason }) => reason.length > 0)).toBe(true);
+    expect(await readFile(oldFile, 'utf8')).toBe('# Conflicting existing reviewer\n');
+  });
+
+  it('replays a moved tree branch from the recorded commit, not an incompatible configured ref', async () => {
+    const hubId = 'tree-pinned-source';
+    const userPaths = resolveUserConfigPaths(env);
+    const hubFile = path.join(userPaths.hubs, `${hubId}.yml`);
+    const sourceAlias = 'tree-source';
+    const collectionPath = 'collections/web-dev.collection.yml';
+    const manifestAtA = new TextEncoder().encode([
+      'id: web-dev',
+      'name: Web Dev',
+      'description: Pinned tree collection.',
+      'version: 1.0.0',
+      'items:',
+      '  - path: prompts/hello.prompt.md',
+      '    kind: prompt'
+    ].join('\n'));
+    const manifestAtB = new TextEncoder().encode([
+      'id: web-dev',
+      'name: Web Dev',
+      'description: Moved tree branch collection.',
+      'version: 1.0.0',
+      'items:',
+      '  - path: prompts/hello.prompt.md',
+      '    kind: prompt'
+    ].join('\n'));
+    const fileAtA = new TextEncoder().encode('# Pinned main commit\n');
+    const fileAtB = new TextEncoder().encode('# Moved main branch\n');
+    const commitA = 'a'.repeat(40);
+    const commitB = 'b'.repeat(40);
+    const commitMaster = 'c'.repeat(40);
+    let branchHead = commitA;
+    const httpCalls: string[] = [];
+    const responses = new Map<string, HttpResponse>();
+    const response = (url: string, body: Uint8Array): HttpResponse => ({
+      statusCode: 200,
+      body,
+      finalUrl: url,
+      headers: {}
+    });
+    const putJson = (url: string, value: unknown): void => {
+      responses.set(url, response(url, new TextEncoder().encode(JSON.stringify(value))));
+    };
+    const repoUrl = 'https://api.github.com/repos/owner/repo';
+    putJson(repoUrl, {
+      id: 123,
+      full_name: 'owner/repo',
+      html_url: 'https://github.com/owner/repo',
+      default_branch: 'main'
+    });
+    putJson(`${repoUrl}/commits/${commitA}`, { sha: commitA });
+    putJson(`${repoUrl}/commits/${commitB}`, { sha: commitB });
+    putJson(`${repoUrl}/commits/${commitMaster}`, { sha: commitMaster });
+    putJson(`${repoUrl}/git/trees/${commitA}?recursive=1`, {
+      tree: [
+        { path: collectionPath, type: 'blob', sha: 'collection-a' },
+        { path: 'prompts/hello.prompt.md', type: 'blob', sha: 'prompt-a' }
+      ]
+    });
+    putJson(`${repoUrl}/git/trees/${commitB}?recursive=1`, {
+      tree: [
+        { path: collectionPath, type: 'blob', sha: 'collection-b' },
+        { path: 'prompts/hello.prompt.md', type: 'blob', sha: 'prompt-b' }
+      ]
+    });
+    putJson(`${repoUrl}/git/trees/${commitMaster}?recursive=1`, {
+      tree: [
+        { path: collectionPath, type: 'blob', sha: 'collection-master' },
+        { path: 'prompts/hello.prompt.md', type: 'blob', sha: 'prompt-master' }
+      ]
+    });
+    for (const [commit, manifest, content] of [
+      [commitA, manifestAtA, fileAtA],
+      [commitB, manifestAtB, fileAtB],
+      [commitMaster, manifestAtB, fileAtB]
+    ] as const) {
+      responses.set(
+        `https://raw.githubusercontent.com/owner/repo/${commit}/${collectionPath}`,
+        response(`https://raw.githubusercontent.com/owner/repo/${commit}/${collectionPath}`, manifest)
+      );
+      responses.set(
+        `https://raw.githubusercontent.com/owner/repo/${commit}/prompts/hello.prompt.md`,
+        response(`https://raw.githubusercontent.com/owner/repo/${commit}/prompts/hello.prompt.md`, content)
+      );
+    }
+    const http: HttpClient = {
+      fetch: (request: HttpRequest): Promise<HttpResponse> => {
+        httpCalls.push(request.url);
+        if (request.url === `${repoUrl}/commits/main`) {
+          return Promise.resolve(response(request.url, new TextEncoder().encode(JSON.stringify({ sha: branchHead }))));
+        }
+        const found = responses.get(request.url);
+        return found === undefined
+          ? Promise.reject(new Error(`Unexpected provider request: ${request.url}`))
+          : Promise.resolve(found);
+      }
+    };
+    const hubConfig = (branch: string): HubConfig => ({
+      version: '1.0.0',
+      metadata: {
+        name: 'Pinned tree source',
+        description: 'Tree branch pin fixture',
+        maintainer: 'test',
+        updatedAt: '2026-10-14T00:00:00.000Z'
+      },
+      sources: [{
+        id: sourceAlias,
+        name: 'Tree branch source',
+        type: 'awesome-copilot',
+        url: 'https://github.com/owner/repo',
+        enabled: true,
+        priority: 0,
+        config: { branch, collectionsPath: 'collections' }
+      }],
+      profiles: [{
+        id: 'default',
+        name: 'Default',
+        bundles: [{ id: 'web-dev', version: '1.0.0', source: sourceAlias, required: true }]
+      }]
+    });
+    const store = new HubStore(userPaths.hubs, new NodeFileSystem());
+    const reference = { type: 'local' as const, location: hubFile };
+    await store.save(hubId, hubConfig('main'), reference);
+    await new ActiveHubStore(userPaths.activeHub, new NodeFileSystem()).set(hubId);
+    const tokens: TokenProvider = { getToken: () => Promise.resolve(undefined) };
+
+    const installed = await runFlagOn(
+      ['install', '--source', hubId, '--interactive', '--target', 'my-vscode', '-o', 'json'],
+      undefined,
+      { http, tokens }
+    );
+    expect(installed.exitCode, `stdout:\n${installed.stdout}\nstderr:\n${installed.stderr}`).toBe(0);
+    const desiredBytes = await readFile(desiredLockfile, 'utf8');
+    const desired = await readDesired();
+    const [key] = Object.keys(desired.bundles);
+    if (key === undefined) {
+      throw new Error('The initial tree install did not record a desired bundle.');
+    }
+    const sourceId = key.slice(0, key.indexOf('/'));
+    const pin = desired.bundles[key].resolution as { kind: string; provider?: string; commitSha?: string };
+    expect(pin).toMatchObject({ kind: 'pinned', provider: 'github-tree', commitSha: commitA });
+    expect((desired.sources[sourceId] as { identity: { ref?: string } }).identity.ref).toBe('main');
+    expect(await readFile(path.join(copilotDir, 'prompts', 'hello.prompt.md'), 'utf8')).toBe('# Pinned main commit\n');
+
+    branchHead = commitB;
+    await store.save(hubId, hubConfig('master'), reference);
+    await rm(copilotDir, { recursive: true, force: true });
+    httpCalls.length = 0;
+
+    const replayed = await runFlagOn([
+      'install', '--lockfile', desiredLockfile, '--target', 'my-vscode', '-o', 'json'
+    ], undefined, { http, tokens });
+
+    expect(replayed.exitCode, `stdout:\n${replayed.stdout}\nstderr:\n${replayed.stderr}`).toBe(0);
+    expect(parseJson<{ replayed: string[]; failures: unknown[] }>(replayed.stdout).data).toMatchObject({
+      replayed: [key],
+      failures: []
+    });
+    expect(httpCalls).toContain(`${repoUrl}/git/trees/${commitA}?recursive=1`);
+    expect(httpCalls).not.toContain(`${repoUrl}/commits/main`);
+    expect(httpCalls).not.toContain(`${repoUrl}/commits/master`);
+    expect(httpCalls).not.toContain(`${repoUrl}/git/trees/${commitB}?recursive=1`);
+    expect(await readFile(path.join(copilotDir, 'prompts', 'hello.prompt.md'), 'utf8')).toBe('# Pinned main commit\n');
+    expect(await readFile(desiredLockfile, 'utf8')).toBe(desiredBytes);
+    expect((await readDesired()).bundles[key].resolution).toEqual(desired.bundles[key].resolution);
+    expect((await readDesired()).sources[sourceId]).toEqual(desired.sources[sourceId]);
   });
 
   it('keeps a missing external binding as an actionable replay failure without writes', async () => {
@@ -800,47 +1431,20 @@ describe('unified deploy, CLI user scope, vscode', () => {
   });
 
   it('fails a live local-skills install before placement or lockfile writes', async () => {
-    const skillsRoot = path.join(workspace, 'local-skills');
-    const skillFile = path.join(skillsRoot, 'skills', 'web-dev', 'SKILL.md');
-    await mkdir(path.dirname(skillFile), { recursive: true });
-    await writeFile(skillFile, '---\nname: Web Dev\n---\n# Instructions\n', 'utf8');
-
+    const skillFile = await configureLiveSkillsHub('live-local-skills');
     const userPaths = resolveUserConfigPaths(env);
-    const hubId = 'live-local-skills';
-    const hubFile = path.join(userPaths.hubs, `${hubId}.yml`);
-    const hub: HubConfig = {
-      version: '1.0.0',
-      metadata: {
-        name: 'Live local skills',
-        description: 'Local live-install refusal fixture',
-        maintainer: 'test',
-        updatedAt: '2026-10-14T00:00:00.000Z'
-      },
-      sources: [{
-        id: 'skills-alias',
-        name: 'Skills alias',
-        type: 'local-skills',
-        url: './local-skills',
-        enabled: true,
-        priority: 0
-      }],
-      profiles: [{
-        id: 'default',
-        name: 'Default',
-        bundles: [{ id: 'web-dev', version: '1.0.0', source: 'skills-alias', required: true }]
-      }]
-    };
-    const nodeFs = new NodeFileSystem();
-    await new HubStore(userPaths.hubs, nodeFs).save(hubId, hub, { type: 'local', location: hubFile });
-    await new ActiveHubStore(userPaths.activeHub, nodeFs).set(hubId);
     const recordingFs = new RecordingFs(workspace);
 
     const result = await runFlagOn(
-      ['install', '--source', hubId, '--interactive', '--target', 'my-vscode', '-o', 'json'],
+      ['install', '--source', 'live-local-skills', '--interactive', '--target', 'my-vscode', '-o', 'json'],
       recordingFs
     );
 
     expect(result.exitCode, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`).toBe(1);
+    expect(parseLastJson<{ installed: number; total: number }>(result.stdout)).toMatchObject({
+      status: 'warning',
+      data: { installed: 0, total: 1 }
+    });
     expect(result.stdout + result.stderr).toContain('Live local-skills deployment is not supported by copy-only targets');
     expect(await listTree(copilotDir)).toEqual([]);
     expect(await readFile(skillFile, 'utf8')).toBe('---\nname: Web Dev\n---\n# Instructions\n');
@@ -851,5 +1455,30 @@ describe('unified deploy, CLI user scope, vscode', () => {
       file !== userPaths.hubs && !file.startsWith(`${userPaths.hubs}${path.sep}`)
     );
     expect(nonHubWrites).toEqual([]);
+  });
+
+  it('preserves legacy flag-off ok JSON status for an incomplete interactive install', async () => {
+    const skillFile = await configureLiveSkillsHub('live-local-skills-flag-off');
+    const recordingFs = new RecordingFs(workspace);
+
+    const result = await runFlagOff(
+      ['install', '--source', 'live-local-skills-flag-off', '--interactive', '--target', 'my-vscode', '-o', 'json'],
+      recordingFs
+    );
+
+    expect(result.exitCode, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`).toBe(0);
+    expect(parseLastJson<{ installed: number; total: number }>(result.stdout)).toMatchObject({
+      status: 'ok',
+      data: { installed: 0, total: 1 },
+      warnings: []
+    });
+    expect(await listTree(copilotDir)).toEqual([]);
+    expect(await readFile(skillFile, 'utf8')).toBe('---\nname: Web Dev\n---\n# Instructions\n');
+    expect(await exists(desiredLockfile)).toBe(false);
+    expect(await exists(localLockfile)).toBe(false);
+    const userPaths = resolveUserConfigPaths(env);
+    expect(recordingFs.writes.filter((file) =>
+      file !== userPaths.hubs && !file.startsWith(`${userPaths.hubs}${path.sep}`)
+    )).toEqual([]);
   });
 });

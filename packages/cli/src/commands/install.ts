@@ -745,15 +745,16 @@ async function interactiveBundleSelection(
     const installedCount = await installSelectedBundles(selectedBundles, sourceMap, opts, target, ctx, fmt);
 
     const incomplete = installedCount < selectedBundles.length;
+    const unifiedFailure = incomplete && unifiedDeployRequested(ctx);
     formatOutput({
       ctx,
       command: 'install',
       output: fmt,
-      status: incomplete ? 'warning' : 'ok',
+      status: unifiedFailure ? 'warning' : 'ok',
       data: { installed: installedCount, total: selectedBundles.length },
       textRenderer: (d) => `Installed ${d.installed}/${d.total} bundles\n`
     });
-    return incomplete && unifiedDeployRequested(ctx) ? 1 : 0;
+    return unifiedFailure ? 1 : 0;
   } catch (err) {
     return failWith(ctx, fmt, 'install', buildInstallError(err));
   }
